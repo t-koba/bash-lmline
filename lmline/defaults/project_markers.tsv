@@ -1,0 +1,16 @@
+# project_type<TAB>relative-file-or-directory
+node	package.json
+python	pyproject.toml
+python	requirements.txt
+python	setup.py
+rust	Cargo.toml
+go	go.mod
+make	Makefile
+make	makefile
+container	Dockerfile
+container	docker-compose.yml
+container	compose.yml
+jvm	pom.xml
+jvm	build.gradle
+jvm	build.gradle.kts
+ruby	Gemfile

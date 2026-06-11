@@ -1,0 +1,2 @@
+Explanation detail: brief
+Keep the answer short. State the likely overall purpose, then only the most important stages, inputs/outputs, and risks. Omit option-by-option detail unless it changes the command meaning.

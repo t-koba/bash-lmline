@@ -1,0 +1,20 @@
+# Words that can appear before the real command name in a simple command.
+!
+builtin
+case
+command
+do
+done
+else
+env
+esac
+exec
+fi
+for
+if
+in
+sudo
+then
+time
+until
+while

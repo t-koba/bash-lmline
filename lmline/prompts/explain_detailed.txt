@@ -1,0 +1,2 @@
+Explanation detail: detailed
+Give a fuller explanation. Include the inferred overall purpose, stage-by-stage behavior, important options, data flow, portability caveats, and noteworthy risks, while still avoiding irrelevant option catalogs.

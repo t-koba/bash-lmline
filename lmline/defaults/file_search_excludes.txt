@@ -1,0 +1,6 @@
+# Path prefixes excluded from filename search. Lines are relative to the current directory.
+.git
+node_modules
+vendor
+.venv
+target

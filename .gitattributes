@@ -1,0 +1,9 @@
+.DS_Store export-ignore
+.env export-ignore
+.env.* export-ignore
+.lmline.bash export-ignore
+*.key export-ignore
+*.pem export-ignore
+*.secret export-ignore
+request.md export-ignore
+

@@ -1,0 +1,7 @@
+# name<TAB>command<TAB>arg1<TAB>arg2...
+macos	pbpaste
+wayland	wl-paste	--no-newline
+xclip	xclip	-selection	clipboard	-o
+xsel	xsel	--clipboard	--output
+wsl	powershell.exe	-NoProfile	-Command	Get-Clipboard
+tmux	tmux	save-buffer	-

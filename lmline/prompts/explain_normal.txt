@@ -1,0 +1,2 @@
+Explanation detail: normal
+Use a balanced explanation. Adjust length to the command complexity: short commands should get a short explanation, while pipelines should include the overall purpose plus the main stages and noteworthy options.

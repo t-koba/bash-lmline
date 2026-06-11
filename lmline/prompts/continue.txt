@@ -1,0 +1,7 @@
+Continue the user's partial Bash command.
+The line ends with one of: |, ||, &&, ;, >, >>, or a trailing backslash.
+Output the full completed command: repeat the existing prefix exactly, byte for byte, then append the continuation.
+Do not reformat, requote, or "fix" the existing prefix, even if you would write it differently.
+Prefer concise, portable commands that match the local OS and available commands.
+For complex processing, prefer continuing as a one-line Unix-style pipeline instead of turning the input into a script.
+The file list in context is only a hint; do not replace a broad search prefix with a single context file.

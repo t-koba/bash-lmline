@@ -1,0 +1,11 @@
+# Commands used by optional features when available.
+find
+sed
+awk
+sort
+uniq
+git
+timeout
+sha256sum
+shasum
+cksum

@@ -1,0 +1,42 @@
+# level<TAB>shell-pattern<TAB>reason. First matching pattern wins.
+# Patterns are matched against the command with whitespace squeezed and the
+# whole line wrapped in single spaces, so "* dd *" matches "dd if=...",
+# "x | dd of=...", and a bare "dd".
+high	*rm -rf*	recursive remove
+high	*rm -r*	recursive remove
+high	*find *-delete*	find delete action
+high	*xargs rm*	bulk remove through xargs
+high	* dd *	raw disk/file overwrite command
+high	* mkfs*	filesystem formatting command
+high	* shutdown*	system power operation
+high	* reboot*	system power operation
+high	* chmod -R*	recursive permission or ownership change
+high	* chown -R*	recursive permission or ownership change
+high	* sudo *	privileged execution
+high	*curl *| sh*	downloaded script execution
+high	*curl *| bash*	downloaded script execution
+high	*curl *| eval*	downloaded code execution
+high	*curl *| bash -c*	downloaded code execution
+high	*source <(curl*	downloaded code execution
+high	*wget *| sh*	downloaded script execution
+high	*wget *| bash*	downloaded script execution
+high	*wget *| eval*	downloaded code execution
+high	*git reset --hard*	destructive git reset
+high	*kubectl delete*	cluster resource deletion
+high	*pkill *	process termination
+high	*kill -9 *	force kill signal
+high	*killall *	bulk process termination
+high	*truncate *	file truncation
+high	*> /dev/sd*	raw device write
+high	*> /etc/*	system config overwrite
+medium	*>*	writes to a file or descriptor
+medium	*>>*	writes to a file or descriptor
+medium	*git reset*	git reset changes repository state
+medium	*docker rm*	container deletion
+medium	*kill *	process signal
+medium	*rsync --delete*	deletes files at destination
+medium	*npm publish*	publishes package
+medium	*pip install*	installs packages
+medium	*brew install*	installs packages
+medium	*mv *	moves or renames files
+medium	*cp *	copies files

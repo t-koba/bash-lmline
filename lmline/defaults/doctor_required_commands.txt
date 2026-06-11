@@ -1,0 +1,4 @@
+# Commands required for the installed shell integration and bundled engine.
+bash
+curl
+jq
