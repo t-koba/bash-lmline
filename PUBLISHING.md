@@ -15,7 +15,7 @@ Before publishing:
 3. Check for local paths, private hostnames, secrets, and personal model names:
 
    ```bash
-   rg -n '(/Users/|Mac-Air|local/llm-completion|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' -uu --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' .
+   rg -n '(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' -uu --glob '!.git/**' --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' .
    ```
 
 4. Confirm generated config/state is not staged:

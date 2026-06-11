@@ -36,7 +36,7 @@ if command -v zsh >/dev/null 2>&1; then
 fi
 
 if command -v rg >/dev/null 2>&1; then
-  if rg -n '(/Users/|Mac-Air|local/llm-completion|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' \
+  if rg -n '(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' \
     -uu --glob '!.git/**' --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' .; then
     printf 'publish-check: local path or secret-looking value found\n' >&2
     exit 1
