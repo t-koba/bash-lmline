@@ -62,12 +62,14 @@ Optional commands used when available:
 ```text
 git         Git root, branch, and Git-root project config
 find        file-name context for the files tool
-timeout     bounded command-info probes, fix execution, and command_run_readonly
+timeout     bounded command-info probes, fix execution, and local command_run
 sha256sum   cache/request keys; falls back to shasum, then cksum
 sed/awk/sort/uniq
             context formatting and CLI display helpers
 pbpaste/wl-paste/xclip/xsel/powershell.exe/tmux
             clipboard providers for lmline clip and Ctrl-x Ctrl-v
+msb
+            optional microsandbox CLI command backend
 ```
 
 Install and test scripts also use common POSIX tools such as `install`, `ln`,
@@ -269,8 +271,9 @@ Medium-risk candidates are inserted with a warning. Low-risk candidates are
 inserted directly.
 
 `Ctrl-x Ctrl-f` is the only interactive action that executes the current line.
-It refuses high-risk commands. Medium-risk commands require
-`LMLINE_FIX_ALLOW_MEDIUM=1`.
+With the local backend, it refuses high-risk commands and medium-risk commands
+require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, the command runs
+through the configured `msb` CLI backend.
 
 ## CLI
 
@@ -281,6 +284,9 @@ lmline command-exists COMMAND...
 lmline command-info COMMAND...
 lmline commands [QUERY]
 lmline payload MODE [LINE...]
+lmline sandbox setup [--name NAME] [--image IMAGE] [--workspace readonly|writable|none]
+lmline sandbox run [--name NAME] [--image IMAGE] [--timeout SECONDS] [--max-output BYTES] -- COMMAND
+lmline sandbox check
 lmline clip [QUESTION...]
 lmline clip --status
 lmline clip --providers
@@ -307,6 +313,35 @@ lmline disable
 
 `payload` prints the chat request JSON and does not contact the provider.
 `doctor --check-api` calls the configured endpoint's `/models` path.
+`sandbox run` requires the microsandbox CLI and never falls back to host
+execution.
+
+## Sandbox Setup
+
+The microsandbox CLI can run one-off commands, but lmline works best when
+command checks and `Ctrl-x Ctrl-f` run in an environment that resembles the
+user's project environment. Use a project-specific sandbox profile instead of
+relying on the default `debian` image:
+
+```bash
+lmline config set LMLINE_MICROSANDBOX_COMMAND msb
+lmline sandbox setup --image ghcr.io/example/project-dev:latest
+```
+
+`sandbox setup` creates or reuses a named sandbox, bind-mounts the current Git
+root at `/workspace` by default, writes `/etc/lmline-env.json` with non-secret
+host environment metadata, and checks command availability from
+`local_commands.txt`, `suggested_commands.txt`, and
+`LMLINE_MICROSANDBOX_REQUIRED_COMMANDS`. If required commands are missing, build
+or choose an OCI image that contains them and run setup again.
+
+The default workspace mount is read-only. Use `--workspace writable` only when
+you deliberately want sandbox commands to write through to the project tree.
+Use `--workspace none` for image-only checks.
+
+After setup, persist the printed `next_config` commands in the project config.
+Then `LMLINE_EXEC_BACKEND=microsandbox` uses `msb exec` in that named sandbox
+instead of ephemeral `msb run`.
 
 ## Clipboard
 
@@ -346,7 +381,7 @@ command_prefix_words.txt
 risk_patterns.tsv
 project_markers.tsv
 clipboard_providers.tsv
-readonly_commands.txt
+local_commands.txt
 doctor_required_commands.txt
 doctor_optional_commands.txt
 ```
@@ -361,7 +396,7 @@ lmline config set LMLINE_COMMAND_PREFIX_WORDS_FILE /path/to/command_prefix_words
 lmline config set LMLINE_RISK_PATTERNS_FILE /path/to/risk_patterns.tsv
 lmline config set LMLINE_PROJECT_MARKERS_FILE /path/to/project_markers.tsv
 lmline config set LMLINE_CLIPBOARD_PROVIDERS_FILE /path/to/clipboard_providers.tsv
-lmline config set LMLINE_READONLY_COMMANDS_FILE /path/to/readonly_commands.txt
+lmline config set LMLINE_LOCAL_COMMANDS_FILE /path/to/local_commands.txt
 lmline config set LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE /path/to/doctor_required_commands.txt
 lmline config set LMLINE_DOCTOR_OPTIONAL_COMMANDS_FILE /path/to/doctor_optional_commands.txt
 ```
@@ -381,11 +416,12 @@ clipboard_providers.tsv:  name<TAB>command<TAB>arg1<TAB>arg2...
 rule wins after whitespace is squeezed and the command is wrapped with one
 leading and trailing space.
 
-`readonly_commands.txt` lists command names allowed by
-`command_run_readonly`. The tool also requires a low risk result and rejects
-redirection, command substitution, background jobs, command-list separators,
-absolute paths, parent-directory paths, and selected write-capable options.
-Pipelines are allowed only when every segment uses configured command names.
+`local_commands.txt` lists command names allowed by `command_run` when the
+selected execution backend is `local`. The local backend also requires a low
+risk result and rejects redirection, command substitution, background jobs,
+command-list separators, absolute paths, parent-directory paths, and selected
+write-capable options. Pipelines are allowed only when every segment uses
+configured command names.
 
 ## Prompts
 
@@ -423,11 +459,11 @@ Default context collection does not read file contents, shell history, lmline
 debug history, the full command inventory, current-directory file names, or the
 clipboard. Tools can expose extra local facts only when enabled and only when
 the model calls them. `file_excerpt` is disabled by default because it reads
-bounded file content. `command_run_readonly` is disabled by default because it
-runs local commands and sends bounded stdout/stderr back to the model. `Ctrl-x
-Ctrl-v` sends redacted clipboard text because that action is explicitly about
-the clipboard. `Ctrl-x Ctrl-f` sends the captured stdout, stderr, and exit
-status from the command it runs.
+bounded file content. `command_run` is disabled by default because it executes
+a command through the selected backend and sends bounded stdout/stderr back to
+the model. `Ctrl-x Ctrl-v` sends redacted clipboard text because that action is
+explicitly about the clipboard. `Ctrl-x Ctrl-f` sends the captured stdout,
+stderr, exit status, and execution backend from the command it runs.
 
 Accuracy-oriented setup:
 
@@ -439,7 +475,8 @@ lmline config set LMLINE_TOOL_COMMAND_INFO 1
 lmline config set LMLINE_TOOL_FILES 1
 lmline config set LMLINE_TOOL_GIT_STATUS 1
 lmline config set LMLINE_TOOL_FILE_EXCERPT 1
-lmline config set LMLINE_TOOL_COMMAND_RUN_READONLY 1
+lmline config set LMLINE_TOOL_COMMAND_RUN 1
+lmline config set LMLINE_EXEC_BACKEND auto
 lmline config set LMLINE_INCLUDE_SHELL_CONTEXT 1
 lmline config set LMLINE_INCLUDE_CWD_CONTEXT 1
 lmline config set LMLINE_INCLUDE_GIT_CONTEXT 1
@@ -455,7 +492,8 @@ Most secure setup:
 lmline config set LMLINE_TOOL_MODE none
 lmline config set LMLINE_TOOL_GIT_STATUS 0
 lmline config set LMLINE_TOOL_FILE_EXCERPT 0
-lmline config set LMLINE_TOOL_COMMAND_RUN_READONLY 0
+lmline config set LMLINE_TOOL_COMMAND_RUN 0
+lmline config set LMLINE_EXEC_BACKEND off
 lmline config set LMLINE_INCLUDE_SHELL_CONTEXT 0
 lmline config set LMLINE_INCLUDE_CWD_CONTEXT 0
 lmline config set LMLINE_INCLUDE_GIT_CONTEXT 0
@@ -470,6 +508,13 @@ With the secure setup, the model receives the current input line, mode, response
 language default, candidate limits, and no local tool access. Set
 `LMLINE_RESPONSE_LOCALE` explicitly if you want a non-English response language
 without sending locale environment variables.
+
+`LMLINE_EXEC_BACKEND=auto` uses the configured microsandbox CLI when `msb` is
+available; otherwise it uses the local backend. Set
+`LMLINE_MICROSANDBOX_COMMAND` if the CLI is installed under another name or
+path. lmline does not install microsandbox automatically. microsandbox is beta
+software and requires Linux with KVM or macOS on Apple Silicon. `lmline sandbox
+check` runs `msb --version` only.
 
 API keys are passed to `curl` through `-H @file` header files created in a
 temporary directory. They are not placed on the `curl` command line.
@@ -532,9 +577,8 @@ git_status      git --no-optional-locks status --short --branch,
                 disabled by default
 file_excerpt    bounded excerpt from one text file under the current directory,
                 disabled by default
-command_run_readonly
-                low-risk read-only command execution with timeout and bounded
-                stdout/stderr, disabled by default
+command_run     bounded command execution through LMLINE_EXEC_BACKEND,
+                disabled by default
 ```
 
 ## Settings Reference
@@ -613,7 +657,17 @@ Context and tool settings:
 | `LMLINE_TOOL_FILES` | `1` | enable `files` |
 | `LMLINE_TOOL_GIT_STATUS` | `0` | enable `git_status` |
 | `LMLINE_TOOL_FILE_EXCERPT` | `0` | enable `file_excerpt` |
-| `LMLINE_TOOL_COMMAND_RUN_READONLY` | `0` | enable `command_run_readonly` |
+| `LMLINE_TOOL_COMMAND_RUN` | `0` | enable `command_run` |
+| `LMLINE_EXEC_BACKEND` | `auto` | `auto`, `local`, `microsandbox`, or `off` |
+| `LMLINE_MICROSANDBOX_COMMAND` | `msb` | microsandbox CLI command name or path |
+| `LMLINE_MICROSANDBOX_NAME` | empty | persistent sandbox name; empty uses ephemeral `msb run` |
+| `LMLINE_MICROSANDBOX_IMAGE` | `debian` | image for ephemeral runs and `sandbox setup` |
+| `LMLINE_MICROSANDBOX_MEMORY` | `512M` | memory for ephemeral runs and setup sandboxes |
+| `LMLINE_MICROSANDBOX_CPUS` | `1` | vCPU count for ephemeral runs and setup sandboxes |
+| `LMLINE_MICROSANDBOX_SETUP_TIMEOUT` | `30` | seconds for setup-time CLI operations |
+| `LMLINE_MICROSANDBOX_WORKDIR` | `/workspace` | guest workdir for `sandbox setup` |
+| `LMLINE_MICROSANDBOX_WORKSPACE_MODE` | `readonly` | `readonly`, `writable`, or `none` for project bind mount |
+| `LMLINE_MICROSANDBOX_REQUIRED_COMMANDS` | empty | extra space-separated commands checked by `sandbox setup` |
 | `LMLINE_MAX_TOOL_ROUNDS` | `10` | maximum tool-use rounds |
 | `LMLINE_MAX_TOOL_CALLS_PER_ROUND` | `20` | per-round tool call limit |
 | `LMLINE_TOOL_RESULT_SUMMARIZE` | `0` | summarize long multi-round tool history |
@@ -630,8 +684,9 @@ Context and tool settings:
 | `LMLINE_TOOL_FILES_LIMIT` | `80` | `files` result limit |
 | `LMLINE_TOOL_GIT_STATUS_LINES` | `80` | `git_status` result line limit |
 | `LMLINE_TOOL_FILE_EXCERPT_LINES` | `80` | `file_excerpt` result line limit |
-| `LMLINE_TOOL_COMMAND_RUN_READONLY_TIMEOUT` | `3` | seconds per read-only command run |
-| `LMLINE_TOOL_COMMAND_RUN_READONLY_MAX_OUTPUT` | `12000` | stdout/stderr byte limit for read-only command runs |
+| `LMLINE_TOOL_COMMAND_RUN_TIMEOUT` | `3` | seconds per `command_run` call |
+| `LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT` | `12000` | stdout/stderr byte limit for `command_run` |
+| `LMLINE_TOOL_COMMAND_RUN_MAX_RISK` | `medium` | highest risk level allowed for sandbox-backed `command_run` |
 | `LMLINE_MAX_PIPELINE_COMMANDS` | `30` | command words summarized from a pipeline |
 | `LMLINE_TOOL_INFO_LINES` | `40` | lines kept per command-info block |
 | `LMLINE_TOOL_INFO_LINE_BYTES` | `240` | bytes kept per command-info line |
@@ -648,7 +703,7 @@ Data-file settings:
 | `LMLINE_RISK_PATTERNS_FILE` | user override or installed default | candidate risk rules |
 | `LMLINE_PROJECT_MARKERS_FILE` | user override or installed default | project type markers |
 | `LMLINE_CLIPBOARD_PROVIDERS_FILE` | user override or installed default | clipboard provider TSV |
-| `LMLINE_READONLY_COMMANDS_FILE` | user override or installed default | command allowlist for `command_run_readonly` |
+| `LMLINE_LOCAL_COMMANDS_FILE` | user override or installed default | local backend allowlist for `command_run` |
 | `LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE` | user override or installed default | required command list for `doctor` |
 | `LMLINE_DOCTOR_OPTIONAL_COMMANDS_FILE` | user override or installed default | optional command list for `doctor` |
 

@@ -16,8 +16,9 @@
 : "${LMLINE_TOOL_MODE:=auto}"
 : "${LMLINE_TOOL_GIT_STATUS_LINES:=80}"
 : "${LMLINE_TOOL_FILE_EXCERPT_LINES:=80}"
-: "${LMLINE_TOOL_COMMAND_RUN_READONLY_TIMEOUT:=3}"
-: "${LMLINE_TOOL_COMMAND_RUN_READONLY_MAX_OUTPUT:=12000}"
+: "${LMLINE_TOOL_COMMAND_RUN_TIMEOUT:=3}"
+: "${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT:=12000}"
+: "${LMLINE_TOOL_COMMAND_RUN_MAX_RISK:=medium}"
 
 __LMLINE_CONTEXT_DIR=${BASH_SOURCE[0]%/*}
 [[ $__LMLINE_CONTEXT_DIR == "${BASH_SOURCE[0]}" ]] && __LMLINE_CONTEXT_DIR=.
@@ -25,6 +26,10 @@ __LMLINE_CONTEXT_DIR=$(cd -- "$__LMLINE_CONTEXT_DIR" && pwd -P)
 if ! declare -F __lmline_resolve_data_file >/dev/null 2>&1; then
   # shellcheck source=lmline/config.bash
   source "$__LMLINE_CONTEXT_DIR/config.bash"
+fi
+if ! declare -F __lmline_select_exec_backend >/dev/null 2>&1; then
+  # shellcheck source=lmline/sandbox.bash
+  source "$__LMLINE_CONTEXT_DIR/sandbox.bash"
 fi
 __lmline_init_dirs "$__LMLINE_CONTEXT_DIR"
 
@@ -127,12 +132,12 @@ file_excerpt path=<relative path> [query=<literal text>]
   Output: bounded untrusted file metadata and excerpt lines.
 EOF
   fi
-  if __lmline_tool_enabled command_run_readonly; then
+  if __lmline_tool_enabled command_run; then
     cat <<'EOF'
-command_run_readonly command=<single shell command>
-  Local action: execute one low-risk read-only command line with timeout and output limits.
-  Input: a single shell command using only configured read-only command names; pipelines are allowed, but redirection, command substitution, background jobs, and command-list separators are rejected.
-  Output: exit status and bounded untrusted stdout/stderr.
+command_run command=<single shell command>
+  Local action: execute one bounded command line through the configured execution backend.
+  Input: a single shell command. With the local backend, only configured low-risk command names and limited shell syntax are accepted.
+  Output: backend, exit status, and bounded untrusted stdout/stderr.
 EOF
   fi
 }
@@ -146,10 +151,10 @@ __lmline_tool_enabled() {
     files) var=LMLINE_TOOL_FILES ;;
     git_status) var=LMLINE_TOOL_GIT_STATUS ;;
     file_excerpt) var=LMLINE_TOOL_FILE_EXCERPT ;;
-    command_run_readonly) var=LMLINE_TOOL_COMMAND_RUN_READONLY ;;
+    command_run) var=LMLINE_TOOL_COMMAND_RUN ;;
     *) return 1 ;;
   esac
-  if [[ "$name" == git_status || "$name" == file_excerpt || "$name" == command_run_readonly ]]; then
+  if [[ "$name" == git_status || "$name" == file_excerpt || "$name" == command_run ]]; then
     value=${!var-0}
   else
     value=${!var-1}
@@ -369,16 +374,16 @@ __lmline_tool_file_excerpt() {
   fi
 }
 
-__lmline_readonly_commands_file() {
-  __lmline_resolve_data_file readonly_commands \
-    "${LMLINE_READONLY_COMMANDS_FILE:-}" \
-    "$LMLINE_USER_RULES_DIR/readonly_commands.txt" \
-    "$LMLINE_DEFAULTS_DIR/readonly_commands.txt"
+__lmline_local_commands_file() {
+  __lmline_resolve_data_file local_commands \
+    "${LMLINE_LOCAL_COMMANDS_FILE:-}" \
+    "$LMLINE_USER_RULES_DIR/local_commands.txt" \
+    "$LMLINE_DEFAULTS_DIR/local_commands.txt"
 }
 
-__lmline_readonly_command_allowed() {
+__lmline_local_command_allowed() {
   local command_name=$1 file
-  file=$(__lmline_readonly_commands_file) || return 1
+  file=$(__lmline_local_commands_file) || return 1
   __lmline_read_list_file "$file" | grep -Fxq -- "$command_name"
 }
 
@@ -389,7 +394,7 @@ __lmline_require_policy_support() {
   fi
 }
 
-__lmline_readonly_segment_allowed() {
+__lmline_local_segment_allowed() {
   local segment=$1 cmd="" token
   for token in $segment; do
     [[ "$token" == *=* && "$token" != */* ]] && continue
@@ -402,7 +407,7 @@ __lmline_readonly_segment_allowed() {
     break
   done
   [[ -n "$cmd" ]] || return 1
-  __lmline_readonly_command_allowed "$cmd" || return 1
+  __lmline_local_command_allowed "$cmd" || return 1
   case "$cmd" in
     find)
       case " $segment " in
@@ -413,14 +418,34 @@ __lmline_readonly_segment_allowed() {
   return 0
 }
 
-__lmline_command_run_readonly_rejection_reason() {
-  local command_line=$1 risk segment token clean_token
+__lmline_risk_within_max() {
+  local risk=$1 max=$2
+  case "$max" in
+    low) [[ "$risk" == low ]] ;;
+    medium) [[ "$risk" == low || "$risk" == medium ]] ;;
+    high) [[ "$risk" == low || "$risk" == medium || "$risk" == high ]] ;;
+    *) [[ "$risk" == low || "$risk" == medium ]] ;;
+  esac
+}
+
+__lmline_command_run_common_rejection_reason() {
+  local command_line=$1
   [[ -n "${command_line//[[:space:]]/}" ]] || { printf 'empty_command\n'; return 0; }
   [[ "$command_line" != *$'\n'* && "$command_line" != *$'\r'* ]] || { printf 'multiline\n'; return 0; }
   if [[ "$command_line" == *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]]; then
     printf 'control_character\n'
     return 0
   fi
+  __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
+  bash -n -c "$command_line" >/dev/null 2>&1 || { printf 'shell_syntax\n'; return 0; }
+  printf 'ok\n'
+}
+
+__lmline_command_run_local_rejection_reason() {
+  local command_line=$1 risk segment token clean_token common
+  common=$(__lmline_command_run_common_rejection_reason "$command_line")
+  [[ "$common" == ok ]] || { printf '%s\n' "$common"; return 0; }
+  __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
   case "$command_line" in
     *'`'*|*'$('*|*'${'*|*'<('*|*'>('*|*'<'*|*'>'*|*';'*|*'&'*|*'('*|*')'*|*'{'*|*'}'*)
       printf 'unsupported_shell_syntax\n'
@@ -431,8 +456,6 @@ __lmline_command_run_readonly_rejection_reason() {
       return 0
       ;;
   esac
-  __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
-  bash -n -c "$command_line" >/dev/null 2>&1 || { printf 'shell_syntax\n'; return 0; }
   risk=$(__lmline_risk_level "$command_line") || { printf 'policy_unavailable\n'; return 0; }
   [[ "$risk" == low ]] || { printf 'risk_not_low\n'; return 0; }
   __lmline_validate_candidate "$command_line" || { printf 'candidate_rejected:%s\n' "$(__lmline_candidate_rejection_reason "$command_line")"; return 0; }
@@ -448,38 +471,109 @@ __lmline_command_run_readonly_rejection_reason() {
           ;;
       esac
     done
-    __lmline_readonly_segment_allowed "$segment" || { printf 'command_not_readonly\n'; return 0; }
+    __lmline_local_segment_allowed "$segment" || { printf 'command_not_allowed\n'; return 0; }
   done < <(__lmline_split_pipeline "$command_line" 1)
   printf 'ok\n'
 }
 
-__lmline_tool_command_run_readonly() {
-  local command_line=${1-} timeout_s=${LMLINE_TOOL_COMMAND_RUN_READONLY_TIMEOUT:-3}
-  local max_output=${LMLINE_TOOL_COMMAND_RUN_READONLY_MAX_OUTPUT:-12000}
-  local rejection tmp status=0 stdout_bytes stderr_bytes
+__lmline_command_run_sandbox_rejection_reason() {
+  local command_line=$1 max_risk=${LMLINE_TOOL_COMMAND_RUN_MAX_RISK:-medium} risk common
+  common=$(__lmline_command_run_common_rejection_reason "$command_line")
+  [[ "$common" == ok ]] || { printf '%s\n' "$common"; return 0; }
+  __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
+  risk=$(__lmline_risk_level "$command_line") || { printf 'policy_unavailable\n'; return 0; }
+  __lmline_risk_within_max "$risk" "$max_risk" || { printf 'risk_above_max:%s\n' "$risk"; return 0; }
+  printf 'ok\n'
+}
+
+__lmline_run_local_capture() {
+  local command_line=$1 timeout_s=$2 stdout_file=$3 stderr_file=$4 status=0
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_s" bash -lc "$command_line" >"$stdout_file" 2>"$stderr_file" || status=$?
+  else
+    bash -lc "$command_line" >"$stdout_file" 2>"$stderr_file" || status=$?
+  fi
+  __LMLINE_EXEC_STATUS=$status
+  __LMLINE_EXEC_BACKEND_USED=local
+  return 0
+}
+
+__lmline_run_microsandbox_capture() {
+  local command_line=$1 timeout_s=$2 stdout_file=$3 stderr_file=$4
+  __lmline_microsandbox_cli_capture "$command_line" "$timeout_s" "$stdout_file" "$stderr_file" || {
+    __LMLINE_EXEC_ERROR=microsandbox_unavailable
+    return 1
+  }
+}
+
+__lmline_run_command_capture_with_backend() {
+  local backend=$1 command_line=$2 timeout_s=$3 stdout_file=$4 stderr_file=$5
+  __LMLINE_EXEC_STATUS=1
+  __LMLINE_EXEC_BACKEND_USED=$backend
+  __LMLINE_EXEC_ERROR=
+  case "$backend" in
+    local) __lmline_run_local_capture "$command_line" "$timeout_s" "$stdout_file" "$stderr_file" ;;
+    microsandbox) __lmline_run_microsandbox_capture "$command_line" "$timeout_s" "$stdout_file" "$stderr_file" ;;
+    *)
+      __LMLINE_EXEC_ERROR=execution_backend_disabled
+      return 1
+      ;;
+  esac
+}
+
+__lmline_tool_command_run() {
+  local command_line=${1-} timeout_s=${LMLINE_TOOL_COMMAND_RUN_TIMEOUT:-3}
+  local max_output=${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT:-12000}
+  local rejection tmp status stdout_bytes stderr_bytes backend
   [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
   [[ "$max_output" =~ ^[1-9][0-9]*$ ]] || max_output=12000
-  rejection=$(__lmline_command_run_readonly_rejection_reason "$command_line")
+  if ! backend=$(__lmline_select_exec_backend); then
+    printf 'allowed=0\n'
+    case "$backend" in
+      off) printf 'reason=execution_disabled\n' ;;
+      microsandbox) printf 'reason=microsandbox_unavailable\n' ;;
+      *) printf 'reason=execution_backend_unavailable\n' ;;
+    esac
+    return 0
+  fi
+  case "$backend" in
+    local) rejection=$(__lmline_command_run_local_rejection_reason "$command_line") ;;
+    microsandbox) rejection=$(__lmline_command_run_sandbox_rejection_reason "$command_line") ;;
+    *) rejection=execution_backend_unavailable ;;
+  esac
   if [[ "$rejection" != ok ]]; then
     printf 'allowed=0\n'
+    printf 'backend=%s\n' "$backend"
     printf 'reason=%s\n' "$rejection"
     return 0
   fi
-  if ! command -v timeout >/dev/null 2>&1; then
+  if [[ "$backend" == local ]] && ! command -v timeout >/dev/null 2>&1; then
     printf 'allowed=0\n'
+    printf 'backend=%s\n' "$backend"
     printf 'reason=timeout_command_missing\n'
     return 0
   fi
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-readonly-run.XXXXXX") || {
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-command-run.XXXXXX") || {
     printf 'allowed=0\nreason=tempdir_failed\n'
     return 0
   }
-  timeout "$timeout_s" bash -lc "$command_line" >"$tmp/stdout" 2>"$tmp/stderr" || status=$?
+  if ! __lmline_run_command_capture_with_backend "$backend" "$command_line" "$timeout_s" "$tmp/stdout" "$tmp/stderr"; then
+    printf 'allowed=0\n'
+    printf 'backend=%s\n' "$backend"
+    printf 'reason=%s\n' "${__LMLINE_EXEC_ERROR:-execution_failed}"
+    if [[ -s "$tmp/stderr" ]]; then
+      __lmline_tool_data_block "STDERR" "$((max_output / 80 + 1))" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}" <"$tmp/stderr"
+    fi
+    rm -rf "$tmp"
+    return 0
+  fi
+  status=$__LMLINE_EXEC_STATUS
   __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
   __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
   stdout_bytes=$(wc -c <"$tmp/stdout" 2>/dev/null | tr -d '[:space:]')
   stderr_bytes=$(wc -c <"$tmp/stderr" 2>/dev/null | tr -d '[:space:]')
   printf 'allowed=1\n'
+  printf 'backend=%s\n' "$backend"
   printf 'exit_status=%s\n' "$status"
   case "$status" in 124|137|143) printf 'timed_out=1\n' ;; *) printf 'timed_out=0\n' ;; esac
   printf 'stdout_bytes=%s\n' "${stdout_bytes:-0}"
@@ -656,7 +750,7 @@ __lmline_split_inline_comment() {
 
 __lmline_write_fix_input() {
   local out=$1 original=$2 status=$3 stdout_file=$4 stderr_file=$5
-  local command_before_comment inline_intent
+  local backend=${6:-local} command_before_comment inline_intent
   {
     printf '%s\n' "$original"
     if __lmline_split_inline_comment "$original" >/dev/null 2>&1; then
@@ -669,6 +763,7 @@ __lmline_write_fix_input() {
       printf 'inline_comment_intent=%s\n' "$inline_intent"
     fi
     printf '\n## captured_execution\n'
+    printf 'execution_backend=%s\n' "$backend"
     printf 'exit_status=%s\n' "$status"
     printf '\n### stderr\n'
     cat "$stderr_file" 2>/dev/null

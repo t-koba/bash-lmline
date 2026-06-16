@@ -2,9 +2,17 @@
 
 `lmline` inserts suggested commands into the shell editing buffer. It does not press Enter for normal generation and rewrite operations.
 
-`Ctrl-x Ctrl-f` is different: it executes the current line once in order to capture stdout, stderr, and exit status for repair suggestions. High-risk commands are refused, and medium-risk commands require `LMLINE_FIX_ALLOW_MEDIUM=1`.
+`Ctrl-x Ctrl-f` is different: it executes the current line once through `LMLINE_EXEC_BACKEND` in order to capture stdout, stderr, exit status, and backend name for repair suggestions. With the local backend, high-risk commands are refused and medium-risk commands require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, execution requires the `msb` CLI or a configured `LMLINE_MICROSANDBOX_COMMAND`.
 
 Do not enable a remote provider unless you are comfortable sending shell context to that provider. By default, file contents and shell history are not sent.
+
+`command_run` is disabled by default. When enabled, its bounded stdout/stderr is sent to the model as untrusted tool output. `LMLINE_EXEC_BACKEND=off` disables command execution. `LMLINE_EXEC_BACKEND=auto` uses the configured microsandbox CLI when `msb` is available; otherwise it uses the local backend. `lmline sandbox run` requires microsandbox and never falls back to local execution.
+
+The microsandbox backend isolates command execution from the host process, but command output can still expose data from the sandbox image or command input. lmline does not claim network isolation for microsandbox because that is controlled by the upstream runtime and CLI options.
+
+`lmline sandbox check` runs `msb --version` only. lmline does not install microsandbox automatically.
+
+`lmline sandbox setup` bind-mounts the project root read-only by default and writes non-secret host environment metadata to `/etc/lmline-env.json` inside the sandbox. `--workspace writable` allows sandbox commands to write through to the project tree and should be used only for trusted workflows.
 
 Project-local `.lmline.bash` files are parsed as `export LMLINE_NAME='value'` assignments only. They are not sourced as shell code. Lines that are not simple `LMLINE_*` assignments are ignored.
 

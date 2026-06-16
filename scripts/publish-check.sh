@@ -24,6 +24,7 @@ bash -n \
   lmline/init.bash \
   lmline/actions.bash \
   lmline/context.bash \
+  lmline/sandbox.bash \
   lmline/config.bash \
   lmline/policy.bash \
   lmline/http.bash \

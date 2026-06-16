@@ -526,7 +526,7 @@ _lmline() {
   fi
   case $CURRENT in
     2)
-      compadd config history explain clip doctor risk help debug disable enable endpoint model use current complete
+      compadd config history explain clip sandbox doctor risk help debug disable enable endpoint model use current complete
       ;;
     3)
       case $words[2] in

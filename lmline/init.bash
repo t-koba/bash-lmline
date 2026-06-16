@@ -592,7 +592,7 @@ __lmline_clip_widget() {
 __lmline_cli_complete() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   local prev=${COMP_WORDS[COMP_CWORD-1]}
-  local subcommands="config history explain clip doctor risk help debug disable enable endpoint model use current complete"
+  local subcommands="config history explain clip sandbox doctor risk help debug disable enable endpoint model use current complete"
   if (( COMP_CWORD == 1 )); then
     COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
   elif [[ ${COMP_WORDS[1]} == use && $COMP_CWORD == 2 ]]; then

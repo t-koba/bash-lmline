@@ -67,6 +67,10 @@ commands:
   command-info COMMAND... print local command path, kind, version, and help snippets
   commands [QUERY]        print local commands matching QUERY
   payload MODE [LINE...] print the OpenAI-compatible JSON payload without sending it
+  sandbox setup [options] create/check a project sandbox profile
+  sandbox run [options] -- COMMAND
+                          run COMMAND through the microsandbox CLI backend
+  sandbox check           check microsandbox CLI availability
   clip [QUESTION...]      ask the model about current clipboard text
   clip --status           show selected clipboard provider
   clip --providers        list configured clipboard providers
@@ -162,7 +166,7 @@ print_config_redacted() {
 
 source_support_files() {
   local file
-  for file in policy.bash context.bash actions.bash; do
+  for file in policy.bash sandbox.bash context.bash actions.bash; do
     [[ -r "$script_dir/$file" ]] || {
       printf 'lmline: required support file missing: %s\n' "$script_dir/$file" >&2
       exit 1
@@ -170,6 +174,8 @@ source_support_files() {
   done
   # shellcheck source=lmline/policy.bash
   source "$script_dir/policy.bash"
+  # shellcheck source=lmline/sandbox.bash
+  source "$script_dir/sandbox.bash"
   # shellcheck source=lmline/context.bash
   source "$script_dir/context.bash"
   # shellcheck source=lmline/actions.bash
@@ -195,6 +201,131 @@ print_clip() {
   local question=$1
   source_support_files
   __lmline_print_clip "$(engine_path)" bash "$question" "$LMLINE_PS0"
+}
+
+print_sandbox_check() {
+  source_support_files
+  __lmline_microsandbox_check
+}
+
+run_sandbox_command() {
+  local image= name= timeout=${LMLINE_TOOL_COMMAND_RUN_TIMEOUT:-3} max_output=${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT:-12000}
+  local tmp status command_line
+  while (($#)); do
+    case "$1" in
+      --name)
+        name=${2-}
+        [[ -n "$name" ]] || { printf 'lmline: sandbox run --name requires NAME\n' >&2; return 2; }
+        shift 2
+        ;;
+      --image)
+        image=${2-}
+        [[ -n "$image" ]] || { printf 'lmline: sandbox run --image requires IMAGE\n' >&2; return 2; }
+        shift 2
+        ;;
+      --timeout)
+        timeout=${2-}
+        [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || { printf 'lmline: sandbox run --timeout requires positive seconds\n' >&2; return 2; }
+        shift 2
+        ;;
+      --max-output)
+        max_output=${2-}
+        [[ "$max_output" =~ ^[1-9][0-9]*$ ]] || { printf 'lmline: sandbox run --max-output requires positive bytes\n' >&2; return 2; }
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        printf 'lmline: sandbox run requires -- before COMMAND\n' >&2
+        return 2
+        ;;
+    esac
+  done
+  (($# > 0)) || { printf 'lmline: sandbox run requires COMMAND\n' >&2; return 2; }
+  command_line=$*
+  source_support_files
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-sandbox-run.XXXXXX") || return 1
+  [[ -n "$name" ]] && LMLINE_MICROSANDBOX_NAME=$name
+  [[ -n "$image" ]] && LMLINE_MICROSANDBOX_IMAGE=$image
+  if ! __lmline_microsandbox_available; then
+    rm -rf "$tmp"
+    printf 'lmline: microsandbox CLI is unavailable; install msb or set LMLINE_MICROSANDBOX_COMMAND\n' >&2
+    return 1
+  fi
+  if ! __lmline_run_command_capture_with_backend microsandbox "$command_line" "$timeout" "$tmp/stdout" "$tmp/stderr"; then
+    printf 'lmline: sandbox command failed before execution: %s\n' "${__LMLINE_EXEC_ERROR:-unknown}" >&2
+    [[ -s "$tmp/stderr" ]] && sed -n '1,10p' "$tmp/stderr" >&2
+    rm -rf "$tmp"
+    return 1
+  fi
+  __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
+  __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
+  cat "$tmp/stdout"
+  cat "$tmp/stderr" >&2
+  status=$__LMLINE_EXEC_STATUS
+  rm -rf "$tmp"
+  return "$status"
+}
+
+setup_sandbox() {
+  local name=${LMLINE_MICROSANDBOX_NAME:-} image=${LMLINE_MICROSANDBOX_IMAGE:-debian}
+  local workspace_mode=${LMLINE_MICROSANDBOX_WORKSPACE_MODE:-readonly}
+  local root= root_arg= workdir=${LMLINE_MICROSANDBOX_WORKDIR:-/workspace} timeout=${LMLINE_MICROSANDBOX_SETUP_TIMEOUT:-30}
+  while (($#)); do
+    case "$1" in
+      --name)
+        name=${2-}
+        [[ -n "$name" ]] || { printf 'lmline: sandbox setup --name requires NAME\n' >&2; return 2; }
+        shift 2
+        ;;
+      --image)
+        image=${2-}
+        [[ -n "$image" ]] || { printf 'lmline: sandbox setup --image requires IMAGE\n' >&2; return 2; }
+        shift 2
+        ;;
+      --workspace)
+        workspace_mode=${2-}
+        case "$workspace_mode" in readonly|writable|none) ;; *) printf 'lmline: sandbox setup --workspace expects readonly, writable, or none\n' >&2; return 2 ;; esac
+        shift 2
+        ;;
+      --root)
+        root_arg=${2-}
+        [[ -n "$root_arg" ]] || { printf 'lmline: sandbox setup --root requires PATH\n' >&2; return 2; }
+        shift 2
+        ;;
+      --workdir)
+        workdir=${2-}
+        [[ "$workdir" == /* ]] || { printf 'lmline: sandbox setup --workdir requires an absolute guest path\n' >&2; return 2; }
+        shift 2
+        ;;
+      --timeout)
+        timeout=${2-}
+        [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || { printf 'lmline: sandbox setup --timeout requires positive seconds\n' >&2; return 2; }
+        shift 2
+        ;;
+      *)
+        printf 'lmline: unknown sandbox setup option: %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+  source_support_files
+  if [[ -n "$root_arg" ]]; then
+    root=$(cd -P -- "$root_arg" 2>/dev/null && pwd -P) || { printf 'lmline: sandbox setup root not found: %s\n' "$root_arg" >&2; return 2; }
+  else
+    root=$(__lmline_project_root_for_sandbox) || return 1
+  fi
+  [[ -n "$name" ]] || name=$(__lmline_default_sandbox_name "$root")
+  __lmline_microsandbox_setup "$name" "$image" "$workspace_mode" "$root" "$workdir" "$timeout" || return $?
+  cat <<EOF
+next_config:
+  lmline config project-set LMLINE_EXEC_BACKEND microsandbox
+  lmline config project-set LMLINE_MICROSANDBOX_COMMAND $(quote_bash "${LMLINE_MICROSANDBOX_COMMAND:-msb}")
+  lmline config project-set LMLINE_MICROSANDBOX_NAME $(quote_bash "$name")
+  lmline config project-set LMLINE_MICROSANDBOX_WORKDIR $(quote_bash "$workdir")
+EOF
 }
 
 print_command_status() {
@@ -257,8 +388,8 @@ case "$cmd" in
       doctor_optional_commands.txt \
       doctor_required_commands.txt \
       file_search_excludes.txt \
+      local_commands.txt \
       project_markers.tsv \
-      readonly_commands.txt \
       risk_patterns.tsv \
       shell_syntax_words.txt \
       suggested_commands.txt; do
@@ -325,6 +456,15 @@ case "$cmd" in
     printf '%s' "$line" >"$tmp/line"
     __lmline_context_file "$tmp/context" "$line"
     "$(engine_path)" --dry-run-payload --mode "$mode" --shell bash --cwd "$PWD" --point "${#line}" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT"
+    ;;
+  sandbox)
+    sub=${2-}; shift 2 || true
+    case "$sub" in
+      setup) setup_sandbox "$@" ;;
+      run) run_sandbox_command "$@" ;;
+      check) print_sandbox_check ;;
+      *) usage; exit 2 ;;
+    esac
     ;;
   clip)
     shift || true

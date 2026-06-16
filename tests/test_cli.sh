@@ -144,7 +144,7 @@ fi
 install_like_dir="$cfg_tmp/install-like"
 install_like_bin="$cfg_tmp/bin"
 mkdir -p "$install_like_dir" "$install_like_bin"
-cp "$repo_dir/lmline/"{lmline,config.bash,context.bash,policy.bash,actions.bash,http.bash,profiles.bash,chat.bash,engine} "$install_like_dir/"
+cp "$repo_dir/lmline/"{lmline,config.bash,context.bash,policy.bash,sandbox.bash,actions.bash,http.bash,profiles.bash,chat.bash,engine} "$install_like_dir/"
 cp -R "$repo_dir/lmline/defaults" "$install_like_dir/defaults"
 mkdir -p "$install_like_dir/prompts"
 cp "$repo_dir/lmline/prompts/"*.txt "$install_like_dir/prompts/"
@@ -187,8 +187,8 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list fi
 LMLINE_TOOL_GIT_STATUS=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^git_status$" || fail "git status tool opt-in context"
 ! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^file_excerpt path=" || fail "file excerpt tool enabled by default"
 LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^file_excerpt path=" || fail "file excerpt tool opt-in context"
-! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_run_readonly command=" || fail "readonly run tool enabled by default"
-LMLINE_TOOL_COMMAND_RUN_READONLY=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_run_readonly command=" || fail "readonly run tool opt-in context"
+! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_run command=" || fail "command_run tool enabled by default"
+LMLINE_TOOL_COMMAND_RUN=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_run command=" || fail "command_run tool opt-in context"
 secure_context_out=$(LMLINE_TOOL_MODE=none LMLINE_INCLUDE_SHELL_CONTEXT=0 LMLINE_INCLUDE_CWD_CONTEXT=0 LMLINE_INCLUDE_GIT_CONTEXT=0 LMLINE_INCLUDE_PROJECT_CONTEXT=0 LMLINE_INCLUDE_SUGGESTED_COMMANDS=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files")
 ! grep -q '^## shell$' <<<"$secure_context_out" || fail "secure context sent shell"
 ! grep -q '^## cwd$' <<<"$secure_context_out" || fail "secure context sent cwd"
@@ -251,7 +251,7 @@ grep -q "lmline endpoint set-secret ENDPOINT" <<<"$doctor_out" || fail "doctor a
 grep -q '^engine=.* (ok)$' <<<"$doctor_out" || fail "doctor engine status"
 grep -q '^defaults$' <<<"$doctor_out" || fail "doctor defaults heading"
 grep -q 'risk_patterns.tsv: ok' <<<"$doctor_out" || fail "doctor defaults risk patterns"
-grep -q 'readonly_commands.txt: ok' <<<"$doctor_out" || fail "doctor defaults readonly commands"
+grep -q 'local_commands.txt: ok' <<<"$doctor_out" || fail "doctor defaults local commands"
 grep -q 'suggested_commands.txt: ok' <<<"$doctor_out" || fail "doctor defaults suggested commands"
 doctor_api_bin="$cfg_tmp/doctor-api-bin"
 mkdir -p "$doctor_api_bin"
@@ -297,7 +297,7 @@ grep -q 'suggested_commands' <<<"$payload_out" || fail "payload context"
 grep -q '"tools":' <<<"$payload_out" || fail "default auto payload tools"
 ! grep -q '"name": "git_status"' <<<"$payload_out" || fail "default payload sent git_status tool"
 ! grep -q '"name": "file_excerpt"' <<<"$payload_out" || fail "default payload sent file_excerpt tool"
-! grep -q '"name": "command_run_readonly"' <<<"$payload_out" || fail "default payload sent readonly run tool"
+! grep -q '"name": "command_run"' <<<"$payload_out" || fail "default payload sent command_run tool"
 ! grep -q '## available_commands' <<<"$payload_out" || fail "payload sent full command list"
 ! grep -q '## files' <<<"$payload_out" || fail "payload sent file list"
 ! grep -q '## recent_history' <<<"$payload_out" || fail "payload sent history"
@@ -327,8 +327,8 @@ git_tool_payload_out=$(LMLINE_TOOL_GIT_STATUS=1 LMLINE_TOOL_MODE=openai LMLINE_C
 grep -q '"name": "git_status"' <<<"$git_tool_payload_out" || fail "payload git_status tool opt-in"
 excerpt_tool_payload_out=$(LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# inspect a config file")
 grep -q '"name": "file_excerpt"' <<<"$excerpt_tool_payload_out" || fail "payload file_excerpt tool opt-in"
-readonly_tool_payload_out=$(LMLINE_TOOL_COMMAND_RUN_READONLY=1 LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# count lines")
-grep -q '"name": "command_run_readonly"' <<<"$readonly_tool_payload_out" || fail "payload readonly run tool opt-in"
+command_tool_payload_out=$(LMLINE_TOOL_COMMAND_RUN=1 LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# count lines")
+grep -q '"name": "command_run"' <<<"$command_tool_payload_out" || fail "payload command_run tool opt-in"
 explain_tool_payload_out=$(LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload explain "date -r")
 grep -q '"tools":' <<<"$explain_tool_payload_out" || fail "explain payload tools"
 grep -q '"name": "command_info"' <<<"$explain_tool_payload_out" || fail "explain payload command_info tool"
@@ -387,28 +387,101 @@ grep -q '^| 2:beta needle$' <<<"$match_out" || fail "file excerpt query match"
 outside_out=$(cd "$excerpt_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_file_excerpt ../outside.txt' _ "$repo_dir")
 grep -q '^error=invalid_relative_path$' <<<"$outside_out" || fail "file excerpt rejects parent path"
 
-readonly_tmp="$cfg_tmp/readonly-run"
-mkdir -p "$readonly_tmp"
-readonly_ok=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "printf '\''%s\n'\'' ok"' _ "$repo_dir")
-grep -q '^allowed=1$' <<<"$readonly_ok" || fail "readonly run allowed"
-grep -q '^exit_status=0$' <<<"$readonly_ok" || fail "readonly run status"
-grep -q '^| ok$' <<<"$readonly_ok" || fail "readonly run stdout"
-readonly_redirect=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "echo hi > out.txt"' _ "$repo_dir")
-grep -q '^allowed=0$' <<<"$readonly_redirect" || fail "readonly run rejected redirect"
-grep -q '^reason=unsupported_shell_syntax$' <<<"$readonly_redirect" || fail "readonly run redirect reason"
-readonly_high=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "rm -rf build"' _ "$repo_dir")
-grep -q '^reason=risk_not_low$' <<<"$readonly_high" || fail "readonly run risk reason"
-readonly_path=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "cat /etc/passwd"' _ "$repo_dir")
-grep -q '^reason=unsafe_path_or_expansion$' <<<"$readonly_path" || fail "readonly run absolute path reason"
-readonly_quoted_path=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "cat '\''/etc/passwd'\''"' _ "$repo_dir")
-grep -q '^reason=unsafe_path_or_expansion$' <<<"$readonly_quoted_path" || fail "readonly run quoted absolute path reason"
-readonly_find=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "find . -fprint out.txt"' _ "$repo_dir")
-grep -q '^reason=command_not_readonly$' <<<"$readonly_find" || fail "readonly run find write option reason"
-printf 'sed-ok\n' >"$readonly_tmp/notes.txt"
-printf 'sed\n' >"$readonly_tmp/readonly_commands.txt"
-readonly_custom=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_READONLY_COMMANDS_FILE="$readonly_tmp/readonly_commands.txt" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "sed -n 1p notes.txt"' _ "$repo_dir")
-grep -q '^allowed=1$' <<<"$readonly_custom" || fail "readonly run custom allowlist"
-grep -q '^| sed-ok$' <<<"$readonly_custom" || fail "readonly run custom allowlist output"
+command_tmp="$cfg_tmp/command-run"
+mkdir -p "$command_tmp"
+command_ok=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "printf '\''%s\n'\'' ok"' _ "$repo_dir")
+grep -q '^allowed=1$' <<<"$command_ok" || fail "command_run allowed"
+grep -q '^backend=local$' <<<"$command_ok" || fail "command_run local backend"
+grep -q '^exit_status=0$' <<<"$command_ok" || fail "command_run status"
+grep -q '^| ok$' <<<"$command_ok" || fail "command_run stdout"
+command_redirect=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "echo hi > out.txt"' _ "$repo_dir")
+grep -q '^allowed=0$' <<<"$command_redirect" || fail "command_run rejected redirect"
+grep -q '^reason=unsupported_shell_syntax$' <<<"$command_redirect" || fail "command_run redirect reason"
+command_high=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "rm -rf build"' _ "$repo_dir")
+grep -q '^reason=risk_not_low$' <<<"$command_high" || fail "command_run risk reason"
+command_path=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "cat /etc/passwd"' _ "$repo_dir")
+grep -q '^reason=unsafe_path_or_expansion$' <<<"$command_path" || fail "command_run absolute path reason"
+command_quoted_path=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "cat '\''/etc/passwd'\''"' _ "$repo_dir")
+grep -q '^reason=unsafe_path_or_expansion$' <<<"$command_quoted_path" || fail "command_run quoted absolute path reason"
+command_find=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "find . -fprint out.txt"' _ "$repo_dir")
+grep -q '^reason=command_not_allowed$' <<<"$command_find" || fail "command_run find write option reason"
+printf 'sed-ok\n' >"$command_tmp/notes.txt"
+printf 'sed\n' >"$command_tmp/local_commands.txt"
+command_custom=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=local LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_LOCAL_COMMANDS_FILE="$command_tmp/local_commands.txt" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "sed -n 1p notes.txt"' _ "$repo_dir")
+grep -q '^allowed=1$' <<<"$command_custom" || fail "command_run custom allowlist"
+grep -q '^| sed-ok$' <<<"$command_custom" || fail "command_run custom allowlist output"
+fake_msb="$command_tmp/msb"
+cat >"$fake_msb" <<'FAKE_MSB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1-}" == "--version" ]]; then
+  printf 'msb fake 0\n'
+  exit 0
+fi
+if [[ "${1-}" == "--error" ]]; then
+  shift
+fi
+sub=${1-}
+shift || true
+case "$sub" in
+  run)
+    image=${1-}
+    shift || true
+    [[ "${1-}" == "--" ]] && shift
+    [[ "${1-}" == sh && "${2-}" == -c ]] || exit 64
+    printf 'msb:%s\n' "${3-}"
+    ;;
+  exec)
+    name=${1-}
+    shift || true
+    while (($#)) && [[ "$1" != "--" ]]; do
+      case "$1" in
+        --timeout|-w|-e|-u|--rlimit) shift 2 ;;
+        -t|--tty|-q|--quiet) shift ;;
+        *) shift ;;
+      esac
+    done
+    [[ "${1-}" == "--" ]] && shift
+    [[ "${1-}" == sh && "${2-}" == -c ]] || exit 64
+    command=${3-}
+    if [[ "$command" == for\ c\ in* ]]; then
+      printf 'ok echo\nmissing git\n'
+    else
+      printf 'named:%s\n' "$command"
+    fi
+    ;;
+  inspect)
+    exit 1
+    ;;
+  start|create|copy)
+    exit 0
+    ;;
+  *)
+    exit 64
+    ;;
+esac
+FAKE_MSB
+chmod +x "$fake_msb"
+msb_command_out=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=auto LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "echo via msb"' _ "$repo_dir")
+grep -q '^allowed=1$' <<<"$msb_command_out" || fail "command_run microsandbox allowed"
+grep -q '^backend=microsandbox$' <<<"$msb_command_out" || fail "command_run microsandbox backend"
+grep -q '^| msb:echo via msb$' <<<"$msb_command_out" || fail "command_run microsandbox stdout"
+missing_msb_out=$(cd "$command_tmp" && LMLINE_EXEC_BACKEND=microsandbox LMLINE_MICROSANDBOX_COMMAND="$command_tmp/missing-msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run "echo missing"' _ "$repo_dir")
+grep -q '^allowed=0$' <<<"$missing_msb_out" || fail "command_run missing microsandbox rejected"
+grep -q '^reason=microsandbox_unavailable$' <<<"$missing_msb_out" || fail "command_run missing microsandbox reason"
+sandbox_check_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox check)
+grep -q '^available=1$' <<<"$sandbox_check_out" || fail "sandbox check microsandbox"
+grep -q '^version=msb fake 0$' <<<"$sandbox_check_out" || fail "sandbox check version"
+sandbox_cli_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run -- echo cli)
+grep -q '^msb:echo cli$' <<<"$sandbox_cli_out" || fail "sandbox run microsandbox"
+sandbox_setup_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --name lmline-test --image test-image --workspace none)
+grep -q '^sandbox_name=lmline-test$' <<<"$sandbox_setup_out" || fail "sandbox setup name"
+grep -q '^image=test-image$' <<<"$sandbox_setup_out" || fail "sandbox setup image"
+grep -q '^workspace_mode=none$' <<<"$sandbox_setup_out" || fail "sandbox setup workspace mode"
+grep -q '^  missing git$' <<<"$sandbox_setup_out" || fail "sandbox setup command check"
+grep -q 'LMLINE_MICROSANDBOX_NAME' <<<"$sandbox_setup_out" || fail "sandbox setup next config"
+sandbox_named_run_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --name lmline-test -- echo named)
+grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run named microsandbox"
 
 rm -rf "$cfg_tmp"
 ok "cli, config, and profiles"

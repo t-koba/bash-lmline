@@ -333,33 +333,48 @@ __lmline_print_explanation() {
 __lmline_fix_run() {
   local line=$1 shell_name=$2 point=$3 engine=$4 n=$5 prefix=${6:-}
   local risk timeout=${LMLINE_FIX_TIMEOUT:-12} max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
-  local tmp status engine_status
-
-  risk=$(__lmline_risk_level "$line") || {
-    printf '%spolicy error\n' "$prefix" >&2
-    return 3
-  }
-  case "$risk" in
-    high)
-      printf '%sfix refused for high-risk command\n' "$prefix" >&2
-      return 3
-      ;;
-    medium)
-      if [[ "${LMLINE_FIX_ALLOW_MEDIUM:-0}" != 1 ]]; then
-        printf '%sfix refused for medium-risk command; set LMLINE_FIX_ALLOW_MEDIUM=1\n' "$prefix" >&2
-        return 3
-      fi
-      ;;
-  esac
+  local tmp status engine_status backend
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout" bash -lc "$line" >"$tmp/stdout" 2>"$tmp/stderr"
-    status=$?
-  else
-    bash -lc "$line" >"$tmp/stdout" 2>"$tmp/stderr"
-    status=$?
+  if ! backend=$(__lmline_select_exec_backend); then
+    rm -rf "$tmp"
+    case "$backend" in
+      off) printf '%sfix execution disabled by LMLINE_EXEC_BACKEND=off\n' "$prefix" >&2 ;;
+      microsandbox) printf '%smicrosandbox backend is unavailable; install msb, set LMLINE_MICROSANDBOX_COMMAND, or use LMLINE_EXEC_BACKEND=local\n' "$prefix" >&2 ;;
+      *) printf '%sexecution backend unavailable\n' "$prefix" >&2 ;;
+    esac
+    return 3
   fi
+  if [[ "$backend" == local ]]; then
+    risk=$(__lmline_risk_level "$line") || {
+      rm -rf "$tmp"
+      printf '%spolicy error\n' "$prefix" >&2
+      return 3
+    }
+    case "$risk" in
+      high)
+        rm -rf "$tmp"
+        printf '%sfix refused for high-risk command\n' "$prefix" >&2
+        return 3
+        ;;
+      medium)
+        if [[ "${LMLINE_FIX_ALLOW_MEDIUM:-0}" != 1 ]]; then
+          rm -rf "$tmp"
+          printf '%sfix refused for medium-risk command; set LMLINE_FIX_ALLOW_MEDIUM=1\n' "$prefix" >&2
+          return 3
+        fi
+        ;;
+    esac
+  fi
+  if ! __lmline_run_command_capture_with_backend "$backend" "$line" "$timeout" "$tmp/stdout" "$tmp/stderr"; then
+    printf '%sfix execution failed via %s: %s\n' "$prefix" "$backend" "${__LMLINE_EXEC_ERROR:-unknown}" >&2
+    if [[ -s "$tmp/stderr" ]]; then
+      sed -n '1,5p' "$tmp/stderr" >&2
+    fi
+    rm -rf "$tmp"
+    return 3
+  fi
+  status=$__LMLINE_EXEC_STATUS
   __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
   __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
   if (( status == 0 )); then
@@ -368,7 +383,7 @@ __lmline_fix_run() {
     return 3
   fi
 
-  __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr"
+  __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr" "$backend"
   __lmline_context_file "$tmp/context" "$line"
   "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
     --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1
