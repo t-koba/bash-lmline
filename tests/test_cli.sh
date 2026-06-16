@@ -423,10 +423,18 @@ if [[ "${1-}" == "--error" ]]; then
 fi
 sub=${1-}
 shift || true
+printf '%s %s\n' "$sub" "$*" >>"${FAKE_MSB_LOG:-/dev/null}" 2>/dev/null || true
 case "$sub" in
   run)
     image=${1-}
     shift || true
+    while (($#)) && [[ "$1" != "--" ]]; do
+      case "$1" in
+        --timeout|-c|-m|-w|-e|-u|--rlimit) shift 2 ;;
+        -t|--tty|-q|--quiet|-d|--detach) shift ;;
+        *) shift ;;
+      esac
+    done
     [[ "${1-}" == "--" ]] && shift
     [[ "${1-}" == sh && "${2-}" == -c ]] || exit 64
     printf 'msb:%s\n' "${3-}"
@@ -480,6 +488,9 @@ grep -q '^image=test-image$' <<<"$sandbox_setup_out" || fail "sandbox setup imag
 grep -q '^workspace_mode=none$' <<<"$sandbox_setup_out" || fail "sandbox setup workspace mode"
 grep -q '^  missing git$' <<<"$sandbox_setup_out" || fail "sandbox setup command check"
 grep -q 'LMLINE_MICROSANDBOX_NAME' <<<"$sandbox_setup_out" || fail "sandbox setup next config"
+command_root=$(cd -P -- "$command_tmp" && pwd -P)
+FAKE_MSB_LOG="$command_tmp/msb.log" LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --name lmline-test-ro --image test-image --workspace readonly --root "$command_tmp" >/dev/null
+grep -F -q -- "--volume $command_root:/workspace:ro" "$command_tmp/msb.log" || fail "sandbox setup readonly volume"
 sandbox_named_run_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --name lmline-test -- echo named)
 grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run named microsandbox"
 

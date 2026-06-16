@@ -71,7 +71,9 @@ __lmline_microsandbox_with_host_timeout() {
 __lmline_microsandbox_cli_capture() {
   local command_line=$1 timeout_s=$2 stdout_file=$3 stderr_file=$4 status=0
   local msb image=${LMLINE_MICROSANDBOX_IMAGE:-debian} name=${LMLINE_MICROSANDBOX_NAME:-}
+  local memory=${LMLINE_MICROSANDBOX_MEMORY:-512M} cpus=${LMLINE_MICROSANDBOX_CPUS:-1}
   local workdir=${LMLINE_MICROSANDBOX_WORKDIR:-/workspace}
+  [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || cpus=1
   msb=$(__lmline_microsandbox_command_path) || return 1
   if [[ -n "$name" ]]; then
     __lmline_microsandbox_with_host_timeout "$timeout_s" \
@@ -79,7 +81,7 @@ __lmline_microsandbox_cli_capture() {
       >"$stdout_file" 2>"$stderr_file" || status=$?
   else
     __lmline_microsandbox_with_host_timeout "$timeout_s" \
-      "$msb" --error run "$image" -- sh -c "$command_line" \
+      "$msb" --error run "$image" --timeout "${timeout_s}s" -c "$cpus" -m "$memory" -- sh -c "$command_line" \
       >"$stdout_file" 2>"$stderr_file" || status=$?
   fi
   __LMLINE_EXEC_STATUS=$status
@@ -213,7 +215,7 @@ __lmline_microsandbox_setup() {
     case "$workspace_mode" in
       readonly|writable)
         mount_arg=$(__lmline_microsandbox_mount_arg "$workspace_mode" "$root" "$workdir") || return 1
-        create_cmd+=(--mount-dir "$mount_arg")
+        create_cmd+=(--volume "$mount_arg")
         ;;
       none) ;;
       *)
