@@ -292,11 +292,12 @@ lmline clip --status
 lmline clip --providers
 lmline clip --use PROVIDER
 lmline clip --provider PROVIDER [QUESTION...]
-lmline config get|set|unset|project-get|project-set|project-unset
+lmline config get|defaults|effective|set|unset|project-get|project-set|project-unset
 lmline endpoint add|list|set-secret|remove
 lmline model add|list|refresh|remove
 lmline use ENDPOINT [MODEL]
 lmline current
+lmline complete commands|settings|setting-values KEY
 lmline complete endpoints|models [ENDPOINT]|clipboard-providers
 lmline history show
 lmline history tendencies
@@ -315,6 +316,9 @@ lmline disable
 `doctor --check-api` calls the configured endpoint's `/models` path.
 `sandbox run` requires the microsandbox CLI and never falls back to host
 execution.
+`config get` prints only persisted user settings. Use `config defaults` for the
+full setting catalog and `config effective` for redacted effective values.
+Every top-level command and nested `sandbox` command accepts `--help`.
 
 ## Sandbox Setup
 
@@ -629,7 +633,13 @@ Interactive settings:
 | `LMLINE_CANDIDATE_COUNT` | `3` | requested candidate count, clamped to 1..10 |
 | `LMLINE_ASYNC` | `0` | background generation |
 | `LMLINE_BIND_KEYS` | `1` | bind keys when init file is sourced |
-| `LMLINE_KEY_GENERATE` etc. | key section defaults | key binding strings |
+| `LMLINE_KEY_GENERATE` | `\C-x\C-g` | generate key binding |
+| `LMLINE_KEY_REWRITE` | `\C-x\C-r` | rewrite key binding |
+| `LMLINE_KEY_NEXT` | `\C-x\C-n` | next candidate key binding |
+| `LMLINE_KEY_PREV` | `\C-x\C-p` | previous candidate key binding |
+| `LMLINE_KEY_EXPLAIN` | `\C-x\C-e` | explain key binding |
+| `LMLINE_KEY_FIX` | `\C-x\C-f` | fix key binding |
+| `LMLINE_KEY_CLIP` | `\C-x\C-v` | clipboard key binding |
 | `LMLINE_CLIPBOARD_PROVIDER` | `auto` | clipboard provider name |
 | `LMLINE_CLIPBOARD_PROVIDERS_FILE` | installed defaults | provider TSV path |
 | `LMLINE_CLIP_MAX_INPUT_BYTES` | `65536` | redacted clipboard input byte limit |

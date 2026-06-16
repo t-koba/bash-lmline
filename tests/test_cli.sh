@@ -12,6 +12,28 @@ grep -q "LMLINE_BASE_URL=.*https://api.openai.com/v1" <<<"$config_out" || fail "
 grep -q "LMLINE_MODEL=.*test-model" <<<"$config_out" || fail "endpoint use model"
 grep -q "LMLINE_API_KEY_FILE=" <<<"$config_out" || fail "secret file reference"
 ! grep -q "redaction-sentinel" <<<"$config_out" || fail "secret redaction"
+defaults_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config defaults)
+grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "config defaults microsandbox command"
+grep -q $'^LMLINE_KEY_FIX\t' <<<"$defaults_out" || fail "config defaults key fix"
+effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
+grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
+grep -q $'^LMLINE_API_KEY_FILE\t\\*\\*\\*REDACTED\\*\\*\\*\t' <<<"$effective_out" || fail "config effective redacts secret file"
+complete_commands=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete commands)
+grep -q '^sandbox$' <<<"$complete_commands" || fail "complete commands sandbox"
+grep -q '^config$' <<<"$complete_commands" || fail "complete commands config"
+complete_settings=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete settings)
+grep -q '^LMLINE_MICROSANDBOX_COMMAND$' <<<"$complete_settings" || fail "complete settings microsandbox"
+grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
+complete_backend_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_EXEC_BACKEND)
+grep -q '^microsandbox$' <<<"$complete_backend_values" || fail "complete setting values backend"
+complete_risk_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_TOOL_COMMAND_RUN_MAX_RISK)
+grep -q '^medium$' <<<"$complete_risk_values" || fail "complete setting values risk"
+sandbox_help=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --help)
+grep -q '^usage: lmline sandbox setup' <<<"$sandbox_help" || fail "sandbox setup help"
+config_help=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config --help)
+grep -q '^usage: lmline config get' <<<"$config_help" || fail "config help"
+help_sandbox=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" help sandbox run)
+grep -q '^usage: lmline sandbox run' <<<"$help_sandbox" || fail "help sandbox run"
 secret_file=$(grep "^export LMLINE_API_KEY_FILE=" "$cfg_tmp/config/settings.bash" | sed -E "s/^export LMLINE_API_KEY_FILE='?([^']*)'?$/\1/")
 [[ -f "$secret_file" ]] || fail "secret file exists"
 LMLINE_CONFIG_DIR="$cfg_tmp/config-local" "$repo_dir/lmline/lmline" endpoint add local http://127.0.0.1:8080/v1 >/dev/null
@@ -64,11 +86,27 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" bash --norc -i -
   COMP_CWORD=3
   __lmline_cli_complete
   printf "%s\n" "${COMPREPLY[@]}" | grep -q "^openai/gpt-test$"
+  COMP_WORDS=(lmline config set LMLINE_MIC "")
+  COMP_CWORD=3
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^LMLINE_MICROSANDBOX_COMMAND$"
+  COMP_WORDS=(lmline config set LMLINE_EXEC_BACKEND "")
+  COMP_CWORD=4
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^microsandbox$"
+  COMP_WORDS=(lmline sandbox "")
+  COMP_CWORD=2
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^setup$"
+  COMP_WORDS=(lmline sandbox setup --workspace "")
+  COMP_CWORD=4
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^readonly$"
 ' _ "$repo_dir" || fail "bash profile completion"
 if command -v zsh >/dev/null 2>&1; then
   PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" zsh -fic '
     source "$1/lmline/init.zsh"
-    compadd() { print -r -- "${@:2}" >>"$OUT"; }
+    compadd() { local arg; for arg in "${@:2}"; do [[ "$arg" == -- ]] && continue; print -r -- "$arg" >>"$OUT"; done; }
     OUT=/tmp/lmline-zsh-complete-endpoints.out
     : >"$OUT"
     words=(lmline use "")
@@ -81,6 +119,30 @@ if command -v zsh >/dev/null 2>&1; then
     CURRENT=4
     _lmline
     grep -q "^openai/gpt-test$" /tmp/lmline-zsh-complete-models.out
+    OUT=/tmp/lmline-zsh-complete-config-settings.out
+    : >"$OUT"
+    words=(lmline config set LMLINE_MIC "")
+    CURRENT=4
+    _lmline
+    grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-backend-values.out
+    : >"$OUT"
+    words=(lmline config set LMLINE_EXEC_BACKEND "")
+    CURRENT=5
+    _lmline
+    grep -q "^microsandbox$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-sandbox.out
+    : >"$OUT"
+    words=(lmline sandbox "")
+    CURRENT=3
+    _lmline
+    grep -q "^setup$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-sandbox-workspace.out
+    : >"$OUT"
+    words=(lmline sandbox setup --workspace "")
+    CURRENT=5
+    _lmline
+    grep -q "^readonly$" "$OUT"
   ' _ "$repo_dir" /tmp/lmline-zsh-complete.out || fail "zsh profile completion"
 fi
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use local local-test-model
@@ -159,6 +221,8 @@ LMLINE_CONFIG_DIR="$install_like_dir" "$install_like_bin/lmline" config get | gr
   cd "$cfg_tmp"
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-set LMLINE_ASYNC 1
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-get | grep -q "LMLINE_ASYNC=.*1"
+  LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-set LMLINE_AUTH_SCHEME ""
+  LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-get | grep -q "^export LMLINE_AUTH_SCHEME=''"
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-unset LMLINE_ASYNC
   ! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-get | grep -q "LMLINE_ASYNC="
 )

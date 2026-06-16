@@ -526,30 +526,58 @@ _lmline() {
   fi
   case $CURRENT in
     2)
-      compadd config history explain clip sandbox doctor risk help debug disable enable endpoint model use current complete
+      compadd -- doctor context command-exists command-info commands payload sandbox clip config endpoint model use current complete history risk help debug keys explain enable disable
       ;;
     3)
       case $words[2] in
         use) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
+        payload) compadd -- generate rewrite explain fix clip ;;
+        sandbox) compadd -- setup run check ;;
         clip) compadd -- --status --providers --use --provider ;;
-        endpoint) compadd add list set-secret remove ;;
-        model) compadd add list refresh remove ;;
-        config) compadd get set unset project-get project-set project-unset ;;
-        history) compadd show tendencies ;;
-        debug) compadd bindings on off trace ;;
+        endpoint) compadd -- add list set-secret remove ;;
+        model) compadd -- add list refresh remove ;;
+        config) compadd -- get defaults effective set unset project-get project-set project-unset ;;
+        complete) compadd -- commands settings setting-values endpoints models clipboard-providers ;;
+        history) compadd -- show tendencies ;;
+        debug) compadd -- bindings on off trace ;;
+        doctor) compadd -- --check-api --help ;;
       esac
       ;;
     4)
       case "$words[2]:$words[3]" in
         use:*) compadd -- "${(@f)$($cmd complete models "$words[3]" 2>/dev/null)}" ;;
+        sandbox:setup) compadd -- --name --image --workspace --root --workdir --timeout --help ;;
+        sandbox:run) compadd -- --name --image --timeout --max-output --help -- ;;
         clip:--use|clip:--provider) compadd -- "${(@f)$($cmd complete clipboard-providers 2>/dev/null)}" ;;
         endpoint:set-secret|endpoint:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
         model:add|model:list|model:refresh|model:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
+        config:set|config:unset|config:project-set|config:project-unset) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
+        complete:setting-values) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
+        debug:trace) compadd -- on off ;;
       esac
       ;;
     5)
       case "$words[2]:$words[3]" in
         model:remove) compadd -- "${(@f)$($cmd complete models "$words[4]" 2>/dev/null)}" ;;
+        sandbox:setup)
+          [[ "$words[4]" == --workspace ]] && compadd -- readonly writable none
+          ;;
+        config:set|config:project-set) compadd -- "${(@f)$($cmd complete setting-values "$words[4]" 2>/dev/null)}" ;;
+        endpoint:add)
+          if [[ "$words[4]" == --tool-mode ]]; then
+            compadd -- auto openai text none
+          else
+            compadd -- --auth-header --auth-scheme --temperature --max-tokens --tool-mode --help
+          fi
+          ;;
+        endpoint:remove) compadd -- --keep-secret --help ;;
+        model:add)
+          if [[ "$words[4]" == --tool-mode ]]; then
+            compadd -- auto openai text none
+          else
+            compadd -- --temperature --max-tokens --tool-mode --help
+          fi
+          ;;
       esac
       ;;
   esac

@@ -592,33 +592,71 @@ __lmline_clip_widget() {
 __lmline_cli_complete() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   local prev=${COMP_WORDS[COMP_CWORD-1]}
-  local subcommands="config history explain clip sandbox doctor risk help debug disable enable endpoint model use current complete"
+  local subcommands="doctor context command-exists command-info commands payload sandbox clip config endpoint model use current complete history risk help debug keys explain enable disable"
+  local command=${COMP_WORDS[1]-}
+  local sub=${COMP_WORDS[2]-}
   if (( COMP_CWORD == 1 )); then
     COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == use && $COMP_CWORD == 2 ]]; then
+  elif [[ $command == use && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete endpoints 2>/dev/null)" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == use && $COMP_CWORD == 3 ]]; then
+  elif [[ $command == use && $COMP_CWORD == 3 ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete models "${COMP_WORDS[2]}" 2>/dev/null)" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == clip && $COMP_CWORD == 2 ]]; then
+  elif [[ $command == payload && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "generate rewrite explain fix clip" -- "$cur") )
+  elif [[ $command == sandbox && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "setup run check" -- "$cur") )
+  elif [[ $command == sandbox && $sub == setup && $prev == --workspace ]]; then
+    COMPREPLY=( $(compgen -W "readonly writable none" -- "$cur") )
+  elif [[ $command == sandbox && $sub == setup && $COMP_CWORD -ge 3 ]]; then
+    COMPREPLY=( $(compgen -W "--name --image --workspace --root --workdir --timeout --help" -- "$cur") )
+  elif [[ $command == sandbox && $sub == run && $COMP_CWORD -ge 3 ]]; then
+    COMPREPLY=( $(compgen -W "--name --image --timeout --max-output --help --" -- "$cur") )
+  elif [[ $command == clip && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "--status --providers --use --provider" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == clip && $COMP_CWORD == 3 && ${prev} =~ ^(--use|--provider)$ ]]; then
+  elif [[ $command == clip && $COMP_CWORD == 3 && ${prev} =~ ^(--use|--provider)$ ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete clipboard-providers 2>/dev/null)" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == endpoint && $COMP_CWORD == 2 ]]; then
+  elif [[ $command == endpoint && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "add list set-secret remove" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == endpoint && $COMP_CWORD == 3 && ${COMP_WORDS[2]} =~ ^(set-secret|remove)$ ]]; then
+  elif [[ $command == endpoint && $COMP_CWORD == 3 && ${sub} =~ ^(set-secret|remove)$ ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete endpoints 2>/dev/null)" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == model && $COMP_CWORD == 2 ]]; then
+  elif [[ $command == endpoint && $sub == add && $COMP_CWORD -ge 5 ]]; then
+    if [[ $prev == --tool-mode ]]; then
+      COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
+    else
+      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --temperature --max-tokens --tool-mode --help" -- "$cur") )
+    fi
+  elif [[ $command == endpoint && $sub == remove && $COMP_CWORD -ge 4 ]]; then
+    COMPREPLY=( $(compgen -W "--keep-secret --help" -- "$cur") )
+  elif [[ $command == model && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "add list refresh remove" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == model && $COMP_CWORD == 3 && ${COMP_WORDS[2]} =~ ^(add|list|refresh|remove)$ ]]; then
+  elif [[ $command == model && $COMP_CWORD == 3 && ${sub} =~ ^(add|list|refresh|remove)$ ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete endpoints 2>/dev/null)" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == model && $COMP_CWORD == 4 && ${COMP_WORDS[2]} == remove ]]; then
+  elif [[ $command == model && $COMP_CWORD == 4 && ${sub} == remove ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete models "${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == config && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "get set unset project-get project-set project-unset" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == history && $COMP_CWORD == 2 ]]; then
+  elif [[ $command == model && $sub == add && $COMP_CWORD -ge 5 ]]; then
+    if [[ $prev == --tool-mode ]]; then
+      COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
+    else
+      COMPREPLY=( $(compgen -W "--temperature --max-tokens --tool-mode --help" -- "$cur") )
+    fi
+  elif [[ $command == config && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "get defaults effective set unset project-get project-set project-unset" -- "$cur") )
+  elif [[ $command == config && $COMP_CWORD == 3 && ${sub} =~ ^(set|unset|project-set|project-unset)$ ]]; then
+    COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
+  elif [[ $command == config && $COMP_CWORD == 4 && ${sub} =~ ^(set|project-set)$ ]]; then
+    COMPREPLY=( $(compgen -W "$(lmline complete setting-values "${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )
+  elif [[ $command == complete && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "commands settings setting-values endpoints models clipboard-providers" -- "$cur") )
+  elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == setting-values ]]; then
+    COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
+  elif [[ $command == history && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "show tendencies" -- "$cur") )
-  elif [[ ${COMP_WORDS[1]} == debug && $COMP_CWORD == 2 ]]; then
+  elif [[ $command == debug && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "bindings on off trace" -- "$cur") )
+  elif [[ $command == debug && $COMP_CWORD == 3 && $sub == trace ]]; then
+    COMPREPLY=( $(compgen -W "on off" -- "$cur") )
+  elif [[ $command == doctor && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "--check-api --help" -- "$cur") )
   fi
 }
 
