@@ -603,6 +603,10 @@ __lmline_cli_complete() {
     COMPREPLY=( $(compgen -W "$(lmline complete models "${COMP_WORDS[2]}" 2>/dev/null)" -- "$cur") )
   elif [[ $command == payload && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "generate rewrite explain fix clip" -- "$cur") )
+  elif [[ $command == help && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "$(lmline complete commands 2>/dev/null)" -- "$cur") )
+  elif [[ $command == help && $COMP_CWORD == 3 ]]; then
+    COMPREPLY=( $(compgen -W "$(lmline complete subcommands "${COMP_WORDS[2]}" 2>/dev/null)" -- "$cur") )
   elif [[ $command == sandbox && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "setup run check" -- "$cur") )
   elif [[ $command == sandbox && $sub == setup && $prev == --workspace ]]; then
@@ -640,13 +644,15 @@ __lmline_cli_complete() {
       COMPREPLY=( $(compgen -W "--temperature --max-tokens --tool-mode --help" -- "$cur") )
     fi
   elif [[ $command == config && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "get defaults effective set unset project-get project-set project-unset" -- "$cur") )
-  elif [[ $command == config && $COMP_CWORD == 3 && ${sub} =~ ^(set|unset|project-set|project-unset)$ ]]; then
+    COMPREPLY=( $(compgen -W "get defaults effective describe set unset project-get project-set project-unset" -- "$cur") )
+  elif [[ $command == config && $COMP_CWORD == 3 && ${sub} =~ ^(describe|set|unset|project-set|project-unset)$ ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
   elif [[ $command == config && $COMP_CWORD == 4 && ${sub} =~ ^(set|project-set)$ ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete setting-values "${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )
   elif [[ $command == complete && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "commands settings setting-values endpoints models clipboard-providers" -- "$cur") )
+    COMPREPLY=( $(compgen -W "commands subcommands settings setting-values endpoints models clipboard-providers" -- "$cur") )
+  elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == subcommands ]]; then
+    COMPREPLY=( $(compgen -W "$(lmline complete commands 2>/dev/null)" -- "$cur") )
   elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == setting-values ]]; then
     COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
   elif [[ $command == history && $COMP_CWORD == 2 ]]; then

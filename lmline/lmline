@@ -63,10 +63,13 @@ usage: lmline <command> [args]
 commands:
   doctor [--check-api]    check local configuration; optionally call ENDPOINT/models
   context [LINE...]       print shell context sent to the engine
-  command-exists COMMAND... check whether named commands are available locally
-  command-info COMMAND... print local command path, kind, version, and help snippets
+  command-exists COMMAND...
+                          check whether named commands are available locally
+  command-info COMMAND...
+                          print local command path, kind, version, and help snippets
   commands [QUERY]        print local commands matching QUERY
-  payload MODE [LINE...] print the OpenAI-compatible JSON payload without sending it
+  payload MODE [LINE...]
+                          print the OpenAI-compatible JSON payload without sending it
   sandbox setup [options] create/check a project sandbox profile
   sandbox run [options] -- COMMAND
                           run COMMAND through the microsandbox CLI backend
@@ -80,6 +83,7 @@ commands:
   config get              print persisted config with secrets redacted
   config defaults         print built-in setting catalog
   config effective        print effective setting values with secrets redacted
+  config describe KEY     describe one setting with current/default values
   config set KEY VALUE    persist a LMLINE_* setting
   config unset KEY        remove a persisted setting
   config project-get      print ./.lmline.bash with secrets redacted
@@ -103,13 +107,14 @@ commands:
   use ENDPOINT [MODEL]    activate a registered endpoint/model; MODEL can be
                           omitted when exactly one model is registered
   current                 show active endpoint/model match
-  complete commands|settings|setting-values KEY
+  complete commands|subcommands COMMAND
+  complete settings|setting-values KEY
   complete endpoints|models [ENDPOINT]|clipboard-providers
                           print completion candidates
   history show            show lmline recorded suggestions
   history tendencies      summarize recorded suggestions by mode
   risk COMMAND...         show risk level and reason
-  help COMMAND...         show command summaries
+  help [TOPIC...]         show lmline CLI help
   debug bindings          show lmline Readline bindings
   debug on|off            toggle verbose lmline status logging
   debug trace on|off      save engine request/response trace files
@@ -131,6 +136,20 @@ __lmline_cli_commands() {
     doctor context command-exists command-info commands payload sandbox clip \
     config endpoint model use current complete history risk help debug keys \
     explain enable disable
+}
+
+__lmline_cli_subcommands() {
+  case "$1" in
+    payload) printf '%s\n' generate rewrite explain fix clip ;;
+    sandbox) printf '%s\n' setup run check ;;
+    config) printf '%s\n' get defaults effective describe set unset project-get project-set project-unset ;;
+    endpoint) printf '%s\n' add list set-secret remove ;;
+    model) printf '%s\n' add list refresh remove ;;
+    complete) printf '%s\n' commands subcommands settings setting-values endpoints models clipboard-providers ;;
+    history) printf '%s\n' show tendencies ;;
+    debug) printf '%s\n' bindings on off trace ;;
+    *) return 1 ;;
+  esac
 }
 
 __lmline_setting_catalog() {
@@ -246,6 +265,11 @@ __lmline_setting_keys() {
   __lmline_setting_catalog | awk -F '\t' 'NF >= 1 { print $1 }'
 }
 
+__lmline_setting_catalog_line() {
+  local wanted=$1
+  __lmline_setting_catalog | awk -F '\t' -v wanted="$wanted" '$1 == wanted { print; found=1; exit } END { if (!found) exit 1 }'
+}
+
 __lmline_setting_value_candidates() {
   case "$1" in
     LMLINE_EXEC_BACKEND) printf '%s\n' auto local microsandbox off ;;
@@ -272,6 +296,28 @@ __lmline_redact_setting_value() {
   esac
 }
 
+__lmline_effective_setting_value() {
+  local key=$1 default=$2 value
+  case "$key" in
+    LMLINE_CONFIG_DIR) value=$config_dir ;;
+    LMLINE_HISTORY_DIR) value=$history_dir ;;
+    LMLINE_DEFAULTS_DIR) value=${LMLINE_DEFAULTS_DIR:-$script_dir/defaults} ;;
+    LMLINE_USER_RULES_DIR) value=${LMLINE_USER_RULES_DIR:-$config_dir} ;;
+    LMLINE_ENGINE) value=$(engine_path) ;;
+    LMLINE_PROMPT_DIR) value=${LMLINE_PROMPT_DIR:-$script_dir/prompts} ;;
+    LMLINE_BIN_DIR) value=${LMLINE_BIN_DIR:-$HOME/.local/bin} ;;
+    *)
+      if [[ ${!key+x} ]]; then
+        value=${!key}
+      else
+        value=$default
+      fi
+      ;;
+  esac
+  [[ "$value" == empty ]] && value=
+  printf '%s' "$value"
+}
+
 print_config_defaults() {
   printf 'setting\tdefault\tdescription\n'
   __lmline_setting_catalog
@@ -281,25 +327,26 @@ print_config_effective() {
   local key default description value
   printf 'setting\tvalue\tdefault\tdescription\n'
   while IFS=$'\t' read -r key default description; do
-    case "$key" in
-      LMLINE_CONFIG_DIR) value=$config_dir ;;
-      LMLINE_HISTORY_DIR) value=$history_dir ;;
-      LMLINE_DEFAULTS_DIR) value=${LMLINE_DEFAULTS_DIR:-$script_dir/defaults} ;;
-      LMLINE_USER_RULES_DIR) value=${LMLINE_USER_RULES_DIR:-$config_dir} ;;
-      LMLINE_ENGINE) value=$(engine_path) ;;
-      LMLINE_PROMPT_DIR) value=${LMLINE_PROMPT_DIR:-$script_dir/prompts} ;;
-      LMLINE_BIN_DIR) value=${LMLINE_BIN_DIR:-$HOME/.local/bin} ;;
-      *)
-        if [[ ${!key+x} ]]; then
-          value=${!key}
-        else
-          value=$default
-        fi
-        ;;
-    esac
-    [[ "$value" == empty ]] && value=
+    value=$(__lmline_effective_setting_value "$key" "$default")
     printf '%s\t%s\t%s\t%s\n' "$key" "$(__lmline_redact_setting_value "$key" "$value")" "$default" "$description"
   done < <(__lmline_setting_catalog)
+}
+
+print_config_describe() {
+  local key=${1-} line default description value values
+  [[ -n "$key" ]] || { printf 'lmline: config describe requires KEY\n' >&2; return 2; }
+  line=$(__lmline_setting_catalog_line "$key") || {
+    printf 'lmline: unknown setting: %s\n' "$key" >&2
+    return 2
+  }
+  IFS=$'\t' read -r key default description <<<"$line"
+  value=$(__lmline_effective_setting_value "$key" "$default")
+  values=$(__lmline_setting_value_candidates "$key" | paste -sd ' ' - 2>/dev/null || true)
+  printf 'setting=%s\n' "$key"
+  printf 'value=%s\n' "$(__lmline_redact_setting_value "$key" "$value")"
+  printf 'default=%s\n' "$default"
+  [[ -n "$values" ]] && printf 'values=%s\n' "$values"
+  printf 'description=%s\n' "$description"
 }
 
 print_cli_help() {
@@ -343,6 +390,13 @@ usage: lmline payload generate|rewrite|explain|fix|clip [LINE...]
 Print the OpenAI-compatible request payload without sending it.
 EOF
       ;;
+    payload:generate|payload:rewrite|payload:explain|payload:fix|payload:clip) cat <<'EOF'
+usage: lmline payload MODE [LINE...]
+
+Print the OpenAI-compatible request payload for one mode without sending it.
+MODE is generate, rewrite, explain, fix, or clip.
+EOF
+      ;;
     sandbox:) cat <<'EOF'
 usage: lmline sandbox setup [options]
        lmline sandbox run [options] -- COMMAND
@@ -356,12 +410,21 @@ usage: lmline sandbox setup [--name NAME] [--image IMAGE] [--workspace readonly|
 
 Create or reuse a named project sandbox, mount the project at the guest workdir,
 write non-secret environment metadata, and check expected command availability.
+
+Unset defaults: name from LMLINE_MICROSANDBOX_NAME or project path, image
+debian, workspace readonly, root current Git root or current directory, workdir
+/workspace, setup timeout 30 seconds.
 EOF
       ;;
     sandbox:run) cat <<'EOF'
 usage: lmline sandbox run [--name NAME] [--image IMAGE] [--timeout SECONDS] [--max-output BYTES] -- COMMAND
 
-Run COMMAND through microsandbox. This command never falls back to host local execution.
+Run COMMAND through microsandbox. `--name` overrides LMLINE_MICROSANDBOX_NAME;
+when either is set, run in a sandbox created by `lmline sandbox setup`.
+Otherwise run in an ephemeral sandbox. This command never falls back to host
+local execution.
+
+Unset defaults: image debian, timeout 3 seconds, max-output 12000 bytes.
 EOF
       ;;
     sandbox:check) cat <<'EOF'
@@ -384,6 +447,7 @@ EOF
 usage: lmline config get
        lmline config defaults
        lmline config effective
+       lmline config describe KEY
        lmline config set KEY VALUE
        lmline config unset KEY
        lmline config project-get
@@ -411,7 +475,43 @@ usage: lmline config effective
 Print effective setting values as: setting<TAB>value<TAB>default<TAB>description.
 EOF
       ;;
-    config:set|config:unset|config:project-get|config:project-set|config:project-unset) print_cli_help config ;;
+    config:describe) cat <<'EOF'
+usage: lmline config describe KEY
+
+Print one setting as key=value lines: setting, value, default, allowed values
+when known, and description. Secret-like values are redacted.
+EOF
+      ;;
+    config:set) cat <<'EOF'
+usage: lmline config set KEY VALUE
+
+Persist a user setting in the lmline config directory.
+EOF
+      ;;
+    config:unset) cat <<'EOF'
+usage: lmline config unset KEY
+
+Remove a persisted user setting.
+EOF
+      ;;
+    config:project-get) cat <<'EOF'
+usage: lmline config project-get
+
+Print project-local settings from ./.lmline.bash with secrets redacted.
+EOF
+      ;;
+    config:project-set) cat <<'EOF'
+usage: lmline config project-set KEY VALUE
+
+Persist a project-local setting in ./.lmline.bash.
+EOF
+      ;;
+    config:project-unset) cat <<'EOF'
+usage: lmline config project-unset KEY
+
+Remove a project-local setting from ./.lmline.bash.
+EOF
+      ;;
     endpoint:) cat <<'EOF'
 usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
        lmline endpoint list
@@ -421,6 +521,30 @@ usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme S
 Manage provider endpoint profiles.
 EOF
       ;;
+    endpoint:add) cat <<'EOF'
+usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+
+Register or update an OpenAI-compatible provider endpoint.
+EOF
+      ;;
+    endpoint:list) cat <<'EOF'
+usage: lmline endpoint list
+
+List registered provider endpoints.
+EOF
+      ;;
+    endpoint:set-secret) cat <<'EOF'
+usage: lmline endpoint set-secret NAME [VALUE]
+
+Store the endpoint API key in a 0600 file. When VALUE is omitted, read it from stdin.
+EOF
+      ;;
+    endpoint:remove) cat <<'EOF'
+usage: lmline endpoint remove NAME [--keep-secret]
+
+Remove an endpoint profile, its models, and by default its secret file.
+EOF
+      ;;
     model:) cat <<'EOF'
 usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
        lmline model list [ENDPOINT]
@@ -428,6 +552,30 @@ usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--too
        lmline model remove ENDPOINT MODEL
 
 Manage model profiles under endpoints.
+EOF
+      ;;
+    model:add) cat <<'EOF'
+usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+
+Register or update a model under an endpoint profile.
+EOF
+      ;;
+    model:list) cat <<'EOF'
+usage: lmline model list [ENDPOINT]
+
+List model profiles, optionally limited to one endpoint.
+EOF
+      ;;
+    model:refresh) cat <<'EOF'
+usage: lmline model refresh ENDPOINT
+
+Import model IDs from ENDPOINT/models and update that endpoint's model profiles.
+EOF
+      ;;
+    model:remove) cat <<'EOF'
+usage: lmline model remove ENDPOINT MODEL
+
+Remove one model profile.
 EOF
       ;;
     use:) cat <<'EOF'
@@ -444,6 +592,7 @@ EOF
       ;;
     complete:) cat <<'EOF'
 usage: lmline complete commands
+       lmline complete subcommands COMMAND
        lmline complete settings
        lmline complete setting-values KEY
        lmline complete endpoints
@@ -453,11 +602,42 @@ usage: lmline complete commands
 Print completion candidates for shell integrations.
 EOF
       ;;
+    complete:commands|complete:settings|complete:endpoints|complete:clipboard-providers) print_cli_help complete ;;
+    complete:subcommands) cat <<'EOF'
+usage: lmline complete subcommands COMMAND
+
+Print subcommands or modes for one lmline command.
+EOF
+      ;;
+    complete:setting-values) cat <<'EOF'
+usage: lmline complete setting-values KEY
+
+Print known values for one setting.
+EOF
+      ;;
+    complete:models) cat <<'EOF'
+usage: lmline complete models [ENDPOINT]
+
+Print model completion candidates, optionally limited to one endpoint.
+EOF
+      ;;
     history:) cat <<'EOF'
 usage: lmline history show
        lmline history tendencies
 
 Show recorded suggestions or summarize recorded suggestion modes.
+EOF
+      ;;
+    history:show) cat <<'EOF'
+usage: lmline history show
+
+Show recorded lmline suggestion entries.
+EOF
+      ;;
+    history:tendencies) cat <<'EOF'
+usage: lmline history tendencies
+
+Summarize recorded suggestion modes.
 EOF
       ;;
     risk:) cat <<'EOF'
@@ -467,10 +647,10 @@ Classify a command with the configured risk policy.
 EOF
       ;;
     help:) cat <<'EOF'
-usage: lmline help [LM_LINE_COMMAND...]
-       lmline help COMMAND...
+usage: lmline help [TOPIC...]
 
-Print lmline CLI help for known lmline commands. Otherwise print shell command summaries.
+Print lmline CLI help. TOPIC may be a command, subcommand, or payload mode,
+for example `lmline help sandbox run` or `lmline help config describe`.
 EOF
       ;;
     debug:) cat <<'EOF'
@@ -480,6 +660,30 @@ usage: lmline debug bindings
        lmline debug trace on|off
 
 Inspect bindings or toggle debug and trace settings.
+EOF
+      ;;
+    debug:bindings) cat <<'EOF'
+usage: lmline debug bindings
+
+Print active Bash Readline bindings that call lmline widgets.
+EOF
+      ;;
+    debug:on) cat <<'EOF'
+usage: lmline debug on
+
+Enable verbose status logging.
+EOF
+      ;;
+    debug:off) cat <<'EOF'
+usage: lmline debug off
+
+Disable verbose status logging and restore inline status.
+EOF
+      ;;
+    debug:trace) cat <<'EOF'
+usage: lmline debug trace on|off
+
+Enable or disable engine request/response trace files.
 EOF
       ;;
     keys:) cat <<'EOF'
@@ -839,6 +1043,7 @@ case "$cmd" in
     case "${1-}" in
       generate|rewrite|explain|fix|clip)
         shift
+        [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help payload "$mode"; exit 0; }
         ;;
       *)
         printf 'lmline: invalid payload mode: %s (expected generate, rewrite, explain, fix, or clip)\n' "${1-}" >&2
@@ -906,6 +1111,7 @@ case "$cmd" in
       get) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config get; exit 0; }; print_config_redacted ;;
       defaults) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config defaults; exit 0; }; print_config_defaults ;;
       effective) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config effective; exit 0; }; print_config_effective ;;
+      describe) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config describe; exit 0; }; print_config_describe "${1-}" ;;
       set)
         [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config set; exit 0; }
         key=${1-}; value=${2-}
@@ -949,10 +1155,10 @@ case "$cmd" in
     sub=${2-}; shift 2 || true
     case "$sub" in -h|--help|'') print_cli_help endpoint; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
     case "$sub" in
-      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint; exit 0; }; profile_endpoint_add "$@" ;;
-      list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint; exit 0; }; profile_endpoint_list ;;
-      set-secret) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint; exit 0; }; profile_endpoint_set_secret "${1-}" "${2-}" ;;
-      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint; exit 0; }; profile_endpoint_remove "$@" ;;
+      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint add; exit 0; }; profile_endpoint_add "$@" ;;
+      list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint list; exit 0; }; profile_endpoint_list ;;
+      set-secret) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint set-secret; exit 0; }; profile_endpoint_set_secret "${1-}" "${2-}" ;;
+      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint remove; exit 0; }; profile_endpoint_remove "$@" ;;
       *) usage; exit 2 ;;
     esac
     ;;
@@ -960,10 +1166,10 @@ case "$cmd" in
     sub=${2-}; shift 2 || true
     case "$sub" in -h|--help|'') print_cli_help model; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
     case "$sub" in
-      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model; exit 0; }; profile_model_add "$@" ;;
-      list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model; exit 0; }; profile_model_list "${1-}" ;;
-      refresh) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model; exit 0; }; profile_model_refresh "${1-}" ;;
-      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model; exit 0; }; profile_model_remove "${1-}" "${2-}" ;;
+      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model add; exit 0; }; profile_model_add "$@" ;;
+      list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model list; exit 0; }; profile_model_list "${1-}" ;;
+      refresh) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model refresh; exit 0; }; profile_model_refresh "${1-}" ;;
+      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model remove; exit 0; }; profile_model_remove "${1-}" "${2-}" ;;
       *) usage; exit 2 ;;
     esac
     ;;
@@ -979,12 +1185,14 @@ case "$cmd" in
   complete)
     [[ "${2-}" == -h || "${2-}" == --help ]] && { print_cli_help complete; exit 0; }
     case "${2-}" in
-      commands) __lmline_cli_commands ;;
-      settings) __lmline_setting_keys ;;
-      setting-values) __lmline_setting_value_candidates "${3-}" ;;
-      endpoints) [[ -f "$endpoints_file" ]] && awk -F '\t' 'NF && $1 !~ /^#/ { print $1 }' "$endpoints_file" ;;
-      models) profile_model_list "${3-}" | awk -F '\t' '{ print $2 }' ;;
+      commands) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete commands; exit 0; }; __lmline_cli_commands ;;
+      subcommands) [[ "${3-}" == -h || "${3-}" == --help || -z "${3-}" ]] && { print_cli_help complete subcommands; exit 0; }; __lmline_cli_subcommands "${3-}" ;;
+      settings) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete settings; exit 0; }; __lmline_setting_keys ;;
+      setting-values) [[ "${3-}" == -h || "${3-}" == --help || -z "${3-}" ]] && { print_cli_help complete setting-values; exit 0; }; __lmline_setting_value_candidates "${3-}" ;;
+      endpoints) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete endpoints; exit 0; }; [[ -f "$endpoints_file" ]] && awk -F '\t' 'NF && $1 !~ /^#/ { print $1 }' "$endpoints_file" ;;
+      models) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete models; exit 0; }; profile_model_list "${3-}" | awk -F '\t' '{ print $2 }' ;;
       clipboard-providers)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete clipboard-providers; exit 0; }
         source_support_files
         printf 'auto\n'
         __lmline_clipboard_provider_names
@@ -996,11 +1204,13 @@ case "$cmd" in
     case "${2-}" in -h|--help|'') print_cli_help history; [[ -n "${2-}" ]] && exit 0 || exit 2 ;; esac
     case "${2-}" in
       show)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help history show; exit 0; }
         if [[ -d "$history_dir" ]]; then
           find "$history_dir" -maxdepth 1 -type f -print -exec tail -n 40 {} \;
         fi
         ;;
       tendencies)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help history tendencies; exit 0; }
         suggestions=$history_dir/suggestions.log
         if [[ -f "$suggestions" ]]; then
           awk '
@@ -1027,28 +1237,32 @@ case "$cmd" in
   help)
     shift
     [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help help; exit 0; }
-    [[ $# -gt 0 ]] || { print_cli_help help; exit 0; }
+    [[ $# -gt 0 ]] || { usage; exit 0; }
     if print_cli_help "$@"; then
       exit 0
     fi
-    source_support_files
-    __lmline_collect_command_summaries "$*"
+    printf 'lmline: unknown help topic: %s\n' "$*" >&2
+    exit 2
     ;;
   debug)
     case "${2-}" in -h|--help|'') print_cli_help debug; [[ -n "${2-}" ]] && exit 0 || exit 2 ;; esac
     case "${2-}" in
       bindings)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug bindings; exit 0; }
         bind -X 2>/dev/null | grep -F __lmline_ || true
         ;;
       on)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug on; exit 0; }
         write_config_value LMLINE_DEBUG 1
         write_config_value LMLINE_STATUS_MODE log
         ;;
       off)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug off; exit 0; }
         write_config_value LMLINE_DEBUG 0
         write_config_value LMLINE_STATUS_MODE inline
         ;;
       trace)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug trace; exit 0; }
         case "${3-}" in
           on)
             write_config_value LMLINE_TRACE_DIR "$config_dir/traces"

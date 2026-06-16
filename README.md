@@ -284,7 +284,7 @@ lmline command-exists COMMAND...
 lmline command-info COMMAND...
 lmline commands [QUERY]
 lmline payload MODE [LINE...]
-lmline sandbox setup [--name NAME] [--image IMAGE] [--workspace readonly|writable|none]
+lmline sandbox setup [--name NAME] [--image IMAGE] [--workspace readonly|writable|none] [--root PATH] [--workdir PATH] [--timeout SECONDS]
 lmline sandbox run [--name NAME] [--image IMAGE] [--timeout SECONDS] [--max-output BYTES] -- COMMAND
 lmline sandbox check
 lmline clip [QUESTION...]
@@ -292,17 +292,23 @@ lmline clip --status
 lmline clip --providers
 lmline clip --use PROVIDER
 lmline clip --provider PROVIDER [QUESTION...]
-lmline config get|defaults|effective|set|unset|project-get|project-set|project-unset
+lmline config get|defaults|effective
+lmline config describe KEY
+lmline config set KEY VALUE
+lmline config unset KEY
+lmline config project-get
+lmline config project-set KEY VALUE
+lmline config project-unset KEY
 lmline endpoint add|list|set-secret|remove
 lmline model add|list|refresh|remove
 lmline use ENDPOINT [MODEL]
 lmline current
-lmline complete commands|settings|setting-values KEY
+lmline complete commands|subcommands COMMAND|settings|setting-values KEY
 lmline complete endpoints|models [ENDPOINT]|clipboard-providers
 lmline history show
 lmline history tendencies
 lmline risk COMMAND...
-lmline help COMMAND...
+lmline help [TOPIC...]
 lmline debug bindings
 lmline debug on|off
 lmline debug trace on|off
@@ -317,8 +323,11 @@ lmline disable
 `sandbox run` requires the microsandbox CLI and never falls back to host
 execution.
 `config get` prints only persisted user settings. Use `config defaults` for the
-full setting catalog and `config effective` for redacted effective values.
-Every top-level command and nested `sandbox` command accepts `--help`.
+full setting catalog, `config effective` for redacted effective values, and
+`config describe KEY` for one setting's current value, default, allowed values,
+and description.
+Every top-level command and documented subcommand or payload mode accepts
+`--help`.
 
 ## Sandbox Setup
 
@@ -712,7 +721,6 @@ Data-file settings:
 | `LMLINE_COMMAND_PREFIX_WORDS_FILE` | user override or installed default | command prefixes ignored before command extraction |
 | `LMLINE_RISK_PATTERNS_FILE` | user override or installed default | candidate risk rules |
 | `LMLINE_PROJECT_MARKERS_FILE` | user override or installed default | project type markers |
-| `LMLINE_CLIPBOARD_PROVIDERS_FILE` | user override or installed default | clipboard provider TSV |
 | `LMLINE_LOCAL_COMMANDS_FILE` | user override or installed default | local backend allowlist for `command_run` |
 | `LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE` | user override or installed default | required command list for `doctor` |
 | `LMLINE_DOCTOR_OPTIONAL_COMMANDS_FILE` | user override or installed default | optional command list for `doctor` |

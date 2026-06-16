@@ -532,12 +532,13 @@ _lmline() {
       case $words[2] in
         use) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
         payload) compadd -- generate rewrite explain fix clip ;;
+        help) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
         sandbox) compadd -- setup run check ;;
         clip) compadd -- --status --providers --use --provider ;;
         endpoint) compadd -- add list set-secret remove ;;
         model) compadd -- add list refresh remove ;;
-        config) compadd -- get defaults effective set unset project-get project-set project-unset ;;
-        complete) compadd -- commands settings setting-values endpoints models clipboard-providers ;;
+        config) compadd -- get defaults effective describe set unset project-get project-set project-unset ;;
+        complete) compadd -- commands subcommands settings setting-values endpoints models clipboard-providers ;;
         history) compadd -- show tendencies ;;
         debug) compadd -- bindings on off trace ;;
         doctor) compadd -- --check-api --help ;;
@@ -546,12 +547,14 @@ _lmline() {
     4)
       case "$words[2]:$words[3]" in
         use:*) compadd -- "${(@f)$($cmd complete models "$words[3]" 2>/dev/null)}" ;;
+        help:*) compadd -- "${(@f)$($cmd complete subcommands "$words[3]" 2>/dev/null)}" ;;
         sandbox:setup) compadd -- --name --image --workspace --root --workdir --timeout --help ;;
         sandbox:run) compadd -- --name --image --timeout --max-output --help -- ;;
         clip:--use|clip:--provider) compadd -- "${(@f)$($cmd complete clipboard-providers 2>/dev/null)}" ;;
         endpoint:set-secret|endpoint:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
         model:add|model:list|model:refresh|model:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
-        config:set|config:unset|config:project-set|config:project-unset) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
+        config:describe|config:set|config:unset|config:project-set|config:project-unset) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
+        complete:subcommands) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
         complete:setting-values) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
         debug:trace) compadd -- on off ;;
       esac
