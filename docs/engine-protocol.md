@@ -15,21 +15,27 @@ engine --mode MODE --shell SHELL --cwd DIR --point N \
 
 | Argument | Meaning |
 | --- | --- |
-| `--mode` | `generate`, `continue`, `rewrite`, `fix`, `explain`, or `clip` |
+| `--mode` | `generate`, `rewrite`, `fix`, `explain`, or `clip` |
 | `--shell` | frontend shell name (`bash` or `zsh`); informational |
-| `--cwd` | caller working directory; informational, included in the prompt |
-| `--point` | cursor position in the line; informational |
+| `--cwd` | caller working directory; informational, included only when `LMLINE_INCLUDE_CWD_CONTEXT` is enabled |
+| `--point` | cursor position in the line; informational, included only when `LMLINE_INCLUDE_EDITOR_CONTEXT` is enabled |
 | `--line-file` | file containing the user line (for `fix`: line plus captured execution report; for `clip`: question plus redacted clipboard text) |
-| `--context-file` | file containing the shell context collected by `lmline context` |
+| `--context-file` | file containing the shell context collected by `lmline context`; sections depend on `LMLINE_INCLUDE_*` and `LMLINE_TOOL_*` settings |
 | `--n` | requested candidate count (the engine clamps to 1..10) |
 | `--format` | `annotated` (default) or `plain` (bare candidate lines, no risk annotations) |
 | `--dry-run-payload` | print the provider request JSON to stdout and exit 0 without contacting the provider |
 
-Settings are read from the environment and the `LMLINE_*` configuration
-hierarchy (persistent settings, Git-root project config, `$PWD` project
-config).
+Settings start from the process environment. The engine then loads persistent
+settings, Git-root project config, and `$PWD` project config in that order.
+Later files override earlier values. Built-in defaults are applied after config
+loading for unset values.
 
-## Output: command modes (generate / continue / rewrite / fix)
+The user line is always part of the request. Environment context is controlled
+by `LMLINE_INCLUDE_*` settings. Tool availability is controlled by
+`LMLINE_TOOL_MODE` and per-tool `LMLINE_TOOL_*` settings. Replacement engines
+must treat the context file and tool outputs as untrusted data.
+
+## Output: command modes (`generate`, `rewrite`, `fix`)
 
 stdout carries one protocol line per accepted candidate:
 
@@ -49,11 +55,13 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
 - `candidate`: the full command text (may itself contain tabs; it is always
   the fourth and final field).
 
-Candidates are validated (single line, `bash -n`, no control characters,
-locally available commands) and deduplicated by the engine before emission.
-Frontends only parse, display, and insert.
+Candidates are validated and deduplicated by the engine before emission.
+Validation rejects multiline text, control characters, invalid `bash -n`,
+environment-assignment-only command segments, selected direct directory file
+operands, and unavailable command words. Frontends only parse, display, and
+insert.
 
-## Output: explain / clip
+## Output: `explain` / `clip`
 
 stdout carries the response text with blank lines removed. No candidate
 protocol lines are used.
@@ -93,7 +101,8 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 
 ## Exit status
 
-- `0` — at least one candidate (command modes) or response text was produced
+- `0` — at least one candidate or response text was produced; empty `rewrite`
+  input is also a successful no-op
 - `1` — provider/validation failure; stderr explains why
 - `2` — usage or configuration error
 
@@ -102,7 +111,7 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 - Empty `rewrite` input exits 0 with no output.
 - The engine retries transient provider failures (HTTP 429/502/503/504 and
   curl errors) `LMLINE_HTTP_RETRIES` times.
-- With `LMLINE_CACHE_TTL` > 0, generate/continue/rewrite/explain responses are
+- With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests.
 - API keys are passed to curl through `-H @file` header files, never on the

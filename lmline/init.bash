@@ -229,26 +229,7 @@ __lmline_set_line() {
 }
 
 __lmline_infer_mode() {
-  local line=$1
-  local trimmed=${line%"${line##*[![:space:]]}"}
-  case "$line" in
-    '#'*|'?'|'? '*)
-      printf 'generate'
-      ;;
-    '')
-      printf 'generate'
-      ;;
-    *)
-      case "$trimmed" in
-        *'|'|*'||'|*'&&'|*';'|*'>'|*'>>'|*'\\')
-          printf 'continue'
-          ;;
-        *)
-          printf 'rewrite'
-          ;;
-      esac
-      ;;
-  esac
+  printf 'generate'
 }
 
 __lmline_call_engine_raw() {

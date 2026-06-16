@@ -21,7 +21,7 @@ source "$script_dir/http.bash"
 
 readonly __LMLINE_DEFAULT_N=3
 readonly __LMLINE_MAX_N=10
-readonly __LMLINE_DEFAULT_MAX_TOKENS=500
+readonly __LMLINE_DEFAULT_MAX_TOKENS=1200
 readonly __LMLINE_DEFAULT_EXPLAIN_MAX_TOKENS=1200
 readonly __LMLINE_DEFAULT_CLIP_MAX_TOKENS=1200
 
@@ -53,6 +53,8 @@ __lmline_init_dirs "$script_dir"
 : "${LMLINE_CACHE_TTL:=0}"
 : "${LMLINE_STREAM:=0}"
 : "${LMLINE_TRACE_DIR:=}"
+: "${LMLINE_INCLUDE_EDITOR_CONTEXT:=1}"
+: "${LMLINE_INCLUDE_LOCALE_CONTEXT:=1}"
 
 mode=
 line_file=
@@ -83,6 +85,13 @@ done
   printf 'lmline-engine: --mode, --line-file, and --context-file are required\n' >&2
   exit 2
 }
+case "$mode" in
+  generate|rewrite|fix|explain|clip) ;;
+  *)
+    printf 'lmline-engine: invalid --mode: %s (expected generate, rewrite, fix, explain, or clip)\n' "$mode" >&2
+    exit 2
+    ;;
+esac
 case "$output_format" in
   annotated|plain) ;;
   *)
@@ -159,7 +168,7 @@ __lmline_prompt_file() {
   return 1
 }
 
-prompt_file=$(__lmline_prompt_file "$mode.txt" 2>/dev/null) || prompt_file=$(__lmline_prompt_file generate.txt) || exit 1
+prompt_file=$(__lmline_prompt_file "$mode.txt") || exit 1
 
 line=$(cat "$line_file")
 original_line=$line
@@ -216,14 +225,14 @@ if [[ "$mode" == explain ]]; then
 fi
 request_text=$line
 if [[ "$mode" == generate ]]; then
-  request_text=$(printf '%s' "$request_text" | sed -E 's/^[[:space:]]*# ?//; s/^[[:space:]]*\? ?//')
+  request_text=$(printf '%s' "$request_text" | sed -E 's/^[[:space:]]*# ?//')
 fi
 locale_all=${LC_ALL:-}
 locale_messages=${LC_MESSAGES:-}
 locale_lang=${LANG:-C}
 locale_value=${locale_all:-${locale_messages:-$locale_lang}}
 language_locale=${LMLINE_RESPONSE_LOCALE:-}
-if [[ -z "$language_locale" ]]; then
+if [[ -z "$language_locale" ]] && __lmline_context_enabled LMLINE_INCLUDE_LOCALE_CONTEXT; then
   for locale_candidate in "$locale_messages" "$locale_lang" "$locale_all"; do
     case "$locale_candidate" in
       ''|C|C.*|POSIX) ;;
@@ -231,7 +240,7 @@ if [[ -z "$language_locale" ]]; then
     esac
   done
 fi
-[[ -n "$language_locale" ]] || language_locale=$locale_value
+[[ -n "$language_locale" ]] || language_locale=C
 case "$language_locale" in
   ja*|JA*) response_language=Japanese ;;
   en*|EN*|C|C.*|POSIX) response_language=English ;;
@@ -261,11 +270,17 @@ if [[ "$LMLINE_TOOL_MODE" != none ]] && {
   __lmline_tool_enabled command_exists ||
     __lmline_tool_enabled commands ||
     __lmline_tool_enabled command_info ||
-    __lmline_tool_enabled files
+    __lmline_tool_enabled files ||
+    __lmline_tool_enabled git_status ||
+    __lmline_tool_enabled file_excerpt ||
+    __lmline_tool_enabled command_run_readonly
 }; then
   tool_rules='- When tools are available, use them to check local command availability and options before answering.
 - Before using a command not in suggested_commands, verify it with command_exists.
 - Before fixing GNU/BSD-specific commands, check with command_info.
+- For file-sensitive requests, use files to find candidate paths and file_excerpt to read bounded text excerpts when it is enabled.
+- For Git tasks that depend on repository state, use git_status when it is enabled.
+- For output-sensitive low-risk commands, use command_run_readonly when it is enabled. Never use it for commands with side effects, writes, network access, secret access, or broad filesystem reads.
 - If native tool calls fail, use this text format: TOOL command_exists commands=awk
 - Plan tool use within the stated tool round budget.'
 fi
@@ -282,20 +297,55 @@ system_prompt_file=$(__lmline_prompt_file "$system_prompt_name") || exit 1
 system="$(cat "$system_prompt_file")
 $common_rules"
 
-user=$(cat <<EOF
-$task_prompt
-
+request_metadata=$(cat <<EOF
 Mode: $mode
-Shell: $shell_name
-CWD: $cwd
-Cursor point: $point
 $candidate_instruction
 $explain_detail_instruction
 Tool round budget: current=0 max=$LMLINE_MAX_TOOL_ROUNDS.
 Tool calls per round limit: $LMLINE_MAX_TOOL_CALLS_PER_ROUND.
+Response language: $response_language
+EOF
+)
+if __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; then
+  request_metadata=$(cat <<EOF
+$request_metadata
+Shell: $shell_name
+EOF
+)
+fi
+if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
+  request_metadata=$(cat <<EOF
+$request_metadata
+CWD: $cwd
+EOF
+)
+fi
+if __lmline_context_enabled LMLINE_INCLUDE_EDITOR_CONTEXT; then
+  request_metadata=$(cat <<EOF
+$request_metadata
+Cursor point: $point
+EOF
+)
+fi
+if [[ -n "${LMLINE_RESPONSE_LOCALE:-}" ]]; then
+  request_metadata=$(cat <<EOF
+$request_metadata
+Response locale setting: $LMLINE_RESPONSE_LOCALE
+EOF
+)
+elif __lmline_context_enabled LMLINE_INCLUDE_LOCALE_CONTEXT; then
+  request_metadata=$(cat <<EOF
+$request_metadata
 Locale: $locale_value
 Locale variables: LC_ALL=${locale_all:-unset}; LC_MESSAGES=${locale_messages:-unset}; LANG=${locale_lang:-unset}
-Response language: $response_language
+EOF
+)
+fi
+
+user=$(cat <<EOF
+$task_prompt
+
+$request_metadata
 
 User line:
 $line
@@ -313,15 +363,20 @@ if __lmline_split_inline_comment "$line" >/dev/null 2>&1; then
     IFS= read -r command_before_comment
     IFS= read -r inline_intent
   } < <(__lmline_split_inline_comment "$line")
+  if [[ "$mode" == generate ]]; then
+    inline_instruction="The final answer must preserve Command before inline intent exactly, byte for byte, and append only the missing suffix needed to satisfy the inline user intent. Do not rewrite, reformat, requote, or otherwise improve that preserved prefix."
+  else
+    inline_instruction="The final answer must satisfy the inline user intent while preserving useful parts of the command before the comment."
+  fi
   user=$(cat <<EOF
 $user
 
 Parsed inline intent:
-Command before inline comment:
+Command before inline intent:
 $command_before_comment
 Inline user intent:
 $inline_intent
-The final answer must satisfy the inline user intent while preserving useful parts of the command before the comment.
+$inline_instruction
 EOF
 )
 fi

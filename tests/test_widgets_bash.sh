@@ -9,15 +9,12 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
   source "$1/lmline/init.bash"
   [[ $(__lmline_infer_mode "# request") == generate ]]
   [[ $(__lmline_infer_mode "#another request") == generate ]]
-  [[ $(__lmline_infer_mode "?") == generate ]]
-  [[ $(__lmline_infer_mode "? request") == generate ]]
-  [[ $(__lmline_infer_mode "?foo") == rewrite ]]
   [[ $(__lmline_infer_mode "") == generate ]]
-  [[ $(__lmline_infer_mode "ls | ") == continue ]]
-  [[ $(__lmline_infer_mode "ls |") == continue ]]
-  [[ $(__lmline_infer_mode $'"'"'ls |\t'"'"') == continue ]]
-  [[ $(__lmline_infer_mode "request") == rewrite ]]
-  [[ $(__lmline_infer_mode "printf foo") == rewrite ]]
+  [[ $(__lmline_infer_mode "ls | ") == generate ]]
+  [[ $(__lmline_infer_mode "ls |") == generate ]]
+  [[ $(__lmline_infer_mode $'"'"'ls |\t'"'"') == generate ]]
+  [[ $(__lmline_infer_mode "request") == generate ]]
+  [[ $(__lmline_infer_mode "printf foo") == generate ]]
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
   __lmline_generate_widget >/tmp/lmline-widget-sync.out 2>/tmp/lmline-widget-sync.err

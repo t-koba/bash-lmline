@@ -1,5 +1,5 @@
 Explain the user's Bash command.
-Answer in the language implied by the Locale value from the user message.
+Answer in the response language specified by the user message.
 Follow the requested Explanation detail level: brief, normal, or detailed.
 For any detail level, scale the explanation to the command's length and complexity rather than using a fixed word count.
 Infer the command's overall purpose first: what the full command or pipeline is likely trying to accomplish.

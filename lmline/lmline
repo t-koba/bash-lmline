@@ -66,7 +66,7 @@ commands:
   command-exists COMMAND... check whether named commands are available locally
   command-info COMMAND... print local command path, kind, version, and help snippets
   commands [QUERY]        print local commands matching QUERY
-  payload [MODE] [LINE...] print the OpenAI-compatible JSON payload without sending it
+  payload MODE [LINE...] print the OpenAI-compatible JSON payload without sending it
   clip [QUESTION...]      ask the model about current clipboard text
   clip --status           show selected clipboard provider
   clip --providers        list configured clipboard providers
@@ -258,6 +258,7 @@ case "$cmd" in
       doctor_required_commands.txt \
       file_search_excludes.txt \
       project_markers.tsv \
+      readonly_commands.txt \
       risk_patterns.tsv \
       shell_syntax_words.txt \
       suggested_commands.txt; do
@@ -308,11 +309,14 @@ case "$cmd" in
     ;;
   payload)
     shift || true
-    mode=generate
+    mode=${1-}
     case "${1-}" in
-      generate|continue|rewrite|explain|fix|clip)
-        mode=$1
+      generate|rewrite|explain|fix|clip)
         shift
+        ;;
+      *)
+        printf 'lmline: invalid payload mode: %s (expected generate, rewrite, explain, fix, or clip)\n' "${1-}" >&2
+        exit 2
         ;;
     esac
     line=$*

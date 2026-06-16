@@ -91,6 +91,9 @@ __lmline_tool_short_name() {
     command_info) printf 'command-info' ;;
     commands) printf 'command-search' ;;
     files) printf 'file-search' ;;
+    git_status) printf 'git-status' ;;
+    file_excerpt) printf 'file-excerpt' ;;
+    command_run_readonly) printf 'readonly-run' ;;
     *) printf '%s' "$1" ;;
   esac
 }
@@ -139,7 +142,7 @@ __lmline_emit_meta() {
 # Emits the single preformatted status line all frontends display verbatim.
 # Formatting lives here so bash/zsh/CLI frontends do not duplicate it.
 __lmline_emit_status() {
-  local usage_model usage_prompt usage_completion usage_total tools elapsed extra_text model_budget
+  local usage_model usage_prompt usage_completion usage_total tools elapsed extra_text
   __lmline_usage_summary
   tools=$(__lmline_tools_summary)
   elapsed=$(__lmline_elapsed_seconds)
@@ -150,12 +153,6 @@ __lmline_emit_status() {
   fi
   [[ -n "$tools" && "$tools" != none ]] && extra_text+="; tools=$tools"
   [[ "$elapsed" != unknown ]] && extra_text+="; t=${elapsed}s"
-  # Keep the line near 80 columns assuming a short frontend prefix.
-  model_budget=$((80 - ${#extra_text} - 26))
-  (( model_budget < 12 )) && model_budget=12
-  if (( ${#usage_model} > model_budget )); then
-    usage_model="${usage_model:0:$((model_budget - 3))}..."
-  fi
   printf 'lmline-status: m=%s; %s\n' "$usage_model" "$extra_text" >&2
 }
 
@@ -285,7 +282,10 @@ __lmline_tool_definitions_json() {
   {"type":"function","function":{"name":"command_exists","description":"Check if commands exist locally (runs command -v). Output: name<TAB>found<TAB>path or name<TAB>missing.","parameters":{"type":"object","properties":{"commands":{"type":"string","description":"Space-separated command names"}},"required":["commands"]}}},
   {"type":"function","function":{"name":"commands","description":"Search local command names by fragment (case-insensitive grep over compgen output).","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Short command-name fragment"}},"required":["query"]}}},
   {"type":"function","function":{"name":"command_info","description":"Inspect local command details: path, kind, version, help. Output is sanitized and line-limited.","parameters":{"type":"object","properties":{"commands":{"type":"string","description":"Space-separated command names"}},"required":["commands"]}}},
-  {"type":"function","function":{"name":"files","description":"Search local file names (find . -maxdepth 2 with excludes, case-insensitive grep).","parameters":{"type":"object","properties":{"query":{"type":"string","description":"File-name or path fragment"}},"required":["query"]}}}
+  {"type":"function","function":{"name":"files","description":"Search local file names (find . -maxdepth 2 with excludes, case-insensitive grep).","parameters":{"type":"object","properties":{"query":{"type":"string","description":"File-name or path fragment"}},"required":["query"]}}},
+  {"type":"function","function":{"name":"git_status","description":"Inspect current git branch and changed file paths (git --no-optional-locks status --short --branch). Disabled by default because it exposes repository paths.","parameters":{"type":"object","properties":{}}}},
+  {"type":"function","function":{"name":"file_excerpt","description":"Read a bounded excerpt from one regular text file under the current directory. Disabled by default because it exposes file contents.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Relative path under the current directory"},"query":{"type":"string","description":"Optional literal text; when set, return matching lines instead of the first excerpt"}},"required":["path"]}}},
+  {"type":"function","function":{"name":"command_run_readonly","description":"Execute one low-risk read-only shell command with timeout and bounded stdout/stderr. Disabled by default because it runs local commands and can expose command output.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"Single shell command line to execute only if it passes the read-only policy"}},"required":["command"]}}}
 ]
 JSON
 }
@@ -297,6 +297,9 @@ __lmline_write_chat_payload() {
     __lmline_tool_enabled commands && enabled_tools+="commands "
     __lmline_tool_enabled command_info && enabled_tools+="command_info "
     __lmline_tool_enabled files && enabled_tools+="files "
+    __lmline_tool_enabled git_status && enabled_tools+="git_status "
+    __lmline_tool_enabled file_excerpt && enabled_tools+="file_excerpt "
+    __lmline_tool_enabled command_run_readonly && enabled_tools+="command_run_readonly "
   fi
   __lmline_tool_definitions_json >"$tool_defs_file"
   jq -n \
@@ -461,7 +464,7 @@ __lmline_execute_tool_round() {
 }
 
 __lmline_tool_output() {
-  local name=$1 args_json=$2 commands_arg query
+  local name=$1 args_json=$2 commands_arg query path command_line
   if ! __lmline_tool_enabled "$name"; then
     printf 'tool disabled by configuration: %s\n' "$name"
     return 0
@@ -484,6 +487,18 @@ __lmline_tool_output() {
     files)
       query=$(printf '%s' "$args_json" | jq -r '.query // empty' 2>/dev/null || true)
       __lmline_tool_files "$query" 2>/dev/null || true
+      ;;
+    git_status)
+      __lmline_tool_git_status 2>/dev/null || true
+      ;;
+    file_excerpt)
+      path=$(printf '%s' "$args_json" | jq -r '.path // empty' 2>/dev/null || true)
+      query=$(printf '%s' "$args_json" | jq -r '.query // empty' 2>/dev/null || true)
+      __lmline_tool_file_excerpt "$path" "$query" 2>/dev/null || true
+      ;;
+    command_run_readonly)
+      command_line=$(printf '%s' "$args_json" | jq -r '.command // empty' 2>/dev/null || true)
+      __lmline_tool_command_run_readonly "$command_line" 2>/dev/null || true
       ;;
     *)
       printf 'unsupported tool: %s\n' "$name"
@@ -518,7 +533,7 @@ __lmline_text_tool_requests_from_text() {
     rest=${request#"$name_raw"}
     rest=${rest#"${rest%%[![:space:]]*}"}
     case "$name" in
-      command_exists|command_info|commands|files) ;;
+      command_exists|command_info|commands|files|git_status|file_excerpt|command_run_readonly) ;;
       *)
         if __lmline_trace_dir_ready; then
           printf 'unknown tool name: %s\n' "$name" >>"$LMLINE_TRACE_DIR/$trace_id.text-tool-parse.log" 2>/dev/null || true
@@ -527,7 +542,7 @@ __lmline_text_tool_requests_from_text() {
         ;;
     esac
     __lmline_tool_enabled "$name" || return 1
-    [[ -n "$rest" ]] || return 1
+    [[ -n "$rest" || "$name" == git_status ]] || return 1
     case "$name" in
       command_exists|command_info)
         case "$rest" in commands=*) value=${rest#commands=} ;; *) value=$rest ;; esac
@@ -538,6 +553,28 @@ __lmline_text_tool_requests_from_text() {
         case "$rest" in query=*) value=${rest#query=} ;; *) value=$rest ;; esac
         case "$value" in \"*\") value=${value#\"}; value=${value%\"} ;; \'*\') value=${value#\'}; value=${value%\'} ;; esac
         args_json=$(jq -n --arg query "$value" '{query: $query}') || return 1
+        ;;
+      git_status)
+        args_json=$(jq -n '{}') || return 1
+        ;;
+      file_excerpt)
+        case "$rest" in path=*) value=${rest#path=} ;; *) value=$rest ;; esac
+        query=
+        if [[ "$value" == *" query="* ]]; then
+          query=${value#* query=}
+          value=${value%% query=*}
+        fi
+        case "$value" in \"*\") value=${value#\"}; value=${value%\"} ;; \'*\') value=${value#\'}; value=${value%\'} ;; esac
+        case "$query" in \"*\") query=${query#\"}; query=${query%\"} ;; \'*\') query=${query#\'}; query=${query%\'} ;; esac
+        [[ -n "$value" ]] || return 1
+        args_json=$(jq -n --arg path "$value" --arg query "$query" \
+          '{path: $path} + if $query == "" then {} else {query: $query} end') || return 1
+        ;;
+      command_run_readonly)
+        case "$rest" in command=*) value=${rest#command=} ;; *) value=$rest ;; esac
+        case "$value" in \"*\") value=${value#\"}; value=${value%\"} ;; \'*\') value=${value#\'}; value=${value%\'} ;; esac
+        [[ -n "$value" ]] || return 1
+        args_json=$(jq -n --arg command "$value" '{command: $command}') || return 1
         ;;
     esac
     count=$((count + 1))

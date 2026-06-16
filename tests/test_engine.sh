@@ -8,6 +8,10 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_MODEL test-model
 printf '# list files\n' >"$cfg_tmp/line"
 printf '## available_tools\n' >"$cfg_tmp/context"
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode unknown --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-invalid-mode.out 2>/tmp/lmline-invalid-mode.err; then
+  fail "invalid mode unexpectedly accepted"
+fi
+grep -q 'invalid --mode: unknown' /tmp/lmline-invalid-mode.err || fail "invalid mode rejection"
 
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"
@@ -40,7 +44,7 @@ JSON
     ;;
   *)
     cat >"$out" <<'JSON'
-{"model":"test/final-model","usage":{"prompt_tokens":20,"completion_tokens":5,"total_tokens":25},"choices":[{"message":{"role":"assistant","content":"echo multi-round"}}]}
+{"model":"provider/kimi-k2.6-command-model-with-long-id","usage":{"prompt_tokens":20,"completion_tokens":5,"total_tokens":25},"choices":[{"message":{"role":"assistant","content":"echo multi-round"}}]}
 JSON
     ;;
 esac
@@ -57,7 +61,8 @@ printf '0\n' >"$cfg_tmp/fake-curl-state"
 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-tool-progress.out 2>/tmp/lmline-tool-progress.err
 grep -q '^lmline-progress: tool command-exists (openai, round 1/10)$' /tmp/lmline-tool-progress.err || fail "tool progress command_exists"
 grep -q '^lmline-progress: tool command-info (openai, round 2/10)$' /tmp/lmline-tool-progress.err || fail "tool progress command_info"
-grep -Eq '^lmline-meta: model=test/final-model tokens=50 prompt=42 completion=8 tools=command-exists,command-info time=[0-9]+s$' /tmp/lmline-tool-progress.err || fail "engine model/token/tool/time metadata"
+grep -Eq '^lmline-meta: model=provider/kimi-k2.6-command-model-with-long-id tokens=50 prompt=42 completion=8 tools=command-exists,command-info time=[0-9]+s$' /tmp/lmline-tool-progress.err || fail "engine model/token/tool/time metadata"
+grep -Eq '^lmline-status: m=provider/kimi-k2.6-command-model-with-long-id; tok=42/8/50; tools=command-exists,command-info; t=[0-9]+s$' /tmp/lmline-tool-progress.err || fail "engine status keeps full model name"
 printf '0\n' >"$cfg_tmp/fake-curl-state"
 printf 'date -r\n' >"$cfg_tmp/line-explain"
 explain_multi_round_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line-explain" --context-file "$cfg_tmp/context" --n 1)

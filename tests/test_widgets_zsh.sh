@@ -9,11 +9,8 @@ if command -v zsh >/dev/null 2>&1; then
   LMLINE_CONFIG_DIR="$zsh_tmp/config-sync" LMLINE_ENGINE="$zsh_tmp/engine" zsh -fic '
     source "$1/lmline/init.zsh"
     [[ "$options[interactivecomments]" == on ]]
-    [[ $(__lmline_zsh_mode "?") == generate ]]
-    [[ $(__lmline_zsh_mode "? request") == generate ]]
-    [[ $(__lmline_zsh_mode "?foo") == rewrite ]]
-    [[ $(__lmline_zsh_mode "ls | ") == continue ]]
-    [[ $(__lmline_zsh_mode "ls |") == continue ]]
+    [[ $(__lmline_zsh_mode "ls | ") == generate ]]
+    [[ $(__lmline_zsh_mode "ls |") == generate ]]
     BUFFER="# say one"
     CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-1.out 2>/tmp/lmline-zsh-widget-1.err

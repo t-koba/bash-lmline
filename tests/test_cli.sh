@@ -183,6 +183,19 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list fi
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_exists commands=" || fail "context tool list"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_info commands=" || fail "context command_info tool list"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "Local action: command -v" || fail "context tool action"
+! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^git_status$" || fail "git status tool enabled by default"
+LMLINE_TOOL_GIT_STATUS=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^git_status$" || fail "git status tool opt-in context"
+! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^file_excerpt path=" || fail "file excerpt tool enabled by default"
+LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^file_excerpt path=" || fail "file excerpt tool opt-in context"
+! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_run_readonly command=" || fail "readonly run tool enabled by default"
+LMLINE_TOOL_COMMAND_RUN_READONLY=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^command_run_readonly command=" || fail "readonly run tool opt-in context"
+secure_context_out=$(LMLINE_TOOL_MODE=none LMLINE_INCLUDE_SHELL_CONTEXT=0 LMLINE_INCLUDE_CWD_CONTEXT=0 LMLINE_INCLUDE_GIT_CONTEXT=0 LMLINE_INCLUDE_PROJECT_CONTEXT=0 LMLINE_INCLUDE_SUGGESTED_COMMANDS=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files")
+! grep -q '^## shell$' <<<"$secure_context_out" || fail "secure context sent shell"
+! grep -q '^## cwd$' <<<"$secure_context_out" || fail "secure context sent cwd"
+! grep -q '^## git$' <<<"$secure_context_out" || fail "secure context sent git"
+! grep -q '^## project_type$' <<<"$secure_context_out" || fail "secure context sent project"
+! grep -q '^## suggested_commands$' <<<"$secure_context_out" || fail "secure context sent suggestions"
+! grep -q '^## available_tools$' <<<"$secure_context_out" || fail "secure context sent tools"
 ! LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^## available_tools$" || fail "context tool list disabled with tool mode none"
 empty_suggestions_dir="$cfg_tmp/empty-suggestions"
 mkdir -p "$empty_suggestions_dir"
@@ -238,6 +251,7 @@ grep -q "lmline endpoint set-secret ENDPOINT" <<<"$doctor_out" || fail "doctor a
 grep -q '^engine=.* (ok)$' <<<"$doctor_out" || fail "doctor engine status"
 grep -q '^defaults$' <<<"$doctor_out" || fail "doctor defaults heading"
 grep -q 'risk_patterns.tsv: ok' <<<"$doctor_out" || fail "doctor defaults risk patterns"
+grep -q 'readonly_commands.txt: ok' <<<"$doctor_out" || fail "doctor defaults readonly commands"
 grep -q 'suggested_commands.txt: ok' <<<"$doctor_out" || fail "doctor defaults suggested commands"
 doctor_api_bin="$cfg_tmp/doctor-api-bin"
 mkdir -p "$doctor_api_bin"
@@ -252,6 +266,7 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" debug trace off
 ! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config get | grep -q "LMLINE_TRACE_DIR=" || fail "trace config off"
 payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
 grep -q '"model": "test-model"' <<<"$payload_out" || fail "payload model"
+grep -q '"max_tokens": 1200' <<<"$payload_out" || fail "payload generate token budget"
 grep -q '"messages":' <<<"$payload_out" || fail "payload messages"
 grep -q 'Requested candidate limit: 3' <<<"$payload_out" || fail "payload candidate limit"
 grep -q 'Maximum candidate line length: 4096 bytes' <<<"$payload_out" || fail "payload candidate length limit"
@@ -280,15 +295,40 @@ LMLINE_EXPLAIN_DETAIL=verbose LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lml
 grep -q 'invalid LMLINE_EXPLAIN_DETAIL' /tmp/lmline-bad-detail.err || fail "payload explain invalid detail error"
 grep -q 'suggested_commands' <<<"$payload_out" || fail "payload context"
 grep -q '"tools":' <<<"$payload_out" || fail "default auto payload tools"
+! grep -q '"name": "git_status"' <<<"$payload_out" || fail "default payload sent git_status tool"
+! grep -q '"name": "file_excerpt"' <<<"$payload_out" || fail "default payload sent file_excerpt tool"
+! grep -q '"name": "command_run_readonly"' <<<"$payload_out" || fail "default payload sent readonly run tool"
 ! grep -q '## available_commands' <<<"$payload_out" || fail "payload sent full command list"
 ! grep -q '## files' <<<"$payload_out" || fail "payload sent file list"
 ! grep -q '## recent_history' <<<"$payload_out" || fail "payload sent history"
 ! grep -q '## edit_tendencies' <<<"$payload_out" || fail "payload sent lmline history"
+minimal_payload_out=$(LANG=ja_JP.UTF-8 LMLINE_INCLUDE_SHELL_CONTEXT=0 LMLINE_INCLUDE_CWD_CONTEXT=0 LMLINE_INCLUDE_EDITOR_CONTEXT=0 LMLINE_INCLUDE_LOCALE_CONTEXT=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
+! grep -q 'Shell:' <<<"$minimal_payload_out" || fail "payload shell context opt-out"
+! grep -q 'CWD:' <<<"$minimal_payload_out" || fail "payload cwd context opt-out"
+! grep -q 'Cursor point:' <<<"$minimal_payload_out" || fail "payload editor context opt-out"
+! grep -q 'Locale:' <<<"$minimal_payload_out" || fail "payload locale context opt-out"
+! grep -q 'Locale variables:' <<<"$minimal_payload_out" || fail "payload locale variables opt-out"
+! grep -q 'Response language: Japanese' <<<"$minimal_payload_out" || fail "payload derived locale despite opt-out"
+grep -q 'Response language: English' <<<"$minimal_payload_out" || fail "payload default response language after locale opt-out"
+secure_payload_out=$(LANG=ja_JP.UTF-8 LMLINE_TOOL_MODE=none LMLINE_INCLUDE_SHELL_CONTEXT=0 LMLINE_INCLUDE_CWD_CONTEXT=0 LMLINE_INCLUDE_GIT_CONTEXT=0 LMLINE_INCLUDE_PROJECT_CONTEXT=0 LMLINE_INCLUDE_EDITOR_CONTEXT=0 LMLINE_INCLUDE_LOCALE_CONTEXT=0 LMLINE_INCLUDE_SUGGESTED_COMMANDS=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
+! grep -q '## shell' <<<"$secure_payload_out" || fail "secure payload sent shell context"
+! grep -q '## cwd' <<<"$secure_payload_out" || fail "secure payload sent cwd context"
+! grep -q '## git' <<<"$secure_payload_out" || fail "secure payload sent git context"
+! grep -q '## project_type' <<<"$secure_payload_out" || fail "secure payload sent project context"
+! grep -q '## suggested_commands' <<<"$secure_payload_out" || fail "secure payload sent suggested commands"
+! grep -q '## available_tools' <<<"$secure_payload_out" || fail "secure payload sent available tools"
+! grep -q '"tools": \[' <<<"$secure_payload_out" || fail "secure payload sent native tools"
 tool_payload_out=$(LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
 grep -q '"tools":' <<<"$tool_payload_out" || fail "payload tools"
 grep -q '"name": "command_exists"' <<<"$tool_payload_out" || fail "payload command_exists tool"
 grep -q '"name": "command_info"' <<<"$tool_payload_out" || fail "payload command_info tool"
 grep -q 'runs command -v' <<<"$tool_payload_out" || fail "payload tool action"
+git_tool_payload_out=$(LMLINE_TOOL_GIT_STATUS=1 LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
+grep -q '"name": "git_status"' <<<"$git_tool_payload_out" || fail "payload git_status tool opt-in"
+excerpt_tool_payload_out=$(LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# inspect a config file")
+grep -q '"name": "file_excerpt"' <<<"$excerpt_tool_payload_out" || fail "payload file_excerpt tool opt-in"
+readonly_tool_payload_out=$(LMLINE_TOOL_COMMAND_RUN_READONLY=1 LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# count lines")
+grep -q '"name": "command_run_readonly"' <<<"$readonly_tool_payload_out" || fail "payload readonly run tool opt-in"
 explain_tool_payload_out=$(LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload explain "date -r")
 grep -q '"tools":' <<<"$explain_tool_payload_out" || fail "explain payload tools"
 grep -q '"name": "command_info"' <<<"$explain_tool_payload_out" || fail "explain payload command_info tool"
@@ -300,12 +340,17 @@ grep -q 'untrusted data' <<<"$no_tool_payload_out" || fail "no-tool payload omit
 grep -q 'untrusted data' <<<"$tool_payload_out" || fail "tool payload omitted untrusted data warning"
 date_rewrite_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload rewrite 'date +"%Y/%m/%d %H:%M:%S (%Z)" #ニューヨーク時間を出したい')
 grep -q 'Parsed inline intent:' <<<"$date_rewrite_payload_out" || fail "rewrite payload parsed inline intent"
-grep -q 'Command before inline comment:' <<<"$date_rewrite_payload_out" || fail "rewrite payload command before comment"
+grep -q 'Command before inline intent:' <<<"$date_rewrite_payload_out" || fail "rewrite payload command before intent"
 grep -q 'Inline user intent:' <<<"$date_rewrite_payload_out" || fail "rewrite payload inline intent"
 grep -q 'IANA timezone name' <<<"$date_rewrite_payload_out" || fail "rewrite payload timezone instruction"
 url_comment_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload rewrite 'curl http://x.com#frag # fetch')
 grep -q 'curl http://x.com#frag ' <<<"$url_comment_payload_out" || fail "rewrite payload preserves url fragment before comment"
 grep -q 'Inline user intent:' <<<"$url_comment_payload_out" || fail "rewrite payload url inline intent"
+inline_generate_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate 'grep ERROR app.log # count by user')
+grep -q 'Mode: generate' <<<"$inline_generate_payload_out" || fail "generate payload mode"
+grep -q 'Command before inline intent:' <<<"$inline_generate_payload_out" || fail "generate payload command before intent"
+grep -q 'grep ERROR app.log ' <<<"$inline_generate_payload_out" || fail "generate payload preserves inline prefix"
+grep -q 'append only the missing suffix' <<<"$inline_generate_payload_out" || fail "generate payload append-only instruction"
 disabled_tool_payload_out=$(LMLINE_TOOL_FILES=0 LMLINE_TOOL_COMMAND_INFO=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
 grep -q '"name": "command_exists"' <<<"$disabled_tool_payload_out" || fail "enabled command_exists tool omitted"
 grep -q '"name": "commands"' <<<"$disabled_tool_payload_out" || fail "enabled commands tool omitted"
@@ -328,6 +373,42 @@ printf 'node_modules\n.git\n' >"$cfg_tmp/config/file_search_excludes.txt"
 files_out=$(cd "$files_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_collect_files' _ "$repo_dir")
 grep -q '^src/kept.sh$' <<<"$files_out" || fail "collect files kept source file"
 ! grep -q 'node_modules' <<<"$files_out" || fail "collect files excluded node_modules"
+
+excerpt_tmp="$cfg_tmp/file-excerpt"
+mkdir -p "$excerpt_tmp"
+printf 'alpha\nbeta needle\ngamma\n' >"$excerpt_tmp/notes.txt"
+excerpt_out=$(cd "$excerpt_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_file_excerpt notes.txt' _ "$repo_dir")
+grep -q '^path=notes.txt$' <<<"$excerpt_out" || fail "file excerpt path"
+grep -q '^BEGIN_UNTRUSTED_FILE_EXCERPT$' <<<"$excerpt_out" || fail "file excerpt block"
+grep -q '^| alpha$' <<<"$excerpt_out" || fail "file excerpt content"
+match_out=$(cd "$excerpt_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_file_excerpt notes.txt needle' _ "$repo_dir")
+grep -q '^query=needle$' <<<"$match_out" || fail "file excerpt query"
+grep -q '^| 2:beta needle$' <<<"$match_out" || fail "file excerpt query match"
+outside_out=$(cd "$excerpt_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_file_excerpt ../outside.txt' _ "$repo_dir")
+grep -q '^error=invalid_relative_path$' <<<"$outside_out" || fail "file excerpt rejects parent path"
+
+readonly_tmp="$cfg_tmp/readonly-run"
+mkdir -p "$readonly_tmp"
+readonly_ok=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "printf '\''%s\n'\'' ok"' _ "$repo_dir")
+grep -q '^allowed=1$' <<<"$readonly_ok" || fail "readonly run allowed"
+grep -q '^exit_status=0$' <<<"$readonly_ok" || fail "readonly run status"
+grep -q '^| ok$' <<<"$readonly_ok" || fail "readonly run stdout"
+readonly_redirect=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "echo hi > out.txt"' _ "$repo_dir")
+grep -q '^allowed=0$' <<<"$readonly_redirect" || fail "readonly run rejected redirect"
+grep -q '^reason=unsupported_shell_syntax$' <<<"$readonly_redirect" || fail "readonly run redirect reason"
+readonly_high=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "rm -rf build"' _ "$repo_dir")
+grep -q '^reason=risk_not_low$' <<<"$readonly_high" || fail "readonly run risk reason"
+readonly_path=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "cat /etc/passwd"' _ "$repo_dir")
+grep -q '^reason=unsafe_path_or_expansion$' <<<"$readonly_path" || fail "readonly run absolute path reason"
+readonly_quoted_path=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "cat '\''/etc/passwd'\''"' _ "$repo_dir")
+grep -q '^reason=unsafe_path_or_expansion$' <<<"$readonly_quoted_path" || fail "readonly run quoted absolute path reason"
+readonly_find=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "find . -fprint out.txt"' _ "$repo_dir")
+grep -q '^reason=command_not_readonly$' <<<"$readonly_find" || fail "readonly run find write option reason"
+printf 'sed-ok\n' >"$readonly_tmp/notes.txt"
+printf 'sed\n' >"$readonly_tmp/readonly_commands.txt"
+readonly_custom=$(cd "$readonly_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_READONLY_COMMANDS_FILE="$readonly_tmp/readonly_commands.txt" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_command_run_readonly "sed -n 1p notes.txt"' _ "$repo_dir")
+grep -q '^allowed=1$' <<<"$readonly_custom" || fail "readonly run custom allowlist"
+grep -q '^| sed-ok$' <<<"$readonly_custom" || fail "readonly run custom allowlist output"
 
 rm -rf "$cfg_tmp"
 ok "cli, config, and profiles"

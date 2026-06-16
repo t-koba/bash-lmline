@@ -9,7 +9,15 @@
 : "${LMLINE_TOOL_INFO_LINE_BYTES:=240}"
 : "${LMLINE_TOOL_INFO_TIMEOUT:=2}"
 : "${LMLINE_INCLUDE_SUGGESTED_COMMANDS:=1}"
+: "${LMLINE_INCLUDE_SHELL_CONTEXT:=1}"
+: "${LMLINE_INCLUDE_CWD_CONTEXT:=1}"
+: "${LMLINE_INCLUDE_GIT_CONTEXT:=1}"
+: "${LMLINE_INCLUDE_PROJECT_CONTEXT:=1}"
 : "${LMLINE_TOOL_MODE:=auto}"
+: "${LMLINE_TOOL_GIT_STATUS_LINES:=80}"
+: "${LMLINE_TOOL_FILE_EXCERPT_LINES:=80}"
+: "${LMLINE_TOOL_COMMAND_RUN_READONLY_TIMEOUT:=3}"
+: "${LMLINE_TOOL_COMMAND_RUN_READONLY_MAX_OUTPUT:=12000}"
 
 __LMLINE_CONTEXT_DIR=${BASH_SOURCE[0]%/*}
 [[ $__LMLINE_CONTEXT_DIR == "${BASH_SOURCE[0]}" ]] && __LMLINE_CONTEXT_DIR=.
@@ -21,6 +29,20 @@ fi
 __lmline_init_dirs "$__LMLINE_CONTEXT_DIR"
 
 # Command and project context collection
+
+__lmline_context_enabled() {
+  local var=$1 default=${2:-1} value
+  if declare -p "$var" >/dev/null 2>&1; then
+    value=${!var}
+    [[ -n "$value" ]] || value=$default
+  else
+    value=$default
+  fi
+  case "$value" in
+    0|false|FALSE|off|OFF|no|NO) return 1 ;;
+    *) return 0 ;;
+  esac
+}
 
 __lmline_collect_all_commands() {
   {
@@ -36,7 +58,7 @@ __lmline_collect_all_commands() {
 
 __lmline_collect_suggested_commands() {
   local c file commands
-  [[ "${LMLINE_INCLUDE_SUGGESTED_COMMANDS:-1}" == 1 ]] || return 0
+  __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || return 0
   file=$(__lmline_resolve_data_file suggested_commands \
     "${LMLINE_SUGGESTED_COMMANDS_FILE:-}" \
     "$LMLINE_USER_RULES_DIR/suggested_commands.txt" \
@@ -89,6 +111,30 @@ files query=<short file-name/path fragment>
   Output: relative file names, one per line.
 EOF
   fi
+  if __lmline_tool_enabled git_status; then
+    cat <<'EOF'
+git_status
+  Local action: git --no-optional-locks status --short --branch in the current repository.
+  Input: none.
+  Output: bounded untrusted status lines, including branch and changed file paths.
+EOF
+  fi
+  if __lmline_tool_enabled file_excerpt; then
+    cat <<'EOF'
+file_excerpt path=<relative path> [query=<literal text>]
+  Local action: read one regular text file under the current directory.
+  Input: a relative file path; optional literal query limits output to matching lines.
+  Output: bounded untrusted file metadata and excerpt lines.
+EOF
+  fi
+  if __lmline_tool_enabled command_run_readonly; then
+    cat <<'EOF'
+command_run_readonly command=<single shell command>
+  Local action: execute one low-risk read-only command line with timeout and output limits.
+  Input: a single shell command using only configured read-only command names; pipelines are allowed, but redirection, command substitution, background jobs, and command-list separators are rejected.
+  Output: exit status and bounded untrusted stdout/stderr.
+EOF
+  fi
 }
 
 __lmline_tool_enabled() {
@@ -98,9 +144,16 @@ __lmline_tool_enabled() {
     commands) var=LMLINE_TOOL_COMMANDS ;;
     command_info) var=LMLINE_TOOL_COMMAND_INFO ;;
     files) var=LMLINE_TOOL_FILES ;;
+    git_status) var=LMLINE_TOOL_GIT_STATUS ;;
+    file_excerpt) var=LMLINE_TOOL_FILE_EXCERPT ;;
+    command_run_readonly) var=LMLINE_TOOL_COMMAND_RUN_READONLY ;;
     *) return 1 ;;
   esac
-  value=${!var-1}
+  if [[ "$name" == git_status || "$name" == file_excerpt || "$name" == command_run_readonly ]]; then
+    value=${!var-0}
+  else
+    value=${!var-1}
+  fi
   case "$value" in
     0|false|FALSE|off|OFF|no|NO) return 1 ;;
     *) return 0 ;;
@@ -243,6 +296,203 @@ __lmline_tool_files() {
       cat
     fi |
     sed -n "1,${LMLINE_TOOL_FILES_LIMIT}p"
+}
+
+__lmline_tool_git_status() {
+  local max_lines=${LMLINE_TOOL_GIT_STATUS_LINES:-80} root
+  [[ "$max_lines" =~ ^[1-9][0-9]*$ ]] || max_lines=80
+  if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf 'repository=none\n'
+    return 0
+  fi
+  root=$(git rev-parse --show-toplevel 2>/dev/null || printf '')
+  [[ -n "$root" ]] && printf 'root=%s\n' "$root"
+  git --no-optional-locks -c core.quotepath=false status --short --branch --untracked-files=normal 2>/dev/null |
+    __lmline_safe_tool_text "$max_lines" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
+}
+
+__lmline_tool_file_excerpt() {
+  local path=${1-} query=${2-} max_lines=${LMLINE_TOOL_FILE_EXCERPT_LINES:-80}
+  local dir base cwd_real dir_real file_real size lines safe_query
+  [[ "$max_lines" =~ ^[1-9][0-9]*$ ]] || max_lines=80
+  path=${path#./}
+  if [[ -z "$path" ]]; then
+    printf 'error=missing_path\n'
+    return 0
+  fi
+  case "$path" in
+    /*|..|../*|*/..|*/../*)
+      printf 'error=invalid_relative_path\n'
+      return 0
+      ;;
+  esac
+  dir=${path%/*}
+  base=${path##*/}
+  [[ "$dir" == "$path" ]] && dir=.
+  if ! cwd_real=$(pwd -P 2>/dev/null) || ! dir_real=$(cd -P -- "$dir" 2>/dev/null && pwd -P); then
+    printf 'error=path_not_found\n'
+    return 0
+  fi
+  file_real=$dir_real/$base
+  case "$file_real" in
+    "$cwd_real"/*) ;;
+    *)
+      printf 'error=path_outside_cwd\n'
+      return 0
+      ;;
+  esac
+  if [[ -L "$file_real" ]]; then
+    printf 'error=symlink_not_supported\n'
+    return 0
+  fi
+  if [[ ! -f "$file_real" || ! -r "$file_real" ]]; then
+    printf 'error=file_not_readable\n'
+    return 0
+  fi
+  if [[ -s "$file_real" ]] && ! LC_ALL=C grep -Iq . "$file_real" 2>/dev/null; then
+    printf 'error=binary_or_non_text\n'
+    return 0
+  fi
+  size=$(wc -c <"$file_real" 2>/dev/null | tr -d '[:space:]')
+  lines=$(wc -l <"$file_real" 2>/dev/null | tr -d '[:space:]')
+  printf 'path=%s\n' "$path"
+  printf 'bytes=%s\n' "${size:-0}"
+  printf 'lines=%s\n' "${lines:-0}"
+  if [[ -n "$query" ]]; then
+    safe_query=$(printf '%s\n' "$query" | __lmline_safe_tool_text 1 "${LMLINE_TOOL_INFO_LINE_BYTES:-240}" | sed -n '1p')
+    printf 'query=%s\n' "$safe_query"
+    LC_ALL=C grep -n -iF -- "$query" "$file_real" 2>/dev/null |
+      __lmline_tool_data_block "FILE_MATCHES" "$max_lines" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
+  else
+    sed -n "1,${max_lines}p" "$file_real" 2>/dev/null |
+      __lmline_tool_data_block "FILE_EXCERPT" "$max_lines" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
+  fi
+}
+
+__lmline_readonly_commands_file() {
+  __lmline_resolve_data_file readonly_commands \
+    "${LMLINE_READONLY_COMMANDS_FILE:-}" \
+    "$LMLINE_USER_RULES_DIR/readonly_commands.txt" \
+    "$LMLINE_DEFAULTS_DIR/readonly_commands.txt"
+}
+
+__lmline_readonly_command_allowed() {
+  local command_name=$1 file
+  file=$(__lmline_readonly_commands_file) || return 1
+  __lmline_read_list_file "$file" | grep -Fxq -- "$command_name"
+}
+
+__lmline_require_policy_support() {
+  if ! declare -F __lmline_risk_level >/dev/null 2>&1; then
+    # shellcheck source=lmline/policy.bash
+    source "$__LMLINE_CONTEXT_DIR/policy.bash"
+  fi
+}
+
+__lmline_readonly_segment_allowed() {
+  local segment=$1 cmd="" token
+  for token in $segment; do
+    [[ "$token" == *=* && "$token" != */* ]] && continue
+    if __lmline_word_is_command_prefix "$token"; then
+      continue
+    fi
+    token=${token#\"}; token=${token%\"}
+    token=${token#\'}; token=${token%\'}
+    cmd=$token
+    break
+  done
+  [[ -n "$cmd" ]] || return 1
+  __lmline_readonly_command_allowed "$cmd" || return 1
+  case "$cmd" in
+    find)
+      case " $segment " in
+        *" -delete "*|*" -exec "*|*" -execdir "*|*" -ok "*|*" -okdir "*|*" -fls "*|*" -fprint "*|*" -fprint0 "*|*" -fprintf "*) return 1 ;;
+      esac
+      ;;
+  esac
+  return 0
+}
+
+__lmline_command_run_readonly_rejection_reason() {
+  local command_line=$1 risk segment token clean_token
+  [[ -n "${command_line//[[:space:]]/}" ]] || { printf 'empty_command\n'; return 0; }
+  [[ "$command_line" != *$'\n'* && "$command_line" != *$'\r'* ]] || { printf 'multiline\n'; return 0; }
+  if [[ "$command_line" == *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]]; then
+    printf 'control_character\n'
+    return 0
+  fi
+  case "$command_line" in
+    *'`'*|*'$('*|*'${'*|*'<('*|*'>('*|*'<'*|*'>'*|*';'*|*'&'*|*'('*|*')'*|*'{'*|*'}'*)
+      printf 'unsupported_shell_syntax\n'
+      return 0
+      ;;
+    *'||'*|*'|&'*)
+      printf 'unsupported_shell_syntax\n'
+      return 0
+      ;;
+  esac
+  __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
+  bash -n -c "$command_line" >/dev/null 2>&1 || { printf 'shell_syntax\n'; return 0; }
+  risk=$(__lmline_risk_level "$command_line") || { printf 'policy_unavailable\n'; return 0; }
+  [[ "$risk" == low ]] || { printf 'risk_not_low\n'; return 0; }
+  __lmline_validate_candidate "$command_line" || { printf 'candidate_rejected:%s\n' "$(__lmline_candidate_rejection_reason "$command_line")"; return 0; }
+  while IFS= read -r segment; do
+    [[ -n "${segment//[[:space:]]/}" ]] || continue
+    for token in $segment; do
+      clean_token=${token#\"}; clean_token=${clean_token%\"}
+      clean_token=${clean_token#\'}; clean_token=${clean_token%\'}
+      case "$clean_token" in
+        /*|~*|..|../*|*/..|*/../*|*=/*|*=~*|*=..|*=../*|*=/../*|*\$*)
+          printf 'unsafe_path_or_expansion\n'
+          return 0
+          ;;
+      esac
+    done
+    __lmline_readonly_segment_allowed "$segment" || { printf 'command_not_readonly\n'; return 0; }
+  done < <(__lmline_split_pipeline "$command_line" 1)
+  printf 'ok\n'
+}
+
+__lmline_tool_command_run_readonly() {
+  local command_line=${1-} timeout_s=${LMLINE_TOOL_COMMAND_RUN_READONLY_TIMEOUT:-3}
+  local max_output=${LMLINE_TOOL_COMMAND_RUN_READONLY_MAX_OUTPUT:-12000}
+  local rejection tmp status=0 stdout_bytes stderr_bytes
+  [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
+  [[ "$max_output" =~ ^[1-9][0-9]*$ ]] || max_output=12000
+  rejection=$(__lmline_command_run_readonly_rejection_reason "$command_line")
+  if [[ "$rejection" != ok ]]; then
+    printf 'allowed=0\n'
+    printf 'reason=%s\n' "$rejection"
+    return 0
+  fi
+  if ! command -v timeout >/dev/null 2>&1; then
+    printf 'allowed=0\n'
+    printf 'reason=timeout_command_missing\n'
+    return 0
+  fi
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-readonly-run.XXXXXX") || {
+    printf 'allowed=0\nreason=tempdir_failed\n'
+    return 0
+  }
+  timeout "$timeout_s" bash -lc "$command_line" >"$tmp/stdout" 2>"$tmp/stderr" || status=$?
+  __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
+  __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
+  stdout_bytes=$(wc -c <"$tmp/stdout" 2>/dev/null | tr -d '[:space:]')
+  stderr_bytes=$(wc -c <"$tmp/stderr" 2>/dev/null | tr -d '[:space:]')
+  printf 'allowed=1\n'
+  printf 'exit_status=%s\n' "$status"
+  case "$status" in 124|137|143) printf 'timed_out=1\n' ;; *) printf 'timed_out=0\n' ;; esac
+  printf 'stdout_bytes=%s\n' "${stdout_bytes:-0}"
+  printf 'stderr_bytes=%s\n' "${stderr_bytes:-0}"
+  printf 'stdout_truncated_to_bytes=%s\n' "$max_output"
+  printf 'stderr_truncated_to_bytes=%s\n' "$max_output"
+  if [[ -s "$tmp/stdout" ]]; then
+    __lmline_tool_data_block "STDOUT" "$((max_output / 80 + 1))" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}" <"$tmp/stdout"
+  fi
+  if [[ -s "$tmp/stderr" ]]; then
+    __lmline_tool_data_block "STDERR" "$((max_output / 80 + 1))" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}" <"$tmp/stderr"
+  fi
+  rm -rf "$tmp"
 }
 
 # Command summarization for explain/context output
@@ -432,22 +682,29 @@ __lmline_context_file() {
   local line=${2-}
   local suggested_commands available_tools
   {
-    printf '## shell\n'
-    printf 'bash=%s\n' "${BASH_VERSION-}"
-    printf 'ostype=%s\n' "${OSTYPE-}"
-    command -v uname >/dev/null 2>&1 && uname -a 2>/dev/null | sed 's/^/uname=/'
+    if __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; then
+      printf '## shell\n'
+      printf 'bash=%s\n' "${BASH_VERSION-}"
+      printf 'ostype=%s\n' "${OSTYPE-}"
+      command -v uname >/dev/null 2>&1 && uname -a 2>/dev/null | sed 's/^/uname=/'
+    fi
 
-    printf '\n## cwd\n'
-    pwd -P
+    if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
+      printf '\n## cwd\n'
+      pwd -P
+    fi
 
-    if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if __lmline_context_enabled LMLINE_INCLUDE_GIT_CONTEXT &&
+      command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       printf '\n## git\n'
       printf 'root=%s\n' "$(git rev-parse --show-toplevel 2>/dev/null)"
       printf 'branch=%s\n' "$(git branch --show-current 2>/dev/null)"
     fi
 
-    printf '\n## project_type\n'
-    __lmline_project_type | sort -u
+    if __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT; then
+      printf '\n## project_type\n'
+      __lmline_project_type | sort -u
+    fi
 
     suggested_commands=$(__lmline_collect_suggested_commands) || return 1
     if [[ -n "$suggested_commands" ]]; then

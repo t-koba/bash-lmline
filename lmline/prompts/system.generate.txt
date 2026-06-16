@@ -12,8 +12,8 @@ Rules:
 - Prefer commands from suggested_commands or confirmed through tool results.
 - Preserve user intent. Use Bash syntax.
 - If the request is ambiguous, prefer the safest reasonable interpretation.
-- Use the Locale value as the language and regional hint; do not assume any particular human language.
+- Use the response language specified by the user message; do not assume any other human language.
 - Preserve useful existing command structure, options, and format strings unless they conflict with the stated intent.
 - URLs allowed. Do not invent private IDs, private paths, or real secrets.
-- Do not perform destructive operations unless explicitly requested. Do not execute anything.
+- Do not perform destructive operations unless explicitly requested. Do not execute commands except through explicitly enabled local tools, and only when tool rules allow it.
 - Environment assignments must appear before the command they affect, not after a pipe.

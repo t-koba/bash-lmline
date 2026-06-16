@@ -181,18 +181,7 @@ __lmline_zsh_engine_hint() {
 }
 
 __lmline_zsh_mode() {
-  local line=$1
-  local trimmed=${line%"${line##*[![:space:]]}"}
-  case "$line" in
-    '# '*|'#'*|'?'|'? '*) print -r -- generate ;;
-    '') print -r -- generate ;;
-    *)
-      case "$trimmed" in
-        *'|'|*'||'|*'&&'|*';'|*'>'|*'>>'|*'\\') print -r -- continue ;;
-        *) print -r -- rewrite ;;
-      esac
-      ;;
-  esac
+  print -r -- generate
 }
 
 __lmline_zsh_run_bridge() {
