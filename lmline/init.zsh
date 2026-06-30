@@ -570,15 +570,37 @@ _lmline() {
           if [[ "$words[4]" == --tool-mode ]]; then
             compadd -- auto openai text none
           else
-            compadd -- --auth-header --auth-scheme --temperature --max-tokens --tool-mode --help
+            compadd -- --auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help
           fi
           ;;
         endpoint:remove) compadd -- --keep-secret --help ;;
         model:add)
           if [[ "$words[4]" == --tool-mode ]]; then
             compadd -- auto openai text none
+          elif [[ "$words[4]" == --api-format ]]; then
+            compadd -- chat responses messages
           else
-            compadd -- --temperature --max-tokens --tool-mode --help
+            compadd -- --temperature --max-tokens --tool-mode --api-format --help
+          fi
+          ;;
+      esac
+      ;;
+    *)
+      case "$words[2]:$words[3]" in
+        endpoint:add)
+          if [[ "${words[$((CURRENT - 1))]}" == --tool-mode ]]; then
+            compadd -- auto openai text none
+          else
+            compadd -- --auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help
+          fi
+          ;;
+        model:add)
+          if [[ "${words[$((CURRENT - 1))]}" == --tool-mode ]]; then
+            compadd -- auto openai text none
+          elif [[ "${words[$((CURRENT - 1))]}" == --api-format ]]; then
+            compadd -- chat responses messages
+          else
+            compadd -- --temperature --max-tokens --tool-mode --api-format --help
           fi
           ;;
       esac

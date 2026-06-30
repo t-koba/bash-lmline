@@ -41,14 +41,23 @@ __lmline_trace_meta() {
   } >"$LMLINE_TRACE_DIR/$trace_id.meta" 2>/dev/null || true
 }
 
+__lmline_api_path() {
+  case "$1" in
+    responses) printf '/responses' ;;
+    messages) printf '/messages' ;;
+    *) printf '/chat/completions' ;;
+  esac
+}
+
 __lmline_curl_chat() {
+  local api_format=${__lmline_request_api_format:-${LMLINE_API_FORMAT:-chat}}
   curl -sS --max-time "$LMLINE_ENGINE_TIMEOUT" \
     -o "$1" \
     -w '%{http_code}\t%{content_type}' \
     "${curl_headers[@]}" \
     -X POST \
     --data-binary @"$2" \
-    "$base/chat/completions" 2>"$err_file"
+    "$base$(__lmline_api_path "$api_format")" 2>"$err_file"
 }
 
 # Retries transient failures (curl errors, HTTP 429/502/503/504) up to
@@ -83,6 +92,54 @@ __lmline_record_usage() {
   completion=$(jq -r '.usage.completion_tokens // .usage.output_tokens // 0' "$response" 2>/dev/null || printf '0')
   total=$(jq -r '.usage.total_tokens // ((.usage.prompt_tokens // .usage.input_tokens // 0) + (.usage.completion_tokens // .usage.output_tokens // 0)) // 0' "$response" 2>/dev/null || printf '0')
   printf '%s\t%s\t%s\t%s\n' "$model" "$prompt" "$completion" "$total" >>"$usage_file"
+}
+
+__lmline_normalize_response() {
+  local api_format=$1 response=$2 tmp
+  case "$api_format" in
+    chat) return 0 ;;
+    responses)
+      tmp=$response.normalized
+      jq '
+        def response_text:
+          .output_text //
+          ([.output[]?.content[]? |
+            if (.type == "output_text" or .type == "text") then (.text // "")
+            else empty end] | join(""));
+        {
+          model: (.model // ""),
+          usage: (.usage // {}),
+          choices: [{
+            message: {role: "assistant", content: response_text},
+            finish_reason: (.status // .finish_reason // "stop")
+          }]
+        }
+      ' "$response" >"$tmp" && mv "$tmp" "$response"
+      ;;
+    messages)
+      tmp=$response.normalized
+      jq '
+        {
+          model: (.model // ""),
+          usage: {
+            input_tokens: (.usage.input_tokens // 0),
+            output_tokens: (.usage.output_tokens // 0),
+            total_tokens: ((.usage.input_tokens // 0) + (.usage.output_tokens // 0))
+          },
+          choices: [{
+            message: {
+              role: "assistant",
+              content: ([.content[]? |
+                if (.type == "text") then (.text // "")
+                elif (.text? != null) then (.text // "")
+                else empty end] | join(""))
+            },
+            finish_reason: (.stop_reason // "stop")
+          }]
+        }
+      ' "$response" >"$tmp" && mv "$tmp" "$response"
+      ;;
+  esac
 }
 
 __lmline_tool_short_name() {
@@ -156,9 +213,43 @@ __lmline_emit_status() {
   printf 'lmline-status: m=%s; %s\n' "$usage_model" "$extra_text" >&2
 }
 
+__lmline_response_error_detail() {
+  local response=$1 content_type=${2-} detail
+  case "$content_type" in
+    *json*)
+      if jq -e '.error.message' "$response" >/dev/null 2>&1; then
+        detail=$(jq -r '.error.message' "$response" | head -c 300)
+      elif jq -e '.' "$response" >/dev/null 2>&1; then
+        detail=$(jq -c '.' "$response" | head -c 300)
+      else
+        detail=$(head -c 200 "$response" | tr '\n' ' ')
+      fi
+      ;;
+    *)
+      detail=$(head -c 200 "$response" | tr '\n' ' ')
+      if [[ -n "$detail" ]]; then
+        detail="non-JSON error response${content_type:+ ($content_type)}: $detail"
+      else
+        detail="non-JSON error response${content_type:+ ($content_type)}"
+      fi
+      ;;
+  esac
+  printf '%s\n' "$detail"
+}
+
+__lmline_report_request_failure() {
+  local http_code=$1 content_type=${2-} response=$3 detail
+  detail=$(__lmline_response_error_detail "$response" "$content_type")
+  if [[ -n "$detail" ]]; then
+    printf 'lmline-engine: request failed: HTTP %s: %s\n' "$http_code" "$detail" >&2
+  else
+    printf 'lmline-engine: request failed: HTTP %s\n' "$http_code" >&2
+  fi
+}
+
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
-  local curl_meta http_code content_type detail retry_payload retry_meta retry_code retry_content_type
+  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
       printf 'lmline-engine: request failed: %s\n' "$(sed -n '1p' "$err_file")" >&2
       return 1
@@ -166,6 +257,10 @@ __lmline_post_chat() {
   IFS=$'\t' read -r http_code content_type <<<"$curl_meta"
   case "$http_code" in
     2??)
+      __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
+        printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
+        return 1
+      }
       __lmline_trace_file "$label" "$response"
       __lmline_record_usage "$response"
       ;;
@@ -181,6 +276,10 @@ __lmline_post_chat() {
         IFS=$'\t' read -r retry_code retry_content_type <<<"$retry_meta"
         case "$retry_code" in
           2??)
+            __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
+              printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
+              return 1
+            }
             __lmline_trace_file "${label%.json}.auto-text-response.json" "$response"
             __lmline_record_usage "$response"
             return 0
@@ -189,30 +288,7 @@ __lmline_post_chat() {
         http_code=$retry_code
         content_type=$retry_content_type
       fi
-      case "$content_type" in
-        *json*)
-          if jq -e '.error.message' "$response" >/dev/null 2>&1; then
-            detail=$(jq -r '.error.message' "$response" | head -c 300)
-          elif jq -e '.' "$response" >/dev/null 2>&1; then
-            detail=$(jq -c '.' "$response" | head -c 300)
-          else
-            detail=$(head -c 200 "$response" | tr '\n' ' ')
-          fi
-          ;;
-        *)
-          detail=$(head -c 200 "$response" | tr '\n' ' ')
-          if [[ -n "$detail" ]]; then
-            detail="non-JSON error response${content_type:+ ($content_type)}: $detail"
-          else
-            detail="non-JSON error response${content_type:+ ($content_type)}"
-          fi
-          ;;
-      esac
-      if [[ -n "$detail" ]]; then
-        printf 'lmline-engine: request failed: HTTP %s: %s\n' "$http_code" "$detail" >&2
-      else
-        printf 'lmline-engine: request failed: HTTP %s\n' "$http_code" >&2
-      fi
+      __lmline_report_request_failure "$http_code" "$content_type" "$response"
       return 1
       ;;
   esac
@@ -290,8 +366,60 @@ __lmline_tool_definitions_json() {
 JSON
 }
 
+__lmline_payload_for_format() {
+  local api_format=$1 source=$2 out=$3
+  case "$api_format" in
+    chat)
+      cp "$source" "$out"
+      ;;
+    responses)
+      jq '
+        def text_content($c):
+          if ($c | type) == "string" then $c
+          elif ($c | type) == "array" then
+            [$c[]? | if type == "string" then . else (.text // .content // empty) end] | join("")
+          else "" end;
+        .messages as $messages |
+        {
+          model: .model,
+          input: [$messages[]? | select(.role != "system") | {
+            role: (if .role == "assistant" then "assistant" else "user" end),
+            content: text_content(.content)
+          }],
+          instructions: ([$messages[]? | select(.role == "system") | text_content(.content)] | join("\n\n")),
+          temperature: .temperature,
+          max_output_tokens: .max_tokens,
+          stream: false
+        }
+      ' "$source" >"$out"
+      ;;
+    messages)
+      jq '
+        def text_content($c):
+          if ($c | type) == "string" then $c
+          elif ($c | type) == "array" then
+            [$c[]? | if type == "string" then . else (.text // .content // empty) end] | join("")
+          else "" end;
+        .messages as $messages |
+        {
+          model: .model,
+          system: ([$messages[]? | select(.role == "system") | text_content(.content)] | join("\n\n")),
+          messages: [$messages[]? | select(.role != "system") | {
+            role: (if .role == "assistant" then "assistant" else "user" end),
+            content: text_content(.content)
+          }],
+          temperature: .temperature,
+          max_tokens: .max_tokens,
+          stream: false
+        }
+      ' "$source" >"$out"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 __lmline_write_chat_payload() {
-  local messages_json=$1 out=$2 include_tools=${3:-0} tool_defs_file=$work_dir/tool-definitions.json enabled_tools=""
+  local messages_json=$1 out=$2 include_tools=${3:-0} tool_defs_file=$work_dir/tool-definitions.json enabled_tools="" api_format=${LMLINE_API_FORMAT:-chat}
   if [[ "$include_tools" == 1 ]]; then
     __lmline_tool_enabled command_exists && enabled_tools+="command_exists "
     __lmline_tool_enabled commands && enabled_tools+="commands "
@@ -301,28 +429,36 @@ __lmline_write_chat_payload() {
     __lmline_tool_enabled file_excerpt && enabled_tools+="file_excerpt "
     __lmline_tool_enabled command_run && enabled_tools+="command_run "
   fi
+  [[ "$api_format" == chat ]] || enabled_tools=
   __lmline_tool_definitions_json >"$tool_defs_file"
   jq -n \
-  --arg model "$LMLINE_MODEL" \
-  --slurpfile messages "$messages_json" \
-  --slurpfile tool_defs "$tool_defs_file" \
-  --arg tool_mode "$LMLINE_TOOL_MODE" \
-  --arg tool_choice "$LMLINE_TOOL_CHOICE" \
-  --arg enabled "$enabled_tools" \
-  --argjson temperature "$LMLINE_TEMPERATURE" \
-  --argjson max_tokens "$max_tokens" \
-  '{
-    model: $model,
-    messages: $messages[0],
-    temperature: $temperature,
-    max_tokens: $max_tokens,
-    stream: false
-  } + if ($enabled | length > 0) and ($tool_mode == "openai" or $tool_mode == "auto") then
-    {tools: [$tool_defs[0][] | select(.function.name as $n | $enabled | split(" ") | index($n))], tool_choice: $tool_choice}
-  else {} end' >"$out" || {
+    --arg model "$LMLINE_MODEL" \
+    --slurpfile messages "$messages_json" \
+    --slurpfile tool_defs "$tool_defs_file" \
+    --arg tool_mode "$LMLINE_TOOL_MODE" \
+    --arg tool_choice "$LMLINE_TOOL_CHOICE" \
+    --arg enabled "$enabled_tools" \
+    --argjson temperature "$LMLINE_TEMPERATURE" \
+    --argjson max_tokens "$max_tokens" \
+    '{
+      model: $model,
+      messages: $messages[0],
+      temperature: $temperature,
+      max_tokens: $max_tokens,
+      stream: false
+    } + if ($enabled | length > 0) and ($tool_mode == "openai" or $tool_mode == "auto") then
+      {tools: [$tool_defs[0][] | select(.function.name as $n | $enabled | split(" ") | index($n))], tool_choice: $tool_choice}
+    else {} end' >"$out" || {
     printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
     exit 1
   }
+  if [[ "$api_format" != chat ]]; then
+    __lmline_payload_for_format "$api_format" "$out" "$out.format" || {
+      printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+      exit 1
+    }
+    mv "$out.format" "$out"
+  fi
 }
 
 __lmline_flag_enabled() {
@@ -367,18 +503,8 @@ __lmline_summarize_tool_history() {
       "Current tool round: " + $round + " of " + $max_rounds + "\n\n" +
       "Untrusted tool outputs to summarize:\n" + $history
     )}]' >"$summary_messages"
-  jq -n \
-    --arg model "$LMLINE_MODEL" \
-    --slurpfile messages "$summary_messages" \
-    --argjson temperature 0 \
-    --argjson max_tokens "$LMLINE_TOOL_RESULT_SUMMARY_MAX_TOKENS" \
-    '{
-      model: $model,
-      messages: $messages[0],
-      temperature: $temperature,
-      max_tokens: $max_tokens,
-      stream: false
-    }' >"$summary_payload"
+  local max_tokens=$LMLINE_TOOL_RESULT_SUMMARY_MAX_TOKENS
+  __lmline_write_chat_payload "$summary_messages" "$summary_payload" 0
   __lmline_trace_file "request.summary.round-${round}.json" "$summary_payload"
   __lmline_post_chat "$summary_payload" "$summary_body" "response.summary.round-${round}.json" || exit 1
   summary=$(__lmline_response_content "$summary_body" | __lmline_strip_thinking)
@@ -606,8 +732,8 @@ __lmline_cache_eligible() {
 __lmline_cache_key() {
   {
     __lmline_request_key "$mode" "$line"
-    printf 'base=%s\nmodel=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
-      "$base" "$LMLINE_MODEL" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
+    printf 'base=%s\nmodel=%s\napi_format=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
+      "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
   } | __lmline_hash_stdin
 }
 
@@ -964,7 +1090,9 @@ __lmline_chat_run() {
   fi
 
   tool_round=0
-  if [[ "$mode" == explain || "$mode" == clip ]] && __lmline_flag_enabled "$LMLINE_STREAM"; then
+  if [[ "$mode" == explain || "$mode" == clip ]] &&
+    [[ "${LMLINE_API_FORMAT:-chat}" == chat ]] &&
+    __lmline_flag_enabled "$LMLINE_STREAM"; then
     if __lmline_stream_loop; then
       __lmline_cache_store "$emitted_file"
       exit 0

@@ -73,6 +73,39 @@ profile_require_tool_mode() {
   esac
 }
 
+profile_require_api_format() {
+  local value=$1
+  case "$value" in
+    ''|chat|responses|messages) ;;
+    *) printf 'lmline: invalid api_format: expected chat, responses, or messages\n' >&2; exit 2 ;;
+  esac
+}
+
+profile_require_regex() {
+  local label=$1 value=$2 status
+  profile_require_field "$label" "$value"
+  [[ -z "$value" ]] && return 0
+  if printf '' | grep -E -q -- "$value" >/dev/null 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  (( status != 2 )) || {
+    printf 'lmline: invalid %s: expected an extended regular expression\n' "$label" >&2
+    exit 2
+  }
+}
+
+profile_require_jq_expr() {
+  local label=$1 value=$2
+  profile_require_field "$label" "$value"
+  [[ -z "$value" ]] && return 0
+  jq -n "def __lmline_items: $value; null" >/dev/null 2>&1 || {
+    printf 'lmline: invalid %s: expected a jq expression\n' "$label" >&2
+    exit 2
+  }
+}
+
 profile_split_tsv() {
   local line=$1 sep=$'\034'
   shift
@@ -112,7 +145,9 @@ profile_upsert_line() {
 
 profile_endpoint_add() {
   local name=${1-} base_url=${2-} auth_header= auth_scheme= api_key_file= temperature= max_tokens= tool_mode=
-  local line old_header old_scheme old_temp old_tokens old_tool header_set=0 scheme_set=0
+  local models_url= models_jq= models_prefix= models_include= models_exclude=
+  local line old_header old_scheme old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude
+  local header_set=0 scheme_set=0 models_url_set=0 models_jq_set=0 models_prefix_set=0 models_include_set=0 models_exclude_set=0
   [[ -n "$name" && -n "$base_url" ]] || { usage; exit 2; }
   profile_require_name endpoint "$name"
   profile_require_url "$base_url"
@@ -124,16 +159,26 @@ profile_endpoint_add() {
       --temperature) temperature=${2-}; shift 2 ;;
       --max-tokens) max_tokens=${2-}; shift 2 ;;
       --tool-mode) tool_mode=${2-}; shift 2 ;;
+      --models-url) models_url=${2-}; models_url_set=1; shift 2 ;;
+      --models-jq) models_jq=${2-}; models_jq_set=1; shift 2 ;;
+      --models-prefix) models_prefix=${2-}; models_prefix_set=1; shift 2 ;;
+      --models-include) models_include=${2-}; models_include_set=1; shift 2 ;;
+      --models-exclude) models_exclude=${2-}; models_exclude_set=1; shift 2 ;;
       *) printf 'lmline: unknown endpoint option: %s\n' "$1" >&2; exit 2 ;;
     esac
   done
   if line=$(profile_find_line "$endpoints_file" "$name"); then
-    profile_split_tsv "$line" _ _ old_header old_scheme api_key_file old_temp old_tokens old_tool
+    profile_split_tsv "$line" _ _ old_header old_scheme api_key_file old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude
     (( header_set == 0 )) && auth_header=$old_header
     (( scheme_set == 0 )) && auth_scheme=$old_scheme
     [[ -z "$temperature" ]] && temperature=$old_temp
     [[ -z "$max_tokens" ]] && max_tokens=$old_tokens
     [[ -z "$tool_mode" ]] && tool_mode=$old_tool
+    (( models_url_set == 0 )) && models_url=$old_models_url
+    (( models_jq_set == 0 )) && models_jq=$old_models_jq
+    (( models_prefix_set == 0 )) && models_prefix=$old_models_prefix
+    (( models_include_set == 0 )) && models_include=$old_models_include
+    (( models_exclude_set == 0 )) && models_exclude=$old_models_exclude
   else
     (( header_set == 0 )) && auth_header=Authorization
     (( scheme_set == 0 )) && auth_scheme=Bearer
@@ -143,20 +188,25 @@ profile_endpoint_add() {
   profile_require_decimal temperature "$temperature"
   profile_require_positive_int max_tokens "$max_tokens"
   profile_require_tool_mode "$tool_mode"
-  profile_upsert_line "$endpoints_file" 1 "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$base_url" "$auth_header" "$auth_scheme" "$api_key_file" "$temperature" "$max_tokens" "$tool_mode")"
+  [[ -z "$models_url" ]] || profile_require_url "$models_url"
+  profile_require_jq_expr models_jq "$models_jq"
+  profile_require_field models_prefix "$models_prefix"
+  profile_require_regex models_include "$models_include"
+  profile_require_regex models_exclude "$models_exclude"
+  profile_upsert_line "$endpoints_file" 1 "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$base_url" "$auth_header" "$auth_scheme" "$api_key_file" "$temperature" "$max_tokens" "$tool_mode" "$models_url" "$models_jq" "$models_prefix" "$models_include" "$models_exclude")"
 }
 
 profile_endpoint_list() {
   [[ -f "$endpoints_file" ]] || return 0
-  awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8 }' "$endpoints_file"
+  awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8,$9,$10,$11,$12,$13 }' "$endpoints_file"
 }
 
 profile_endpoint_set_secret() {
-  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool secret_file safe_name
+  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude secret_file safe_name
   [[ -n "$name" ]] || { usage; exit 2; }
   profile_require_name endpoint "$name"
   line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$name" >&2; exit 2; }
-  profile_split_tsv "$line" _ base auth_header auth_scheme _ old_temp old_tokens old_tool
+  profile_split_tsv "$line" _ base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude
   if [[ -n "$value" ]]; then
     printf 'lmline: warning: secrets passed as command arguments can leak via shell history and ps; prefer the prompt: lmline endpoint set-secret %s\n' "$name" >&2
   fi
@@ -175,7 +225,7 @@ profile_endpoint_set_secret() {
   umask 077
   printf '%s' "$value" >"$secret_file"
   chmod 600 "$secret_file"
-  profile_upsert_line "$endpoints_file" 1 "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$base" "$auth_header" "$auth_scheme" "$secret_file" "$old_temp" "$old_tokens" "$old_tool")"
+  profile_upsert_line "$endpoints_file" 1 "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$base" "$auth_header" "$auth_scheme" "$secret_file" "$old_temp" "$old_tokens" "$old_tool" "$old_models_url" "$old_models_jq" "$old_models_prefix" "$old_models_include" "$old_models_exclude")"
 }
 
 profile_endpoint_remove() {
@@ -225,7 +275,7 @@ profile_model_remove() {
 }
 
 profile_model_add() {
-  local endpoint=${1-} model=${2-} temperature= max_tokens= tool_mode=
+  local endpoint=${1-} model=${2-} temperature= max_tokens= tool_mode= api_format=
   [[ -n "$endpoint" && -n "$model" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   profile_require_name model "$model"
@@ -236,56 +286,137 @@ profile_model_add() {
       --temperature) temperature=${2-}; shift 2 ;;
       --max-tokens) max_tokens=${2-}; shift 2 ;;
       --tool-mode) tool_mode=${2-}; shift 2 ;;
+      --api-format) api_format=${2-}; shift 2 ;;
       *) printf 'lmline: unknown model option: %s\n' "$1" >&2; exit 2 ;;
     esac
   done
   profile_require_decimal temperature "$temperature"
   profile_require_positive_int max_tokens "$max_tokens"
   profile_require_tool_mode "$tool_mode"
-  profile_upsert_line "$models_file" 2 "$(printf '%s\t%s\t%s\t%s\t%s' "$endpoint" "$model" "$temperature" "$max_tokens" "$tool_mode")"
+  profile_require_api_format "$api_format"
+  profile_upsert_line "$models_file" 2 "$(printf '%s\t%s\t%s\t%s\t%s\t%s' "$endpoint" "$model" "$temperature" "$max_tokens" "$tool_mode" "$api_format")"
 }
 
 profile_model_list() {
   local endpoint=${1-}
   [[ -f "$models_file" ]] || return 0
-  awk -F '\t' -v endpoint="$endpoint" 'NF && $1 !~ /^#/ && (endpoint == "" || $1 == endpoint) { printf "%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5 }' "$models_file"
+  awk -F '\t' -v endpoint="$endpoint" 'NF && $1 !~ /^#/ && (endpoint == "" || $1 == endpoint) { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }' "$models_file"
+}
+
+profile_default_model_catalog_jq() {
+  printf '(.data[]?), (.result[]?), (.models[]?), (try .result.models[] catch empty), (try .result.data[] catch empty)\n'
+}
+
+profile_model_catalog_url() {
+  local base=${1%/} override=${2-}
+  [[ -n "$override" ]] && printf '%s\n' "$override" || printf '%s/models\n' "$base"
+}
+
+profile_model_candidate_format() {
+  local signal
+  signal=$(printf '%s' "${1-}" | tr '[:upper:]' '[:lower:]')
+  case "$signal" in
+    *chat/completions*|*chat\ completions*|*chat_completions*) printf 'chat\n'; return 0 ;;
+    */responses*|*responses*) printf 'responses\n'; return 0 ;;
+    */messages*|*messages*) printf 'messages\n'; return 0 ;;
+    *text\ generation*|*text-generation*|*large\ language*|*llm*) printf 'chat\n'; return 0 ;;
+  esac
+  case "$signal" in
+    *image\ generation*|*image-generation*|*embedding*|*rerank*|*speech*|*audio*|*moderation*) return 1 ;;
+  esac
+  printf 'chat\n'
+}
+
+profile_extract_model_candidates() {
+  local models_jq=$1 models_prefix=${2-} models_include=${3-} models_exclude=${4-}
+  local parsed id signal
+  parsed=$(jq -r "
+    def __lmline_items: $models_jq;
+    def __lmline_signal:
+      if type == \"object\" then
+        ([del(.id, .model, .name) | paths(scalars) as \$p | ((\$p | map(tostring) | join(\".\")) + \"=\" + (getpath(\$p) | tostring))] | join(\" \"))
+      else
+        tostring
+      end;
+    __lmline_items
+    | if type == \"object\" then
+        [((.id // .model // .name // \"\") | tostring), __lmline_signal] | @tsv
+      elif type == \"string\" then
+        [., .] | @tsv
+      else
+        empty
+      end
+  ") || return 1
+  while IFS=$'\t' read -r id signal; do
+    [[ -n "$id" ]] || continue
+    [[ -z "$models_prefix" || "$id" == "$models_prefix"* ]] || continue
+    if [[ -n "$models_include" ]]; then
+      [[ "$id" =~ $models_include || "$signal" =~ $models_include ]] || continue
+    fi
+    if [[ -n "$models_exclude" ]]; then
+      [[ ! "$id" =~ $models_exclude && ! "$signal" =~ $models_exclude ]] || continue
+    fi
+    printf '%s\t%s\n' "$id" "$signal"
+  done <<<"$parsed"
+}
+
+profile_extract_model_records() {
+  local models_jq=$1 models_prefix=${2-} models_include=${3-} models_exclude=${4-}
+  local id signal api_format
+  while IFS=$'\t' read -r id signal; do
+    [[ -n "$id" ]] || continue
+    api_format=$(profile_model_candidate_format "$signal") || continue
+    printf '%s\t%s\n' "$id" "$api_format"
+  done < <(profile_extract_model_candidates "$models_jq" "$models_prefix" "$models_include" "$models_exclude")
+}
+
+profile_extract_model_ids() {
+  local models_jq=$1 models_prefix=${2-} models_include=${3-} models_exclude=${4-}
+  profile_extract_model_records "$models_jq" "$models_prefix" "$models_include" "$models_exclude" | awk -F '\t' '{ print $1 }'
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp ids id header_tmp
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq
+  local existing old_temp old_tokens old_tool
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
-  profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _
+  profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _ _ _ models_url models_jq models_prefix models_include models_exclude
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
+  catalog_url=$(profile_model_catalog_url "$base" "$models_url")
+  catalog_jq=${models_jq:-$(profile_default_model_catalog_jq)}
   __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
   __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp"
-  body=$(__lmline_http_get "${base%/}/models" 20) || {
+  body=$(__lmline_http_get "$catalog_url" 20) || {
     printf 'lmline: model refresh failed for endpoint: %s\n' "$endpoint" >&2
     exit 1
   }
-  ids=$(printf '%s' "$body" | jq -r '.data[]?.id | select(length > 0)') || {
-    printf 'lmline: model refresh response did not contain data[].id\n' >&2
+  records=$(profile_extract_model_records "$catalog_jq" "$models_prefix" "$models_include" "$models_exclude" <<<"$body") || {
+    printf 'lmline: model refresh response did not contain model IDs\n' >&2
     exit 1
   }
-  [[ -n "$ids" ]] || { printf 'lmline: model refresh returned no models\n' >&2; exit 1; }
+  [[ -n "$records" ]] || { printf 'lmline: model refresh returned no models\n' >&2; exit 1; }
   mkdir -p "$config_dir"
   touch "$models_file"
   __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-models.XXXXXX"
   cp "$models_file" "$tmp"
-  while IFS= read -r id; do
+  while IFS=$'\t' read -r id api_format; do
     [[ -n "$id" ]] || continue
     profile_require_name model "$id"
-    if ! awk -F '\t' -v e="$endpoint" -v m="$id" '($1 == e && $2 == m) { found=1 } END { exit found ? 0 : 1 }' "$tmp"; then
-      printf '%s\t%s\t\t\t\n' "$endpoint" "$id" >>"$tmp"
+    old_temp=
+    old_tokens=
+    old_tool=
+    if existing=$(profile_find_line "$tmp" "$endpoint" "$id"); then
+      profile_split_tsv "$existing" _ _ old_temp old_tokens old_tool _
     fi
-  done <<<"$ids"
+    profile_upsert_line "$tmp" 2 "$(printf '%s\t%s\t%s\t%s\t%s\t%s' "$endpoint" "$id" "$old_temp" "$old_tokens" "$old_tool" "$api_format")"
+  done <<<"$records"
   mv "$tmp" "$models_file"
   chmod 600 "$models_file" 2>/dev/null || true
 }
 
 profile_use() {
-  local endpoint=${1-} model=${2-} endpoint_line model_line _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool m_temp m_tokens m_tool
+  local endpoint=${1-} model=${2-} endpoint_line model_line _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude m_temp m_tokens m_tool m_api_format
   local -a available
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   endpoint_line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
@@ -307,8 +438,8 @@ profile_use() {
     model=${available[0]}
   fi
   model_line=$(profile_find_line "$models_file" "$endpoint" "$model") || { printf 'lmline: unknown model for %s: %s\n' "$endpoint" "$model" >&2; exit 2; }
-  profile_split_tsv "$endpoint_line" _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool
-  profile_split_tsv "$model_line" _ _ m_temp m_tokens m_tool
+  profile_split_tsv "$endpoint_line" _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude
+  profile_split_tsv "$model_line" _ _ m_temp m_tokens m_tool m_api_format
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
   write_config_value LMLINE_BASE_URL "$base"
   write_config_value LMLINE_MODEL "$model"
@@ -318,6 +449,12 @@ profile_use() {
   [[ -n "${m_temp:-$e_temp}" ]] && write_config_value LMLINE_TEMPERATURE "${m_temp:-$e_temp}" || unset_config_value LMLINE_TEMPERATURE
   [[ -n "${m_tokens:-$e_tokens}" ]] && write_config_value LMLINE_MAX_TOKENS "${m_tokens:-$e_tokens}" || unset_config_value LMLINE_MAX_TOKENS
   [[ -n "${m_tool:-$e_tool}" ]] && write_config_value LMLINE_TOOL_MODE "${m_tool:-$e_tool}" || unset_config_value LMLINE_TOOL_MODE
+  [[ -n "$m_api_format" ]] && write_config_value LMLINE_API_FORMAT "$m_api_format" || unset_config_value LMLINE_API_FORMAT
+  [[ -n "$e_models_url" ]] && write_config_value LMLINE_MODELS_URL "$e_models_url" || unset_config_value LMLINE_MODELS_URL
+  [[ -n "$e_models_jq" ]] && write_config_value LMLINE_MODELS_JQ "$e_models_jq" || unset_config_value LMLINE_MODELS_JQ
+  [[ -n "$e_models_prefix" ]] && write_config_value LMLINE_MODELS_PREFIX "$e_models_prefix" || unset_config_value LMLINE_MODELS_PREFIX
+  [[ -n "$e_models_include" ]] && write_config_value LMLINE_MODELS_INCLUDE "$e_models_include" || unset_config_value LMLINE_MODELS_INCLUDE
+  [[ -n "$e_models_exclude" ]] && write_config_value LMLINE_MODELS_EXCLUDE "$e_models_exclude" || unset_config_value LMLINE_MODELS_EXCLUDE
   write_config_value LMLINE_ACTIVE_ENDPOINT "$endpoint"
 }
 

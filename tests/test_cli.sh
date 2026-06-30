@@ -14,6 +14,7 @@ grep -q "LMLINE_API_KEY_FILE=" <<<"$config_out" || fail "secret file reference"
 ! grep -q "redaction-sentinel" <<<"$config_out" || fail "secret redaction"
 defaults_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config defaults)
 grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "config defaults microsandbox command"
+grep -q $'^LMLINE_MODELS_URL\t\\$LMLINE_BASE_URL/models\t' <<<"$defaults_out" || fail "config defaults models url"
 grep -q $'^LMLINE_KEY_FIX\t' <<<"$defaults_out" || fail "config defaults key fix"
 effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
 grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
@@ -38,7 +39,11 @@ complete_sandbox_subcommands=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lm
 grep -q '^setup$' <<<"$complete_sandbox_subcommands" || fail "complete subcommands sandbox setup"
 complete_settings=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete settings)
 grep -q '^LMLINE_MICROSANDBOX_COMMAND$' <<<"$complete_settings" || fail "complete settings microsandbox"
+grep -q '^LMLINE_API_FORMAT$' <<<"$complete_settings" || fail "complete settings api format"
+grep -q '^LMLINE_MODELS_INCLUDE$' <<<"$complete_settings" || fail "complete settings models include"
 grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
+complete_api_format_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_API_FORMAT)
+grep -q '^responses$' <<<"$complete_api_format_values" || fail "complete setting values api format"
 complete_backend_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_EXEC_BACKEND)
 grep -q '^microsandbox$' <<<"$complete_backend_values" || fail "complete setting values backend"
 complete_risk_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_TOOL_COMMAND_RUN_MAX_RISK)
@@ -111,10 +116,10 @@ endpoint_list=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endp
 grep -q $'^local\thttp://127.0.0.1:1234/v1' <<<"$endpoint_list" || fail "endpoint list local"
 grep -q $'^cloud\thttps://llm.example/v2\tX-Api-Key\t\tconfigured' <<<"$endpoint_list" || fail "endpoint upsert preserves auth and secret"
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local local-test-model
-LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local local-test-model --temperature 0.3 --tool-mode auto
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local local-test-model --temperature 0.3 --tool-mode auto --api-format chat
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add cloud openai/gpt-test --max-tokens 700
 model_list=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list local)
-grep -q $'^local\tlocal-test-model\t0.3\t\tauto$' <<<"$model_list" || fail "model add upsert"
+grep -q $'^local\tlocal-test-model\t0.3\t\tauto\tchat$' <<<"$model_list" || fail "model add upsert"
 complete_endpoints=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" complete endpoints)
 grep -q '^local$' <<<"$complete_endpoints" || fail "complete endpoints"
 complete_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" complete models cloud)
@@ -141,6 +146,22 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" bash --norc -i -
   COMP_CWORD=4
   __lmline_cli_complete
   printf "%s\n" "${COMPREPLY[@]}" | grep -q "^microsandbox$"
+  COMP_WORDS=(lmline config set LMLINE_API_FORMAT "")
+  COMP_CWORD=4
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^responses$"
+  COMP_WORDS=(lmline endpoint add ep https://example.invalid/v1 "")
+  COMP_CWORD=5
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^--models-url$"
+  COMP_WORDS=(lmline model add local local-test-model "")
+  COMP_CWORD=5
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^--api-format$"
+  COMP_WORDS=(lmline model add local local-test-model --api-format "")
+  COMP_CWORD=6
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^responses$"
   COMP_WORDS=(lmline help config "")
   COMP_CWORD=3
   __lmline_cli_complete
@@ -192,6 +213,30 @@ if command -v zsh >/dev/null 2>&1; then
     CURRENT=5
     _lmline
     grep -q "^microsandbox$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-api-format-values.out
+    : >"$OUT"
+    words=(lmline config set LMLINE_API_FORMAT "")
+    CURRENT=5
+    _lmline
+    grep -q "^responses$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-endpoint-add.out
+    : >"$OUT"
+    words=(lmline endpoint add ep https://example.invalid/v1 "")
+    CURRENT=6
+    _lmline
+    grep -q "^--models-url$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-model-add.out
+    : >"$OUT"
+    words=(lmline model add local local-test-model "")
+    CURRENT=6
+    _lmline
+    grep -q "^--api-format$" "$OUT"
+    OUT=/tmp/lmline-zsh-complete-model-api-format.out
+    : >"$OUT"
+    words=(lmline model add local local-test-model --api-format "")
+    CURRENT=7
+    _lmline
+    grep -q "^responses$" "$OUT"
     OUT=/tmp/lmline-zsh-complete-help-config.out
     : >"$OUT"
     words=(lmline help config "")
@@ -225,6 +270,7 @@ grep -q "LMLINE_MODEL=.*local-test-model" <<<"$profile_config" || fail "use mode
 grep -q "LMLINE_TEMPERATURE=.*0.3" <<<"$profile_config" || fail "use model temperature override"
 grep -q "LMLINE_MAX_TOKENS=.*600" <<<"$profile_config" || fail "use endpoint max tokens fallback"
 grep -q "LMLINE_TOOL_MODE=.*auto" <<<"$profile_config" || fail "use model tool mode override"
+grep -q "LMLINE_API_FORMAT=.*chat" <<<"$profile_config" || fail "use model api format"
 current_out=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" current)
 grep -q '^endpoint=local$' <<<"$current_out" || fail "current endpoint"
 grep -q '^profile_status=matched$' <<<"$current_out" || fail "current matched"
@@ -244,6 +290,10 @@ if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local b
   fail "invalid model max tokens rejected"
 fi
 grep -q "invalid max_tokens" /tmp/lmline-profile-bad-tokens.err || fail "invalid max tokens error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local bad-model --api-format maybe >/tmp/lmline-profile-bad-api-format.out 2>/tmp/lmline-profile-bad-api-format.err; then
+  fail "invalid model api format rejected"
+fi
+grep -q "invalid api_format" /tmp/lmline-profile-bad-api-format.err || fail "invalid api format error"
 fake_refresh_bin="$cfg_tmp/profile-refresh-bin"
 mkdir -p "$fake_refresh_bin"
 cat >"$fake_refresh_bin/curl" <<'EOF'
@@ -267,6 +317,63 @@ PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmli
 refresh_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list cloud)
 grep -q $'^cloud\tcloud/model-a' <<<"$refresh_models" || fail "refresh model a"
 grep -q $'^cloud\tcloud/model-b' <<<"$refresh_models" || fail "refresh model b"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add catalog https://catalog-client.example/v1 --models-url https://catalog.example/models/search
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=${@: -1}
+[[ "$url" == "https://catalog.example/models/search" ]] || { echo "unexpected url: $url" >&2; exit 8; }
+cat <<'JSON'
+{
+  "result": [
+    {"id": "model-chat", "endpoints": ["/chat/completions"], "task": "text generation"},
+    {"id": "model-responses", "endpoints": ["/responses"], "capabilities": ["llm"]},
+    {"id": "model-messages", "endpoints": ["/messages"], "capabilities": ["text"]},
+    {"id": "model-default", "capabilities": ["text"]},
+    {"id": "model-image", "task": "image generation"},
+    {"id": "model-embed", "task": "embedding"}
+  ]
+}
+JSON
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh catalog
+catalog_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list catalog)
+grep -q $'^catalog\tmodel-chat\t\t\t\tchat$' <<<"$catalog_models" || fail "catalog refresh chat format"
+grep -q $'^catalog\tmodel-responses\t\t\t\tresponses$' <<<"$catalog_models" || fail "catalog refresh responses format"
+grep -q $'^catalog\tmodel-messages\t\t\t\tmessages$' <<<"$catalog_models" || fail "catalog refresh messages format"
+grep -q $'^catalog\tmodel-default\t\t\t\tchat$' <<<"$catalog_models" || fail "catalog refresh default chat format"
+! grep -q 'model-image' <<<"$catalog_models" || fail "catalog refresh excluded image model"
+! grep -q 'model-embed' <<<"$catalog_models" || fail "catalog refresh excluded embedding model"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use catalog model-responses
+catalog_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_MODELS_URL=.*https://catalog.example/models/search" <<<"$catalog_config" || fail "use persisted models url"
+grep -q "LMLINE_API_FORMAT=.*responses" <<<"$catalog_config" || fail "use persisted catalog api format"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add filtered https://filtered.example/v1 --models-url https://catalog.example/models/search --models-prefix model- --models-include 'responses|messages' --models-exclude messages
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh filtered
+filtered_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list filtered)
+grep -q $'^filtered\tmodel-responses\t\t\t\tresponses$' <<<"$filtered_models" || fail "catalog filter included responses"
+! grep -q 'model-messages' <<<"$filtered_models" || fail "catalog filter excluded messages"
+! grep -q 'model-chat' <<<"$filtered_models" || fail "catalog filter include applied"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add custom-jq https://jq.example/v1 --models-jq '.payload.items[]'
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=${@: -1}
+[[ "$url" == "https://jq.example/v1/models" ]] || { echo "unexpected url: $url" >&2; exit 8; }
+printf '{"payload":{"items":[{"name":"nested-a"},{"name":"nested-b"}]}}\n'
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh custom-jq
+custom_jq_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list custom-jq)
+grep -q $'^custom-jq\tnested-a' <<<"$custom_jq_models" || fail "custom jq refresh model a"
+grep -q $'^custom-jq\tnested-b' <<<"$custom_jq_models" || fail "custom jq refresh model b"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-regex https://bad.example/v1 --models-include '[' >/tmp/lmline-bad-model-regex.out 2>/tmp/lmline-bad-model-regex.err; then
+  fail "invalid models include rejected"
+fi
+grep -q "invalid models_include" /tmp/lmline-bad-model-regex.err || fail "invalid models include error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-jq https://bad.example/v1 --models-jq '.data[' >/tmp/lmline-bad-model-jq.out 2>/tmp/lmline-bad-model-jq.err; then
+  fail "invalid models jq rejected"
+fi
+grep -q "invalid models_jq" /tmp/lmline-bad-model-jq.err || fail "invalid models jq error"
 cat >"$fake_refresh_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 exit 9

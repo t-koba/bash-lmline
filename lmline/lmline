@@ -61,7 +61,7 @@ usage() {
 usage: lmline <command> [args]
 
 commands:
-  doctor [--check-api]    check local configuration; optionally call ENDPOINT/models
+  doctor [--check-api]    check local configuration; optionally call model catalog
   context [LINE...]       print shell context sent to the engine
   command-exists COMMAND...
                           check whether named commands are available locally
@@ -101,7 +101,7 @@ commands:
   model add ENDPOINT MODEL [options]
                           register or update a model under an endpoint
   model list [ENDPOINT]   list registered models
-  model refresh ENDPOINT  import models from ENDPOINT/models
+  model refresh ENDPOINT  import models from the endpoint catalog
   model remove ENDPOINT MODEL
                           remove a registered model
   use ENDPOINT [MODEL]    activate a registered endpoint/model; MODEL can be
@@ -159,9 +159,15 @@ LMLINE_BIN_DIR	~/.local/bin	install target for the lmline symlink
 LMLINE_HISTORY_DIR	$LMLINE_CONFIG_DIR/history	recorded suggestion log directory
 LMLINE_DEFAULTS_DIR	installed defaults	packaged data-file defaults
 LMLINE_USER_RULES_DIR	$LMLINE_CONFIG_DIR	user override directory for data files
-LMLINE_BASE_URL	empty	OpenAI-compatible API base path
+LMLINE_BASE_URL	empty	API base path used with the selected API format
 LMLINE_ACTIVE_ENDPOINT	empty	endpoint name last selected by lmline use
-LMLINE_MODEL	auto-discover	chat model ID; if unset, engine calls /models except for payload
+LMLINE_MODEL	auto-discover	model ID; if unset, engine calls the configured model catalog except for payload
+LMLINE_API_FORMAT	chat	chat, responses, or messages
+LMLINE_MODELS_URL	$LMLINE_BASE_URL/models	model catalog URL used by model refresh and auto-discovery
+LMLINE_MODELS_JQ	built-in	model catalog jq expression that emits candidate model items
+LMLINE_MODELS_PREFIX	empty	keep only discovered model IDs with this prefix
+LMLINE_MODELS_INCLUDE	empty	keep only discovered model candidates matching this extended regex
+LMLINE_MODELS_EXCLUDE	empty	drop discovered model candidates matching this extended regex
 LMLINE_API_KEY_FILE	empty	file containing the API key
 LMLINE_AUTH_HEADER	Authorization	authentication header name
 LMLINE_AUTH_SCHEME	Bearer	authentication scheme; empty means raw header value
@@ -274,6 +280,7 @@ __lmline_setting_value_candidates() {
   case "$1" in
     LMLINE_EXEC_BACKEND) printf '%s\n' auto local microsandbox off ;;
     LMLINE_MICROSANDBOX_WORKSPACE_MODE) printf '%s\n' readonly writable none ;;
+    LMLINE_API_FORMAT) printf '%s\n' chat responses messages ;;
     LMLINE_TOOL_MODE) printf '%s\n' auto openai text none ;;
     LMLINE_TOOL_CHOICE) printf '%s\n' auto none ;;
     LMLINE_STATUS_MODE) printf '%s\n' inline transient log debug silent none ;;
@@ -357,7 +364,8 @@ print_cli_help() {
 usage: lmline doctor [--check-api]
 
 Check local lmline configuration, installed defaults, command dependencies,
-profiles, and clipboard provider state. `--check-api` also calls /models.
+profiles, and clipboard provider state. `--check-api` also calls the configured
+model catalog.
 EOF
       ;;
     context:) cat <<'EOF'
@@ -513,7 +521,7 @@ Remove a project-local setting from ./.lmline.bash.
 EOF
       ;;
     endpoint:) cat <<'EOF'
-usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
        lmline endpoint list
        lmline endpoint set-secret NAME [VALUE]
        lmline endpoint remove NAME [--keep-secret]
@@ -522,9 +530,10 @@ Manage provider endpoint profiles.
 EOF
       ;;
     endpoint:add) cat <<'EOF'
-usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
 
-Register or update an OpenAI-compatible provider endpoint.
+Register or update a provider endpoint. Model catalog options are used by
+`model refresh` and engine auto-discovery.
 EOF
       ;;
     endpoint:list) cat <<'EOF'
@@ -546,7 +555,7 @@ Remove an endpoint profile, its models, and by default its secret file.
 EOF
       ;;
     model:) cat <<'EOF'
-usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--api-format chat|responses|messages]
        lmline model list [ENDPOINT]
        lmline model refresh ENDPOINT
        lmline model remove ENDPOINT MODEL
@@ -555,7 +564,7 @@ Manage model profiles under endpoints.
 EOF
       ;;
     model:add) cat <<'EOF'
-usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--api-format chat|responses|messages]
 
 Register or update a model under an endpoint profile.
 EOF
@@ -569,7 +578,7 @@ EOF
     model:refresh) cat <<'EOF'
 usage: lmline model refresh ENDPOINT
 
-Import model IDs from ENDPOINT/models and update that endpoint's model profiles.
+Import model IDs from the endpoint catalog and update that endpoint's model profiles.
 EOF
       ;;
     model:remove) cat <<'EOF'
@@ -1000,7 +1009,7 @@ case "$cmd" in
       # ${VAR-default} (no colon): an explicitly empty scheme means raw key.
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \
         "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp"
-      if [[ -n "$api_base" ]] && __lmline_http_get "${api_base%/}/models" 5 >/dev/null 2>&1; then
+      if [[ -n "$api_base" ]] && __lmline_http_get "$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")" 5 >/dev/null 2>&1; then
         printf '  connection=ok\n'
       else
         printf '  connection=failed\n'

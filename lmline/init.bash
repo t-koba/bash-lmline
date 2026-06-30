@@ -627,7 +627,7 @@ __lmline_cli_complete() {
     if [[ $prev == --tool-mode ]]; then
       COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
     else
-      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --temperature --max-tokens --tool-mode --help" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help" -- "$cur") )
     fi
   elif [[ $command == endpoint && $sub == remove && $COMP_CWORD -ge 4 ]]; then
     COMPREPLY=( $(compgen -W "--keep-secret --help" -- "$cur") )
@@ -640,8 +640,10 @@ __lmline_cli_complete() {
   elif [[ $command == model && $sub == add && $COMP_CWORD -ge 5 ]]; then
     if [[ $prev == --tool-mode ]]; then
       COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
+    elif [[ $prev == --api-format ]]; then
+      COMPREPLY=( $(compgen -W "chat responses messages" -- "$cur") )
     else
-      COMPREPLY=( $(compgen -W "--temperature --max-tokens --tool-mode --help" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--temperature --max-tokens --tool-mode --api-format --help" -- "$cur") )
     fi
   elif [[ $command == config && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "get defaults effective describe set unset project-get project-set project-unset" -- "$cur") )

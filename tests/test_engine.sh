@@ -461,6 +461,86 @@ if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/conf
   fail "json error unexpectedly succeeded"
 fi
 grep -q 'bad key message' /tmp/lmline-json-error.err || fail "json error message detail"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+data_file=
+prev=
+for arg in "$@"; do
+  if [[ "$prev" == "-o" ]]; then
+    out=$arg
+  elif [[ "$prev" == "--data-binary" ]]; then
+    data_file=${arg#@}
+  fi
+  prev=$arg
+done
+url=${@: -1}
+case "$url" in
+  https://api-format.example/v1/responses)
+    jq -e '.model == "model-responses" and (.input | type) == "array" and (.instructions | type) == "string" and (.max_output_tokens | type) == "number"' "$data_file" >/dev/null || {
+      echo "unexpected responses payload" >&2
+      cat "$data_file" >&2
+      exit 7
+    }
+    printf '{"model":"model-responses","output_text":"echo responses-api","usage":{"input_tokens":3,"output_tokens":2}}\n' >"$out"
+    printf '200\tapplication/json'
+    ;;
+  https://api-format.example/v1/messages)
+    jq -e '.model == "model-messages" and (.messages | type) == "array" and (.system | type) == "string" and (.max_tokens | type) == "number"' "$data_file" >/dev/null || {
+      echo "unexpected messages payload" >&2
+      cat "$data_file" >&2
+      exit 7
+    }
+    printf '{"model":"model-messages","content":[{"type":"text","text":"echo messages-api"}],"usage":{"input_tokens":4,"output_tokens":2},"stop_reason":"end_turn"}\n' >"$out"
+    printf '200\tapplication/json'
+    ;;
+  *)
+    echo "unexpected url: $url" >&2
+    exit 8
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/curl"
+responses_api_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+[[ "$(candidates_of <<<"$responses_api_out")" == "echo responses-api" ]] || fail "responses api format"
+messages_api_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-messages LMLINE_API_FORMAT=messages LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+[[ "$(candidates_of <<<"$messages_api_out")" == "echo messages-api" ]] || fail "messages api format"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+data_file=
+prev=
+for arg in "$@"; do
+  if [[ "$prev" == "-o" ]]; then
+    out=$arg
+  elif [[ "$prev" == "--data-binary" ]]; then
+    data_file=${arg#@}
+  fi
+  prev=$arg
+done
+url=${@: -1}
+case "$url" in
+  https://catalog.example/models/search)
+    printf '{"result":[{"id":"model-responses","endpoints":["/responses"],"capabilities":["llm"]},{"id":"model-image","task":"image generation"},{"id":"model-chat","endpoints":["/chat/completions"]}]}\n'
+    ;;
+  https://chat.example/v1/responses)
+    jq -e '.model == "model-responses" and (.input | type) == "array"' "$data_file" >/dev/null || {
+      echo "unexpected auto catalog payload" >&2
+      cat "$data_file" >&2
+      exit 7
+    }
+    printf '{"model":"model-responses","output":[{"content":[{"type":"output_text","text":"echo auto-catalog"}]}],"usage":{"input_tokens":1,"output_tokens":1}}\n' >"$out"
+    printf '200\tapplication/json'
+    ;;
+  *)
+    echo "unexpected url: $url" >&2
+    exit 8
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/curl"
+auto_catalog_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/auto-catalog" LMLINE_BASE_URL=https://chat.example/v1 LMLINE_MODEL= LMLINE_MODELS_URL=https://catalog.example/models/search "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+[[ "$(candidates_of <<<"$auto_catalog_out")" == "echo auto-catalog" ]] || fail "generic catalog auto model discovery"
 warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.openai.com/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=test "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-warn-payload.out 2>&1 || true)
 grep -q 'warning: no API key configured' /tmp/lmline-warn-payload.out || fail "cloud api key warning"
 sakura_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.ai.sakura.ad.jp/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=gpt-oss-120b "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-sakura-warn-payload.out 2>&1 || true)

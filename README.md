@@ -78,8 +78,9 @@ Install and test scripts also use common POSIX tools such as `install`, `ln`,
 ## Provider Setup
 
 Register an endpoint and model, then activate it. Endpoint URLs are
-OpenAI-compatible API base paths. The engine appends `/chat/completions`;
-model discovery appends `/models`.
+API base paths. The engine uses the model profile's API format:
+`chat`, `responses`, or `messages`. Model discovery uses the endpoint's model
+catalog.
 
 LM Studio:
 
@@ -137,48 +138,63 @@ Cloudflare Workers AI:
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
-lmline endpoint add workers-ai "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/v1" --auth-header Authorization --auth-scheme Bearer --tool-mode auto
+CF_MODELS_URL="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/models/search"
+lmline endpoint add workers-ai \
+  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/v1" \
+  --auth-header Authorization --auth-scheme Bearer --tool-mode auto \
+  --models-url "$CF_MODELS_URL"
 lmline endpoint set-secret workers-ai
-lmline model add workers-ai @cf/meta/llama-3.1-8b-instruct
-lmline use workers-ai @cf/meta/llama-3.1-8b-instruct
+lmline model refresh workers-ai
+lmline use workers-ai <model-id>
 ```
 
-Cloudflare's OpenAI-compatible base path includes the account ID and supports
-`/chat/completions`. Register Workers AI model IDs manually; use the
+Cloudflare's base path includes the account ID. Its model catalog URL differs
+from the chat base path, so set `--models-url` when registering the endpoint.
+Use the
 [Workers AI model catalog](https://developers.cloudflare.com/workers-ai/models/)
 for current IDs.
 
 OpenCode Go:
 
 ```bash
-lmline endpoint add opencode-go https://opencode.ai/zen/go/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
+lmline endpoint add opencode-go https://opencode.ai/zen/go/v1 \
+  --auth-header Authorization --auth-scheme Bearer --tool-mode auto
 lmline endpoint set-secret opencode-go
-lmline model add opencode-go kimi-k2.7-code
-lmline use opencode-go kimi-k2.7-code
+lmline model refresh opencode-go
+lmline use opencode-go <model-id>
 ```
 
 OpenCode Zen:
 
 ```bash
-lmline endpoint add opencode-zen https://opencode.ai/zen/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
+lmline endpoint add opencode-zen https://opencode.ai/zen/v1 \
+  --auth-header Authorization --auth-scheme Bearer --tool-mode auto
 lmline endpoint set-secret opencode-zen
-lmline model add opencode-zen kimi-k2.6
-lmline use opencode-zen kimi-k2.6
+lmline model refresh opencode-zen
+lmline use opencode-zen <model-id>
 ```
 
-OpenCode model catalogs include `/responses`, `/messages`, and
-`/chat/completions` endpoints. lmline uses `/chat/completions`, so register
-only model IDs documented for that endpoint. Use the direct API model ID
-without the OpenCode config prefix such as `opencode-go/` or `opencode/`.
-Use the OpenCode [Go](https://opencode.ai/docs/go) and
-[Zen](https://opencode.ai/docs/zen) docs for current endpoint/model mappings.
+OpenCode model catalogs can include `/chat/completions`, `/responses`, and
+`/messages` endpoints. `model refresh` stores the detected API format with each
+model. Use direct API model IDs without the OpenCode config prefix such as
+`opencode-go/` or `opencode/`. Use the OpenCode [Go](https://opencode.ai/docs/go)
+and [Zen](https://opencode.ai/docs/zen) docs for current endpoint/model
+mappings.
 
-If `/models` is unavailable for an endpoint, register the model manually:
+If model refresh is unavailable for an endpoint, register the model manually:
 
 ```bash
-lmline model add ENDPOINT MODEL
+lmline model add ENDPOINT MODEL [--api-format chat|responses|messages]
 lmline use ENDPOINT MODEL
 ```
+
+`model refresh` reads `${BASE_URL%/}/models` by default. Use `--models-url` for
+a different catalog URL, `--models-jq` for a different response shape, and
+`--models-prefix`, `--models-include`, or `--models-exclude` to filter the
+discovered candidates. Catalog metadata is used to store `chat`, `responses`,
+or `messages` in each model profile. When the catalog does not expose usable
+format metadata, lmline keeps the `chat` default; set `--api-format` manually
+for models that require another API shape.
 
 For endpoints that expect the raw API key in a custom header, use an empty auth
 scheme:
@@ -193,16 +209,16 @@ lmline endpoint add myapi https://api.example/v1 --auth-header X-Api-Key --auth-
 mode `0600`; TSV files store only the secret file path.
 
 `endpoint add` and `model add` accept `--temperature`, `--max-tokens`, and
-`--tool-mode`. Model values override endpoint values; empty model values fall
-back to endpoint values.
+`--tool-mode`. `model add` also accepts `--api-format`. Model values override
+endpoint values; empty model values fall back to endpoint values.
 
 Common profile commands:
 
 ```bash
 lmline endpoint list
-lmline endpoint add ENDPOINT BASE_URL [--auth-header NAME] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+lmline endpoint add ENDPOINT BASE_URL [--auth-header NAME] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
 lmline endpoint remove ENDPOINT [--keep-secret]
-lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none]
+lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--api-format chat|responses|messages]
 lmline model list [ENDPOINT]
 lmline model refresh ENDPOINT
 lmline model remove ENDPOINT MODEL
@@ -359,7 +375,7 @@ lmline disable
 ```
 
 `payload` prints the chat request JSON and does not contact the provider.
-`doctor --check-api` calls the configured endpoint's `/models` path.
+`doctor --check-api` calls the configured endpoint's model catalog.
 `sandbox run` requires the microsandbox CLI and never falls back to host
 execution.
 `config get` prints only persisted user settings. Use `config defaults` for the
@@ -650,9 +666,15 @@ Provider and engine settings:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `LMLINE_BASE_URL` | empty | OpenAI-compatible API base path |
+| `LMLINE_BASE_URL` | empty | API base path used with the selected API format |
 | `LMLINE_ACTIVE_ENDPOINT` | empty | endpoint name last selected by `lmline use` |
-| `LMLINE_MODEL` | auto-discover | chat model ID; if unset, engine calls `/models` except for `payload` |
+| `LMLINE_MODEL` | auto-discover | model ID; if unset, engine calls the configured model catalog except for `payload` |
+| `LMLINE_API_FORMAT` | `chat` | `chat`, `responses`, or `messages` |
+| `LMLINE_MODELS_URL` | `$LMLINE_BASE_URL/models` | model catalog URL used by `model refresh` and auto-discovery |
+| `LMLINE_MODELS_JQ` | built-in | jq expression that emits candidate model items from the catalog response |
+| `LMLINE_MODELS_PREFIX` | empty | keep only discovered model IDs with this prefix |
+| `LMLINE_MODELS_INCLUDE` | empty | keep only discovered model candidates matching this extended regex |
+| `LMLINE_MODELS_EXCLUDE` | empty | drop discovered model candidates matching this extended regex |
 | `LMLINE_API_KEY_FILE` | empty | file containing the API key |
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
