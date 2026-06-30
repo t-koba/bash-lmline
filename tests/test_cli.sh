@@ -83,6 +83,24 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config-sakura" "$repo_dir/lmline/lmline" use sakura 
 sakura_config_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config-sakura" "$repo_dir/lmline/lmline" config get)
 grep -q "LMLINE_BASE_URL=.*https://api.ai.sakura.ad.jp/v1" <<<"$sakura_config_out" || fail "sakura endpoint base url"
 grep -q "LMLINE_MODEL=.*gpt-oss-120b" <<<"$sakura_config_out" || fail "sakura endpoint model"
+LMLINE_CONFIG_DIR="$cfg_tmp/config-workers-ai" "$repo_dir/lmline/lmline" endpoint add workers-ai https://api.cloudflare.com/client/v4/accounts/test-account/ai/v1 --auth-header Authorization --auth-scheme Bearer >/dev/null
+LMLINE_CONFIG_DIR="$cfg_tmp/config-workers-ai" "$repo_dir/lmline/lmline" model add workers-ai @cf/meta/llama-3.1-8b-instruct >/dev/null
+LMLINE_CONFIG_DIR="$cfg_tmp/config-workers-ai" "$repo_dir/lmline/lmline" use workers-ai @cf/meta/llama-3.1-8b-instruct >/dev/null
+workers_ai_config_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config-workers-ai" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_BASE_URL=.*https://api.cloudflare.com/client/v4/accounts/test-account/ai/v1" <<<"$workers_ai_config_out" || fail "workers ai endpoint base url"
+grep -q "LMLINE_MODEL=.*@cf/meta/llama-3.1-8b-instruct" <<<"$workers_ai_config_out" || fail "workers ai endpoint model"
+LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-go" "$repo_dir/lmline/lmline" endpoint add opencode-go https://opencode.ai/zen/go/v1 --auth-header Authorization --auth-scheme Bearer >/dev/null
+LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-go" "$repo_dir/lmline/lmline" model add opencode-go kimi-k2.7-code >/dev/null
+LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-go" "$repo_dir/lmline/lmline" use opencode-go kimi-k2.7-code >/dev/null
+opencode_go_config_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-go" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_BASE_URL=.*https://opencode.ai/zen/go/v1" <<<"$opencode_go_config_out" || fail "opencode go endpoint base url"
+grep -q "LMLINE_MODEL=.*kimi-k2.7-code" <<<"$opencode_go_config_out" || fail "opencode go endpoint model"
+LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-zen" "$repo_dir/lmline/lmline" endpoint add opencode-zen https://opencode.ai/zen/v1 --auth-header Authorization --auth-scheme Bearer >/dev/null
+LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-zen" "$repo_dir/lmline/lmline" model add opencode-zen kimi-k2.6 >/dev/null
+LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-zen" "$repo_dir/lmline/lmline" use opencode-zen kimi-k2.6 >/dev/null
+opencode_zen_config_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config-opencode-zen" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_BASE_URL=.*https://opencode.ai/zen/v1" <<<"$opencode_zen_config_out" || fail "opencode zen endpoint base url"
+grep -q "LMLINE_MODEL=.*kimi-k2.6" <<<"$opencode_zen_config_out" || fail "opencode zen endpoint model"
 profiles_dir="$cfg_tmp/profiles"
 mkdir -p "$profiles_dir"
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add local http://127.0.0.1:1234/v1 --temperature 0.1 --max-tokens 600 --tool-mode text

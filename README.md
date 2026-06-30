@@ -133,6 +133,46 @@ lmline model refresh sakura
 lmline use sakura <model-id>
 ```
 
+Cloudflare Workers AI:
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID=<account-id>
+lmline endpoint add workers-ai "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/ai/v1" --auth-header Authorization --auth-scheme Bearer --tool-mode auto
+lmline endpoint set-secret workers-ai
+lmline model add workers-ai @cf/meta/llama-3.1-8b-instruct
+lmline use workers-ai @cf/meta/llama-3.1-8b-instruct
+```
+
+Cloudflare's OpenAI-compatible base path includes the account ID and supports
+`/chat/completions`. Register Workers AI model IDs manually; use the
+[Workers AI model catalog](https://developers.cloudflare.com/workers-ai/models/)
+for current IDs.
+
+OpenCode Go:
+
+```bash
+lmline endpoint add opencode-go https://opencode.ai/zen/go/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
+lmline endpoint set-secret opencode-go
+lmline model add opencode-go kimi-k2.7-code
+lmline use opencode-go kimi-k2.7-code
+```
+
+OpenCode Zen:
+
+```bash
+lmline endpoint add opencode-zen https://opencode.ai/zen/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
+lmline endpoint set-secret opencode-zen
+lmline model add opencode-zen kimi-k2.6
+lmline use opencode-zen kimi-k2.6
+```
+
+OpenCode model catalogs include `/responses`, `/messages`, and
+`/chat/completions` endpoints. lmline uses `/chat/completions`, so register
+only model IDs documented for that endpoint. Use the direct API model ID
+without the OpenCode config prefix such as `opencode-go/` or `opencode/`.
+Use the OpenCode [Go](https://opencode.ai/docs/go) and
+[Zen](https://opencode.ai/docs/zen) docs for current endpoint/model mappings.
+
 If `/models` is unavailable for an endpoint, register the model manually:
 
 ```bash

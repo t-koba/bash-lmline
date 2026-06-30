@@ -204,7 +204,7 @@ __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLIN
 curl_headers=("${__LMLINE_HTTP_HEADERS[@]}")
 if [[ ! -f "$work_dir/auth-header" ]]; then
   case "$base" in
-    *api.openai.com*|*openrouter.ai*|*generativelanguage.googleapis.com*|*api.ai.sakura.ad.jp*)
+    *api.openai.com*|*openrouter.ai*|*generativelanguage.googleapis.com*|*api.ai.sakura.ad.jp*|*api.cloudflare.com*|*opencode.ai*)
       printf 'lmline-engine: warning: no API key configured for %s; set LMLINE_API_KEY_FILE or run lmline endpoint set-secret ENDPOINT\n' "$base" >&2
       ;;
   esac
