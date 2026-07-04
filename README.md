@@ -57,7 +57,8 @@ curl 7.55+
 jq
 ```
 
-Optional commands used when available:
+<details>
+<summary>Optional commands used when available</summary>
 
 ```text
 git         Git root, branch, and Git-root project config
@@ -72,6 +73,8 @@ msb
             optional microsandbox CLI command backend
 ```
 
+</details>
+
 Install and test scripts also use common POSIX tools such as `install`, `ln`,
 `chmod`, `mktemp`, and `rm`.
 
@@ -82,7 +85,21 @@ API base paths. The engine uses the model profile's API format:
 `chat`, `responses`, or `messages`. Model discovery uses the endpoint's model
 catalog.
 
-LM Studio:
+Common endpoint bases:
+
+| Provider | Base URL note |
+| --- | --- |
+| LM Studio | `http://127.0.0.1:1234/v1` |
+| Ollama | `http://127.0.0.1:11434/v1` |
+| OpenAI | `https://api.openai.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| Sakura AI Engine | `https://api.ai.sakura.ad.jp/v1` |
+| Cloudflare Workers AI | account-scoped `/ai/v1` base plus separate models URL |
+| OpenCode Go/Zen | `https://opencode.ai/zen/go/v1` or `https://opencode.ai/zen/v1` |
+
+<details>
+<summary>Command example: LM Studio</summary>
 
 ```bash
 lmline endpoint add lmstudio http://127.0.0.1:1234/v1 --tool-mode auto
@@ -90,7 +107,10 @@ lmline model refresh lmstudio
 lmline use lmstudio <model-id>
 ```
 
-Ollama:
+</details>
+
+<details>
+<summary>Command example: Ollama</summary>
 
 ```bash
 lmline endpoint add ollama http://127.0.0.1:11434/v1 --tool-mode auto
@@ -98,7 +118,10 @@ lmline model refresh ollama
 lmline use ollama <model-id>
 ```
 
-OpenAI:
+</details>
+
+<details>
+<summary>Command example: OpenAI</summary>
 
 ```bash
 lmline endpoint add openai https://api.openai.com/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
@@ -107,7 +130,10 @@ lmline model refresh openai
 lmline use openai <model-id>
 ```
 
-OpenRouter:
+</details>
+
+<details>
+<summary>Command example: OpenRouter</summary>
 
 ```bash
 lmline endpoint add openrouter https://openrouter.ai/api/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
@@ -116,7 +142,10 @@ lmline model refresh openrouter
 lmline use openrouter <model-id>
 ```
 
-Gemini OpenAI-compatible API:
+</details>
+
+<details>
+<summary>Command example: Gemini OpenAI-compatible API</summary>
 
 ```bash
 lmline endpoint add gemini https://generativelanguage.googleapis.com/v1beta/openai --auth-header Authorization --auth-scheme Bearer --tool-mode auto
@@ -125,7 +154,10 @@ lmline model refresh gemini
 lmline use gemini <model-id>
 ```
 
-Sakura AI Engine:
+</details>
+
+<details>
+<summary>Command example: Sakura AI Engine</summary>
 
 ```bash
 lmline endpoint add sakura https://api.ai.sakura.ad.jp/v1 --auth-header Authorization --auth-scheme Bearer --tool-mode auto
@@ -134,7 +166,10 @@ lmline model refresh sakura
 lmline use sakura <model-id>
 ```
 
-Cloudflare Workers AI:
+</details>
+
+<details>
+<summary>Command example: Cloudflare Workers AI</summary>
 
 ```bash
 export CLOUDFLARE_ACCOUNT_ID=<account-id>
@@ -154,7 +189,10 @@ Use the
 [Workers AI model catalog](https://developers.cloudflare.com/workers-ai/models/)
 for current IDs.
 
-OpenCode Go:
+</details>
+
+<details>
+<summary>Command example: OpenCode Go</summary>
 
 ```bash
 lmline endpoint add opencode-go https://opencode.ai/zen/go/v1 \
@@ -164,7 +202,10 @@ lmline model refresh opencode-go
 lmline use opencode-go <model-id>
 ```
 
-OpenCode Zen:
+</details>
+
+<details>
+<summary>Command example: OpenCode Zen</summary>
 
 ```bash
 lmline endpoint add opencode-zen https://opencode.ai/zen/v1 \
@@ -180,6 +221,8 @@ model. Use direct API model IDs without the OpenCode config prefix such as
 `opencode-go/` or `opencode/`. Use the OpenCode [Go](https://opencode.ai/docs/go)
 and [Zen](https://opencode.ai/docs/zen) docs for current endpoint/model
 mappings.
+
+</details>
 
 If model refresh is unavailable for an endpoint, register the model manually:
 
@@ -212,7 +255,8 @@ mode `0600`; TSV files store only the secret file path.
 `--tool-mode`. `model add` also accepts `--api-format`. Model values override
 endpoint values; empty model values fall back to endpoint values.
 
-Common profile commands:
+<details>
+<summary>Profile command reference</summary>
 
 ```bash
 lmline endpoint list
@@ -228,6 +272,8 @@ lmline current
 
 `lmline use ENDPOINT` is accepted only when exactly one model is registered for
 that endpoint.
+
+</details>
 
 Direct environment configuration also works for keys that are not overridden by
 settings files:
@@ -333,6 +379,20 @@ through the configured `msb` CLI backend.
 
 ## CLI
 
+Use `lmline help [TOPIC...]` for command-specific help. Common commands:
+
+```bash
+lmline doctor [--check-api]
+lmline endpoint add|list|set-secret|remove
+lmline model add|list|refresh|remove
+lmline use ENDPOINT [MODEL]
+lmline config get|defaults|effective
+lmline sandbox run -- COMMAND
+```
+
+<details>
+<summary>CLI command reference</summary>
+
 ```bash
 lmline doctor [--check-api]
 lmline context [LINE...]
@@ -385,6 +445,8 @@ and description.
 Every top-level command and documented subcommand or payload mode accepts
 `--help`.
 
+</details>
+
 ## Sandbox Setup
 
 The microsandbox CLI can run one-off commands, but lmline works best when
@@ -396,6 +458,9 @@ relying on the default `debian` image:
 lmline config set LMLINE_MICROSANDBOX_COMMAND msb
 lmline sandbox setup --image ghcr.io/example/project-dev:latest
 ```
+
+<details>
+<summary>Setup behavior and workspace mounts</summary>
 
 `sandbox setup` creates or reuses a named sandbox, bind-mounts the current Git
 root at `/workspace` by default, writes `/etc/lmline-env.json` with non-secret
@@ -411,6 +476,8 @@ Use `--workspace none` for image-only checks.
 After setup, persist the printed `next_config` commands in the project config.
 Then `LMLINE_EXEC_BACKEND=microsandbox` uses `msb exec` in that named sandbox
 instead of ephemeral `msb run`.
+
+</details>
 
 ## Clipboard
 
@@ -440,7 +507,11 @@ Packaged defaults live under `lmline/defaults/` and are installed under
 `~/.config/lmline/defaults/`.
 
 Create a same-named file directly under `~/.config/lmline/` to override a
-default for one user:
+default for one user. Explicit `LMLINE_*_FILE` paths are strict: unreadable
+paths fail instead of falling back to defaults.
+
+<details>
+<summary>Data-file names and formats</summary>
 
 ```text
 suggested_commands.txt
@@ -470,9 +541,6 @@ lmline config set LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE /path/to/doctor_required_
 lmline config set LMLINE_DOCTOR_OPTIONAL_COMMANDS_FILE /path/to/doctor_optional_commands.txt
 ```
 
-If an explicit `LMLINE_*_FILE` path is unreadable, lmline fails instead of
-falling back to defaults.
-
 File formats:
 
 ```text
@@ -492,9 +560,19 @@ command-list separators, absolute paths, parent-directory paths, and selected
 write-capable options. Pipelines are allowed only when every segment uses
 configured command names.
 
+</details>
+
 ## Prompts
 
-Prompt templates are installed under `~/.config/lmline/prompts/`:
+Prompt templates are installed under `~/.config/lmline/prompts/`. Set
+`LMLINE_PROMPT_DIR` to override templates selectively; missing files fall back
+to the installed defaults.
+
+Engine-appended safety rules, tool protocol rules, candidate limits, and byte
+limits cannot be removed by prompt overrides.
+
+<details>
+<summary>Installed prompt template names</summary>
 
 ```text
 generate.txt rewrite.txt fix.txt explain.txt clip.txt
@@ -502,9 +580,7 @@ system.generate.txt system.explain.txt system.clip.txt
 explain_brief.txt explain_normal.txt explain_detailed.txt
 ```
 
-Set `LMLINE_PROMPT_DIR` to override templates selectively. Missing files fall
-back to the installed defaults. Engine-appended safety rules, tool protocol
-rules, candidate limits, and byte limits cannot be removed by prompt overrides.
+</details>
 
 ## Privacy
 
@@ -534,7 +610,8 @@ the model. `Ctrl-x Ctrl-v` sends redacted clipboard text because that action is
 explicitly about the clipboard. `Ctrl-x Ctrl-f` sends the captured stdout,
 stderr, exit status, and execution backend from the command it runs.
 
-Accuracy-oriented setup:
+<details>
+<summary>Accuracy-oriented setup</summary>
 
 ```bash
 lmline config set LMLINE_TOOL_MODE auto
@@ -555,7 +632,10 @@ lmline config set LMLINE_INCLUDE_LOCALE_CONTEXT 1
 lmline config set LMLINE_INCLUDE_SUGGESTED_COMMANDS 1
 ```
 
-Most secure setup:
+</details>
+
+<details>
+<summary>Most secure setup</summary>
 
 ```bash
 lmline config set LMLINE_TOOL_MODE none
@@ -572,6 +652,8 @@ lmline config set LMLINE_INCLUDE_LOCALE_CONTEXT 0
 lmline config set LMLINE_INCLUDE_SUGGESTED_COMMANDS 0
 lmline debug trace off
 ```
+
+</details>
 
 With the secure setup, the model receives the current input line, mode, response
 language default, candidate limits, and no local tool access. Set
@@ -625,6 +707,9 @@ between streamed provider responses.
 `LMLINE_CACHE_TTL` caches `generate`, `rewrite`, and `explain`
 responses under `~/.config/lmline/cache/`. `fix` and `clip` are not cached.
 
+<details>
+<summary>Tool modes and available tools</summary>
+
 Tool mode values:
 
 ```text
@@ -650,9 +735,22 @@ command_run     bounded command execution through LMLINE_EXEC_BACKEND,
                 disabled by default
 ```
 
+</details>
+
 ## Settings Reference
 
-Path settings:
+Use `lmline config defaults`, `lmline config effective`, and
+`lmline config describe KEY` for the full setting catalog, current values, and
+single-setting help. Detailed tables are grouped below.
+
+- Path settings
+- Provider and engine settings
+- Interactive settings
+- Context and tool settings
+- Data-file settings
+
+<details>
+<summary>Path settings</summary>
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -662,7 +760,10 @@ Path settings:
 | `LMLINE_DEFAULTS_DIR` | installed defaults | packaged data-file defaults |
 | `LMLINE_USER_RULES_DIR` | `$LMLINE_CONFIG_DIR` | user override directory for data files |
 
-Provider and engine settings:
+</details>
+
+<details>
+<summary>Provider and engine settings</summary>
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -697,7 +798,10 @@ Provider and engine settings:
 | `LMLINE_RESPONSE_LOCALE` | locale-derived when locale context is enabled | response language selector |
 | `LMLINE_TRACE_DIR` | empty | trace output directory |
 
-Interactive settings:
+</details>
+
+<details>
+<summary>Interactive settings</summary>
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -726,7 +830,10 @@ Interactive settings:
 | `LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION` | `0` | Bash default completion hook |
 | `LMLINE_DEBUG` | `0` | verbose debug logging for Bash integration |
 
-Context and tool settings:
+</details>
+
+<details>
+<summary>Context and tool settings</summary>
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -773,7 +880,10 @@ Context and tool settings:
 | `LMLINE_TOOL_INFO_LINE_BYTES` | `240` | bytes kept per command-info line |
 | `LMLINE_TOOL_INFO_TIMEOUT` | `2` | seconds per command-info probe |
 
-Data-file settings:
+</details>
+
+<details>
+<summary>Data-file settings</summary>
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -786,6 +896,8 @@ Data-file settings:
 | `LMLINE_LOCAL_COMMANDS_FILE` | user override or installed default | local backend allowlist for `command_run` |
 | `LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE` | user override or installed default | required command list for `doctor` |
 | `LMLINE_DOCTOR_OPTIONAL_COMMANDS_FILE` | user override or installed default | optional command list for `doctor` |
+
+</details>
 
 ## Development Check
 
