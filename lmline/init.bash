@@ -280,7 +280,7 @@ __lmline_call_engine() {
   fi
   __LMLINE_ENGINE_STATUS=$status
   if [[ -n "$output" ]]; then
-    __LMLINE_ENGINE_ERROR=$(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c 1-300)
+    __LMLINE_ENGINE_ERROR=$(printf '%s' "$output" | __lmline_display_error_line 300)
     __lmline_debug_log "$__LMLINE_ENGINE_ERROR"
   else
     __LMLINE_ENGINE_ERROR="engine exited with status $status"
@@ -484,7 +484,7 @@ __lmline_generate_async_widget() {
       return 0
     fi
     if [[ -f "$async_file.status.err" ]]; then
-      __LMLINE_ENGINE_ERROR=$(cut -c 1-200 "$async_file.status.err")
+      __LMLINE_ENGINE_ERROR=$(__lmline_display_error_line 200 <"$async_file.status.err")
       __lmline_hint show "$(__lmline_engine_error_hint)"
     else
       __lmline_hint show "${LMLINE_PS0}async generation failed"
@@ -553,7 +553,7 @@ __lmline_fix_widget() {
   fi
   if (( engine_status != 0 )); then
     __LMLINE_ENGINE_STATUS=$engine_status
-    __LMLINE_ENGINE_ERROR=$(printf '%s' "$engine_output" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c 1-300)
+    __LMLINE_ENGINE_ERROR=$(printf '%s' "$engine_output" | __lmline_display_error_line 300)
     rm -rf "$tmp"
     __lmline_hint final "$(__lmline_engine_error_hint)"
     return 0

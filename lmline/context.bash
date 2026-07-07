@@ -725,6 +725,30 @@ __lmline_collect_command_summaries() {
 
 # Shared utility helpers used by shell actions and engine inputs
 
+# Caps error text to one display line, cutting at a UTF-8 boundary and
+# appending "..." when shortened. Replaces raw byte cuts of error output;
+# the full text stays available via LMLINE_TRACE_DIR.
+__lmline_display_error_line() {
+  local max=${1:-300}
+  tr '\n' ' ' | sed 's/[[:space:]]*$//' | LC_ALL=C awk -v m="$max" '
+    BEGIN {
+      cont = ""; lead = ""
+      for (b = 128; b <= 191; b++) cont = cont sprintf("%c", b)
+      for (b = 194; b <= 247; b++) lead = lead sprintf("%c", b)
+    }
+    {
+      s = $0
+      if (length(s) > m) {
+        s = substr(s, 1, m)
+        while (length(s) > 0 && index(cont, substr(s, length(s), 1))) s = substr(s, 1, length(s) - 1)
+        if (length(s) > 0 && index(lead, substr(s, length(s), 1))) s = substr(s, 1, length(s) - 1)
+        s = s "..."
+      }
+      print s
+      exit
+    }'
+}
+
 __lmline_condense_patterns_file() {
   __lmline_resolve_data_file condense_priority_patterns \
     "${LMLINE_CONDENSE_PATTERNS_FILE:-}" \

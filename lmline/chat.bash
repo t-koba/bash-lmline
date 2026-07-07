@@ -228,16 +228,20 @@ __lmline_response_error_detail() {
   local response=$1 content_type=${2-} detail
   case "$content_type" in
     *json*)
-      if jq -e '.error.message' "$response" >/dev/null 2>&1; then
-        detail=$(jq -r '.error.message' "$response" | head -c 300)
+      # Providers disagree on the error field; try the common shapes first.
+      if detail=$(jq -re '
+          [.error.message?, (.error? | select(type == "string")), .message?, .detail?]
+          | map(select(type == "string" and length > 0)) | first // empty
+        ' "$response" 2>/dev/null) && [[ -n "$detail" ]]; then
+        :
       elif jq -e '.' "$response" >/dev/null 2>&1; then
-        detail=$(jq -c '.' "$response" | head -c 300)
+        detail=$(jq -c '.' "$response")
       else
-        detail=$(head -c 200 "$response" | tr '\n' ' ')
+        detail=$(cat "$response")
       fi
       ;;
     *)
-      detail=$(head -c 200 "$response" | tr '\n' ' ')
+      detail=$(cat "$response")
       if [[ -n "$detail" ]]; then
         detail="non-JSON error response${content_type:+ ($content_type)}: $detail"
       else
@@ -245,16 +249,23 @@ __lmline_response_error_detail() {
       fi
       ;;
   esac
-  printf '%s\n' "$detail"
+  printf '%s\n' "$detail" | __lmline_display_error_line 400
 }
 
 __lmline_report_request_failure() {
-  local http_code=$1 content_type=${2-} response=$3 detail
+  local http_code=$1 content_type=${2-} response=$3 detail hint=
   detail=$(__lmline_response_error_detail "$response" "$content_type")
+  case "$http_code" in
+    401|403) hint='; try: lmline endpoint set-secret ENDPOINT' ;;
+    404) hint='; check base_url and model: lmline current' ;;
+    429) hint='; provider rate-limited; wait or raise LMLINE_HTTP_RETRIES' ;;
+    5??) hint='; provider-side error; retry later' ;;
+  esac
+  [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
   if [[ -n "$detail" ]]; then
-    printf 'lmline-engine: request failed: HTTP %s: %s\n' "$http_code" "$detail" >&2
+    printf 'lmline-engine: request failed: HTTP %s: %s%s\n' "$http_code" "$detail" "$hint" >&2
   else
-    printf 'lmline-engine: request failed: HTTP %s\n' "$http_code" >&2
+    printf 'lmline-engine: request failed: HTTP %s%s\n' "$http_code" "$hint" >&2
   fi
 }
 

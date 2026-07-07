@@ -40,7 +40,7 @@ __lmline_action_stream_engine() {
   "$@" 2>"$stderr_file"
   engine_status=$?
   if (( engine_status != 0 )); then
-    error=$(__lmline_action_strip_runtime_lines <"$stderr_file" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c 1-300)
+    error=$(__lmline_action_strip_runtime_lines <"$stderr_file" 2>/dev/null | __lmline_display_error_line 300)
     __lmline_engine_error_message "$prefix" "${error:-engine exited with status $engine_status}"
     return "$engine_status"
   fi
@@ -243,7 +243,7 @@ __lmline_print_clip() {
   (( had_errexit == 1 )) && set -e
   rm -rf "$tmp"
   if (( engine_status != 0 )); then
-    error=$(printf '%s' "${engine_output:-engine exited with status $engine_status}" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c 1-300)
+    error=$(printf '%s' "${engine_output:-engine exited with status $engine_status}" | __lmline_display_error_line 300)
     __lmline_engine_error_message "$prefix" "$error"
     return "$engine_status"
   fi
@@ -310,7 +310,7 @@ __lmline_print_explanation() {
   rm -rf "$tmp"
   if (( engine_status != 0 )); then
     if [[ -n "$engine_output" ]]; then
-      error=$(printf '%s' "$engine_output" | tr '\n' ' ' | sed 's/[[:space:]]*$//' | cut -c 1-300)
+      error=$(printf '%s' "$engine_output" | __lmline_display_error_line 300)
     else
       error="engine exited with status $engine_status"
     fi
