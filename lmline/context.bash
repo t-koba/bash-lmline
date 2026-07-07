@@ -168,20 +168,36 @@ __lmline_tool_enabled() {
 # Local tool implementations exposed to the engine
 
 __lmline_tool_commands() {
-  local query=${1-} token all_commands
+  local query=${1-} all_commands
   all_commands=$(__lmline_collect_all_commands)
   if [[ -z "$query" ]]; then
     printf '%s\n' "$all_commands" | sed -n "1,${LMLINE_TOOL_COMMANDS_LIMIT}p"
     return 0
   fi
-  {
-    printf '%s\n' "$all_commands" | grep -iF -- "$query" || true
-    for token in $query; do
-      token=${token//[^A-Za-z0-9_.+-]/}
-      ((${#token} >= 3)) || continue
-      printf '%s\n' "$all_commands" | grep -iF -- "$token" || true
-    done
-  } | sort -u | sed -n "1,${LMLINE_TOOL_COMMANDS_LIMIT}p"
+  printf '%s\n' "$all_commands" |
+    awk -v query="$query" -v limit="${LMLINE_TOOL_COMMANDS_LIMIT}" '
+      BEGIN {
+        q = tolower(query)
+        n = split(query, raw, /[[:space:]]+/)
+        for (i = 1; i <= n; i++) {
+          token = raw[i]
+          gsub(/[^A-Za-z0-9_.+-]/, "", token)
+          if (length(token) >= 3) tokens[++token_count] = tolower(token)
+        }
+      }
+      {
+        line = tolower($0)
+        matched = (index(line, q) > 0)
+        for (i = 1; !matched && i <= token_count; i++) {
+          matched = (index(line, tokens[i]) > 0)
+        }
+        if (matched && !seen[$0]++) {
+          print
+          count++
+          if (count >= limit) exit
+        }
+      }
+    '
 }
 
 __lmline_tool_command_exists() {

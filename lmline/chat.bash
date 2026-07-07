@@ -177,11 +177,16 @@ __lmline_elapsed_seconds() {
 
 __lmline_usage_summary() {
   # Sets: usage_model usage_prompt usage_completion usage_total
-  usage_model=$(awk -F '\t' '$1 != "" { model=$1 } END { print model }' "$usage_file" 2>/dev/null)
+  local summary
+  summary=$(awk -F '\t' '
+    $1 != "" { model=$1 }
+    { prompt += ($2 ~ /^[0-9]+$/ ? $2 : 0) }
+    { completion += ($3 ~ /^[0-9]+$/ ? $3 : 0) }
+    { total += ($4 ~ /^[0-9]+$/ ? $4 : 0) }
+    END { printf "%s\t%d\t%d\t%d\n", model, prompt, completion, total }
+  ' "$usage_file" 2>/dev/null || printf '\t0\t0\t0\n')
+  IFS=$'\t' read -r usage_model usage_prompt usage_completion usage_total <<<"$summary"
   [[ -n "$usage_model" ]] || usage_model=$LMLINE_MODEL
-  usage_prompt=$(awk -F '\t' '{ s += ($2 ~ /^[0-9]+$/ ? $2 : 0) } END { print s + 0 }' "$usage_file" 2>/dev/null)
-  usage_completion=$(awk -F '\t' '{ s += ($3 ~ /^[0-9]+$/ ? $3 : 0) } END { print s + 0 }' "$usage_file" 2>/dev/null)
-  usage_total=$(awk -F '\t' '{ s += ($4 ~ /^[0-9]+$/ ? $4 : 0) } END { print s + 0 }' "$usage_file" 2>/dev/null)
 }
 
 __lmline_emit_meta() {

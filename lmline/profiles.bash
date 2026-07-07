@@ -376,8 +376,7 @@ profile_extract_model_ids() {
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq
-  local existing old_temp old_tokens old_tool
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records_file records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
@@ -398,19 +397,35 @@ profile_model_refresh() {
   [[ -n "$records" ]] || { printf 'lmline: model refresh returned no models\n' >&2; exit 1; }
   mkdir -p "$config_dir"
   touch "$models_file"
-  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-models.XXXXXX"
-  cp "$models_file" "$tmp"
+  __lmline_mktemp records_file "${TMPDIR:-/tmp}/lmline-model-records.XXXXXX"
   while IFS=$'\t' read -r id api_format; do
     [[ -n "$id" ]] || continue
     profile_require_name model "$id"
-    old_temp=
-    old_tokens=
-    old_tool=
-    if existing=$(profile_find_line "$tmp" "$endpoint" "$id"); then
-      profile_split_tsv "$existing" _ _ old_temp old_tokens old_tool _
-    fi
-    profile_upsert_line "$tmp" 2 "$(printf '%s\t%s\t%s\t%s\t%s\t%s' "$endpoint" "$id" "$old_temp" "$old_tokens" "$old_tool" "$api_format")"
-  done <<<"$records"
+    printf '%s\t%s\n' "$id" "$api_format"
+  done <<<"$records" >"$records_file"
+  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-models.XXXXXX"
+  awk -F '\t' -v OFS='\t' -v endpoint="$endpoint" '
+    NR == FNR {
+      if ($1 == "") next
+      order[++n] = $1
+      new_format[$1] = $2
+      refresh[$1] = 1
+      next
+    }
+    $1 == endpoint && ($2 in refresh) {
+      old_temp[$2] = $3
+      old_tokens[$2] = $4
+      old_tool[$2] = $5
+      next
+    }
+    { print }
+    END {
+      for (i = 1; i <= n; i++) {
+        id = order[i]
+        print endpoint, id, old_temp[id], old_tokens[id], old_tool[id], new_format[id]
+      }
+    }
+  ' "$records_file" "$models_file" >"$tmp"
   mv "$tmp" "$models_file"
   chmod 600 "$models_file" 2>/dev/null || true
 }
