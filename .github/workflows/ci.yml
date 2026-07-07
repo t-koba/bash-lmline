@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y jq zsh shellcheck expect
+      - name: Install dependencies (macOS)
+        # macOS ships bash 3.2; the tests need bash 4.2+ first on PATH.
+        run: brew install bash jq shellcheck
+        if: runner.os == 'macOS'
+      - name: Run tests
+        env:
+          LMLINE_REQUIRE_SHELLCHECK: "1"
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export PATH="$(brew --prefix)/bin:$PATH"
+          fi
+          bash tests/run.sh

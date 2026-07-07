@@ -1,0 +1,6 @@
+# Pinned baseline for the existing codebase. These classes are either
+# intentional idioms here (deliberate glob matching in policy rules, single
+# quotes around awk/jq programs, A && B || C chains, dynamic export) or
+# benign duplicates (case alternatives that share a branch). Ratchet this
+# list down over time instead of growing it.
+disable=SC1003,SC1007,SC1083,SC2015,SC2016,SC2034,SC2053,SC2094,SC2154,SC2163,SC2207,SC2209,SC2221,SC2222,SC2317
