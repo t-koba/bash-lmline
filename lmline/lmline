@@ -1008,6 +1008,14 @@ case "$cmd" in
       "$LMLINE_USER_RULES_DIR/doctor_optional_commands.txt" \
       "$LMLINE_DEFAULTS_DIR/doctor_optional_commands.txt") || exit 1
     print_command_status "$optional_file"
+    printf '\nversions\n'
+    printf '  curl: %s\n' "$(curl --version 2>/dev/null | sed -n '1p')"
+    printf '  jq: %s\n' "$(jq --version 2>/dev/null)"
+    curl_version=$(curl --version 2>/dev/null | awk 'NR == 1 { print $2 }' || true)
+    if [[ "$curl_version" =~ ^([0-9]+)\.([0-9]+) ]] &&
+      (( BASH_REMATCH[1] < 7 || (BASH_REMATCH[1] == 7 && BASH_REMATCH[2] < 55) )); then
+      printf '  WARNING: curl %s is older than 7.55; "-H @file" auth headers require 7.55+\n' "$curl_version"
+    fi
     printf '\nprofiles\n'
     endpoint_count=0
     model_count=0
@@ -1015,6 +1023,45 @@ case "$cmd" in
     [[ -f "$models_file" ]] && model_count=$(awk -F '\t' 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' "$models_file")
     printf 'endpoints=%s\nmodels=%s\n' "$endpoint_count" "$model_count"
     profile_current | sed 's/^/active_/'
+    printf '\nprofile_checks\n'
+    profile_issues=0
+    if [[ -f "$endpoints_file" ]]; then
+      while IFS= read -r check_line; do
+        [[ -z "$check_line" || "$check_line" == \#* ]] && continue
+        profile_split_tsv "$check_line" check_name _ _ _ _ _ _ _ _ check_models_jq _ _ _
+        if [[ -n "$check_models_jq" ]] && ! jq -n "def __lmline_items: $check_models_jq; null" >/dev/null 2>&1; then
+          printf '  WARNING: endpoint %s has an invalid models_jq expression\n' "$check_name"
+          profile_issues=$((profile_issues + 1))
+        fi
+      done <"$endpoints_file"
+    fi
+    if [[ -f "$endpoints_file" && -f "$models_file" ]]; then
+      while IFS= read -r check_line; do
+        printf '  WARNING: model references unknown endpoint: %s\n' "$check_line"
+        profile_issues=$((profile_issues + 1))
+      done < <(awk -F '\t' '
+        NR == FNR { if (NF && $1 !~ /^#/) ep[$1] = 1; next }
+        NF && $1 !~ /^#/ && !($1 in ep) { print $1 "/" $2 }
+      ' "$endpoints_file" "$models_file")
+    fi
+    for secret_file in "$config_dir"/secrets/*.secret; do
+      [[ -f "$secret_file" ]] || continue
+      secret_perm=$(stat -f %Lp "$secret_file" 2>/dev/null || stat -c %a "$secret_file" 2>/dev/null || true)
+      if [[ -n "$secret_perm" && "$secret_perm" != 600 ]]; then
+        printf '  WARNING: secret file is not mode 600 (%s): %s\n' "$secret_perm" "$secret_file"
+        profile_issues=$((profile_issues + 1))
+      fi
+    done
+    if [[ -d "$config_dir/.lmline.lock" ]]; then
+      lock_pid=$(cat "$config_dir/.lmline.lock/pid" 2>/dev/null || true)
+      if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+        printf '  lock: held by running pid %s\n' "$lock_pid"
+      else
+        printf '  WARNING: stale lock left behind at %s; remove it if config writes fail\n' "$config_dir/.lmline.lock"
+        profile_issues=$((profile_issues + 1))
+      fi
+    fi
+    (( profile_issues == 0 )) && printf '  ok\n'
     printf '\ndefaults\n'
     for f in \
       command_prefix_words.txt \
@@ -1041,11 +1088,32 @@ case "$cmd" in
       # ${VAR-default} (no colon): an explicitly empty scheme means raw key.
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \
         "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp"
-      if [[ -n "$api_base" ]] && __lmline_http_get "$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")" 5 >/dev/null 2>&1; then
-        printf '  connection=ok\n'
+      if [[ -n "$api_base" ]]; then
+        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+          "${__LMLINE_HTTP_HEADERS[@]}" \
+          "$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")" 2>/dev/null) || api_code=000
+        case "$api_code" in
+          2??) printf '  connection=ok (HTTP %s)\n' "$api_code" ;;
+          401|403)
+            printf '  connection=failed (HTTP %s: auth)\n' "$api_code"
+            printf '  -> set a key: lmline endpoint set-secret ENDPOINT\n'
+            ;;
+          404)
+            printf '  connection=failed (HTTP %s: not found)\n' "$api_code"
+            printf '  -> check LMLINE_BASE_URL / LMLINE_MODELS_URL: lmline config get\n'
+            ;;
+          000)
+            printf '  connection=failed (no response)\n'
+            printf '  -> check LMLINE_BASE_URL or run: lmline use ENDPOINT MODEL\n'
+            ;;
+          *)
+            printf '  connection=failed (HTTP %s)\n' "$api_code"
+            printf '  -> check LMLINE_BASE_URL or run: lmline use ENDPOINT MODEL\n'
+            ;;
+        esac
       else
-        printf '  connection=failed\n'
-        printf '  -> check LMLINE_BASE_URL or run: lmline use ENDPOINT MODEL\n'
+        printf '  connection=failed (LMLINE_BASE_URL is unset)\n'
+        printf '  -> run: lmline use ENDPOINT MODEL\n'
       fi
     fi
     printf '\nclipboard\n'

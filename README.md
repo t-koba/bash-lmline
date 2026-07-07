@@ -42,6 +42,19 @@ Permanent zsh setup:
 source "$HOME/.config/lmline/init.zsh"
 ```
 
+Standalone CLI completions (optional; the init scripts already load them, so
+this only matters for shells that do not source the full integration):
+
+```bash
+# bash
+source "$HOME/.config/lmline/completions/lmline.bash"
+```
+
+```zsh
+# zsh: add before compinit in ~/.zshrc
+fpath+=("$HOME/.config/lmline/completions")
+```
+
 ## Requirements
 
 Interactive integration:
@@ -372,6 +385,12 @@ candidates are inserted as comments prefixed with `# REVIEW REQUIRED:`.
 Medium-risk candidates are inserted with a warning. Low-risk candidates are
 inserted directly.
 
+The first inserted candidate shows the candidate count and model metadata.
+Cycling with `Ctrl-x Ctrl-n` / `Ctrl-x Ctrl-p` shows the current position
+(for example `2/3`) so moving through candidates never feels like a no-op;
+truncated candidates and the preserved original (rewrite mode) are flagged in
+the same indicator.
+
 `Ctrl-x Ctrl-f` is the only interactive action that executes the current line.
 With the local backend, it refuses high-risk commands and medium-risk commands
 require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, the command runs
@@ -489,9 +508,19 @@ name<TAB>command<TAB>arg1<TAB>arg2...
 
 `lmline clip` and `Ctrl-x Ctrl-v` read the selected provider as an argv array,
 not through shell evaluation. The default `auto` provider uses the first
-available configured provider. Clipboard text is redacted for common secret
-patterns, truncated to `LMLINE_CLIP_MAX_INPUT_BYTES`, and sent as untrusted
-pasted text.
+available configured provider; when every provider fails, each failure is
+reported on its own line with a pointer to `lmline clip --providers`.
+
+Clipboard text is redacted before it is sent, then condensed to
+`LMLINE_CLIP_MAX_INPUT_BYTES` (see Output Condensation below), and marked as
+untrusted pasted text. Redaction masks these patterns:
+
+```text
+VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments
+Authorization: Bearer <token> headers
+sk-... OpenAI-style API keys (after the first 12 characters)
+ghp_... GitHub tokens (after the first 12 characters)
+```
 
 ```bash
 lmline clip --status
@@ -696,7 +725,11 @@ lmline config set LMLINE_TOOL_MODE none
 ```
 
 `LMLINE_ASYNC=1` makes the first generate key start a background request; press
-the generate key again to insert the result when ready.
+the same key again to insert the result when ready. While the request runs the
+hint shows elapsed seconds, and a generation that outlives
+`LMLINE_ENGINE_TIMEOUT` (+5s) is killed with a timeout message.
+`LMLINE_ASYNC_NOTIFY=1` additionally prints a one-line "suggestion ready"
+notice at the next prompt (via `PROMPT_COMMAND` / `precmd`).
 
 `LMLINE_SELECTOR` is Bash-only. It is split on whitespace and executed as a
 command argv array when more than one candidate is available.
@@ -704,8 +737,12 @@ command argv array when more than one candidate is available.
 `LMLINE_STREAM=1` streams `explain` and `clip` responses. Tool rounds still run
 between streamed provider responses.
 
-`LMLINE_CACHE_TTL` caches `generate`, `rewrite`, and `explain`
-responses under `~/.config/lmline/cache/`. `fix` and `clip` are not cached.
+`LMLINE_CACHE_TTL` caches `generate`, `rewrite`, and `explain` responses under
+`~/.config/lmline/cache/` (mode 0700). The default is 600 seconds, so
+repeating the same request in the same directory answers instantly without an
+API call; set `LMLINE_CACHE_TTL=0` to disable caching. `fix` and `clip` are
+not cached. Cache keys include the mode, line, directory, model, and prompt
+version, so prompt upgrades never serve stale entries.
 
 <details>
 <summary>Tool modes and available tools</summary>
@@ -736,6 +773,58 @@ command_run     bounded command execution through LMLINE_EXEC_BACKEND,
 ```
 
 </details>
+
+## Output Condensation
+
+Captured output that exceeds its byte budget (fix-mode stdout/stderr,
+`command_run` tool results, clipboard text, long command help) is condensed
+instead of being cut at an arbitrary byte:
+
+- the head and the tail of the output are both kept
+- consecutive duplicate lines fold into one line annotated `(repeated Nx)`
+- lines matching `condense_priority_patterns.txt` (errors, warnings,
+  tracebacks) are rescued from the omitted middle
+- cuts land on line and UTF-8 boundaries only
+
+An omitted region is marked with a line like
+`...[omitted 120 lines, ~9000 bytes]...`. These markers (and `(repeated Nx)`)
+are inserted locally; they are not part of the original output. Budgets are
+controlled by the existing `LMLINE_FIX_MAX_OUTPUT`,
+`LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT`, and `LMLINE_CLIP_MAX_INPUT_BYTES`
+settings, plus `LMLINE_CONDENSE_LINE_BYTES` (per-line cap),
+`LMLINE_CONDENSE_RESCUE_LINES` (max rescued lines), and
+`LMLINE_CONDENSE_PATTERNS_FILE` (custom priority patterns).
+
+## Concurrency and Locking
+
+Mutating CLI commands (`endpoint`, `model`, `use`, `config set/unset`,
+`debug on/off/trace`) take a lock on `~/.config/lmline/.lmline.lock` so
+concurrent `lmline` invocations from different terminals cannot lose each
+other's writes. The lock is a directory (`mkdir` is atomic on POSIX and
+portable to macOS, which lacks `flock`); a lock whose holder process has died
+is stolen automatically, and `lmline doctor` warns about stale locks.
+`LMLINE_LOCK_TIMEOUT` (default 5s) bounds the wait; `LMLINE_NO_LOCK=1`
+disables locking for filesystems where `mkdir` atomicity is unreliable
+(some NFS mounts).
+
+## Debugging
+
+```bash
+lmline debug on           # verbose logging; status lines go to stderr
+lmline debug trace on     # write full request/response traces
+lmline doctor --check-api # dependency, profile, lock, and connectivity checks
+```
+
+With tracing on, every engine call writes the exact payloads, responses,
+streamed text, and accepted/rejected candidates under
+`~/.config/lmline/traces/` (mode 0700). Error messages stay short on screen
+but include recovery hints (for example `lmline endpoint set-secret` on
+HTTP 401) and point at the trace for the full provider response.
+
+The `lmline-meta:` line emitted by the engine includes machine-readable
+counters — token usage, tools used, elapsed time, plus `rejected=N` and
+`retried=1` when local validation rejected candidates — which makes prompt
+or model changes measurable from logs (`LMLINE_STATUS_MODE=log`).
 
 ## Settings Reference
 
@@ -782,9 +871,10 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
 | `LMLINE_HTTP_RETRIES` | `1` | transient provider retries |
 | `LMLINE_RETRY_DELAY` | `1` | seconds between retries |
-| `LMLINE_CACHE_TTL` | `0` | response cache TTL in seconds |
+| `LMLINE_CACHE_TTL` | `600` | response cache TTL in seconds (0 disables) |
 | `LMLINE_STREAM` | `0` | stream `explain` and `clip` responses |
 | `LMLINE_TEMPERATURE` | `0.2` | chat completion temperature |
+| `LMLINE_FIX_TEMPERATURE` | `0.1` | sampling temperature for fix mode |
 | `LMLINE_MAX_TOKENS` | `1200` | max response tokens for command modes |
 | `LMLINE_EXPLAIN_MAX_TOKENS` | `1200` | max response tokens for `explain` |
 | `LMLINE_CLIP_MAX_TOKENS` | `1200` | max response tokens for `clip` |
@@ -794,7 +884,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_MAX_CANDIDATE_BYTES` | `4096` | candidate byte limit |
 | `LMLINE_ENGINE` | installed engine | engine executable |
 | `LMLINE_PROMPT_DIR` | installed prompts | prompt override directory |
-| `LMLINE_PROMPT_VERSION` | `1` | prompt/context version marker used in request keys |
+| `LMLINE_PROMPT_VERSION` | `2` | prompt/context version marker used in request keys |
 | `LMLINE_RESPONSE_LOCALE` | locale-derived when locale context is enabled | response language selector |
 | `LMLINE_TRACE_DIR` | empty | trace output directory |
 
@@ -856,8 +946,9 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_MICROSANDBOX_WORKDIR` | `/workspace` | guest workdir for `sandbox setup` |
 | `LMLINE_MICROSANDBOX_WORKSPACE_MODE` | `readonly` | `readonly`, `writable`, or `none` for project bind mount |
 | `LMLINE_MICROSANDBOX_REQUIRED_COMMANDS` | empty | extra space-separated commands checked by `sandbox setup` |
-| `LMLINE_MAX_TOOL_ROUNDS` | `10` | maximum tool-use rounds |
+| `LMLINE_MAX_TOOL_ROUNDS` | `4` | maximum tool-use rounds |
 | `LMLINE_MAX_TOOL_CALLS_PER_ROUND` | `20` | per-round tool call limit |
+| `LMLINE_TOOL_RESULT_MAX_BYTES` | `8000` | tool result bytes kept per call after condensation |
 | `LMLINE_TOOL_RESULT_SUMMARIZE` | `0` | summarize long multi-round tool history |
 | `LMLINE_TOOL_RESULT_SUMMARY_MIN_CHARS` | `12000` | summarization threshold |
 | `LMLINE_TOOL_RESULT_SUMMARY_MAX_TOKENS` | `300` | summarization token limit |
