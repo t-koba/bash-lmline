@@ -12,7 +12,9 @@ config_file=$config_dir/settings.bash
 endpoints_file=$config_dir/endpoints.tsv
 models_file=$config_dir/models.tsv
 __lmline_tmp_paths=()
+__lmline_lock_path=
 __lmline_cleanup() {
+  [[ -z "$__lmline_lock_path" ]] || rm -rf "$__lmline_lock_path"
   ((${#__lmline_tmp_paths[@]} == 0)) || rm -rf "${__lmline_tmp_paths[@]}"
 }
 trap __lmline_cleanup EXIT
@@ -736,6 +738,10 @@ __lmline_config_file_op() {
       __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-cfg.XXXXXX"
       grep -v -E "^export ${key}=" "$file" >"$tmp" || true
       printf 'export %s=%s\n' "$key" "$(quote_bash "$value")" >>"$tmp"
+      grep -qxF "export ${key}=$(quote_bash "$value")" "$tmp" || {
+        printf 'lmline: failed to write %s\n' "$key" >&2
+        exit 1
+      }
       mv "$tmp" "$file"
       chmod 600 "$file" 2>/dev/null || true
       ;;
@@ -743,11 +749,27 @@ __lmline_config_file_op() {
       [[ -f "$file" ]] || return 0
       __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-cfg.XXXXXX"
       grep -v -E "^export ${key}=" "$file" >"$tmp" || true
+      ! grep -qE "^export ${key}=" "$tmp" || {
+        printf 'lmline: failed to remove %s\n' "$key" >&2
+        exit 1
+      }
       mv "$tmp" "$file"
       chmod 600 "$file" 2>/dev/null || true
       ;;
     *) return 2 ;;
   esac
+}
+
+# Runs a mutating command while holding the config-dir lock so concurrent
+# lmline invocations cannot interleave their read-modify-write cycles. The
+# wrapped command must not take the lock again; the EXIT trap releases the
+# lock if the command exits early.
+with_config_lock() {
+  __lmline_lock_acquire "$config_dir/.lmline.lock" "${LMLINE_LOCK_TIMEOUT:-5}" || exit 1
+  __lmline_lock_path=$config_dir/.lmline.lock
+  "$@"
+  __lmline_lock_release "$__lmline_lock_path"
+  __lmline_lock_path=
 }
 
 write_config_value() {
@@ -1097,7 +1119,7 @@ case "$cmd" in
         if [[ "$provider" != auto ]]; then
           LMLINE_CLIPBOARD_PROVIDER=$provider __lmline_clipboard_provider_line >/dev/null || exit 1
         fi
-        write_config_value LMLINE_CLIPBOARD_PROVIDER "$provider"
+        with_config_lock write_config_value LMLINE_CLIPBOARD_PROVIDER "$provider"
         LMLINE_CLIPBOARD_PROVIDER=$provider __lmline_clipboard_status
         ;;
       --provider)
@@ -1130,13 +1152,13 @@ case "$cmd" in
           printf 'lmline: config set requires KEY like LMLINE_MODEL and VALUE\n' >&2
           exit 2
         }
-        write_config_value "$key" "$value"
+        with_config_lock write_config_value "$key" "$value"
         ;;
       unset)
         [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config unset; exit 0; }
         key=${1-}
         [[ -n "$key" ]] || { usage; exit 2; }
-        unset_config_value "$key"
+        with_config_lock unset_config_value "$key"
         ;;
       project-get)
         [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config project-get; exit 0; }
@@ -1149,13 +1171,13 @@ case "$cmd" in
           printf 'lmline: config project-set requires KEY like LMLINE_MODEL and VALUE\n' >&2
           exit 2
         }
-        __lmline_config_file_op set "$PWD/.lmline.bash" "$key" "$value"
+        with_config_lock __lmline_config_file_op set "$PWD/.lmline.bash" "$key" "$value"
         ;;
       project-unset)
         [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help config project-unset; exit 0; }
         key=${1-}
         [[ -n "$key" ]] || { usage; exit 2; }
-        __lmline_config_file_op unset "$PWD/.lmline.bash" "$key"
+        with_config_lock __lmline_config_file_op unset "$PWD/.lmline.bash" "$key"
         ;;
       *) usage; exit 2 ;;
     esac
@@ -1164,10 +1186,10 @@ case "$cmd" in
     sub=${2-}; shift 2 || true
     case "$sub" in -h|--help|'') print_cli_help endpoint; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
     case "$sub" in
-      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint add; exit 0; }; profile_endpoint_add "$@" ;;
+      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint add; exit 0; }; with_config_lock profile_endpoint_add "$@" ;;
       list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint list; exit 0; }; profile_endpoint_list ;;
-      set-secret) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint set-secret; exit 0; }; profile_endpoint_set_secret "${1-}" "${2-}" ;;
-      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint remove; exit 0; }; profile_endpoint_remove "$@" ;;
+      set-secret) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint set-secret; exit 0; }; with_config_lock profile_endpoint_set_secret "${1-}" "${2-}" ;;
+      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help endpoint remove; exit 0; }; with_config_lock profile_endpoint_remove "$@" ;;
       *) usage; exit 2 ;;
     esac
     ;;
@@ -1175,17 +1197,17 @@ case "$cmd" in
     sub=${2-}; shift 2 || true
     case "$sub" in -h|--help|'') print_cli_help model; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
     case "$sub" in
-      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model add; exit 0; }; profile_model_add "$@" ;;
+      add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model add; exit 0; }; with_config_lock profile_model_add "$@" ;;
       list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model list; exit 0; }; profile_model_list "${1-}" ;;
-      refresh) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model refresh; exit 0; }; profile_model_refresh "${1-}" ;;
-      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model remove; exit 0; }; profile_model_remove "${1-}" "${2-}" ;;
+      refresh) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model refresh; exit 0; }; with_config_lock profile_model_refresh "${1-}" ;;
+      remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model remove; exit 0; }; with_config_lock profile_model_remove "${1-}" "${2-}" ;;
       *) usage; exit 2 ;;
     esac
     ;;
   use)
     shift || true
     [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help use; exit 0; }
-    profile_use "${1-}" "${2-}"
+    with_config_lock profile_use "${1-}" "${2-}"
     ;;
   current)
     [[ "${2-}" == -h || "${2-}" == --help ]] && { print_cli_help current; exit 0; }
@@ -1262,22 +1284,22 @@ case "$cmd" in
         ;;
       on)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug on; exit 0; }
-        write_config_value LMLINE_DEBUG 1
-        write_config_value LMLINE_STATUS_MODE log
+        with_config_lock write_config_value LMLINE_DEBUG 1
+        with_config_lock write_config_value LMLINE_STATUS_MODE log
         ;;
       off)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug off; exit 0; }
-        write_config_value LMLINE_DEBUG 0
-        write_config_value LMLINE_STATUS_MODE inline
+        with_config_lock write_config_value LMLINE_DEBUG 0
+        with_config_lock write_config_value LMLINE_STATUS_MODE inline
         ;;
       trace)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help debug trace; exit 0; }
         case "${3-}" in
           on)
-            write_config_value LMLINE_TRACE_DIR "$config_dir/traces"
+            with_config_lock write_config_value LMLINE_TRACE_DIR "$config_dir/traces"
             ;;
           off)
-            unset_config_value LMLINE_TRACE_DIR
+            with_config_lock unset_config_value LMLINE_TRACE_DIR
             ;;
           *) usage; exit 2 ;;
         esac

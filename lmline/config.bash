@@ -43,6 +43,42 @@ __lmline_load_export_file() {
   done <"$file"
 }
 
+# Portable mutual exclusion for config-dir writes. mkdir is atomic on POSIX
+# filesystems and macOS has no flock(1), so a lock directory is used instead.
+# Holder liveness is tracked via a pid file inside the lock directory; locks
+# whose holder is gone are stolen. LMLINE_NO_LOCK=1 disables locking entirely
+# (for filesystems where mkdir atomicity is unreliable, e.g. some NFS mounts).
+__lmline_lock_acquire() {
+  local lockdir=$1 timeout=${2:-5} tries i=0 pid
+  [[ "${LMLINE_NO_LOCK:-0}" == 1 ]] && return 0
+  tries=$(( timeout * 10 ))
+  mkdir -p "${lockdir%/*}" 2>/dev/null || true
+  while ! mkdir "$lockdir" 2>/dev/null; do
+    pid=$(cat "$lockdir/pid" 2>/dev/null) || pid=
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$lockdir"
+      continue
+    fi
+    if [[ -z "$pid" && -n "$(find "$lockdir" -maxdepth 0 -mmin +1 2>/dev/null)" ]]; then
+      # The holder died between mkdir and writing its pid file.
+      rm -rf "$lockdir"
+      continue
+    fi
+    if (( ++i >= tries )); then
+      printf 'lmline: config is locked by another lmline process (remove %s if stale)\n' "$lockdir" >&2
+      return 1
+    fi
+    sleep 0.1
+  done
+  printf '%s\n' "$$" >"$lockdir/pid"
+  return 0
+}
+
+__lmline_lock_release() {
+  [[ "${LMLINE_NO_LOCK:-0}" == 1 ]] && return 0
+  rm -rf "$1"
+}
+
 __lmline_init_dirs() {
   local dir=$1
   : "${LMLINE_DEFAULTS_DIR:=$dir/defaults}"

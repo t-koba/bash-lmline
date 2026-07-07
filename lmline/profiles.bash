@@ -125,6 +125,8 @@ profile_find_line() {
   return 1
 }
 
+# Callers that run from the CLI dispatcher must already hold the config-dir
+# lock (with_config_lock); this function does not lock on its own.
 profile_upsert_line() {
   local file=$1 key_fields=$2 line=$3 tmp
   mkdir -p "${file%/*}"
@@ -376,11 +378,12 @@ profile_extract_model_ids() {
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records_file records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records_file records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq expected merged
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
   profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _ _ _ models_url models_jq models_prefix models_include models_exclude
+  profile_require_jq_expr models_jq "$models_jq"
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
   catalog_url=$(profile_model_catalog_url "$base" "$models_url")
   catalog_jq=${models_jq:-$(profile_default_model_catalog_jq)}
@@ -425,7 +428,16 @@ profile_model_refresh() {
         print endpoint, id, old_temp[id], old_tokens[id], old_tool[id], new_format[id]
       }
     }
-  ' "$records_file" "$models_file" >"$tmp"
+  ' "$records_file" "$models_file" >"$tmp" || {
+    printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
+    exit 1
+  }
+  expected=$(wc -l <"$records_file")
+  merged=$(awk -F '\t' -v endpoint="$endpoint" '$1 == endpoint { c++ } END { print c + 0 }' "$tmp")
+  (( merged >= expected )) || {
+    printf 'lmline: model refresh merge dropped records; keeping existing models\n' >&2
+    exit 1
+  }
   mv "$tmp" "$models_file"
   chmod 600 "$models_file" 2>/dev/null || true
 }
