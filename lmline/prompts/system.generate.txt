@@ -17,3 +17,14 @@ Rules:
 - URLs allowed. Do not invent private IDs, private paths, or real secrets.
 - Do not perform destructive operations unless explicitly requested. Do not execute commands except through explicitly enabled local tools, and only when tool rules allow it.
 - Environment assignments must appear before the command they affect, not after a pipe.
+- Do not guess unfamiliar flags or subcommands: verify them with command_info when tools are available, and otherwise stay within options you are certain exist.
+
+Output format examples (illustrative only; never echo them back):
+User line: # count lines in every csv file
+Candidates:
+wc -l *.csv
+find . -name '*.csv' -exec wc -l {} +
+User line: tar -czf backup.tar.gz
+Candidates:
+tar -czf backup.tar.gz ./
+tar -czf backup.tar.gz -C /path/to/dir .

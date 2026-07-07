@@ -43,6 +43,7 @@ __lmline_init_dirs "$script_dir"
 # No colon: an explicitly empty scheme means "send the raw key" and must survive.
 : "${LMLINE_AUTH_SCHEME=Bearer}"
 : "${LMLINE_TEMPERATURE:=0.2}"
+: "${LMLINE_FIX_TEMPERATURE:=0.1}"
 : "${LMLINE_ENGINE_TIMEOUT:=60}"
 : "${LMLINE_MAX_TOKENS:=$__LMLINE_DEFAULT_MAX_TOKENS}"
 : "${LMLINE_EXPLAIN_MAX_TOKENS:=$__LMLINE_DEFAULT_EXPLAIN_MAX_TOKENS}"
@@ -121,6 +122,10 @@ __lmline_clamp_int LMLINE_EXPLAIN_MAX_TOKENS "$__LMLINE_DEFAULT_EXPLAIN_MAX_TOKE
 __lmline_clamp_int LMLINE_CLIP_MAX_TOKENS "$__LMLINE_DEFAULT_CLIP_MAX_TOKENS"
 [[ "$LMLINE_TEMPERATURE" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
   printf 'lmline-engine: invalid LMLINE_TEMPERATURE: %s (expected a JSON number)\n' "$LMLINE_TEMPERATURE" >&2
+  exit 2
+}
+[[ "$LMLINE_FIX_TEMPERATURE" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
+  printf 'lmline-engine: invalid LMLINE_FIX_TEMPERATURE: %s (expected a JSON number)\n' "$LMLINE_FIX_TEMPERATURE" >&2
   exit 2
 }
 [[ "$LMLINE_AUTH_HEADER" =~ ^[A-Za-z0-9._~-]+$ ]] || {
@@ -406,11 +411,31 @@ EOF
 )
 fi
 
+# Restate the output contract after the long context block: models follow
+# format constraints more reliably when they appear last (recency effect),
+# which cuts locally-rejected candidates and their retry round-trips.
+case "$mode" in
+  generate|rewrite|fix)
+    user=$(cat <<EOF
+$user
+
+Reply with up to $n candidate command lines only, best first. No explanations, labels, or Markdown.
+EOF
+)
+    ;;
+esac
+
 max_tokens=$LMLINE_MAX_TOKENS
 if [[ "$mode" == explain ]]; then
   max_tokens=$LMLINE_EXPLAIN_MAX_TOKENS
 elif [[ "$mode" == clip ]]; then
   max_tokens=$LMLINE_CLIP_MAX_TOKENS
+fi
+
+# fix wants the smallest deterministic correction, so it runs colder than
+# the generate/rewrite default unless the user overrides it.
+if [[ "$mode" == fix ]]; then
+  LMLINE_TEMPERATURE=$LMLINE_FIX_TEMPERATURE
 fi
 
 __lmline_chat_run

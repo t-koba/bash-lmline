@@ -196,14 +196,19 @@ __lmline_usage_summary() {
 }
 
 __lmline_emit_meta() {
-  local usage_model usage_prompt usage_completion usage_total tools elapsed
+  local usage_model usage_prompt usage_completion usage_total tools elapsed quality=
   __lmline_usage_summary
   tools=$(__lmline_tools_summary)
   elapsed=$(__lmline_elapsed_seconds)
+  # Candidate-quality counters make prompt changes measurable from logs.
+  if [[ -n "${rejected_file:-}" && -s "${rejected_file:-/dev/null}" ]]; then
+    quality=" rejected=$(wc -l <"$rejected_file" | tr -d ' ')"
+  fi
+  [[ "${__lmline_retry_used:-0}" == 1 ]] && quality+=" retried=1"
   if (( usage_total > 0 )); then
-    printf 'lmline-meta: model=%s tokens=%s prompt=%s completion=%s tools=%s time=%ss\n' "$usage_model" "$usage_total" "$usage_prompt" "$usage_completion" "${tools:-none}" "$elapsed" >&2
+    printf 'lmline-meta: model=%s tokens=%s prompt=%s completion=%s tools=%s time=%ss%s\n' "$usage_model" "$usage_total" "$usage_prompt" "$usage_completion" "${tools:-none}" "$elapsed" "$quality" >&2
   else
-    printf 'lmline-meta: model=%s tokens=unknown tools=%s time=%ss\n' "$usage_model" "${tools:-none}" "$elapsed" >&2
+    printf 'lmline-meta: model=%s tokens=unknown tools=%s time=%ss%s\n' "$usage_model" "${tools:-none}" "$elapsed" "$quality" >&2
   fi
 }
 
@@ -1213,6 +1218,7 @@ __lmline_chat_run() {
   __lmline_emit_candidates "$text"
 
   if (( count == 0 )) && [[ -s "$rejected_file" ]] && __lmline_retry_worthy_rejections; then
+    __lmline_retry_used=1
     rejected_summary=$(sed -n '1,20p' "$rejected_file")
     jq -n \
       --arg system "$system" \
