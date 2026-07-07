@@ -5,6 +5,10 @@ set -euo pipefail
 # Locale-stable assertions regardless of the developer machine locale.
 export LC_ALL=C
 
+# Tests count engine HTTP calls; disable the response cache (default 600s)
+# unless a test explicitly re-enables it.
+export LMLINE_CACHE_TTL=0
+
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 fail() {

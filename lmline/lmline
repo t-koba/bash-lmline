@@ -176,7 +176,7 @@ LMLINE_AUTH_SCHEME	Bearer	authentication scheme; empty means raw header value
 LMLINE_ENGINE_TIMEOUT	60	seconds per provider request
 LMLINE_HTTP_RETRIES	1	transient provider retries
 LMLINE_RETRY_DELAY	1	seconds between retries
-LMLINE_CACHE_TTL	0	response cache TTL in seconds
+LMLINE_CACHE_TTL	600	response cache TTL in seconds (0 disables)
 LMLINE_STREAM	0	stream explain and clip responses
 LMLINE_TEMPERATURE	0.2	chat completion temperature
 LMLINE_MAX_TOKENS	1200	max response tokens for command modes
@@ -188,7 +188,7 @@ LMLINE_CLIP_MAX_OUTPUT_BYTES	65536	displayed clip response byte limit
 LMLINE_MAX_CANDIDATE_BYTES	4096	candidate byte limit
 LMLINE_ENGINE	installed engine	engine executable
 LMLINE_PROMPT_DIR	installed prompts	prompt override directory
-LMLINE_PROMPT_VERSION	1	prompt/context version marker used in request keys
+LMLINE_PROMPT_VERSION	2	prompt/context version marker used in request keys
 LMLINE_RESPONSE_LOCALE	locale-derived when locale context is enabled	response language selector
 LMLINE_TRACE_DIR	empty	trace output directory
 LMLINE_CANDIDATE_COUNT	3	requested candidate count, clamped to 1..10

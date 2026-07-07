@@ -59,7 +59,7 @@ __lmline_init_dirs "$script_dir"
 : "${LMLINE_TOOL_RESULT_SUMMARY_MAX_TOKENS:=300}"
 : "${LMLINE_HTTP_RETRIES:=1}"
 : "${LMLINE_RETRY_DELAY:=1}"
-: "${LMLINE_CACHE_TTL:=0}"
+: "${LMLINE_CACHE_TTL:=600}"
 : "${LMLINE_STREAM:=0}"
 : "${LMLINE_TRACE_DIR:=}"
 : "${LMLINE_INCLUDE_EDITOR_CONTEXT:=1}"
@@ -117,7 +117,7 @@ __lmline_clamp_int LMLINE_MAX_CANDIDATE_BYTES 4096 0 1
 __lmline_clamp_int LMLINE_ENGINE_TIMEOUT 60
 __lmline_clamp_int LMLINE_HTTP_RETRIES 1 0 1
 __lmline_clamp_int LMLINE_RETRY_DELAY 1 0 1
-__lmline_clamp_int LMLINE_CACHE_TTL 0 0 1
+__lmline_clamp_int LMLINE_CACHE_TTL 600 0 1
 __lmline_clamp_int LMLINE_EXPLAIN_MAX_TOKENS "$__LMLINE_DEFAULT_EXPLAIN_MAX_TOKENS"
 __lmline_clamp_int LMLINE_CLIP_MAX_TOKENS "$__LMLINE_DEFAULT_CLIP_MAX_TOKENS"
 [[ "$LMLINE_TEMPERATURE" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
