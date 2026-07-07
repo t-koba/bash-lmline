@@ -219,7 +219,7 @@ __lmline_print_clip() {
   }
   clip_input=$(__lmline_prepare_clip_input "$question" "$clipboard" "$provider")
   printf '%s' "$clip_input" >"$tmp/line"
-  __lmline_context_file "$tmp/context" "$question" || {
+  __lmline_context_file "$tmp/context" "$question" clip || {
     rm -rf "$tmp"
     printf '%scontext error\n' "$prefix"
     return 1
@@ -270,7 +270,7 @@ __lmline_print_explanation() {
   }
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-expl.XXXXXX") || return 1
   printf '%s' "$line" >"$tmp/line"
-  __lmline_context_file "$tmp/context" "$line" || {
+  __lmline_context_file "$tmp/context" "$line" explain || {
     rm -rf "$tmp"
     printf '%scontext error\n' "$prefix"
     return 1
@@ -384,7 +384,7 @@ __lmline_fix_run() {
   fi
 
   __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr" "$backend"
-  __lmline_context_file "$tmp/context" "$line"
+  __lmline_context_file "$tmp/context" "$line" fix
   "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
     --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1
   engine_status=$?

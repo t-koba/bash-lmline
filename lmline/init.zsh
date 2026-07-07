@@ -226,7 +226,7 @@ __lmline_zsh_bridge() {
         tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX")
         trap "rm -rf \"$tmp\"" EXIT
         printf "%s" "$line" >"$tmp/line"
-        __lmline_context_file "$tmp/context" "$line"
+        __lmline_context_file "$tmp/context" "$line" "$mode"
         engine_file="$tmp/engine"
         "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file"
         status=$?

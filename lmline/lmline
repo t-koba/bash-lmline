@@ -215,6 +215,7 @@ LMLINE_FIX_MAX_OUTPUT	12000	stdout/stderr byte limit for fix
 LMLINE_CONDENSE_LINE_BYTES	2000	per-line byte cap during output condensation
 LMLINE_CONDENSE_RESCUE_LINES	20	priority lines rescued from the omitted middle
 LMLINE_CONDENSE_PATTERNS_FILE	installed defaults	priority pattern file for condensation
+LMLINE_SUGGESTED_COMMANDS_LIMIT	120	suggested commands sent per request
 LMLINE_NO_LOCK	0	disable config-dir locking
 LMLINE_LOCK_TIMEOUT	5	seconds to wait for the config lock
 LMLINE_FIX_ALLOW_MEDIUM	0	allow medium-risk fix execution with local backend
@@ -1091,7 +1092,7 @@ case "$cmd" in
     source_support_files
     __lmline_mktemp_dir tmp "${TMPDIR:-/tmp}/lmline-payload.XXXXXX"
     printf '%s' "$line" >"$tmp/line"
-    __lmline_context_file "$tmp/context" "$line"
+    __lmline_context_file "$tmp/context" "$line" "$mode"
     "$(engine_path)" --dry-run-payload --mode "$mode" --shell bash --cwd "$PWD" --point "${#line}" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT"
     ;;
   sandbox)

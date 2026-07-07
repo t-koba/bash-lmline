@@ -914,9 +914,40 @@ __lmline_write_fix_input() {
   } >"$out"
 }
 
+# Floats lines matching the query tokens to the top and caps the total, so
+# the most request-relevant entries survive any downstream budget.
+__lmline_rank_by_query() {
+  local query=$1 limit=${2:-120}
+  awk -v query="$query" -v limit="$limit" '
+    BEGIN {
+      n = split(query, raw, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) {
+        token = raw[i]
+        gsub(/[^A-Za-z0-9_.+-]/, "", token)
+        if (length(token) >= 3) tokens[++tc] = tolower(token)
+      }
+    }
+    {
+      line = tolower($0)
+      m = 0
+      for (i = 1; i <= tc; i++) if (index(line, tokens[i])) { m = 1; break }
+      if (m) hits[++nh] = $0; else rest[++nr] = $0
+    }
+    END {
+      count = 0
+      for (i = 1; i <= nh && count < limit; i++) { print hits[i]; count++ }
+      for (i = 1; i <= nr && count < limit; i++) { print rest[i]; count++ }
+    }
+  '
+}
+
+# Sections are ordered stable-first (shell, tools, project) and volatile-last
+# (cwd, git, suggested commands) so consecutive requests share the longest
+# possible prompt prefix for provider-side prompt caching.
 __lmline_context_file() {
   local out=$1
   local line=${2-}
+  local mode=${3:-generate}
   local suggested_commands available_tools
   {
     if __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; then
@@ -924,6 +955,17 @@ __lmline_context_file() {
       printf 'bash=%s\n' "${BASH_VERSION-}"
       printf 'ostype=%s\n' "${OSTYPE-}"
       command -v uname >/dev/null 2>&1 && uname -a 2>/dev/null | sed 's/^/uname=/'
+    fi
+
+    available_tools=$(__lmline_available_tools)
+    if [[ -n "$available_tools" ]]; then
+      printf '\n## available_tools\n'
+      printf '%s\n' "$available_tools"
+    fi
+
+    if __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT; then
+      printf '\n## project_type\n'
+      __lmline_project_type | sort -u
     fi
 
     if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
@@ -938,22 +980,22 @@ __lmline_context_file() {
       printf 'branch=%s\n' "$(git branch --show-current 2>/dev/null)"
     fi
 
-    if __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT; then
-      printf '\n## project_type\n'
-      __lmline_project_type | sort -u
-    fi
-
-    suggested_commands=$(__lmline_collect_suggested_commands) || return 1
-    if [[ -n "$suggested_commands" ]]; then
-      printf '\n## suggested_commands\n'
-      printf '%s\n' "$suggested_commands"
-    fi
-
-    available_tools=$(__lmline_available_tools)
-    if [[ -n "$available_tools" ]]; then
-      printf '\n## available_tools\n'
-      printf '%s\n' "$available_tools"
-    fi
+    # explain/clip answer questions about existing text and do not generate
+    # commands, so the suggested-commands list is dead weight there.
+    case "$mode" in
+      explain|clip) ;;
+      *)
+        suggested_commands=$(__lmline_collect_suggested_commands) || return 1
+        if [[ -n "$suggested_commands" && -n "$line" ]]; then
+          suggested_commands=$(printf '%s\n' "$suggested_commands" \
+            | __lmline_rank_by_query "$line" "${LMLINE_SUGGESTED_COMMANDS_LIMIT:-120}")
+        fi
+        if [[ -n "$suggested_commands" ]]; then
+          printf '\n## suggested_commands\n'
+          printf '%s\n' "$suggested_commands"
+        fi
+        ;;
+    esac
   } >"$out"
 }
 

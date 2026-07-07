@@ -241,7 +241,7 @@ __lmline_call_engine_raw() {
   line_file=$tmp/line
   context_file=$tmp/context
   printf '%s' "$line" >"$line_file"
-  __lmline_context_file "$context_file" "$line"
+  __lmline_context_file "$context_file" "$line" "$mode"
 
   "$LMLINE_ENGINE" \
     --mode "$mode" \

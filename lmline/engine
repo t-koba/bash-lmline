@@ -364,19 +364,22 @@ EOF
 )
 fi
 
+# Stable content (task prompt, metadata, context) leads and the per-request
+# line trails, so consecutive requests share the longest possible prefix for
+# provider-side prompt caching.
 user=$(cat <<EOF
 $task_prompt
 
 $request_metadata
+
+Context:
+$context
 
 User line:
 $line
 
 Interpreted user request:
 $request_text
-
-Context:
-$context
 EOF
 )
 
