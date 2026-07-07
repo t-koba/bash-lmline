@@ -193,6 +193,7 @@ LMLINE_RESPONSE_LOCALE	locale-derived when locale context is enabled	response la
 LMLINE_TRACE_DIR	empty	trace output directory
 LMLINE_CANDIDATE_COUNT	3	requested candidate count, clamped to 1..10
 LMLINE_ASYNC	0	background generation
+LMLINE_ASYNC_NOTIFY	0	announce finished background generation at the next prompt
 LMLINE_BIND_KEYS	1	bind keys when init file is sourced
 LMLINE_KEY_GENERATE	\C-x\C-g	generate key binding
 LMLINE_KEY_REWRITE	\C-x\C-r	rewrite key binding

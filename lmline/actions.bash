@@ -139,8 +139,8 @@ __lmline_clipboard_status() {
 }
 
 __lmline_clipboard_read() {
-  local wanted=${LMLINE_CLIPBOARD_PROVIDER:-auto} file line output errors=""
-  local -a fields args
+  local wanted=${LMLINE_CLIPBOARD_PROVIDER:-auto} file line output failure
+  local -a fields args failures=()
   if [[ "$wanted" == auto ]]; then
     file=$(__lmline_clipboard_provider_file) || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -152,12 +152,18 @@ __lmline_clipboard_read() {
       if output=$("${fields[1]}" "${args[@]}" 2>&1); then
         __LMLINE_CLIPBOARD_PROVIDER_USED=${fields[0]}
         __LMLINE_CLIPBOARD_COMMAND_USED=${fields[1]}
+        if [[ "${LMLINE_DEBUG:-0}" == 1 ]]; then
+          printf 'lmline: clipboard provider auto-selected: %s\n' "${fields[0]}" >&2
+        fi
         printf '%s' "$output"
         return 0
       fi
-      errors+="${errors:+; }${fields[0]}: ${output%%$'\n'*}"
+      failures+=("${fields[0]}: ${output%%$'\n'*}")
     done <"$file"
-    printf 'lmline: no usable clipboard provider found%s\n' "${errors:+ ($errors)}" >&2
+    for failure in "${failures[@]}"; do
+      printf 'lmline: clipboard provider failed: %s\n' "$failure" >&2
+    done
+    printf 'lmline: no usable clipboard provider; run: lmline clip --providers\n' >&2
     return 1
   fi
   line=$(__lmline_clipboard_provider_line) || return 1
@@ -366,6 +372,7 @@ __lmline_fix_run() {
         ;;
     esac
   fi
+  printf 'lmline-progress: re-running failed command via %s (timeout %ss)\n' "$backend" "$timeout"
   if ! __lmline_run_command_capture_with_backend "$backend" "$line" "$timeout" "$tmp/stdout" "$tmp/stderr"; then
     printf '%sfix execution failed via %s: %s\n' "$prefix" "$backend" "${__LMLINE_EXEC_ERROR:-unknown}" >&2
     if [[ -s "$tmp/stderr" ]]; then
@@ -383,6 +390,7 @@ __lmline_fix_run() {
     return 3
   fi
 
+  printf 'lmline-progress: asking model for a fix (exit status %s)\n' "$status"
   __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr" "$backend"
   __lmline_context_file "$tmp/context" "$line" fix
   "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \

@@ -15,6 +15,7 @@ shellcheck -s bash \
   "$repo_dir/lmline/lmline" \
   "$repo_dir/lmline/engine" \
   "$repo_dir"/lmline/*.bash \
+  "$repo_dir/lmline/completions/lmline.bash" \
   "$repo_dir/install.sh" \
   "$repo_dir"/tests/*.sh \
   || fail "shellcheck findings"

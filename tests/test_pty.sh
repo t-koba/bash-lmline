@@ -79,7 +79,8 @@ send "\025exit\r"
 expect eof
 EOF
   grep -q "3 candidates; m=pty-model; tok=70/7/77" "$pty_tmp/bash-next.out" || fail "bash pty next should show candidate count and model metadata"
-  ! grep -Eq "[123]/3" "$pty_tmp/bash-next.out" || fail "bash pty next should not show candidate position"
+  grep -q "2/3" "$pty_tmp/bash-next.out" || fail "bash pty next should show candidate position while cycling"
+  grep -q "3/3" "$pty_tmp/bash-next.out" || fail "bash pty second next should advance candidate position"
   bash_next_norm=$(tr '\r' '\n' <"$pty_tmp/bash-next.out" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
   ! grep -E 'candidates.*echo one|candidates.*echo two|candidates.*echo three' <<<"$bash_next_norm" >/dev/null || fail "bash pty candidate count shares edit line"
   printf '#!/usr/bin/env bash\nsleep 0.15\nprintf "lmline-progress: tool files (openai, round 1/10)\\n" >&2\nsleep 0.2\ncase " $* " in *" --mode explain "*) printf "explained pty\\n";; *) printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo pty-slow\\n";; esac\n' >"$pty_tmp/engine-slow"

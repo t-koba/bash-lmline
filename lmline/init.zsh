@@ -56,6 +56,8 @@ typeset -g __LMLINE_ZSH_LAST_SUGGESTION_ID=
 typeset -g __LMLINE_ZSH_ASYNC_KEY=
 typeset -g __LMLINE_ZSH_ASYNC_FILE=
 typeset -gi __LMLINE_ZSH_ASYNC_PID=0
+typeset -gi __LMLINE_ZSH_ASYNC_STARTED=0
+typeset -gi __LMLINE_ZSH_ASYNC_NOTIFIED=0
 typeset -gi __LMLINE_ZSH_SHOW_CANDIDATE_COUNT=0
 typeset -g __LMLINE_ZSH_STATUS_LINE=
 
@@ -290,6 +292,21 @@ __lmline_zsh_async_start() {
   disown $__LMLINE_ZSH_ASYNC_PID 2>/dev/null || true
   __LMLINE_ZSH_ASYNC_KEY=$key
   __LMLINE_ZSH_ASYNC_FILE=$async_file
+  __LMLINE_ZSH_ASYNC_STARTED=$(date +%s)
+  __LMLINE_ZSH_ASYNC_NOTIFIED=0
+}
+
+# Opt-in precmd hook (LMLINE_ASYNC_NOTIFY=1): announces once, at the next
+# prompt, that a background generation finished and which key inserts it.
+__lmline_zsh_async_prompt_check() {
+  [[ -n "${__LMLINE_ZSH_ASYNC_FILE:-}" && ${__LMLINE_ZSH_ASYNC_PID:-0} -gt 0 ]] || return 0
+  (( __LMLINE_ZSH_ASYNC_NOTIFIED == 0 )) || return 0
+  kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null && return 0
+  if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]]; then
+    __LMLINE_ZSH_ASYNC_NOTIFIED=1
+    print -u2 -r -- "${LMLINE_PS0}suggestion ready; press ${LMLINE_KEY_GENERATE:-^X^G} to insert"
+  fi
+  return 0
 }
 
 __lmline_zsh_generate_async() {
@@ -299,7 +316,15 @@ __lmline_zsh_generate_async() {
   if [[ "$__LMLINE_ZSH_ASYNC_KEY" == "$current_key" && $__LMLINE_ZSH_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ZSH_ASYNC_FILE
     if kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
-      __lmline_zsh_hint "${LMLINE_PS0}[$mode] still generating..."
+      local async_elapsed=$(( $(date +%s) - __LMLINE_ZSH_ASYNC_STARTED ))
+      if (( __LMLINE_ZSH_ASYNC_STARTED > 0 && async_elapsed > ${LMLINE_ENGINE_TIMEOUT:-60} + 5 )); then
+        kill "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
+        __lmline_zsh_hint "${LMLINE_PS0}[$mode] async generation timed out (${async_elapsed}s)"
+        __lmline_zsh_async_cleanup
+        zle redisplay 2>/dev/null || true
+        return 0
+      fi
+      __lmline_zsh_hint "${LMLINE_PS0}[$mode] still generating (${async_elapsed}s)..."
       zle redisplay 2>/dev/null || true
       return 0
     fi
@@ -329,7 +354,7 @@ __lmline_zsh_generate_async() {
     return 0
   }
   __lmline_zsh_async_start "$mode" "$original" "$point" "$async_file"
-  __lmline_zsh_hint "${LMLINE_PS0}[$mode] started; press generate key again to insert"
+  __lmline_zsh_hint "${LMLINE_PS0}[$mode] generating in background; press the same key to insert when ready"
   zle redisplay 2>/dev/null || true
 }
 
@@ -365,7 +390,13 @@ __lmline_zsh_apply_index() {
   if [[ "${__LMLINE_ZSH_LAST_MODE:-}" == rewrite && "$candidate" == "${__LMLINE_ZSH_LAST_ORIGINAL:-}" ]]; then
     BUFFER=$candidate
     CURSOR=${#BUFFER}
-    (( __LMLINE_ZSH_SHOW_CANDIDATE_COUNT == 1 && n > 1 )) && __lmline_zsh_hint "${LMLINE_PS0}${n} candidates$(__lmline_zsh_meta_status | sed 's/^/; /')" || __lmline_zsh_clear_hint
+    if (( __LMLINE_ZSH_SHOW_CANDIDATE_COUNT == 1 && n > 1 )); then
+      __lmline_zsh_hint "${LMLINE_PS0}${n} candidates$(__lmline_zsh_meta_status | sed 's/^/; /')"
+    elif (( n > 1 )); then
+      __lmline_zsh_hint "${LMLINE_PS0}${pos}/${n} (original)"
+    else
+      __lmline_zsh_clear_hint
+    fi
     __LMLINE_ZSH_SHOW_CANDIDATE_COUNT=0
     __lmline_zsh_record_suggestion "${__LMLINE_ZSH_LAST_MODE:-unknown}" "${__LMLINE_ZSH_LAST_ORIGINAL:-}" "$candidate"
     zle redisplay 2>/dev/null || true
@@ -384,8 +415,13 @@ __lmline_zsh_apply_index() {
       BUFFER=$candidate
       if (( truncated == 1 )); then
         __lmline_zsh_hint "${LMLINE_PS0}${pos}/${n} candidate-truncated to ${LMLINE_MAX_CANDIDATE_BYTES:-4096} bytes"
+      elif (( __LMLINE_ZSH_SHOW_CANDIDATE_COUNT == 1 && n > 1 )); then
+        __lmline_zsh_hint "${LMLINE_PS0}${n} candidates$(__lmline_zsh_meta_status | sed 's/^/; /')"
+      elif (( n > 1 )); then
+        # Cycling: show the position so next/prev never feel like a no-op.
+        __lmline_zsh_hint "${LMLINE_PS0}${pos}/${n}"
       else
-        (( __LMLINE_ZSH_SHOW_CANDIDATE_COUNT == 1 && n > 1 )) && __lmline_zsh_hint "${LMLINE_PS0}${n} candidates$(__lmline_zsh_meta_status | sed 's/^/; /')" || __lmline_zsh_clear_hint
+        __lmline_zsh_clear_hint
       fi
       ;;
   esac
@@ -517,96 +553,8 @@ zle -N lmline-zsh-explain-widget
 zle -N lmline-zsh-clip-widget
 zle -N lmline-zsh-fix-widget
 
-_lmline() {
-  local cmd
-  if command -v lmline >/dev/null 2>&1; then
-    cmd=lmline
-  else
-    cmd="$LMLINE_DIR/lmline"
-  fi
-  case $CURRENT in
-    2)
-      compadd -- doctor context command-exists command-info commands payload sandbox clip config endpoint model use current complete history risk help debug keys explain enable disable
-      ;;
-    3)
-      case $words[2] in
-        use) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
-        payload) compadd -- generate rewrite explain fix clip ;;
-        help) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
-        sandbox) compadd -- setup run check ;;
-        clip) compadd -- --status --providers --use --provider ;;
-        endpoint) compadd -- add list set-secret remove ;;
-        model) compadd -- add list refresh remove ;;
-        config) compadd -- get defaults effective describe set unset project-get project-set project-unset ;;
-        complete) compadd -- commands subcommands settings setting-values endpoints models clipboard-providers ;;
-        history) compadd -- show tendencies ;;
-        debug) compadd -- bindings on off trace ;;
-        doctor) compadd -- --check-api --help ;;
-      esac
-      ;;
-    4)
-      case "$words[2]:$words[3]" in
-        use:*) compadd -- "${(@f)$($cmd complete models "$words[3]" 2>/dev/null)}" ;;
-        help:*) compadd -- "${(@f)$($cmd complete subcommands "$words[3]" 2>/dev/null)}" ;;
-        sandbox:setup) compadd -- --name --image --workspace --root --workdir --timeout --help ;;
-        sandbox:run) compadd -- --name --image --timeout --max-output --help -- ;;
-        clip:--use|clip:--provider) compadd -- "${(@f)$($cmd complete clipboard-providers 2>/dev/null)}" ;;
-        endpoint:set-secret|endpoint:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
-        model:add|model:list|model:refresh|model:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
-        config:describe|config:set|config:unset|config:project-set|config:project-unset) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
-        complete:subcommands) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
-        complete:setting-values) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
-        debug:trace) compadd -- on off ;;
-      esac
-      ;;
-    5)
-      case "$words[2]:$words[3]" in
-        model:remove) compadd -- "${(@f)$($cmd complete models "$words[4]" 2>/dev/null)}" ;;
-        sandbox:setup)
-          [[ "$words[4]" == --workspace ]] && compadd -- readonly writable none
-          ;;
-        config:set|config:project-set) compadd -- "${(@f)$($cmd complete setting-values "$words[4]" 2>/dev/null)}" ;;
-        endpoint:add)
-          if [[ "$words[4]" == --tool-mode ]]; then
-            compadd -- auto openai text none
-          else
-            compadd -- --auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help
-          fi
-          ;;
-        endpoint:remove) compadd -- --keep-secret --help ;;
-        model:add)
-          if [[ "$words[4]" == --tool-mode ]]; then
-            compadd -- auto openai text none
-          elif [[ "$words[4]" == --api-format ]]; then
-            compadd -- chat responses messages
-          else
-            compadd -- --temperature --max-tokens --tool-mode --api-format --help
-          fi
-          ;;
-      esac
-      ;;
-    *)
-      case "$words[2]:$words[3]" in
-        endpoint:add)
-          if [[ "${words[$((CURRENT - 1))]}" == --tool-mode ]]; then
-            compadd -- auto openai text none
-          else
-            compadd -- --auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help
-          fi
-          ;;
-        model:add)
-          if [[ "${words[$((CURRENT - 1))]}" == --tool-mode ]]; then
-            compadd -- auto openai text none
-          elif [[ "${words[$((CURRENT - 1))]}" == --api-format ]]; then
-            compadd -- chat responses messages
-          else
-            compadd -- --temperature --max-tokens --tool-mode --api-format --help
-          fi
-          ;;
-      esac
-      ;;
-  esac
-}
+# shellcheck disable=SC1091
+source "$LMLINE_DIR/completions/_lmline"
 compdef _lmline lmline 2>/dev/null || true
 
 if [[ "${LMLINE_BIND_KEYS:-1}" == 1 ]]; then

@@ -378,7 +378,7 @@ profile_extract_model_ids() {
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records_file records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq expected merged
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records_file records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq expected merged new_count
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
@@ -389,6 +389,7 @@ profile_model_refresh() {
   catalog_jq=${models_jq:-$(profile_default_model_catalog_jq)}
   __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
   __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp"
+  printf 'lmline: fetching model catalog from %s\n' "$catalog_url" >&2
   body=$(__lmline_http_get "$catalog_url" 20) || {
     printf 'lmline: model refresh failed for endpoint: %s\n' "$endpoint" >&2
     exit 1
@@ -438,8 +439,14 @@ profile_model_refresh() {
     printf 'lmline: model refresh merge dropped records; keeping existing models\n' >&2
     exit 1
   }
+  new_count=$(awk -F '\t' -v endpoint="$endpoint" '
+    NR == FNR { if ($1 == endpoint) old[$2] = 1; next }
+    $1 != "" && !($1 in old) { c++ }
+    END { print c + 0 }
+  ' "$models_file" "$records_file")
   mv "$tmp" "$models_file"
   chmod 600 "$models_file" 2>/dev/null || true
+  printf 'lmline: refreshed %s models for %s (%s new)\n' "$((expected))" "$endpoint" "$new_count" >&2
 }
 
 profile_use() {

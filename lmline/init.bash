@@ -74,6 +74,8 @@ declare -g __LMLINE_ASYNC_FILE=""
 declare -g __LMLINE_ASYNC_MODE=""
 declare -gi __LMLINE_ASYNC_POINT=0
 declare -gi __LMLINE_ASYNC_PID=0
+declare -gi __LMLINE_ASYNC_STARTED=0
+declare -gi __LMLINE_ASYNC_NOTIFIED=0
 declare -gi __LMLINE_SHOW_CANDIDATE_COUNT=0
 
 
@@ -332,6 +334,21 @@ __lmline_async_start() {
   __LMLINE_ASYNC_FILE=$async_file
   __LMLINE_ASYNC_MODE=$mode
   __LMLINE_ASYNC_POINT=$point
+  __LMLINE_ASYNC_STARTED=$(date +%s)
+  __LMLINE_ASYNC_NOTIFIED=0
+}
+
+# Opt-in prompt hook (LMLINE_ASYNC_NOTIFY=1): announces once, at the next
+# prompt, that a background generation finished and which key inserts it.
+__lmline_async_prompt_check() {
+  [[ -n "${__LMLINE_ASYNC_FILE:-}" && ${__LMLINE_ASYNC_PID:-0} -gt 0 ]] || return 0
+  (( __LMLINE_ASYNC_NOTIFIED == 0 )) || return 0
+  kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null && return 0
+  if [[ -s "$__LMLINE_ASYNC_FILE" ]]; then
+    __LMLINE_ASYNC_NOTIFIED=1
+    printf '%ssuggestion ready; press %s to insert\n' "$LMLINE_PS0" "${LMLINE_KEY_GENERATE:-\C-x\C-g}" >&2
+  fi
+  return 0
 }
 
 __lmline_load_candidates_from_file() {
@@ -368,7 +385,13 @@ __lmline_apply_candidate() {
   [[ "$flags" == *truncated* || "$cmd" == "# TRUNCATED: "* ]] && truncated=1
   if [[ "${__LMLINE_LAST_MODE:-}" == rewrite && "$cmd" == "${__LMLINE_LAST_ORIGINAL:-}" ]]; then
     __lmline_set_line "$cmd"
-    (( __LMLINE_SHOW_CANDIDATE_COUNT == 1 )) && __lmline_candidate_position_hint "$n" || __lmline_hint clear
+    if (( __LMLINE_SHOW_CANDIDATE_COUNT == 1 )); then
+      __lmline_candidate_position_hint "$n"
+    elif (( n > 1 )); then
+      __lmline_hint show "${LMLINE_PS0}${pos}/${n} (original)"
+    else
+      __lmline_hint clear
+    fi
     __LMLINE_SHOW_CANDIDATE_COUNT=0
     return 0
   fi
@@ -385,8 +408,13 @@ __lmline_apply_candidate() {
       __lmline_set_line "$cmd"
       if (( truncated == 1 )); then
         __lmline_candidate_notice "${LMLINE_PS0}${pos}/${n} candidate-truncated to ${LMLINE_MAX_CANDIDATE_BYTES:-4096} bytes"
+      elif (( __LMLINE_SHOW_CANDIDATE_COUNT == 1 )); then
+        __lmline_candidate_position_hint "$n"
+      elif (( n > 1 )); then
+        # Cycling: show the position so next/prev never feel like a no-op.
+        __lmline_hint show "${LMLINE_PS0}${pos}/${n}"
       else
-        (( __LMLINE_SHOW_CANDIDATE_COUNT == 1 )) && __lmline_candidate_position_hint "$n" || __lmline_hint clear
+        __lmline_hint clear
       fi
       ;;
   esac
@@ -472,7 +500,14 @@ __lmline_generate_async_widget() {
   if [[ "$__LMLINE_ASYNC_KEY" == "$current_key" && $__LMLINE_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ASYNC_FILE
     if kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
-      __lmline_hint show "${LMLINE_PS0}[$mode] still generating..."
+      local async_elapsed=$(( $(date +%s) - __LMLINE_ASYNC_STARTED ))
+      if (( __LMLINE_ASYNC_STARTED > 0 && async_elapsed > ${LMLINE_ENGINE_TIMEOUT:-60} + 5 )); then
+        kill "$__LMLINE_ASYNC_PID" 2>/dev/null || true
+        __lmline_hint show "${LMLINE_PS0}[$mode] async generation timed out (${async_elapsed}s)"
+        __lmline_async_cleanup
+        return 0
+      fi
+      __lmline_hint show "${LMLINE_PS0}[$mode] still generating (${async_elapsed}s)..."
       return 0
     fi
     if [[ -s "$async_file" ]]; then
@@ -499,7 +534,7 @@ __lmline_generate_async_widget() {
     return 0
   }
   __lmline_async_start "$mode" "$original" "$point" "$async_file"
-  __lmline_hint show "${LMLINE_PS0}[$mode] started; press generate key again to insert"
+  __lmline_hint show "${LMLINE_PS0}[$mode] generating in background; press the same key to insert when ready"
 }
 
 __lmline_generate_or_rewrite() {
@@ -589,84 +624,8 @@ __lmline_clip_widget() {
   __lmline_print_clip "$LMLINE_ENGINE" bash "" "$LMLINE_PS0" >&2 || return 0
 }
 
-__lmline_cli_complete() {
-  local cur=${COMP_WORDS[COMP_CWORD]}
-  local prev=${COMP_WORDS[COMP_CWORD-1]}
-  local subcommands="doctor context command-exists command-info commands payload sandbox clip config endpoint model use current complete history risk help debug keys explain enable disable"
-  local command=${COMP_WORDS[1]-}
-  local sub=${COMP_WORDS[2]-}
-  if (( COMP_CWORD == 1 )); then
-    COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
-  elif [[ $command == use && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete endpoints 2>/dev/null)" -- "$cur") )
-  elif [[ $command == use && $COMP_CWORD == 3 ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete models "${COMP_WORDS[2]}" 2>/dev/null)" -- "$cur") )
-  elif [[ $command == payload && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "generate rewrite explain fix clip" -- "$cur") )
-  elif [[ $command == help && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete commands 2>/dev/null)" -- "$cur") )
-  elif [[ $command == help && $COMP_CWORD == 3 ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete subcommands "${COMP_WORDS[2]}" 2>/dev/null)" -- "$cur") )
-  elif [[ $command == sandbox && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "setup run check" -- "$cur") )
-  elif [[ $command == sandbox && $sub == setup && $prev == --workspace ]]; then
-    COMPREPLY=( $(compgen -W "readonly writable none" -- "$cur") )
-  elif [[ $command == sandbox && $sub == setup && $COMP_CWORD -ge 3 ]]; then
-    COMPREPLY=( $(compgen -W "--name --image --workspace --root --workdir --timeout --help" -- "$cur") )
-  elif [[ $command == sandbox && $sub == run && $COMP_CWORD -ge 3 ]]; then
-    COMPREPLY=( $(compgen -W "--name --image --timeout --max-output --help --" -- "$cur") )
-  elif [[ $command == clip && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "--status --providers --use --provider" -- "$cur") )
-  elif [[ $command == clip && $COMP_CWORD == 3 && ${prev} =~ ^(--use|--provider)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete clipboard-providers 2>/dev/null)" -- "$cur") )
-  elif [[ $command == endpoint && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "add list set-secret remove" -- "$cur") )
-  elif [[ $command == endpoint && $COMP_CWORD == 3 && ${sub} =~ ^(set-secret|remove)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete endpoints 2>/dev/null)" -- "$cur") )
-  elif [[ $command == endpoint && $sub == add && $COMP_CWORD -ge 5 ]]; then
-    if [[ $prev == --tool-mode ]]; then
-      COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
-    else
-      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help" -- "$cur") )
-    fi
-  elif [[ $command == endpoint && $sub == remove && $COMP_CWORD -ge 4 ]]; then
-    COMPREPLY=( $(compgen -W "--keep-secret --help" -- "$cur") )
-  elif [[ $command == model && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "add list refresh remove" -- "$cur") )
-  elif [[ $command == model && $COMP_CWORD == 3 && ${sub} =~ ^(add|list|refresh|remove)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete endpoints 2>/dev/null)" -- "$cur") )
-  elif [[ $command == model && $COMP_CWORD == 4 && ${sub} == remove ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete models "${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )
-  elif [[ $command == model && $sub == add && $COMP_CWORD -ge 5 ]]; then
-    if [[ $prev == --tool-mode ]]; then
-      COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
-    elif [[ $prev == --api-format ]]; then
-      COMPREPLY=( $(compgen -W "chat responses messages" -- "$cur") )
-    else
-      COMPREPLY=( $(compgen -W "--temperature --max-tokens --tool-mode --api-format --help" -- "$cur") )
-    fi
-  elif [[ $command == config && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "get defaults effective describe set unset project-get project-set project-unset" -- "$cur") )
-  elif [[ $command == config && $COMP_CWORD == 3 && ${sub} =~ ^(describe|set|unset|project-set|project-unset)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
-  elif [[ $command == config && $COMP_CWORD == 4 && ${sub} =~ ^(set|project-set)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete setting-values "${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )
-  elif [[ $command == complete && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "commands subcommands settings setting-values endpoints models clipboard-providers" -- "$cur") )
-  elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == subcommands ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete commands 2>/dev/null)" -- "$cur") )
-  elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == setting-values ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
-  elif [[ $command == history && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "show tendencies" -- "$cur") )
-  elif [[ $command == debug && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "bindings on off trace" -- "$cur") )
-  elif [[ $command == debug && $COMP_CWORD == 3 && $sub == trace ]]; then
-    COMPREPLY=( $(compgen -W "on off" -- "$cur") )
-  elif [[ $command == doctor && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "--check-api --help" -- "$cur") )
-  fi
-}
+# shellcheck source=lmline/completions/lmline.bash
+source "$__LMLINE_DIR/completions/lmline.bash"
 
 __lmline_default_completion() {
   local cur=${COMP_WORDS[COMP_CWORD]}
@@ -685,7 +644,13 @@ if [[ "${LMLINE_BIND_KEYS:-1}" == 1 ]]; then
   done
 fi
 
-complete -F __lmline_cli_complete lmline 2>/dev/null || true
 if [[ "${LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION:-0}" == 1 ]]; then
   complete -D -F __lmline_default_completion -o bashdefault -o default 2>/dev/null || true
+fi
+
+if [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 1 ]]; then
+  case ";${PROMPT_COMMAND-};" in
+    *";__lmline_async_prompt_check;"*) ;;
+    *) PROMPT_COMMAND="__lmline_async_prompt_check${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+  esac
 fi

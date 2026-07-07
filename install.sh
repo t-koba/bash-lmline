@@ -22,6 +22,11 @@ for path in "$src_dir"/lmline/defaults/*.txt "$src_dir"/lmline/defaults/*.tsv; d
   install -m 0644 "$path" "$config_dir/defaults/$(basename "$path")"
 done
 
+mkdir -p "$config_dir/completions"
+for path in "$src_dir"/lmline/completions/*; do
+  install -m 0644 "$path" "$config_dir/completions/$(basename "$path")"
+done
+
 ln -sf "$config_dir/lmline" "$bin_dir/lmline"
 
 # shellcheck source=lmline/config.bash
@@ -118,6 +123,10 @@ Equivalent environment variables:
   export LMLINE_BASE_URL=http://127.0.0.1:1234/v1
   export LMLINE_MODEL=<model-id>
   export LMLINE_API_KEY_FILE=<path-to-api-key-file>
+
+Standalone CLI completions (optional; the init scripts already load them):
+  bash: source "$config_dir/completions/lmline.bash"
+  zsh:  fpath+=("$config_dir/completions") before compinit in ~/.zshrc
 
 Make sure $bin_dir is on PATH if you want to run: lmline doctor
 Use "lmline doctor --check-api" to also test provider connectivity.
