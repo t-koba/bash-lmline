@@ -40,13 +40,16 @@ __lmline_engine_error_message() {
       printf '%s%s\n' "$prefix" "${error#lmline-engine: }"
       ;;
     *401*|*Unauthorized*|*invalid*api*key*|*authentication*)
-      printf '%sauth failed; check: lmline config get\n' "$prefix"
+      printf '%sauth failed; try: lmline endpoint set-secret ENDPOINT (check: lmline config get)\n' "$prefix"
+      ;;
+    *429*|*rate\ limit*|*Too\ Many\ Requests*)
+      printf '%sprovider rate-limited; wait and retry, or raise LMLINE_HTTP_RETRIES\n' "$prefix"
       ;;
     *connection*refused*|*Could\ not\ resolve*|*"status 000"*|*"Failed to connect"*)
       printf '%sconnection failed; try: lmline doctor --check-api\n' "$prefix"
       ;;
     *)
-      printf '%sengine failed: %s\n' "$prefix" "$error"
+      printf '%sengine failed: %s (try: lmline doctor --check-api)\n' "$prefix" "$error"
       ;;
   esac
 }

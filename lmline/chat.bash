@@ -80,17 +80,21 @@ __lmline_curl_chat_with_retry() {
     fi
     attempt=$((attempt + 1))
     __lmline_progress "transient provider error; retrying (${attempt}/${max_retries})"
-    sleep "${LMLINE_RETRY_DELAY:-1}"
+    sleep "$(awk -v d="${LMLINE_RETRY_DELAY:-1}" -v a="$attempt" 'BEGIN { print d * a }')"
   done
+}
+
+__lmline_warn_bad_json() {
+  printf 'lmline-progress: warning: provider returned unparseable JSON (%s)\n' "$1" >&2
 }
 
 __lmline_record_usage() {
   local response=$1 model prompt completion total
   jq -e . "$response" >/dev/null 2>&1 || return 0
-  model=$(jq -r '.model // empty' "$response" 2>/dev/null || true)
-  prompt=$(jq -r '.usage.prompt_tokens // .usage.input_tokens // 0' "$response" 2>/dev/null || printf '0')
-  completion=$(jq -r '.usage.completion_tokens // .usage.output_tokens // 0' "$response" 2>/dev/null || printf '0')
-  total=$(jq -r '.usage.total_tokens // ((.usage.prompt_tokens // .usage.input_tokens // 0) + (.usage.completion_tokens // .usage.output_tokens // 0)) // 0' "$response" 2>/dev/null || printf '0')
+  model=$(jq -r '.model // empty' "$response")
+  prompt=$(jq -r '.usage.prompt_tokens // .usage.input_tokens // 0' "$response")
+  completion=$(jq -r '.usage.completion_tokens // .usage.output_tokens // 0' "$response")
+  total=$(jq -r '.usage.total_tokens // ((.usage.prompt_tokens // .usage.input_tokens // 0) + (.usage.completion_tokens // .usage.output_tokens // 0)) // 0' "$response")
   printf '%s\t%s\t%s\t%s\n' "$model" "$prompt" "$completion" "$total" >>"$usage_file"
 }
 
@@ -178,15 +182,17 @@ __lmline_elapsed_seconds() {
 __lmline_usage_summary() {
   # Sets: usage_model usage_prompt usage_completion usage_total
   local summary
+  # "-" is a sentinel for "no model recorded": an empty first field would be
+  # eaten by read (tab is IFS whitespace) and shift the numeric fields left.
   summary=$(awk -F '\t' '
     $1 != "" { model=$1 }
     { prompt += ($2 ~ /^[0-9]+$/ ? $2 : 0) }
     { completion += ($3 ~ /^[0-9]+$/ ? $3 : 0) }
     { total += ($4 ~ /^[0-9]+$/ ? $4 : 0) }
-    END { printf "%s\t%d\t%d\t%d\n", model, prompt, completion, total }
-  ' "$usage_file" 2>/dev/null || printf '\t0\t0\t0\n')
+    END { printf "%s\t%d\t%d\t%d\n", (model == "" ? "-" : model), prompt, completion, total }
+  ' "$usage_file" 2>/dev/null || printf -- '-\t0\t0\t0\n')
   IFS=$'\t' read -r usage_model usage_prompt usage_completion usage_total <<<"$summary"
-  [[ -n "$usage_model" ]] || usage_model=$LMLINE_MODEL
+  [[ "$usage_model" != - && -n "$usage_model" ]] || usage_model=$LMLINE_MODEL
 }
 
 __lmline_emit_meta() {
@@ -256,7 +262,7 @@ __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
   local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
-      printf 'lmline-engine: request failed: %s\n' "$(sed -n '1p' "$err_file")" >&2
+      __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
       return 1
     }
   IFS=$'\t' read -r http_code content_type <<<"$curl_meta"
@@ -267,6 +273,7 @@ __lmline_post_chat() {
         return 1
       }
       __lmline_trace_file "$label" "$response"
+      jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
       __lmline_record_usage "$response"
       ;;
     *)
@@ -275,7 +282,7 @@ __lmline_post_chat() {
         jq 'del(.tools, .tool_choice)' "$payload" >"$retry_payload" || return 1
         __lmline_trace_file "${label%.json}.auto-text-request.json" "$retry_payload"
         retry_meta=$(__lmline_curl_chat_with_retry "$response" "$retry_payload") || {
-            printf 'lmline-engine: request failed: %s\n' "$(sed -n '1p' "$err_file")" >&2
+            __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
             return 1
           }
         IFS=$'\t' read -r retry_code retry_content_type <<<"$retry_meta"
@@ -286,6 +293,7 @@ __lmline_post_chat() {
               return 1
             }
             __lmline_trace_file "${label%.json}.auto-text-response.json" "$response"
+            jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
             __lmline_record_usage "$response"
             return 0
             ;;
@@ -824,11 +832,11 @@ __lmline_stream_append_assistant() {
   if [[ "$tool_source" == openai ]]; then
     jq -cs --rawfile content "$content_file" \
       '{role: "assistant", content: (if ($content | length) > 0 then $content else null end), tool_calls: .}' \
-      "$tool_calls_file" >"$assistant_file"
+      "$tool_calls_file" >"$assistant_file" || return 1
   else
-    jq -n --rawfile content "$content_file" '{role: "assistant", content: $content}' >"$assistant_file"
+    jq -n --rawfile content "$content_file" '{role: "assistant", content: $content}' >"$assistant_file" || return 1
   fi
-  jq -s '.[0] + [.[1]]' "$messages_file" "$assistant_file" >"$messages_file.next"
+  jq -s '.[0] + [.[1]]' "$messages_file" "$assistant_file" >"$messages_file.next" || return 1
   mv "$messages_file.next" "$messages_file"
 }
 
@@ -844,6 +852,8 @@ __lmline_stream_chat() {
   local usage_chunk_file=$work_dir/stream-usage.round-${tool_round}.json
   local data chunk buf sse_line out_line attempt saw_data=0 got_content=0 stream_skip=0
   local stream_budget=0 content_bytes=0 emitted_bytes=0 stream_truncated=0 stripped_text
+  local saw_done=0 saw_finish=0 stream_complete=0 curl_status
+  local curl_status_file=$work_dir/stream-curl.status.round-${tool_round}
   if [[ "$mode" == clip ]]; then
     stream_budget=${LMLINE_CLIP_MAX_OUTPUT_BYTES:-65536}
   else
@@ -861,6 +871,7 @@ __lmline_stream_chat() {
     __lmline_trace_file "request.stream.round-${tool_round}.json" "$stream_payload"
     saw_data=0 got_content=0 stream_skip=0 buf=""
     content_bytes=0 emitted_bytes=0 stream_truncated=0
+    saw_done=0 saw_finish=0
     : >"$content_file"
     : >"$tc_raw_file"
     : >"$usage_chunk_file"
@@ -869,8 +880,11 @@ __lmline_stream_chat() {
       [[ "$sse_line" == data:* ]] || continue
       data=${sse_line#data:}
       data=${data# }
-      [[ "$data" == '[DONE]' ]] && break
+      [[ "$data" == '[DONE]' ]] && { saw_done=1; break; }
       saw_data=1
+      # A non-null finish_reason marks the provider-side end of the answer for
+      # providers that never send [DONE].
+      [[ "$data" == *'"finish_reason":"'* || "$data" == *'"finish_reason": "'* ]] && saw_finish=1
       if [[ "$data" == *'"tool_calls"'* ]]; then
         printf '%s\n' "$data" >>"$tc_raw_file"
       fi
@@ -887,7 +901,7 @@ __lmline_stream_chat() {
         buf=${buf#*$'\n'}
         __lmline_stream_handle_line "$out_line" && got_content=1
       done
-    done < <(__lmline_stream_curl "$stream_payload")
+    done < <(__lmline_stream_curl "$stream_payload"; printf '%s' "$?" >"$curl_status_file")
     if [[ -n "$buf" ]]; then
       __lmline_stream_handle_line "$buf" && got_content=1
     fi
@@ -896,6 +910,14 @@ __lmline_stream_chat() {
     fi
   done
   (( saw_data == 1 )) || return 1
+  curl_status=$(cat "$curl_status_file" 2>/dev/null) || curl_status=1
+  stream_complete=$saw_done
+  [[ "$curl_status" == 0 ]] && (( saw_finish == 1 )) && stream_complete=1
+  if (( stream_complete == 0 && emitted_bytes == 0 )); then
+    # Interrupted before anything reached the user; the buffered fallback
+    # can retry the whole request cleanly.
+    return 1
+  fi
   if [[ -s "$tc_raw_file" && ( "$LMLINE_TOOL_MODE" == openai || "$LMLINE_TOOL_MODE" == auto ) ]]; then
     if jq -cs '
         [ .[].choices[0].delta.tool_calls[]? ]
@@ -911,7 +933,7 @@ __lmline_stream_chat() {
         | .[]
       ' "$tc_raw_file" >"$tool_calls_file" 2>/dev/null && [[ -s "$tool_calls_file" ]]; then
       tool_source=openai
-      __lmline_stream_append_assistant
+      __lmline_stream_append_assistant || return 1
       return 2
     fi
   fi
@@ -919,7 +941,7 @@ __lmline_stream_chat() {
   if [[ "$LMLINE_TOOL_MODE" == text || "$LMLINE_TOOL_MODE" == auto ]] &&
     __lmline_text_tool_requests_from_text "$stripped_text" "$tool_calls_file"; then
     tool_source=text
-    __lmline_stream_append_assistant
+    __lmline_stream_append_assistant || return 1
     return 2
   fi
   (( got_content == 1 )) || return 1
@@ -932,6 +954,9 @@ __lmline_stream_chat() {
     else
       printf 'explanation-truncated original_bytes=%s max_bytes=%s\n' "$content_bytes" "$stream_budget"
     fi
+  fi
+  if (( stream_complete == 0 )); then
+    printf 'stream-interrupted emitted_bytes=%s\n' "$emitted_bytes"
   fi
   __lmline_trace_file "text.stream.round-${tool_round}.txt" "$content_file"
   return 0
@@ -1130,7 +1155,7 @@ __lmline_chat_run() {
       break
     fi
     tool_round=$((tool_round + 1))
-    jq -s '.[0] + [.[1].choices[0].message]' "$messages_file" "$body_file" >"$messages_file.next"
+    jq -s '.[0] + [.[1].choices[0].message]' "$messages_file" "$body_file" >"$messages_file.next" || exit 1
     mv "$messages_file.next" "$messages_file"
     __lmline_execute_tool_round
     __lmline_write_chat_payload "$messages_file" "$payload_file" 1
