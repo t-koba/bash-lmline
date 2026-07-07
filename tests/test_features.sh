@@ -211,7 +211,7 @@ stream_tool_out=$(env PATH="$fake_bin:$PATH" "${engine_env[@]}" LMLINE_TOOL_MODE
   --line-file "$cfg_tmp/explain-line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/stream-tool.err") || fail "stream tool run"
 [[ "$stream_tool_out" == "tool-informed answer" ]] || fail "stream tool final output"
 [[ $(cat "$cfg_tmp/stream-tool-state") == 2 ]] || fail "stream tool round count"
-grep -q 'lmline-progress: tool command-exists (openai, round 1/10)' "$cfg_tmp/stream-tool.err" || fail "stream tool progress"
+grep -q 'lmline-progress: tool command-exists (openai, round 1/4)' "$cfg_tmp/stream-tool.err" || fail "stream tool progress"
 grep -q 'lmline-status: .*tools=command-exists' "$cfg_tmp/stream-tool.err" || fail "stream tool status"
 
 # --- endpoint/model CRUD and use auto-select ---------------------------------

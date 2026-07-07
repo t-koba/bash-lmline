@@ -586,7 +586,10 @@ __lmline_execute_tool_round() {
     if (( tool_call_index >= LMLINE_MAX_TOOL_CALLS_PER_ROUND )); then
       tool_output="tool call skipped: per-round tool call limit ($LMLINE_MAX_TOOL_CALLS_PER_ROUND) reached"
     else
-      tool_output=$(__lmline_tool_output "$name" "$args_json")
+      # Condense before the result enters the conversation: unlike the LLM
+      # summarization pass this costs no extra request.
+      tool_output=$(__lmline_tool_output "$name" "$args_json" \
+        | __lmline_condense_text "${LMLINE_TOOL_RESULT_MAX_BYTES:-8000}" "$(__lmline_condense_patterns_file)")
     fi
     tool_call_index=$((tool_call_index + 1))
     if [[ "$tool_source" == openai ]]; then
@@ -1159,6 +1162,7 @@ __lmline_chat_run() {
       break
     fi
     if (( tool_round >= LMLINE_MAX_TOOL_ROUNDS )); then
+      __lmline_progress "tool round budget reached (max=$LMLINE_MAX_TOOL_ROUNDS); answering with current context"
       __lmline_append_user_message "$messages_file" "Maximum tool rounds reached (current=$tool_round max=$LMLINE_MAX_TOOL_ROUNDS). $(__lmline_tool_round_instruction)"
       __lmline_write_chat_payload "$messages_file" "$payload_file" 0
       __lmline_trace_file request.max-tool-rounds-final.json "$payload_file"

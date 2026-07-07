@@ -51,7 +51,7 @@ __lmline_init_dirs "$script_dir"
 : "${LMLINE_MAX_CANDIDATE_BYTES:=4096}"
 : "${LMLINE_TOOL_MODE:=auto}"
 : "${LMLINE_TOOL_CHOICE:=auto}"
-: "${LMLINE_MAX_TOOL_ROUNDS:=10}"
+: "${LMLINE_MAX_TOOL_ROUNDS:=4}"
 : "${LMLINE_MAX_TOOL_CALLS_PER_ROUND:=20}"
 : "${LMLINE_TOOL_RESULT_SUMMARIZE:=0}"
 : "${LMLINE_TOOL_RESULT_SUMMARY_MIN_CHARS:=12000}"
@@ -108,7 +108,7 @@ case "$output_format" in
     ;;
 esac
 __lmline_clamp_int n "$__LMLINE_DEFAULT_N" "$__LMLINE_MAX_N"
-__lmline_clamp_int LMLINE_MAX_TOOL_ROUNDS 10 0 1
+__lmline_clamp_int LMLINE_MAX_TOOL_ROUNDS 4 0 1
 __lmline_clamp_int LMLINE_MAX_TOOL_CALLS_PER_ROUND 20
 __lmline_clamp_int LMLINE_TOOL_RESULT_SUMMARY_MIN_CHARS 12000 0 1
 __lmline_clamp_int LMLINE_TOOL_RESULT_SUMMARY_MAX_TOKENS 300

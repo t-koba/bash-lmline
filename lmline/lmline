@@ -240,7 +240,8 @@ LMLINE_MICROSANDBOX_SETUP_TIMEOUT	30	seconds for setup-time CLI operations
 LMLINE_MICROSANDBOX_WORKDIR	/workspace	guest workdir for sandbox setup
 LMLINE_MICROSANDBOX_WORKSPACE_MODE	readonly	readonly, writable, or none for project bind mount
 LMLINE_MICROSANDBOX_REQUIRED_COMMANDS	empty	extra space-separated commands checked by sandbox setup
-LMLINE_MAX_TOOL_ROUNDS	10	maximum tool-use rounds
+LMLINE_MAX_TOOL_ROUNDS	4	maximum tool-use rounds
+LMLINE_TOOL_RESULT_MAX_BYTES	8000	tool result bytes kept per call after condensation
 LMLINE_MAX_TOOL_CALLS_PER_ROUND	20	per-round tool call limit
 LMLINE_TOOL_RESULT_SUMMARIZE	0	summarize long multi-round tool history
 LMLINE_TOOL_RESULT_SUMMARY_MIN_CHARS	12000	summarization threshold

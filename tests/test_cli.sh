@@ -514,7 +514,7 @@ grep -q '"max_tokens": 1200' <<<"$payload_out" || fail "payload generate token b
 grep -q '"messages":' <<<"$payload_out" || fail "payload messages"
 grep -q 'Requested candidate limit: 3' <<<"$payload_out" || fail "payload candidate limit"
 grep -q 'Maximum candidate line length: 4096 bytes' <<<"$payload_out" || fail "payload candidate length limit"
-grep -q 'Tool round budget: current=0 max=10' <<<"$payload_out" || fail "payload tool round budget"
+grep -q 'Tool round budget: current=0 max=4' <<<"$payload_out" || fail "payload tool round budget"
 grep -q 'Tool calls per round limit: 20' <<<"$payload_out" || fail "payload tool call limit"
 grep -q 'Unix-style pipelines' <<<"$payload_out" || fail "payload one-line pipeline instruction"
 grep -q 'aim to return multiple distinct candidates' <<<"$payload_out" || fail "payload multi-candidate instruction"
