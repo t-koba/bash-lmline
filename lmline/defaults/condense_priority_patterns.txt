@@ -1,0 +1,21 @@
+# Priority line patterns for output condensation. One extended regular
+# expression per line, matched case-insensitively against each line of the
+# output being condensed. Matching lines are rescued from the omitted middle
+# section so error evidence survives compression.
+error
+fail(ed|ure)?
+fatal
+panic
+denied
+not found
+no such
+traceback
+usage:
+warning
+exception
+permission
+command not found
+segmentation fault
+timed? ?out
+cannot
+unable to

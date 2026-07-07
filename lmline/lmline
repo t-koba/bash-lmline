@@ -212,6 +212,11 @@ LMLINE_PROGRESS	1	engine progress lines
 LMLINE_PS0	🍋‍🟩	lmline status prefix
 LMLINE_FIX_TIMEOUT	12	seconds for fix command execution
 LMLINE_FIX_MAX_OUTPUT	12000	stdout/stderr byte limit for fix
+LMLINE_CONDENSE_LINE_BYTES	2000	per-line byte cap during output condensation
+LMLINE_CONDENSE_RESCUE_LINES	20	priority lines rescued from the omitted middle
+LMLINE_CONDENSE_PATTERNS_FILE	installed defaults	priority pattern file for condensation
+LMLINE_NO_LOCK	0	disable config-dir locking
+LMLINE_LOCK_TIMEOUT	5	seconds to wait for the config lock
 LMLINE_FIX_ALLOW_MEDIUM	0	allow medium-risk fix execution with local backend
 LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION	0	Bash default completion hook
 LMLINE_DEBUG	0	verbose debug logging for Bash integration
@@ -884,8 +889,8 @@ run_sandbox_command() {
     rm -rf "$tmp"
     return 1
   fi
-  __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
-  __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
+  __lmline_condense_file "$tmp/stdout" "$max_output"
+  __lmline_condense_file "$tmp/stderr" "$max_output"
   cat "$tmp/stdout"
   cat "$tmp/stderr" >&2
   status=$__LMLINE_EXEC_STATUS
@@ -1010,6 +1015,7 @@ case "$cmd" in
     for f in \
       command_prefix_words.txt \
       clipboard_providers.tsv \
+      condense_priority_patterns.txt \
       doctor_optional_commands.txt \
       doctor_required_commands.txt \
       file_search_excludes.txt \

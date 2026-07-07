@@ -184,7 +184,7 @@ __lmline_prepare_clip_input() {
   redacted=$(printf '%s' "$clipboard" | __lmline_redact_clip_text)
   input_bytes=$(LC_ALL=C printf '%s' "$redacted" | wc -c | tr -d ' ')
   if (( input_bytes > max_input )); then
-    redacted=$(printf '%s' "$redacted" | LC_ALL=C cut -c "1-$max_input")
+    redacted=$(printf '%s' "$redacted" | __lmline_condense_text "$max_input" "$(__lmline_condense_patterns_file)")
     truncated=1
   fi
   cat <<EOF
@@ -375,8 +375,8 @@ __lmline_fix_run() {
     return 3
   fi
   status=$__LMLINE_EXEC_STATUS
-  __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
-  __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
+  __lmline_condense_file "$tmp/stdout" "$max_output"
+  __lmline_condense_file "$tmp/stderr" "$max_output"
   if (( status == 0 )); then
     rm -rf "$tmp"
     printf '%scommand succeeded; no fix needed\n' "$prefix" >&2

@@ -222,19 +222,29 @@ __lmline_tool_command_exists() {
 
 __lmline_safe_tool_text() {
   local max_lines=${1:-40} max_bytes=${2:-240}
+  # Head+tail within the line budget instead of head-only, so trailing
+  # sections of help output (EXAMPLES, exit codes) stay visible.
   LC_ALL=C awk -v max_lines="$max_lines" -v max_bytes="$max_bytes" '
     BEGIN { esc = sprintf("%c", 27) }
-      NR > max_lines { exit }
-      {
-        gsub(esc "\\[[0-9;?]*[ -/]*[@-~]", "")
-        gsub(/[[:cntrl:]]/, "?")
-        if (length($0) > max_bytes) {
-          print substr($0, 1, max_bytes) "...<truncated>"
-        } else {
-          print
-        }
+    {
+      gsub(esc "\\[[0-9;?]*[ -/]*[@-~]", "")
+      gsub(/[[:cntrl:]]/, "?")
+      if (length($0) > max_bytes) $0 = substr($0, 1, max_bytes) "...<truncated>"
+      lines[++n] = $0
+    }
+    END {
+      if (n <= max_lines) {
+        for (i = 1; i <= n; i++) print lines[i]
+        exit
       }
-    '
+      head = int(max_lines * 60 / 100)
+      tail = max_lines - head - 1
+      if (tail < 0) tail = 0
+      for (i = 1; i <= head; i++) print lines[i]
+      printf "...[omitted %d lines]...\n", n - head - tail
+      for (i = n - tail + 1; i <= n; i++) print lines[i]
+    }
+  '
 }
 
 __lmline_tool_data_block() {
@@ -584,8 +594,8 @@ __lmline_tool_command_run() {
     return 0
   fi
   status=$__LMLINE_EXEC_STATUS
-  __lmline_trim_file_bytes "$tmp/stdout" "$max_output"
-  __lmline_trim_file_bytes "$tmp/stderr" "$max_output"
+  __lmline_condense_file "$tmp/stdout" "$max_output"
+  __lmline_condense_file "$tmp/stderr" "$max_output"
   stdout_bytes=$(wc -c <"$tmp/stdout" 2>/dev/null | tr -d '[:space:]')
   stderr_bytes=$(wc -c <"$tmp/stderr" 2>/dev/null | tr -d '[:space:]')
   printf 'allowed=1\n'
@@ -715,16 +725,108 @@ __lmline_collect_command_summaries() {
 
 # Shared utility helpers used by shell actions and engine inputs
 
-__lmline_trim_file_bytes() {
-  local file=$1 max=${2:-12000}
-  if [[ -f "$file" ]]; then
-    wc -c <"$file" | {
-      read -r size
-      if (( size > max )); then
-        tail -c "$max" "$file" >"$file.tail" 2>/dev/null && mv "$file.tail" "$file"
-      fi
+__lmline_condense_patterns_file() {
+  __lmline_resolve_data_file condense_priority_patterns \
+    "${LMLINE_CONDENSE_PATTERNS_FILE:-}" \
+    "$LMLINE_USER_RULES_DIR/condense_priority_patterns.txt" \
+    "$LMLINE_DEFAULTS_DIR/condense_priority_patterns.txt" 2>/dev/null \
+    || printf '/dev/null'
+}
+
+# Condenses stdin to roughly max_bytes for model consumption. Unlike a blunt
+# head or tail cut it keeps both the head and the tail of the output, folds
+# consecutive duplicate lines into one annotated line, rescues priority lines
+# (errors, warnings; condense_priority_patterns.txt) from the omitted middle,
+# and only cuts at line boundaries so UTF-8 sequences stay intact.
+__lmline_condense_text() {
+  local max_bytes=${1:-12000} patterns_file=${2:-}
+  local line_max=${LMLINE_CONDENSE_LINE_BYTES:-2000} rescue_max=${LMLINE_CONDENSE_RESCUE_LINES:-20}
+  [[ -n "$patterns_file" && -r "$patterns_file" ]] || patterns_file=/dev/null
+  LC_ALL=C awk -v max="$max_bytes" -v line_max="$line_max" -v rescue_max="$rescue_max" '
+    function utf8_safe_cut(s, m,    t, c) {
+      t = substr(s, 1, m)
+      while (length(t) > 0) {
+        c = substr(t, length(t), 1)
+        if (index(cont_bytes, c)) { t = substr(t, 1, length(t) - 1); continue }
+        if (index(lead_bytes, c)) t = substr(t, 1, length(t) - 1)
+        break
+      }
+      return t
     }
-  fi
+    BEGIN {
+      cont_bytes = ""; lead_bytes = ""
+      for (b = 128; b <= 191; b++) cont_bytes = cont_bytes sprintf("%c", b)
+      for (b = 194; b <= 247; b++) lead_bytes = lead_bytes sprintf("%c", b)
+    }
+    in_patterns == 1 {
+      if ($0 != "" && $0 !~ /^#/) pats[++np] = tolower($0)
+      next
+    }
+    {
+      if (line_max > 0 && length($0) > line_max)
+        $0 = utf8_safe_cut($0, line_max) " ...<line truncated>"
+      if (n > 0 && $0 == raw[n]) { cnt[n]++; next }
+      raw[++n] = $0; cnt[n] = 1
+    }
+    END {
+      if (np == 0)
+        np = split("error|fail|fatal|panic|denied|not found|no such|traceback|usage:|warning|exception|permission", pats, "|")
+      total = 0
+      for (i = 1; i <= n; i++) {
+        ren[i] = (cnt[i] > 1) ? raw[i] " (repeated " cnt[i] "x)" : raw[i]
+        total += length(ren[i]) + 1
+      }
+      if (total <= max) { for (i = 1; i <= n; i++) print ren[i]; exit }
+      head_budget = int(max * 60 / 100); tail_budget = int(max * 25 / 100)
+      rescue_budget = max - head_budget - tail_budget
+      used = 0; head_end = 0
+      for (i = 1; i <= n; i++) {
+        l = length(ren[i]) + 1
+        if (used + l > head_budget) break
+        used += l; head_end = i
+      }
+      used = 0; tail_start = n + 1
+      for (i = n; i > head_end; i--) {
+        l = length(ren[i]) + 1
+        if (used + l > tail_budget) break
+        used += l; tail_start = i
+      }
+      nrescued = 0; used = 0
+      for (i = head_end + 1; i < tail_start && nrescued < rescue_max; i++) {
+        low = tolower(ren[i]); hit = 0
+        for (p = 1; p <= np; p++) if (low ~ pats[p]) { hit = 1; break }
+        if (!hit) continue
+        l = length(ren[i]) + 1
+        if (used + l > rescue_budget) break
+        used += l; rescued[++nrescued] = ren[i]; kept[i] = 1
+      }
+      om_lines = 0; om_bytes = 0
+      for (i = head_end + 1; i < tail_start; i++) {
+        if (i in kept) continue
+        om_lines += cnt[i]; om_bytes += (length(raw[i]) + 1) * cnt[i]
+      }
+      for (i = 1; i <= head_end; i++) print ren[i]
+      if (nrescued > 0) {
+        printf "...[omitted %d lines, ~%d bytes; notable lines kept below]...\n", om_lines, om_bytes
+        for (i = 1; i <= nrescued; i++) print rescued[i]
+      } else {
+        printf "...[omitted %d lines, ~%d bytes]...\n", om_lines, om_bytes
+      }
+      for (i = tail_start; i <= n; i++) print ren[i]
+    }
+  ' in_patterns=1 "$patterns_file" in_patterns=0 -
+}
+
+# Condenses $file in place when it exceeds max bytes. Replaces the old
+# tail-only trim so the head of the output (usage lines, the command echo)
+# survives alongside the tail.
+__lmline_condense_file() {
+  local file=$1 max=${2:-12000} size
+  [[ -f "$file" ]] || return 0
+  size=$(wc -c <"$file")
+  (( size > max )) || return 0
+  __lmline_condense_text "$max" "$(__lmline_condense_patterns_file)" <"$file" >"$file.condensed" \
+    && mv "$file.condensed" "$file"
 }
 
 __lmline_split_inline_comment() {
