@@ -748,7 +748,11 @@ __lmline_text_tool_requests_from_text() {
 # --- Response cache ---------------------------------------------------------
 
 __lmline_file_mtime() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || printf '0'
+  local value
+  value=$(stat -f %m "$1" 2>/dev/null)
+  [[ "$value" =~ ^[0-9]+$ ]] || value=$(stat -c %Y "$1" 2>/dev/null)
+  [[ "$value" =~ ^[0-9]+$ ]] || value=0
+  printf '%s\n' "$value"
 }
 
 __lmline_cache_eligible() {

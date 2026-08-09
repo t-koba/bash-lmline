@@ -58,7 +58,11 @@ cat >"$install_clip_dir/homebin/pbpaste" <<'EOF'
 #!/usr/bin/env bash
 printf 'mac clipboard\n'
 EOF
-chmod +x "$install_clip_dir/homebin/pbpaste"
+cat >"$install_clip_dir/homebin/uname" <<'EOF'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+EOF
+chmod +x "$install_clip_dir/homebin/pbpaste" "$install_clip_dir/homebin/uname"
 PATH="$install_clip_dir/homebin:$PATH" LMLINE_CONFIG_DIR="$install_clip_dir/config" LMLINE_BIN_DIR="$install_clip_dir/bin" bash "$repo_dir/install.sh" >/tmp/lmline-install-clip.out
 grep -q "Clipboard provider: configured macos" /tmp/lmline-install-clip.out || fail "install auto clipboard output"
 grep -q "LMLINE_CLIPBOARD_PROVIDER=.*macos" "$install_clip_dir/config/settings.bash" || fail "install auto clipboard setting"
