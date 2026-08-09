@@ -102,6 +102,23 @@ __lmline_load_all_config() {
   return 0
 }
 
+# Re-reads settings.bash when it changed on disk since the last load, so
+# "lmline config set" takes effect without restarting the shell. Widgets
+# call this before routing; config_dir must come from the caller because
+# LMLINE_CONFIG_DIR is not exported by the shell integrations.
+__lmline_reload_settings_if_changed() {
+  local config_dir=${1:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}} file mtime
+  file=$config_dir/settings.bash
+  [[ -f "$file" ]] || return 0
+  mtime=$(stat -f %m "$file" 2>/dev/null)
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -c %Y "$file" 2>/dev/null)
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+  [[ "$mtime" == "${__LMLINE_SETTINGS_MTIME:-}" ]] && return 0
+  __LMLINE_SETTINGS_MTIME=$mtime
+  __lmline_load_all_config
+  return 0
+}
+
 __lmline_clamp_int() {
   local name=$1 default=$2 max=${3:-0} allow_zero=${4:-0} value pattern='^[1-9][0-9]*$'
   [[ "$allow_zero" == 1 ]] && pattern='^[0-9]+$'

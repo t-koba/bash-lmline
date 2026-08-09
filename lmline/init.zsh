@@ -24,7 +24,25 @@ __lmline_zsh_load_all_config() {
   done <<<"$exports"
 }
 
+typeset -g __LMLINE_ZSH_SETTINGS_MTIME=
+
+# Mirrors __lmline_reload_settings_if_changed for the zsh environment: re-exports
+# settings.bash values when the file changed, so "lmline config set" applies to
+# the next widget invocation without restarting the shell.
+__lmline_zsh_reload_settings_if_changed() {
+  local file=$LMLINE_CONFIG_DIR/settings.bash mtime
+  [[ -f "$file" ]] || return 0
+  mtime=$(stat -f %m "$file" 2>/dev/null)
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -c %Y "$file" 2>/dev/null)
+  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+  [[ "$mtime" == "$__LMLINE_ZSH_SETTINGS_MTIME" ]] && return 0
+  __LMLINE_ZSH_SETTINGS_MTIME=$mtime
+  __lmline_zsh_load_all_config
+  return 0
+}
+
 __lmline_zsh_load_all_config
+__lmline_zsh_reload_settings_if_changed
 
 typeset -g LMLINE_ENGINE=${LMLINE_ENGINE:-$LMLINE_DIR/engine}
 typeset -g LMLINE_HISTORY_DIR=${LMLINE_HISTORY_DIR:-$LMLINE_CONFIG_DIR/history}
@@ -452,6 +470,7 @@ __lmline_zsh_apply_index() {
 
 __lmline_zsh_bridge_candidates() {
   local label=$1 action=$2 mode=$3 line=$4 point=$5 bridge_status output
+  __lmline_zsh_reload_settings_if_changed
   __lmline_zsh_run_bridge "$label" "$action" "$mode" "$line" "$point"
   bridge_status=$?
   output=$__LMLINE_ZSH_BRIDGE_OUTPUT

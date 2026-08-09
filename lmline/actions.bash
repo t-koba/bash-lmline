@@ -381,6 +381,7 @@ __lmline_fix_run() {
   local line=$1 shell_name=$2 point=$3 engine=$4 n=$5 prefix=${6:-}
   local risk timeout=${LMLINE_FIX_TIMEOUT:-12} max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
   local tmp status engine_status backend context_text
+  __lmline_reload_settings_if_changed "${__LMLINE_CONFIG_DIR:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}}"
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
   if ! backend=$(__lmline_select_exec_backend); then

@@ -123,6 +123,12 @@ execution evidence the engine gets. Generate is best at completing a command
 you are typing; Copilot has no rich shell context, so empty-line or
 `# comment`-intent generation is weaker than the engine's.
 
+`lmline config set` is picked up by the next widget invocation: the shell
+re-reads `settings.bash` when it changed on disk, so no shell restart is
+needed. Each mode keeps its own backend — rewrite, generate, and fix default
+to the engine until their `LMLINE_*_BACKEND` is set to `copilot` — and any
+mode left on `engine` still needs a configured endpoint and model.
+
 Copilot requires Node.js 20.8+ and npm. The package is installed under
 `$LMLINE_CONFIG_DIR/copilot`; `install.sh` never downloads it. A per-user
 daemon is started on the first Copilot command and shared by Bash and zsh.

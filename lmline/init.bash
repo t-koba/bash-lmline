@@ -26,6 +26,7 @@ __LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 # shellcheck source=lmline/config.bash
 source "$__LMLINE_DIR/config.bash"
 __lmline_load_all_config
+__lmline_reload_settings_if_changed "$__LMLINE_CONFIG_DIR"
 
 : "${LMLINE_ENGINE:=$__LMLINE_DIR/engine}"
 : "${LMLINE_HISTORY_DIR:=$__LMLINE_CONFIG_DIR/history}"
@@ -242,6 +243,7 @@ __lmline_call_engine_raw() {
   local line=$2
   local point=$3
   local tmp line_file context_file status
+  __lmline_reload_settings_if_changed "$__LMLINE_CONFIG_DIR"
   if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
        [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
     __lmline_copilot_candidates "$line" "$point" bash "$mode"

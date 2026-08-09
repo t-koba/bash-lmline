@@ -90,6 +90,35 @@ grep -q '^engine$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_GENERATE_BACKEND) || fail "Generate backend completion"
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_FIX_BACKEND) || fail "Fix backend completion"
 
+hint_out=$(LMLINE_CONFIG_DIR="$copilot_tmp/hint-config" "$repo_dir/lmline/lmline" config set LMLINE_REWRITE_BACKEND copilot 2>&1)
+grep -q 'Copilot enabled for LMLINE_REWRITE_BACKEND' <<<"$hint_out" || fail "Copilot config set hint"
+
+for shell_name in zsh bash; do
+  reload_cfg="$copilot_tmp/reload-$shell_name"
+  mkdir -p "$reload_cfg"
+  if [[ "$shell_name" == bash ]]; then
+    env "${copilot_env[@]}" LMLINE_CONFIG_DIR="$reload_cfg" bash --norc -i -c '
+      source "$1/lmline/init.bash"
+      [[ "${LMLINE_REWRITE_BACKEND:-engine}" == engine ]] || exit 9
+      "$2/lmline" config set LMLINE_REWRITE_BACKEND copilot >/dev/null 2>&1
+      READLINE_LINE="echo 😀 old"
+      READLINE_POINT=10
+      __lmline_rewrite_widget
+      [[ "$READLINE_LINE" == "echo 😀 new" ]]
+    ' _ "$repo_dir" "$repo_dir/lmline" || fail "Bash Copilot config auto-reload"
+  elif command -v zsh >/dev/null 2>&1; then
+    env "${copilot_env[@]}" LMLINE_CONFIG_DIR="$reload_cfg" zsh -fic '
+      source "$1/lmline/init.zsh"
+      [[ "${LMLINE_REWRITE_BACKEND:-engine}" == engine ]] || exit 9
+      "$2/lmline" config set LMLINE_REWRITE_BACKEND copilot >/dev/null 2>&1
+      BUFFER="echo 😀 old"
+      CURSOR=10
+      lmline-zsh-rewrite-widget
+      [[ "$BUFFER" == "echo 😀 new" ]]
+    ' _ "$repo_dir" "$repo_dir/lmline" || fail "zsh Copilot config auto-reload"
+  fi
+done
+
 env "${copilot_env[@]}" LMLINE_REWRITE_BACKEND=copilot LMLINE_ASYNC=0 bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="echo 😀 old"
