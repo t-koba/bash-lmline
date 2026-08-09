@@ -160,6 +160,11 @@ silently send it to the normal engine. Run `lmline copilot status`, inspect
 `$LMLINE_CONFIG_DIR/copilot/runtime/daemon.log`, or restart the daemon. Restore
 the original backend with `lmline config set LMLINE_REWRITE_BACKEND engine`.
 
+After updating lmline, restart the Copilot daemon and start a new shell: the
+daemon is a long-lived process that keeps running the code it was started
+with, and the shell loads the widget functions at startup. Run
+`lmline copilot restart` after updating, then open a new shell.
+
 Common endpoint bases:
 
 | Provider | Base URL note |
