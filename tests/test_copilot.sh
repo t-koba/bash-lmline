@@ -60,7 +60,7 @@ annotated=$(env "${copilot_env[@]}" bash -c '
 grep -q '^lmline-candidate: low' <<<"$annotated" || fail "Copilot candidate risk annotation"
 grep -q $'\techo 😀 new$' <<<"$annotated" || fail "Copilot candidate protocol"
 ! grep -q 'definitely-not-a-real-lmline-command' <<<"$annotated" || fail "unavailable Copilot command rejected"
-show_line=$(grep -n -m1 '^textDocument/didShowInlineEdit$' "$copilot_tmp/lsp.log" | cut -d: -f1)
+show_line=$(grep -n -m1 '^textDocument/didShowCompletion$' "$copilot_tmp/lsp.log" | cut -d: -f1)
 close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut -d: -f1)
 [[ -n "$show_line" && -n "$close_line" && "$show_line" -lt "$close_line" ]] || fail "Copilot show notification precedes close"
 grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus carries a top-level uri"

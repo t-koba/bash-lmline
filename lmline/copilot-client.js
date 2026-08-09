@@ -126,16 +126,6 @@ function utf16Offset(text, character) {
   return units === character ? text.length : -1;
 }
 
-function applyEdit(line, edit, uri, version) {
-  if (!edit || edit.textDocument?.uri !== uri || edit.textDocument?.version !== version) return null;
-  const range = edit.range;
-  if (!range || range.start?.line !== 0 || range.end?.line !== 0 || /[\r\n]/.test(edit.text || '')) return null;
-  const start = utf16Offset(line, range.start.character);
-  const end = utf16Offset(line, range.end.character);
-  if (start < 0 || end < start) return null;
-  return line.slice(0, start) + (edit.text || '') + line.slice(end);
-}
-
 function applyInlineItem(line, item, position) {
   const text = item?.insertText || '';
   if (/[\r\n]/.test(text)) return null;
@@ -355,41 +345,39 @@ async function runDaemon() {
     lsp.addWorkspace(cwd);
     const uri = pathToFileURL(path.join(cwd, `.lmline-buffer-${process.pid}.sh`)).href;
     const version = 1;
+    // The completion model aborts when the document is shorter than its
+    // minimum prompt length, so short commands like "git st" never get
+    // suggestions. Pad the buffer with shell context comments; fix mode
+    // already carries the captured execution output as context.
     let bufferText = line;
     if (mode === 'fix' && request.contextText) {
       bufferText = `${line}\n\n${String(request.contextText).split('\n').map(text => `# ${text}`).join('\n')}`;
+    } else {
+      bufferText = `${line}\n\n# pwd: ${cwd}\n# shell: ${process.env.SHELL || 'sh'}\n# os: ${process.platform}`;
     }
     lsp.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'shellscript', version, text: bufferText } });
     lsp.notify('textDocument/didFocus', { uri });
-    const position = { line: 0, character: Number(request.pointUtf16) || 0 };
+    // generate completes at the cursor and must preserve the typed prefix;
+    // rewrite and fix complete the whole line, so the position is its end and
+    // the model's full replacement becomes the candidate.
+    const pointUtf16 = Number(request.pointUtf16) || 0;
+    const position = { line: 0, character: mode === 'generate' ? pointUtf16 : line.length };
+    const prefix = mode === 'generate' ? line.slice(0, position.character) : '';
     const candidates = [];
     try {
-      if (mode === 'generate') {
-        const result = await lsp.request('textDocument/inlineCompletion', {
-          textDocument: { uri, version },
-          position,
-          context: { triggerKind: 1 },
-          formattingOptions: { tabSize: 4, insertSpaces: true }
-        });
-        const prefix = line.slice(0, position.character);
-        for (const item of result?.items || []) {
-          const text = applyInlineItem(line, item, position);
-          if (text === null || !text.startsWith(prefix) || candidates.some(candidate => candidate.text === text)) continue;
-          const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          if (item.command) accepted.set(token, { command: item.command.command, arguments: item.command.arguments || [] });
-          lsp.notify('textDocument/didShowCompletion', { item });
-          candidates.push({ text, token: item.command ? token : '' });
-        }
-      } else {
-        const result = await lsp.request('textDocument/copilotInlineEdit', { textDocument: { uri, version }, position });
-        for (const edit of result?.edits || []) {
-          const text = applyEdit(line, edit, uri, version);
-          if (text === null || candidates.some(item => item.text === text)) continue;
-          const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          if (edit.command) accepted.set(token, { command: edit.command.command, arguments: edit.command.arguments || [] });
-          lsp.notify('textDocument/didShowInlineEdit', { item: edit });
-          candidates.push({ text, token: edit.command ? token : '' });
-        }
+      const result = await lsp.request('textDocument/inlineCompletion', {
+        textDocument: { uri, version },
+        position,
+        context: { triggerKind: 1 },
+        formattingOptions: { tabSize: 4, insertSpaces: true }
+      });
+      for (const item of result?.items || []) {
+        const text = applyInlineItem(line, item, position);
+        if (text === null || (mode === 'generate' && !text.startsWith(prefix)) || candidates.some(candidate => candidate.text === text)) continue;
+        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        if (item.command) accepted.set(token, { command: item.command.command, arguments: item.command.arguments || [] });
+        lsp.notify('textDocument/didShowCompletion', { item });
+        candidates.push({ text, token: item.command ? token : '' });
       }
     } finally {
       lsp.notify('textDocument/didClose', { textDocument: { uri } });
@@ -465,7 +453,7 @@ async function main() {
     for (const message of response.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
     for (const item of response.candidates || []) process.stdout.write(`${item.token}\t${item.text}\n`);
     if (!(response.candidates || []).length) {
-      process.stderr.write('lmline-copilot: no candidates from Copilot. The Copilot Free plan does not include completion models, so the language server returns nothing; a paid plan (Pro/Business/Enterprise) is required. Check: lmline copilot status\n');
+      process.stderr.write('lmline-copilot: no candidates from Copilot. The command may be complete with nothing to suggest, or the account has no completion access; check: lmline copilot status\n');
     }
   } else if (command === 'login') {
     for (const message of response.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
