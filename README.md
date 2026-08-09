@@ -98,6 +98,39 @@ API base paths. The engine uses the model profile's API format:
 `chat`, `responses`, or `messages`. Model discovery uses the endpoint's model
 catalog.
 
+## GitHub Copilot line editing
+
+The rewrite key (`Ctrl-x Ctrl-r`) can optionally use the official GitHub
+Copilot Language Server and its `textDocument/copilotInlineEdit` method.
+The normal OpenAI-compatible engine remains the default and Copilot adds no
+dependency until it is enabled.
+
+Install the pinned Language Server package, sign in, and select the backend:
+
+```bash
+lmline copilot setup
+lmline copilot login
+lmline config set LMLINE_REWRITE_BACKEND copilot
+```
+
+Copilot requires Node.js 20.8+ and npm. The package is installed under
+`$LMLINE_CONFIG_DIR/copilot`; `install.sh` never downloads it. A per-user
+daemon is started on the first Copilot command and shared by Bash and zsh.
+
+```bash
+lmline copilot status
+lmline copilot update          # explicit update to latest
+lmline copilot update 1.498.0  # explicit version
+lmline copilot restart
+lmline copilot logout
+lmline copilot remove
+```
+
+If editing fails, the current line is left untouched and lmline does not
+silently send it to the normal engine. Run `lmline copilot status`, inspect
+`$LMLINE_CONFIG_DIR/copilot/runtime/daemon.log`, or restart the daemon. Restore
+the original backend with `lmline config set LMLINE_REWRITE_BACKEND engine`.
+
 Common endpoint bases:
 
 | Provider | Base URL note |
@@ -368,6 +401,20 @@ bind -x '"\C-g": __lmline_generate_widget'
 ```
 
 ## Candidate Handling
+
+Candidates are ordered for experienced command-line use. The first candidate is
+the recommended practical one-liner: correctness, safety, local tool/OS fit,
+and idiomatic composition take priority over raw character count. Later
+candidates are intended to offer a real tradeoff—such as a different tool,
+greater portability, stronger handling of unusual file names, or a more
+readable pipeline—not cosmetic variations of the same command.
+
+Use generate (`Ctrl-x Ctrl-g`) when an existing prefix must remain byte-for-byte
+unchanged and only needs a suffix. Use rewrite (`Ctrl-x Ctrl-r`) when lmline may
+requote, restructure, or replace the whole command. For example, generate can
+complete `find . |`, while rewrite can replace a fragile file-processing loop
+with an equivalent pipeline. The first candidate is inserted immediately; use
+next/previous to compare the alternatives without executing any of them.
 
 The engine filters candidates before printing them:
 
@@ -883,8 +930,12 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CLIP_MAX_OUTPUT_BYTES` | `65536` | displayed clip response byte limit |
 | `LMLINE_MAX_CANDIDATE_BYTES` | `4096` | candidate byte limit |
 | `LMLINE_ENGINE` | installed engine | engine executable |
+| `LMLINE_REWRITE_BACKEND` | `engine` | rewrite provider: `engine` or `copilot` |
+| `LMLINE_COPILOT_TIMEOUT` | `15000` | Copilot LSP request timeout in milliseconds |
+| `LMLINE_COPILOT_RUNTIME_DIR` | `$LMLINE_CONFIG_DIR/copilot/runtime` | Copilot daemon runtime directory |
+| `LMLINE_COPILOT_COMMAND` | empty | optional Language Server executable override |
 | `LMLINE_PROMPT_DIR` | installed prompts | prompt override directory |
-| `LMLINE_PROMPT_VERSION` | `2` | prompt/context version marker used in request keys |
+| `LMLINE_PROMPT_VERSION` | `3` | prompt/context version marker used in request keys |
 | `LMLINE_RESPONSE_LOCALE` | locale-derived when locale context is enabled | response language selector |
 | `LMLINE_TRACE_DIR` | empty | trace output directory |
 

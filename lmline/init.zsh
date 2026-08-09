@@ -43,6 +43,7 @@ typeset -g LMLINE_FIX_MAX_OUTPUT=${LMLINE_FIX_MAX_OUTPUT:-12000}
 typeset -g LMLINE_FIX_ALLOW_MEDIUM=${LMLINE_FIX_ALLOW_MEDIUM:-0}
 typeset -g LMLINE_ASYNC=${LMLINE_ASYNC:-0}
 typeset -g LMLINE_CANDIDATE_COUNT=${LMLINE_CANDIDATE_COUNT:-3}
+typeset -g LMLINE_REWRITE_BACKEND=${LMLINE_REWRITE_BACKEND:-engine}
 typeset -g LMLINE_PS0=${LMLINE_PS0:-'🍋‍🟩 '}
 
 typeset -ga __LMLINE_ZSH_CANDIDATES
@@ -212,6 +213,10 @@ __lmline_zsh_bridge() {
   LMLINE_HISTORY_DIR=$LMLINE_HISTORY_DIR \
   LMLINE_CONFIG_DIR=$LMLINE_CONFIG_DIR \
   LMLINE_CANDIDATE_COUNT=$LMLINE_CANDIDATE_COUNT \
+  LMLINE_REWRITE_BACKEND=$LMLINE_REWRITE_BACKEND \
+  LMLINE_COPILOT_TIMEOUT=${LMLINE_COPILOT_TIMEOUT:-15000} \
+  LMLINE_COPILOT_RUNTIME_DIR=${LMLINE_COPILOT_RUNTIME_DIR:-} \
+  LMLINE_COPILOT_COMMAND=${LMLINE_COPILOT_COMMAND:-} \
   LMLINE_MAX_CANDIDATE_BYTES=${LMLINE_MAX_CANDIDATE_BYTES:-4096} \
   LMLINE_PS0=$LMLINE_PS0 \
     bash -c '
@@ -227,10 +232,14 @@ __lmline_zsh_bridge() {
         point=$4
         tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX")
         trap "rm -rf \"$tmp\"" EXIT
-        printf "%s" "$line" >"$tmp/line"
-        __lmline_context_file "$tmp/context" "$line" "$mode"
         engine_file="$tmp/engine"
-        "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file"
+        if [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]]; then
+          __lmline_copilot_candidates "$line" "$point" zsh >"$engine_file"
+        else
+          printf "%s" "$line" >"$tmp/line"
+          __lmline_context_file "$tmp/context" "$line" "$mode"
+          "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file"
+        fi
         status=$?
         grep "^lmline-candidate: " "$engine_file" || true
         if [[ "$status" == 0 && "$mode" == rewrite ]]; then
@@ -260,7 +269,7 @@ __lmline_zsh_bridge() {
 
 __lmline_zsh_request_key() {
   local mode=$1 line=$2
-  LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-1} bash -c '
+  LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
     __lmline_request_key "$2" "$3"
   ' _ "$LMLINE_DIR" "$mode" "$line"
@@ -426,6 +435,11 @@ __lmline_zsh_apply_index() {
       ;;
   esac
   __LMLINE_ZSH_SHOW_CANDIDATE_COUNT=0
+  if [[ "$flags" == *copilot:* ]]; then
+    local token=${flags#*copilot:}
+    token=${token%%,*}
+    [[ -n "$token" && "$token" != - ]] && { node "$LMLINE_DIR/copilot-client.js" accept "$token" >/dev/null 2>&1 &! }
+  fi
   CURSOR=${#BUFFER}
   __lmline_zsh_record_suggestion "${__LMLINE_ZSH_LAST_MODE:-unknown}" "${__LMLINE_ZSH_LAST_ORIGINAL:-}" "$candidate"
   zle redisplay 2>/dev/null || true

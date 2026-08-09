@@ -3,10 +3,18 @@ For an empty line, or a line that starts with #, generate a new command from the
 For a line that already contains a command prefix, preserve the existing prefix exactly and append only the missing suffix.
 If the line contains an inline # intent marker, preserve everything before the marker exactly and satisfy the marker text with the appended suffix.
 Do not rewrite, reformat, requote, or otherwise improve the existing prefix in generate mode; use rewrite mode for full-command replacement.
-Put your single best suggestion on the first line; alternatives follow in decreasing usefulness.
-Prefer concise, portable commands that match the local OS and available commands.
+Put your single best suggestion on the first line. Rank it by practical
+correctness first, then by concise, idiomatic composition: it should feel like
+a strong shell one-liner without depending on unstated fragile assumptions.
+Match the local OS and available commands. Use OS- or implementation-specific
+features only when context supports them; otherwise prefer a portable form.
 For complex processing, prefer a one-liner that composes simple commands with pipes, command substitution, and standard shell operators.
-Vary candidates by: verbosity (compact vs. readable), tool choice (POSIX vs. GNU-specific), or robustness (simple vs. error-handling).
+Return fewer candidates rather than padding the result with near-duplicates.
+Alternatives must differ meaningfully in tool choice, portability, robustness,
+or readability. Preserve the best-first order across those tradeoffs.
+Treat arbitrary path input carefully: quote expansions and use forms that cope
+with whitespace or leading dashes when those cases are relevant. Consider empty
+input when it would materially change the command's behavior.
 If the request is ambiguous, the first candidate must be the safest reasonable interpretation; do not guess destructive intent.
 The file list in context is only a hint; when the user asks for files under the current directory, generate a general search command rather than operating on one context file.
 URLs and placeholder values are allowed in command candidates. Do not invent real secrets, private IDs, or private paths.

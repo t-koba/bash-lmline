@@ -82,6 +82,11 @@ commands:
   clip --use PROVIDER     persist selected clipboard provider
   clip --provider PROVIDER [QUESTION...]
                           use a clipboard provider for one request
+  copilot setup           install the pinned GitHub Copilot Language Server
+  copilot update [VERSION]
+                          explicitly update the Language Server
+  copilot login|status|logout|restart
+                          manage Copilot authentication and daemon state
   config get              print persisted config with secrets redacted
   config defaults         print built-in setting catalog
   config effective        print effective setting values with secrets redacted
@@ -136,7 +141,7 @@ quote_bash() {
 __lmline_cli_commands() {
   printf '%s\n' \
     doctor context command-exists command-info commands payload sandbox clip \
-    config endpoint model use current complete history risk help debug keys \
+    config endpoint model copilot use current complete history risk help debug keys \
     explain enable disable
 }
 
@@ -147,6 +152,7 @@ __lmline_cli_subcommands() {
     config) printf '%s\n' get defaults effective describe set unset project-get project-set project-unset ;;
     endpoint) printf '%s\n' add list set-secret remove ;;
     model) printf '%s\n' add list refresh remove ;;
+    copilot) printf '%s\n' setup update login status logout restart remove ;;
     complete) printf '%s\n' commands subcommands settings setting-values endpoints models clipboard-providers ;;
     history) printf '%s\n' show tendencies ;;
     debug) printf '%s\n' bindings on off trace ;;
@@ -187,8 +193,12 @@ LMLINE_EXPLAIN_MAX_OUTPUT_BYTES	65536	displayed explanation byte limit
 LMLINE_CLIP_MAX_OUTPUT_BYTES	65536	displayed clip response byte limit
 LMLINE_MAX_CANDIDATE_BYTES	4096	candidate byte limit
 LMLINE_ENGINE	installed engine	engine executable
+LMLINE_REWRITE_BACKEND	engine	rewrite backend: engine or copilot
+LMLINE_COPILOT_TIMEOUT	15000	Copilot Language Server request timeout in milliseconds
+LMLINE_COPILOT_RUNTIME_DIR	$LMLINE_CONFIG_DIR/copilot/runtime	Copilot daemon socket, pid, and log directory
+LMLINE_COPILOT_COMMAND	empty	optional Copilot Language Server executable override
 LMLINE_PROMPT_DIR	installed prompts	prompt override directory
-LMLINE_PROMPT_VERSION	2	prompt/context version marker used in request keys
+LMLINE_PROMPT_VERSION	3	prompt/context version marker used in request keys
 LMLINE_RESPONSE_LOCALE	locale-derived when locale context is enabled	response language selector
 LMLINE_TRACE_DIR	empty	trace output directory
 LMLINE_CANDIDATE_COUNT	3	requested candidate count, clamped to 1..10
@@ -290,6 +300,7 @@ __lmline_setting_catalog_line() {
 __lmline_setting_value_candidates() {
   case "$1" in
     LMLINE_EXEC_BACKEND) printf '%s\n' auto local microsandbox off ;;
+    LMLINE_REWRITE_BACKEND) printf '%s\n' engine copilot ;;
     LMLINE_MICROSANDBOX_WORKSPACE_MODE) printf '%s\n' readonly writable none ;;
     LMLINE_API_FORMAT) printf '%s\n' chat responses messages ;;
     LMLINE_TOOL_MODE) printf '%s\n' auto openai text none ;;
@@ -462,6 +473,15 @@ usage: lmline clip [QUESTION...]
 Ask the model about clipboard text or manage clipboard provider selection.
 EOF
       ;;
+    copilot:) cat <<'EOF'
+usage: lmline copilot setup
+       lmline copilot update [VERSION]
+       lmline copilot login|status|logout|restart|remove
+
+Install and manage the optional GitHub Copilot Language Server integration.
+EOF
+      ;;
+    copilot:setup|copilot:update|copilot:login|copilot:status|copilot:logout|copilot:restart|copilot:remove) print_cli_help copilot ;;
     config:) cat <<'EOF'
 usage: lmline config get
        lmline config defaults
@@ -973,6 +993,34 @@ print_command_status() {
   done < <(__lmline_read_list_file "$file")
 }
 
+copilot_require_node() {
+  local version major minor
+  command -v node >/dev/null 2>&1 || { printf 'lmline: Copilot requires Node.js 20.8 or newer\n' >&2; return 1; }
+  version=$(node --version 2>/dev/null); version=${version#v}
+  major=${version%%.*}; minor=${version#*.}; minor=${minor%%.*}
+  if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ ]] || (( major < 20 || (major == 20 && minor < 8) )); then
+    printf 'lmline: Copilot requires Node.js 20.8 or newer (found %s)\n' "$version" >&2
+    return 1
+  fi
+}
+
+copilot_install() {
+  local version=$1 target=$config_dir/copilot
+  copilot_require_node || return 1
+  command -v npm >/dev/null 2>&1 || { printf 'lmline: npm is required for Copilot setup\n' >&2; return 1; }
+  mkdir -p "$target"
+  chmod 700 "$target" 2>/dev/null || true
+  npm install --prefix "$target" --save-exact "@github/copilot-language-server@$version"
+  printf 'copilot_language_server=%s\n' "$version"
+  printf 'next=lmline copilot login\n'
+}
+
+copilot_client() {
+  copilot_require_node || return 1
+  [[ -r "$script_dir/copilot-client.js" ]] || { printf 'lmline: Copilot client is missing; reinstall lmline\n' >&2; return 1; }
+  node "$script_dir/copilot-client.js" "$@"
+}
+
 cmd=${1-}
 case "$cmd" in
   doctor)
@@ -1011,6 +1059,7 @@ case "$cmd" in
     printf '\nversions\n'
     printf '  curl: %s\n' "$(curl --version 2>/dev/null | sed -n '1p')"
     printf '  jq: %s\n' "$(jq --version 2>/dev/null)"
+    printf '  node: %s\n' "$(node --version 2>/dev/null || printf missing)"
     curl_version=$(curl --version 2>/dev/null | awk 'NR == 1 { print $2 }' || true)
     if [[ "$curl_version" =~ ^([0-9]+)\.([0-9]+) ]] &&
       (( BASH_REMATCH[1] < 7 || (BASH_REMATCH[1] == 7 && BASH_REMATCH[2] < 55) )); then
@@ -1023,6 +1072,18 @@ case "$cmd" in
     [[ -f "$models_file" ]] && model_count=$(awk -F '\t' 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' "$models_file")
     printf 'endpoints=%s\nmodels=%s\n' "$endpoint_count" "$model_count"
     profile_current | sed 's/^/active_/'
+    printf '\ncopilot\n'
+    if [[ -d "$config_dir/copilot/node_modules/@github/copilot-language-server" ]]; then
+      printf 'package=installed\n'
+      if [[ -S "${LMLINE_COPILOT_RUNTIME_DIR:-$config_dir/copilot/runtime}/daemon.sock" ]]; then
+        printf 'daemon=running\n'
+        copilot_client status 2>/dev/null || printf 'auth=unavailable\n'
+      else
+        printf 'daemon=stopped\nstatus=run lmline copilot status\n'
+      fi
+    else
+      printf 'package=not-installed\n  -> lmline copilot setup\n'
+    fi
     printf '\nprofile_checks\n'
     profile_issues=0
     if [[ -f "$endpoints_file" ]]; then
@@ -1279,6 +1340,22 @@ case "$cmd" in
       list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model list; exit 0; }; profile_model_list "${1-}" ;;
       refresh) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model refresh; exit 0; }; with_config_lock profile_model_refresh "${1-}" ;;
       remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model remove; exit 0; }; with_config_lock profile_model_remove "${1-}" "${2-}" ;;
+      *) usage; exit 2 ;;
+    esac
+    ;;
+  copilot)
+    sub=${2-}; shift 2 || true
+    case "$sub" in -h|--help|'') print_cli_help copilot; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
+    case "$sub" in
+      setup) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help copilot setup; exit 0; }; copilot_install 1.498.0 ;;
+      update) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help copilot update; exit 0; }; copilot_client restart >/dev/null 2>&1 || true; copilot_install "${1:-latest}" ;;
+      login|status|logout|restart) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help copilot "$sub"; exit 0; }; copilot_client "$sub" ;;
+      remove)
+        [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help copilot remove; exit 0; }
+        copilot_client restart >/dev/null 2>&1 || true
+        rm -rf "$config_dir/copilot"
+        printf 'copilot=removed\n'
+        ;;
       *) usage; exit 2 ;;
     esac
     ;;

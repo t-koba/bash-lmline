@@ -11,6 +11,44 @@ if ! declare -F __lmline_engine_error_message >/dev/null 2>&1; then
   source "$__LMLINE_ACTIONS_DIR/http.bash"
 fi
 
+__lmline_copilot_client() {
+  printf '%s/copilot-client.js\n' "$__LMLINE_ACTIONS_DIR"
+}
+
+# Converts Copilot inline edits into the existing annotated candidate protocol.
+# The Language Server supplies edits; lmline retains final syntax and risk policy.
+__lmline_copilot_candidates() {
+  local line=$1 point=$2 shell_name=${3:-bash} client output token candidate risk reason rejection
+  client=$(__lmline_copilot_client)
+  command -v node >/dev/null 2>&1 || { printf 'lmline-copilot: Node.js 20.8+ is required; run: lmline copilot setup\n' >&2; return 1; }
+  [[ -r "$client" ]] || { printf 'lmline-copilot: client is missing: %s\n' "$client" >&2; return 1; }
+  output=$(jq -cn --arg line "$line" --arg cwd "$PWD" --argjson point "$point" \
+    '{line:$line,cwd:$cwd,point:$point}' | node "$client" edit-json) || return 1
+  while IFS=$'\t' read -r token candidate || [[ -n "$token$candidate" ]]; do
+    [[ -n "$candidate" ]] || continue
+    __lmline_candidate_truncated "$candidate" && continue
+    rejection=$(__lmline_candidate_rejection_reason "$candidate" rewrite)
+    [[ "$rejection" == ok ]] || {
+      [[ "${LMLINE_DEBUG:-0}" == 1 ]] && printf 'lmline-copilot: rejected candidate: %s\n' "$rejection" >&2
+      continue
+    }
+    risk=$(__lmline_risk_level "$candidate")
+    reason=$(__lmline_risk_reason "$candidate")
+    reason=${reason//$'\t'/ }
+    printf 'lmline-candidate: %s\t%s\tcopilot:%s\t%s\n' "$risk" "${reason:--}" "${token:--}" "$candidate"
+  done <<<"$output"
+}
+
+__lmline_copilot_accept() {
+  local flags=$1 token client pid
+  [[ "$flags" == *copilot:* ]] || return 0
+  token=${flags#*copilot:}; token=${token%%,*}
+  [[ -n "$token" && "$token" != - ]] || return 0
+  client=$(__lmline_copilot_client)
+  { node "$client" accept "$token" >/dev/null 2>&1 & pid=$!; } 2>/dev/null
+  disown "$pid" 2>/dev/null || true
+}
+
 # The engine emits one preformatted "lmline-status:" line; extract it verbatim.
 __lmline_action_meta_status() {
   local output=$1

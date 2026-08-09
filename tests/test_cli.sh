@@ -517,6 +517,11 @@ grep -q 'Maximum candidate line length: 4096 bytes' <<<"$payload_out" || fail "p
 grep -q 'Tool round budget: current=0 max=4' <<<"$payload_out" || fail "payload tool round budget"
 grep -q 'Tool calls per round limit: 20' <<<"$payload_out" || fail "payload tool call limit"
 grep -q 'Unix-style pipelines' <<<"$payload_out" || fail "payload one-line pipeline instruction"
+grep -q 'most practical command' <<<"$payload_out" || fail "payload practical best-first ranking"
+grep -q 'useless uses of cat' <<<"$payload_out" || fail "payload avoids needless processes"
+grep -q 'whitespace and leading dashes' <<<"$payload_out" || fail "payload robust path handling"
+grep -q 'meaningful tradeoff' <<<"$payload_out" || fail "payload candidate differentiation"
+grep -q 'Return fewer candidates rather than padding' <<<"$payload_out" || fail "payload rejects near-duplicate padding"
 grep -q 'aim to return multiple distinct candidates' <<<"$payload_out" || fail "payload multi-candidate instruction"
 [[ $(grep -o 'aim to return multiple distinct candidates' <<<"$payload_out" | wc -l | tr -d ' ') == 1 ]] || fail "payload multi-candidate instruction duplicated"
 payload_explain_long_cmd=$(printf "printf %%s "; printf "c%.0s" {1..5000})

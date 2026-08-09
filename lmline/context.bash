@@ -1013,7 +1013,7 @@ __lmline_request_key() {
   local mode=$1
   local line=$2
   {
-    printf 'prompt_version=%s\n' "${LMLINE_PROMPT_VERSION:-2}"
+    printf 'prompt_version=%s\n' "${LMLINE_PROMPT_VERSION:-3}"
     printf 'mode=%s\n' "$mode"
     printf 'line=%s\n' "$line"
     printf 'pwd=%s\n' "$PWD"
