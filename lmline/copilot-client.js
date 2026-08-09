@@ -211,7 +211,11 @@ class Lsp {
     });
     await this.request('initialize', {
       processId: process.pid, workspaceFolders: null,
-      capabilities: { workspace: { workspaceFolders: true, configuration: true }, window: { showDocument: { support: true } } },
+      capabilities: {
+        textDocument: { synchronization: { didOpen: true, didChange: true, didClose: true }, inlineCompletion: { dynamicRegistration: true } },
+        workspace: { workspaceFolders: true, configuration: true },
+        window: { showDocument: { support: true } }
+      },
       initializationOptions: { editorInfo: { name: 'lmline', version: '1' }, editorPluginInfo: { name: 'bash-lmline', version: '1' } }
     }, timeoutMs * 2);
     this.notify('initialized', {});
@@ -320,22 +324,23 @@ async function runDaemon() {
     await lsp.start();
     if (request.op === 'status') {
       let result;
-      try { result = await lsp.request('checkStatus', {}); } catch (_) { result = lsp.status; }
+      try { result = await lsp.request('checkStatus', { localChecksOnly: false }); } catch (_) { result = lsp.status; }
       return { ok: true, status: result, messages: lsp.messages.splice(0) };
     }
     if (request.op === 'login') {
       let current;
-      try { current = await lsp.request('checkStatus', {}); } catch (_) { current = null; }
+      try { current = await lsp.request('checkStatus', { localChecksOnly: false }); } catch (_) { current = null; }
       if (current && ['OK', 'MaybeOk', 'AlreadySignedIn'].includes(current.status)) {
         return { ok: true, alreadySignedIn: true, result: current, messages: lsp.messages.splice(0) };
       }
       const result = await lsp.request('signIn', {});
-      if (result?.command) {
-        try { await lsp.request('workspace/executeCommand', { command: result.command.command, arguments: result.command.arguments || [] }); } catch (_) {}
+      return { ok: true, result, messages: lsp.messages.splice(0) };
+    }
+    if (request.op === 'finishLogin') {
+      if (request.command?.command) {
+        try { await lsp.request('workspace/executeCommand', { command: request.command.command, arguments: request.command.arguments || [] }); } catch (_) {}
       }
-      let status;
-      try { status = await lsp.request('checkStatus', {}); } catch (_) { status = lsp.status; }
-      return { ok: true, result, status, messages: lsp.messages.splice(0) };
+      return { ok: true, uri: lsp.lastOpenedUri, messages: lsp.messages.splice(0) };
     }
     if (request.op === 'logout') return { ok: true, result: await lsp.request('signOut', {}) };
     if (request.op === 'accept') {
@@ -355,7 +360,7 @@ async function runDaemon() {
       bufferText = `${line}\n\n${String(request.contextText).split('\n').map(text => `# ${text}`).join('\n')}`;
     }
     lsp.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'shellscript', version, text: bufferText } });
-    lsp.notify('textDocument/didFocus', { textDocument: { uri } });
+    lsp.notify('textDocument/didFocus', { uri });
     const position = { line: 0, character: Number(request.pointUtf16) || 0 };
     const candidates = [];
     try {
@@ -466,13 +471,14 @@ async function main() {
       if (response.result?.user) process.stdout.write(`user=${response.result.user}\n`);
     } else {
       if (response.result?.userCode) process.stdout.write(`user_code=${response.result.userCode}\n`);
-      const status = response.status || {};
-      process.stdout.write(`status=${status.status || status.kind || 'unknown'}\n`);
-      if (status.user) process.stdout.write(`user=${status.user}\n`);
-      if (status.message) process.stdout.write(`message=${status.message}\n`);
-      if (!['OK', 'MaybeOk', 'AlreadySignedIn'].includes(status.status)) {
-        process.stderr.write('lmline-copilot: complete the sign-in in the opened browser, then run: lmline copilot status\n');
+      if (response.result?.command) {
+        const finish = await call({ op: 'finishLogin', command: { command: response.result.command.command, arguments: response.result.command.arguments || [] } }, timeout);
+        if (!finish.ok) throw new Error(finish.error);
+        for (const message of finish.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
+        process.stdout.write('browser_opened=1\n');
+        if (finish.uri) process.stderr.write(`lmline-copilot: if the browser did not open, visit: ${finish.uri}\n`);
       }
+      process.stderr.write('lmline-copilot: complete the sign-in in the browser, then run: lmline copilot status\n');
     }
   } else if (command === 'status') {
     const status = response.status || {};

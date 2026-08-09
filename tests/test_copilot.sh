@@ -32,8 +32,7 @@ status_out=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" s
 grep -q '^status=NotSignedIn$' <<<"$status_out" || fail "Copilot status output"
 login_out=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" login) || fail "Copilot login"
 grep -q '^user_code=TEST-CODE$' <<<"$login_out" || fail "Copilot device code"
-grep -q '^status=OK$' <<<"$login_out" || fail "Copilot login completion status"
-grep -q '^user=fake-user$' <<<"$login_out" || fail "Copilot login user"
+grep -q '^browser_opened=1$' <<<"$login_out" || fail "Copilot login opens browser after code"
 [[ $(wc -l <"$copilot_tmp/open.log" | tr -d ' ') == 1 ]] || fail "Copilot browser opened once despite duplicate showDocument"
 grep -q 'openExternalBrowser' "$copilot_tmp/lsp.log" || fail "Copilot browser command executed in daemon"
 login_again=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" login) || fail "Copilot re-login"
@@ -64,6 +63,7 @@ grep -q $'\techo 😀 new$' <<<"$annotated" || fail "Copilot candidate protocol"
 show_line=$(grep -n -m1 '^textDocument/didShowInlineEdit$' "$copilot_tmp/lsp.log" | cut -d: -f1)
 close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut -d: -f1)
 [[ -n "$show_line" && -n "$close_line" && "$show_line" -lt "$close_line" ]] || fail "Copilot show notification precedes close"
+grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus carries a top-level uri"
 
 generate_annotated=$(env "${copilot_env[@]}" bash -c '
   source "$1/config.bash"

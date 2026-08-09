@@ -24,6 +24,9 @@ function handle(message) {
     lastOpenText = String(message.params.textDocument.text || '');
     log(lastOpenText.includes('# exit_status') ? 'didOpen-context=yes' : 'didOpen-context=no');
   }
+  if (message.method === 'textDocument/didFocus') {
+    log(typeof message.params?.uri === 'string' ? 'didFocus-uri=yes' : 'didFocus-uri=no');
+  }
   if (message.method === 'initialize') {
     send({ jsonrpc: '2.0', id: message.id, result: { capabilities: { textDocumentSync: 2 } } });
   } else if (message.method === 'initialized') {
