@@ -36,6 +36,10 @@ if command -v zsh >/dev/null 2>&1; then
   zsh -n lmline/init.zsh
 fi
 
+if command -v node >/dev/null 2>&1; then
+  node --check lmline/copilot-client.js
+fi
+
 if command -v rg >/dev/null 2>&1; then
   if rg -n '(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' \
     -uu --glob '!.git/**' --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' .; then
@@ -66,7 +70,7 @@ tmp_bin=$work_dir/bin
 LMLINE_CONFIG_DIR="$tmp_config" LMLINE_BIN_DIR="$tmp_bin" ./install.sh >/dev/null
 LMLINE_CONFIG_DIR="$tmp_config" "$tmp_bin/lmline" doctor >/dev/null
 
-for required in README.md SECURITY.md LICENSE install.sh lmline/engine lmline/lmline; do
+for required in README.md SECURITY.md LICENSE install.sh lmline/engine lmline/lmline lmline/copilot-client.js; do
   [[ -r "$required" ]] || {
     printf 'publish-check: missing required file: %s\n' "$required" >&2
     exit 1

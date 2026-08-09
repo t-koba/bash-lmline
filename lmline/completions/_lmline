@@ -12,7 +12,7 @@ _lmline() {
   fi
   case $CURRENT in
     2)
-      compadd -- doctor context command-exists command-info commands payload sandbox clip config endpoint model use current complete history risk help debug keys explain enable disable
+      compadd -- doctor context command-exists command-info commands payload sandbox clip config endpoint model copilot use current complete history risk help debug keys explain enable disable
       ;;
     3)
       case $words[2] in
@@ -20,6 +20,7 @@ _lmline() {
         payload) compadd -- generate rewrite explain fix clip ;;
         help) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
         sandbox) compadd -- setup run check ;;
+        copilot) compadd -- setup update login status logout restart remove ;;
         clip) compadd -- --status --providers --use --provider ;;
         endpoint) compadd -- add list set-secret remove ;;
         model) compadd -- add list refresh remove ;;

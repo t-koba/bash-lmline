@@ -45,6 +45,10 @@ grep -q '^status=OK$' <<<"$cli_status" || fail "Copilot CLI status output"
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete commands) || fail "Copilot command completion"
 grep -q '^setup$' < <("$repo_dir/lmline/lmline" complete subcommands copilot) || fail "Copilot subcommand completion"
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_REWRITE_BACKEND) || fail "Copilot backend completion"
+grep -q 'copilot use current' "$repo_dir/lmline/completions/lmline.bash" || fail "bash completion includes copilot"
+grep -q 'setup update login status logout restart remove' "$repo_dir/lmline/completions/lmline.bash" || fail "bash completion copilot subcommands"
+grep -q 'copilot use current' "$repo_dir/lmline/completions/_lmline" || fail "zsh completion includes copilot"
+grep -q 'setup update login status logout restart remove' "$repo_dir/lmline/completions/_lmline" || fail "zsh completion copilot subcommands"
 
 annotated=$(env "${copilot_env[@]}" bash -c '
   source "$1/config.bash"
