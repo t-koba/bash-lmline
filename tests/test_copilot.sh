@@ -65,6 +65,13 @@ close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut 
 [[ -n "$show_line" && -n "$close_line" && "$show_line" -lt "$close_line" ]] || fail "Copilot show notification precedes close"
 grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus carries a top-level uri"
 
+empty_rt="$copilot_tmp/empty-run"
+mkdir -p "$empty_rt"
+empty_out=$(env "${copilot_env[@]}" LMLINE_COPILOT_RUNTIME_DIR="$empty_rt" LMLINE_FAKE_COPILOT_EMPTY=1 \
+  node "$repo_dir/lmline/copilot-client.js" edit 'echo x' 6 "$repo_dir" 2>&1)
+grep -q 'no candidates from Copilot' <<<"$empty_out" || fail "Copilot empty-result diagnostic"
+env "${copilot_env[@]}" LMLINE_COPILOT_RUNTIME_DIR="$empty_rt" node "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true
+
 generate_annotated=$(env "${copilot_env[@]}" bash -c '
   source "$1/config.bash"
   LMLINE_CONFIG_DIR=$2

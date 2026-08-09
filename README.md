@@ -133,6 +133,12 @@ Copilot requires Node.js 20.8+ and npm. The package is installed under
 `$LMLINE_CONFIG_DIR/copilot`; `install.sh` never downloads it. A per-user
 daemon is started on the first Copilot command and shared by Bash and zsh.
 
+Copilot completions and inline edits require a paid Copilot plan
+(Pro/Business/Enterprise). The **Copilot Free plan has no completion models
+in the language server's catalog**, so it returns no candidates for any mode;
+the server silently reports an empty result. lmline prints a diagnostic
+(`no candidates from Copilot`) when this happens.
+
 `lmline copilot login` prints the device code immediately, then opens the
 browser once; if you are already signed in, it says so and opens nothing.
 Run `lmline copilot status` afterwards to confirm `status=OK` before editing.

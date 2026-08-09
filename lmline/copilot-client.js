@@ -464,6 +464,9 @@ async function main() {
   if (command === 'edit' || command === 'edit-json') {
     for (const message of response.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
     for (const item of response.candidates || []) process.stdout.write(`${item.token}\t${item.text}\n`);
+    if (!(response.candidates || []).length) {
+      process.stderr.write('lmline-copilot: no candidates from Copilot. The Copilot Free plan does not include completion models, so the language server returns nothing; a paid plan (Pro/Business/Enterprise) is required. Check: lmline copilot status\n');
+    }
   } else if (command === 'login') {
     for (const message of response.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
     if (response.alreadySignedIn) {

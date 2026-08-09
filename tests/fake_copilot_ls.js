@@ -5,6 +5,7 @@ const fs = require('fs');
 let buffer = Buffer.alloc(0);
 let signedIn = false;
 let lastOpenText = '';
+const emptyMode = process.env.LMLINE_FAKE_COPILOT_EMPTY === '1';
 
 function log(value) {
   if (process.env.LMLINE_FAKE_COPILOT_LOG) fs.appendFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, `${value}\n`);
@@ -46,12 +47,13 @@ function handle(message) {
     }
     send({ jsonrpc: '2.0', id: message.id, result: { edits } });
   } else if (message.method === 'textDocument/inlineCompletion') {
-    send({ jsonrpc: '2.0', id: message.id, result: { items: [
+    const items = emptyMode ? [] : [
       { insertText: 'there' },
       { insertText: 'hi everyone', range: { start: { line: 0, character: 5 }, end: { line: 0, character: 8 } } },
       { insertText: 'comrade', command: { title: 'Accept', command: 'github.copilot.didAcceptCompletionItem', arguments: ['fake-inline-id'] } },
       { insertText: 'bad\nline' }
-    ] } });
+    ];
+    send({ jsonrpc: '2.0', id: message.id, result: { items } });
   } else if (message.method === 'checkStatus') {
     if (signedIn) send({ jsonrpc: '2.0', id: message.id, result: { status: 'OK', user: 'fake-user' } });
     else send({ jsonrpc: '2.0', id: message.id, result: { status: 'NotSignedIn' } });
