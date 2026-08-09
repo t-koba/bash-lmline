@@ -4,6 +4,7 @@
 const fs = require('fs');
 let buffer = Buffer.alloc(0);
 let signedIn = false;
+let lastOpenText = '';
 
 function log(value) {
   if (process.env.LMLINE_FAKE_COPILOT_LOG) fs.appendFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, `${value}\n`);
@@ -19,16 +20,34 @@ function handle(message) {
   if (message.id === 900 && !message.method) log('workspace/configuration-response');
   if (message.method) log(message.method);
   if (message.method === 'workspace/executeCommand' && message.params?.command) log(message.params.command);
+  if (message.method === 'textDocument/didOpen') {
+    lastOpenText = String(message.params.textDocument.text || '');
+    log(lastOpenText.includes('# exit_status') ? 'didOpen-context=yes' : 'didOpen-context=no');
+  }
   if (message.method === 'initialize') {
     send({ jsonrpc: '2.0', id: message.id, result: { capabilities: { textDocumentSync: 2 } } });
   } else if (message.method === 'initialized') {
     send({ jsonrpc: '2.0', id: 900, method: 'workspace/configuration', params: { items: [{ section: 'github.copilot' }] } });
   } else if (message.method === 'textDocument/copilotInlineEdit') {
     const doc = message.params.textDocument;
-    send({ jsonrpc: '2.0', id: message.id, result: { edits: [
-      { text: 'new', textDocument: doc, range: { start: { line: 0, character: 8 }, end: { line: 0, character: 11 } }, command: { title: 'Accept', command: 'github.copilot.didAcceptCompletionItem', arguments: ['fake-id'] } },
-      { text: 'bad\nline', textDocument: doc, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
-      { text: 'definitely-not-a-real-lmline-command', textDocument: doc, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 11 } } }
+    const text = lastOpenText;
+    const edits = [];
+    if (text.startsWith('echo 😀 old')) {
+      edits.push(
+        { text: 'new', textDocument: doc, range: { start: { line: 0, character: 8 }, end: { line: 0, character: 11 } }, command: { title: 'Accept', command: 'github.copilot.didAcceptCompletionItem', arguments: ['fake-id'] } },
+        { text: 'bad\nline', textDocument: doc, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
+        { text: 'definitely-not-a-real-lmline-command', textDocument: doc, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 11 } } }
+      );
+    } else if (text.startsWith('false')) {
+      edits.push({ text: 'true', textDocument: doc, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } }, command: { title: 'Accept', command: 'github.copilot.didAcceptCompletionItem', arguments: ['fake-fix-id'] } });
+    }
+    send({ jsonrpc: '2.0', id: message.id, result: { edits } });
+  } else if (message.method === 'textDocument/inlineCompletion') {
+    send({ jsonrpc: '2.0', id: message.id, result: { items: [
+      { insertText: 'there' },
+      { insertText: 'hi everyone', range: { start: { line: 0, character: 5 }, end: { line: 0, character: 8 } } },
+      { insertText: 'comrade', command: { title: 'Accept', command: 'github.copilot.didAcceptCompletionItem', arguments: ['fake-inline-id'] } },
+      { insertText: 'bad\nline' }
     ] } });
   } else if (message.method === 'checkStatus') {
     if (signedIn) send({ jsonrpc: '2.0', id: message.id, result: { status: 'OK', user: 'fake-user' } });

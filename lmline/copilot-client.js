@@ -136,6 +136,20 @@ function applyEdit(line, edit, uri, version) {
   return line.slice(0, start) + (edit.text || '') + line.slice(end);
 }
 
+function applyInlineItem(line, item, position) {
+  const text = item?.insertText || '';
+  if (/[\r\n]/.test(text)) return null;
+  if (item.range) {
+    const range = item.range.replacing || item.range;
+    if (range.start?.line !== 0 || range.end?.line !== 0) return null;
+    const start = utf16Offset(line, range.start.character);
+    const end = utf16Offset(line, range.end.character);
+    if (start < 0 || end < start) return null;
+    return line.slice(0, start) + text + line.slice(end);
+  }
+  return line.slice(0, position.character) + text + line.slice(position.character);
+}
+
 function openDocument(uri) {
   if (!/^https?:\/\//i.test(uri || '')) return false;
   let command;
@@ -330,24 +344,47 @@ async function runDaemon() {
       return { ok: true };
     }
     if (request.op !== 'edit') throw new Error('unknown operation');
+    const mode = (request.mode === 'generate' || request.mode === 'fix') ? request.mode : 'rewrite';
     const line = String(request.line || '');
     const cwd = path.resolve(request.cwd || process.cwd());
     lsp.addWorkspace(cwd);
     const uri = pathToFileURL(path.join(cwd, `.lmline-buffer-${process.pid}.sh`)).href;
     const version = 1;
-    lsp.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'shellscript', version, text: line } });
+    let bufferText = line;
+    if (mode === 'fix' && request.contextText) {
+      bufferText = `${line}\n\n${String(request.contextText).split('\n').map(text => `# ${text}`).join('\n')}`;
+    }
+    lsp.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'shellscript', version, text: bufferText } });
     lsp.notify('textDocument/didFocus', { textDocument: { uri } });
     const position = { line: 0, character: Number(request.pointUtf16) || 0 };
     const candidates = [];
     try {
-      const result = await lsp.request('textDocument/copilotInlineEdit', { textDocument: { uri, version }, position });
-      for (const edit of result?.edits || []) {
-        const text = applyEdit(line, edit, uri, version);
-        if (text === null || candidates.some(item => item.text === text)) continue;
-        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        if (edit.command) accepted.set(token, { command: edit.command.command, arguments: edit.command.arguments || [] });
-        lsp.notify('textDocument/didShowInlineEdit', { item: edit });
-        candidates.push({ text, token: edit.command ? token : '' });
+      if (mode === 'generate') {
+        const result = await lsp.request('textDocument/inlineCompletion', {
+          textDocument: { uri, version },
+          position,
+          context: { triggerKind: 1 },
+          formattingOptions: { tabSize: 4, insertSpaces: true }
+        });
+        const prefix = line.slice(0, position.character);
+        for (const item of result?.items || []) {
+          const text = applyInlineItem(line, item, position);
+          if (text === null || !text.startsWith(prefix) || candidates.some(candidate => candidate.text === text)) continue;
+          const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          if (item.command) accepted.set(token, { command: item.command.command, arguments: item.command.arguments || [] });
+          lsp.notify('textDocument/didShowCompletion', { item });
+          candidates.push({ text, token: item.command ? token : '' });
+        }
+      } else {
+        const result = await lsp.request('textDocument/copilotInlineEdit', { textDocument: { uri, version }, position });
+        for (const edit of result?.edits || []) {
+          const text = applyEdit(line, edit, uri, version);
+          if (text === null || candidates.some(item => item.text === text)) continue;
+          const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          if (edit.command) accepted.set(token, { command: edit.command.command, arguments: edit.command.arguments || [] });
+          lsp.notify('textDocument/didShowInlineEdit', { item: edit });
+          candidates.push({ text, token: edit.command ? token : '' });
+        }
       }
     } finally {
       lsp.notify('textDocument/didClose', { textDocument: { uri } });
@@ -395,11 +432,15 @@ async function main() {
     let line;
     let point;
     let cwd;
+    let mode;
+    let contextText;
     if (command === 'edit-json') {
       const input = JSON.parse(await stdinText());
       line = String(input.line || '');
       point = Number(input.point || 0);
       cwd = input.cwd || process.cwd();
+      mode = input.mode;
+      contextText = input.contextText;
     } else {
       line = process.argv[3] || '';
       point = Number(process.argv[4] || 0);
@@ -407,6 +448,8 @@ async function main() {
     }
     const prefix = Array.from(line).slice(0, point).join('');
     payload = { op: 'edit', line, pointUtf16: prefix.length, cwd };
+    if (mode) payload.mode = String(mode);
+    if (contextText) payload.contextText = String(contextText);
   } else if (command === 'accept') payload = { op: 'accept', token: process.argv[3] || '' };
   else if (['status', 'login', 'logout'].includes(command)) payload = { op: command };
   else fail('usage: copilot-client.js edit LINE POINT CWD | accept TOKEN | login | status | logout | restart', 2);

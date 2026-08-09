@@ -44,6 +44,8 @@ typeset -g LMLINE_FIX_ALLOW_MEDIUM=${LMLINE_FIX_ALLOW_MEDIUM:-0}
 typeset -g LMLINE_ASYNC=${LMLINE_ASYNC:-0}
 typeset -g LMLINE_CANDIDATE_COUNT=${LMLINE_CANDIDATE_COUNT:-3}
 typeset -g LMLINE_REWRITE_BACKEND=${LMLINE_REWRITE_BACKEND:-engine}
+typeset -g LMLINE_GENERATE_BACKEND=${LMLINE_GENERATE_BACKEND:-engine}
+typeset -g LMLINE_FIX_BACKEND=${LMLINE_FIX_BACKEND:-engine}
 typeset -g LMLINE_PS0=${LMLINE_PS0:-'🍋‍🟩 '}
 
 typeset -ga __LMLINE_ZSH_CANDIDATES
@@ -214,6 +216,8 @@ __lmline_zsh_bridge() {
   LMLINE_CONFIG_DIR=$LMLINE_CONFIG_DIR \
   LMLINE_CANDIDATE_COUNT=$LMLINE_CANDIDATE_COUNT \
   LMLINE_REWRITE_BACKEND=$LMLINE_REWRITE_BACKEND \
+  LMLINE_GENERATE_BACKEND=$LMLINE_GENERATE_BACKEND \
+  LMLINE_FIX_BACKEND=$LMLINE_FIX_BACKEND \
   LMLINE_COPILOT_TIMEOUT=${LMLINE_COPILOT_TIMEOUT:-15000} \
   LMLINE_COPILOT_RUNTIME_DIR=${LMLINE_COPILOT_RUNTIME_DIR:-} \
   LMLINE_COPILOT_COMMAND=${LMLINE_COPILOT_COMMAND:-} \
@@ -233,8 +237,9 @@ __lmline_zsh_bridge() {
         tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX")
         trap "rm -rf \"$tmp\"" EXIT
         engine_file="$tmp/engine"
-        if [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]]; then
-          __lmline_copilot_candidates "$line" "$point" zsh >"$engine_file"
+        if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
+             [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
+          __lmline_copilot_candidates "$line" "$point" zsh "$mode" >"$engine_file"
         else
           printf "%s" "$line" >"$tmp/line"
           __lmline_context_file "$tmp/context" "$line" "$mode"

@@ -38,6 +38,8 @@ __lmline_load_all_config
 : "${LMLINE_DEBUG:=0}"
 : "${LMLINE_CANDIDATE_COUNT:=3}"
 : "${LMLINE_REWRITE_BACKEND:=engine}"
+: "${LMLINE_GENERATE_BACKEND:=engine}"
+: "${LMLINE_FIX_BACKEND:=engine}"
 : "${LMLINE_KEY_GENERATE:=\C-x\C-g}"
 : "${LMLINE_KEY_REWRITE:=\C-x\C-r}"
 : "${LMLINE_KEY_NEXT:=\C-x\C-n}"
@@ -240,8 +242,9 @@ __lmline_call_engine_raw() {
   local line=$2
   local point=$3
   local tmp line_file context_file status
-  if [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]]; then
-    __lmline_copilot_candidates "$line" "$point" bash
+  if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
+       [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
+    __lmline_copilot_candidates "$line" "$point" bash "$mode"
     return $?
   fi
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-gen.XXXXXX") || return 1

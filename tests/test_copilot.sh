@@ -61,6 +61,35 @@ show_line=$(grep -n -m1 '^textDocument/didShowInlineEdit$' "$copilot_tmp/lsp.log
 close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut -d: -f1)
 [[ -n "$show_line" && -n "$close_line" && "$show_line" -lt "$close_line" ]] || fail "Copilot show notification precedes close"
 
+generate_annotated=$(env "${copilot_env[@]}" bash -c '
+  source "$1/config.bash"
+  LMLINE_CONFIG_DIR=$2
+  __lmline_init_dirs "$1"
+  source "$1/policy.bash"
+  source "$1/actions.bash"
+  __lmline_copilot_candidates "echo hi " 8 bash generate
+' _ "$repo_dir/lmline" "$copilot_tmp/config") || fail "Copilot generate bridge"
+grep -q $'\techo hi there$' <<<"$generate_annotated" || fail "Copilot generate insertion"
+grep -q $'\techo hi everyone$' <<<"$generate_annotated" || fail "Copilot generate range edit"
+grep -q $'\techo hi comrade$' <<<"$generate_annotated" || fail "Copilot generate command item"
+! grep -q 'bad' <<<"$generate_annotated" || fail "Copilot generate multiline rejected"
+grep -q '^textDocument/didShowCompletion$' "$copilot_tmp/lsp.log" || fail "Copilot generate show notification"
+
+fix_out=$(env "${copilot_env[@]}" LMLINE_FIX_BACKEND=copilot bash -c '
+  source "$1/config.bash"
+  LMLINE_CONFIG_DIR=$2
+  source "$1/context.bash"
+  source "$1/policy.bash"
+  source "$1/actions.bash"
+  __lmline_fix_run "false" bash 5 "$repo_dir/lmline/engine" 3 "" 2>/dev/null
+' _ "$repo_dir/lmline" "$copilot_tmp/config") || fail "Copilot fix run"
+grep -q $'\ttrue$' <<<"$fix_out" || fail "Copilot fix candidate"
+grep -q '^didOpen-context=yes$' "$copilot_tmp/lsp.log" || fail "Copilot fix execution context"
+
+grep -q '^engine$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_GENERATE_BACKEND) || fail "Generate backend completion"
+grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_GENERATE_BACKEND) || fail "Generate backend completion"
+grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_FIX_BACKEND) || fail "Fix backend completion"
+
 env "${copilot_env[@]}" LMLINE_REWRITE_BACKEND=copilot LMLINE_ASYNC=0 bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="echo 😀 old"
@@ -68,6 +97,14 @@ env "${copilot_env[@]}" LMLINE_REWRITE_BACKEND=copilot LMLINE_ASYNC=0 bash --nor
   __lmline_rewrite_widget
   [[ "$READLINE_LINE" == "echo 😀 new" ]]
 ' _ "$repo_dir" || fail "Bash Copilot rewrite widget"
+
+env "${copilot_env[@]}" LMLINE_GENERATE_BACKEND=copilot LMLINE_ASYNC=0 bash --norc -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="echo hi "
+  READLINE_POINT=8
+  __lmline_generate_widget
+  [[ "$READLINE_LINE" == "echo hi there" ]]
+' _ "$repo_dir" || fail "Bash Copilot generate widget"
 
 if command -v zsh >/dev/null 2>&1; then
   env "${copilot_env[@]}" LMLINE_REWRITE_BACKEND=copilot LMLINE_ASYNC=0 zsh -fic '
@@ -77,6 +114,13 @@ if command -v zsh >/dev/null 2>&1; then
     lmline-zsh-rewrite-widget
     [[ "$BUFFER" == "echo 😀 new" ]]
   ' _ "$repo_dir" || fail "zsh Copilot rewrite widget"
+  env "${copilot_env[@]}" LMLINE_GENERATE_BACKEND=copilot LMLINE_ASYNC=0 zsh -fic '
+    source "$1/lmline/init.zsh"
+    BUFFER="echo hi "
+    CURSOR=8
+    lmline-zsh-generate-widget
+    [[ "$BUFFER" == "echo hi there" ]]
+  ' _ "$repo_dir" || fail "zsh Copilot generate widget"
 fi
 
 fake_bin="$copilot_tmp/bin"

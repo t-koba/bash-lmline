@@ -194,6 +194,8 @@ LMLINE_CLIP_MAX_OUTPUT_BYTES	65536	displayed clip response byte limit
 LMLINE_MAX_CANDIDATE_BYTES	4096	candidate byte limit
 LMLINE_ENGINE	installed engine	engine executable
 LMLINE_REWRITE_BACKEND	engine	rewrite backend: engine or copilot
+LMLINE_GENERATE_BACKEND	engine	generate backend: engine or copilot
+LMLINE_FIX_BACKEND	engine	fix backend: engine or copilot
 LMLINE_COPILOT_TIMEOUT	15000	Copilot Language Server request timeout in milliseconds
 LMLINE_COPILOT_RUNTIME_DIR	$LMLINE_CONFIG_DIR/copilot/runtime	Copilot daemon socket, pid, and log directory
 LMLINE_COPILOT_COMMAND	empty	optional Copilot Language Server executable override
@@ -300,7 +302,7 @@ __lmline_setting_catalog_line() {
 __lmline_setting_value_candidates() {
   case "$1" in
     LMLINE_EXEC_BACKEND) printf '%s\n' auto local microsandbox off ;;
-    LMLINE_REWRITE_BACKEND) printf '%s\n' engine copilot ;;
+    LMLINE_REWRITE_BACKEND|LMLINE_GENERATE_BACKEND|LMLINE_FIX_BACKEND) printf '%s\n' engine copilot ;;
     LMLINE_MICROSANDBOX_WORKSPACE_MODE) printf '%s\n' readonly writable none ;;
     LMLINE_API_FORMAT) printf '%s\n' chat responses messages ;;
     LMLINE_TOOL_MODE) printf '%s\n' auto openai text none ;;
@@ -479,6 +481,8 @@ usage: lmline copilot setup
        lmline copilot login|status|logout|restart|remove
 
 Install and manage the optional GitHub Copilot Language Server integration.
+Enable per mode with LMLINE_REWRITE_BACKEND, LMLINE_GENERATE_BACKEND, or
+LMLINE_FIX_BACKEND set to copilot.
 EOF
       ;;
     copilot:setup|copilot:update|copilot:login|copilot:status|copilot:logout|copilot:restart|copilot:remove) print_cli_help copilot ;;

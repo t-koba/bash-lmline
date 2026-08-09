@@ -100,18 +100,28 @@ catalog.
 
 ## GitHub Copilot line editing
 
-The rewrite key (`Ctrl-x Ctrl-r`) can optionally use the official GitHub
-Copilot Language Server and its `textDocument/copilotInlineEdit` method.
-The normal OpenAI-compatible engine remains the default and Copilot adds no
-dependency until it is enabled.
+The rewrite key (`Ctrl-x Ctrl-r`), generate (`Ctrl-x Ctrl-g`), and fix
+(`Ctrl-x Ctrl-f`) can optionally use the official GitHub Copilot Language
+Server: `textDocument/copilotInlineEdit` for rewrite and fix, and
+`textDocument/inlineCompletion` for generate (which preserves the typed prefix
+byte-for-byte). The normal OpenAI-compatible engine remains the default and
+Copilot adds no dependency until it is enabled.
 
-Install the pinned Language Server package, sign in, and select the backend:
+Install the pinned Language Server package, sign in, and select a backend:
 
 ```bash
 lmline copilot setup
 lmline copilot login
 lmline config set LMLINE_REWRITE_BACKEND copilot
+lmline config set LMLINE_GENERATE_BACKEND copilot   # optional
+lmline config set LMLINE_FIX_BACKEND copilot        # optional
 ```
+
+Fix mode still runs the failed command locally and passes the captured
+stderr/stdout to Copilot as buffer context, so the suggestion has the same
+execution evidence the engine gets. Generate is best at completing a command
+you are typing; Copilot has no rich shell context, so empty-line or
+`# comment`-intent generation is weaker than the engine's.
 
 Copilot requires Node.js 20.8+ and npm. The package is installed under
 `$LMLINE_CONFIG_DIR/copilot`; `install.sh` never downloads it. A per-user
@@ -938,6 +948,8 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_MAX_CANDIDATE_BYTES` | `4096` | candidate byte limit |
 | `LMLINE_ENGINE` | installed engine | engine executable |
 | `LMLINE_REWRITE_BACKEND` | `engine` | rewrite provider: `engine` or `copilot` |
+| `LMLINE_GENERATE_BACKEND` | `engine` | generate provider: `engine` or `copilot` |
+| `LMLINE_FIX_BACKEND` | `engine` | fix provider: `engine` or `copilot` |
 | `LMLINE_COPILOT_TIMEOUT` | `15000` | Copilot LSP request timeout in milliseconds |
 | `LMLINE_COPILOT_RUNTIME_DIR` | `$LMLINE_CONFIG_DIR/copilot/runtime` | Copilot daemon runtime directory |
 | `LMLINE_COPILOT_COMMAND` | empty | optional Language Server executable override |
