@@ -117,6 +117,13 @@ Copilot requires Node.js 20.8+ and npm. The package is installed under
 `$LMLINE_CONFIG_DIR/copilot`; `install.sh` never downloads it. A per-user
 daemon is started on the first Copilot command and shared by Bash and zsh.
 
+`lmline copilot login` completes in a single daemon round-trip: it prints the
+device code, opens the browser exactly once, and reports the resulting status
+(`status=OK` plus the signed-in user). If you are already signed in, it says so
+and opens nothing. If the browser flow is not finished yet, the command reports
+the pending status; run `lmline copilot status` afterwards to confirm
+`status=OK` before editing.
+
 ```bash
 lmline copilot status
 lmline copilot update          # explicit update to latest

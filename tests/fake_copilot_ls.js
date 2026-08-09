@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 let buffer = Buffer.alloc(0);
+let signedIn = false;
 
 function log(value) {
   if (process.env.LMLINE_FAKE_COPILOT_LOG) fs.appendFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, `${value}\n`);
@@ -30,9 +31,18 @@ function handle(message) {
       { text: 'definitely-not-a-real-lmline-command', textDocument: doc, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 11 } } }
     ] } });
   } else if (message.method === 'checkStatus') {
-    send({ jsonrpc: '2.0', id: message.id, result: { status: 'OK', message: 'signed in' } });
+    if (signedIn) send({ jsonrpc: '2.0', id: message.id, result: { status: 'OK', user: 'fake-user' } });
+    else send({ jsonrpc: '2.0', id: message.id, result: { status: 'NotSignedIn' } });
   } else if (message.method === 'signIn') {
-    send({ jsonrpc: '2.0', id: message.id, result: { userCode: 'TEST-CODE' } });
+    signedIn = true;
+    send({ jsonrpc: '2.0', id: message.id, result: {
+      userCode: 'TEST-CODE',
+      command: { command: 'openExternalBrowser', arguments: ['https://github.com/login/device?user_code=TEST-CODE'] }
+    } });
+  } else if (message.method === 'workspace/executeCommand' && message.params?.command === 'openExternalBrowser') {
+    send({ jsonrpc: '2.0', id: 901, method: 'window/showDocument', params: { uri: 'https://github.com/login/device?user_code=TEST-CODE', external: true } });
+    send({ jsonrpc: '2.0', id: 902, method: 'window/showDocument', params: { uri: 'https://github.com/login/device?user_code=TEST-CODE', external: true } });
+    send({ jsonrpc: '2.0', id: message.id, result: null });
   } else if (message.method === 'signOut' || message.method === 'workspace/executeCommand') {
     send({ jsonrpc: '2.0', id: message.id, result: null });
   } else if (message.id !== undefined && message.method) {

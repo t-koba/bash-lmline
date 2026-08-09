@@ -40,10 +40,10 @@ function ensureRuntime() {
   try { fs.chmodSync(runtimeDir, 0o700); } catch (_) {}
 }
 
-function readJsonLine(socket) {
+function readJsonLine(socket, timeout = timeoutMs) {
   return new Promise((resolve, reject) => {
     let input = '';
-    const timer = setTimeout(() => reject(new Error(`request timed out after ${timeoutMs}ms`)), timeoutMs);
+    const timer = setTimeout(() => reject(new Error(`request timed out after ${timeout}ms`)), timeout);
     socket.setEncoding('utf8');
     socket.on('data', chunk => {
       input += chunk;
@@ -59,12 +59,12 @@ function readJsonLine(socket) {
   });
 }
 
-function connect(payload) {
+function connect(payload, timeout = timeoutMs) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(socketPath);
     socket.once('connect', async () => {
       socket.write(`${JSON.stringify(payload)}\n`);
-      try { resolve(await readJsonLine(socket)); } catch (error) { reject(error); }
+      try { resolve(await readJsonLine(socket, timeout)); } catch (error) { reject(error); }
       socket.end();
     });
     socket.once('error', reject);
@@ -101,12 +101,14 @@ async function startDaemon() {
   throw new Error(`daemon did not start; see ${logPath}`);
 }
 
-async function call(payload, retry = true) {
-  try { return await connect(payload); }
+async function call(payload, timeout = timeoutMs) {
+  try { return await connect(payload, timeout); }
   catch (error) {
-    if (!retry) throw error;
-    await startDaemon();
-    return connect(payload);
+    if (error && error.code && (error.code === 'ECONNREFUSED' || error.code === 'ENOENT')) {
+      await startDaemon();
+      return connect(payload, timeout);
+    }
+    throw error;
   }
 }
 
@@ -158,6 +160,8 @@ class Lsp {
     this.status = null;
     this.messages = [];
     this.workspaces = new Set();
+    this.lastOpenedUri = null;
+    this.lastOpenedAt = 0;
   }
 
   command() {
@@ -195,7 +199,7 @@ class Lsp {
       processId: process.pid, workspaceFolders: null,
       capabilities: { workspace: { workspaceFolders: true, configuration: true }, window: { showDocument: { support: true } } },
       initializationOptions: { editorInfo: { name: 'lmline', version: '1' }, editorPluginInfo: { name: 'bash-lmline', version: '1' } }
-    });
+    }, timeoutMs * 2);
     this.notify('initialized', {});
     this.notify('workspace/didChangeConfiguration', { settings: {} });
   }
@@ -206,10 +210,10 @@ class Lsp {
     this.child.stdin.write(body);
   }
 
-  request(method, params) {
+  request(method, params, timeout = timeoutMs) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method} timed out`)); }, timeoutMs);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method} timed out`)); }, timeout);
       this.pending.set(id, { resolve, reject, timer });
       this.send({ jsonrpc: '2.0', id, method, params });
     });
@@ -250,10 +254,24 @@ class Lsp {
     if (message.id !== undefined) {
       let result = null;
       if (message.method === 'workspace/configuration') result = (message.params?.items || []).map(() => ({}));
-      else if (message.method === 'window/showDocument') result = { success: openDocument(message.params?.uri) };
+      else if (message.method === 'window/showDocument') result = { success: this.showDocument(message.params) };
       else if (message.method === 'window/showMessageRequest') result = null;
       this.send({ jsonrpc: '2.0', id: message.id, result });
     }
+  }
+
+  showDocument(params) {
+    const uri = params?.uri;
+    if (params?.external !== true || !/^https?:\/\//i.test(uri || '')) return false;
+    const now = Date.now();
+    if (this.lastOpenedUri === uri && now - this.lastOpenedAt < 30000) return false;
+    this.lastOpenedUri = uri;
+    this.lastOpenedAt = now;
+    if (process.env.LMLINE_COPILOT_OPEN_LOG) {
+      try { fs.appendFileSync(process.env.LMLINE_COPILOT_OPEN_LOG, `${uri}\n`, { mode: 0o600 }); } catch (_) { return false; }
+      return true;
+    }
+    return openDocument(uri);
   }
 
   addWorkspace(cwd) {
@@ -292,12 +310,18 @@ async function runDaemon() {
       return { ok: true, status: result, messages: lsp.messages.splice(0) };
     }
     if (request.op === 'login') {
+      let current;
+      try { current = await lsp.request('checkStatus', {}); } catch (_) { current = null; }
+      if (current && ['OK', 'MaybeOk', 'AlreadySignedIn'].includes(current.status)) {
+        return { ok: true, alreadySignedIn: true, result: current, messages: lsp.messages.splice(0) };
+      }
       const result = await lsp.request('signIn', {});
-      return { ok: true, result, messages: lsp.messages.splice(0) };
-    }
-    if (request.op === 'finishLogin') {
-      const result = await lsp.request('workspace/executeCommand', request.command);
-      return { ok: true, result, messages: lsp.messages.splice(0) };
+      if (result?.command) {
+        try { await lsp.request('workspace/executeCommand', { command: result.command.command, arguments: result.command.arguments || [] }); } catch (_) {}
+      }
+      let status;
+      try { status = await lsp.request('checkStatus', {}); } catch (_) { status = lsp.status; }
+      return { ok: true, result, status, messages: lsp.messages.splice(0) };
     }
     if (request.op === 'logout') return { ok: true, result: await lsp.request('signOut', {}) };
     if (request.op === 'accept') {
@@ -386,23 +410,31 @@ async function main() {
   } else if (command === 'accept') payload = { op: 'accept', token: process.argv[3] || '' };
   else if (['status', 'login', 'logout'].includes(command)) payload = { op: command };
   else fail('usage: copilot-client.js edit LINE POINT CWD | accept TOKEN | login | status | logout | restart', 2);
-  const response = await call(payload);
+  const timeout = command === 'login' ? timeoutMs * 3 + 5000 : timeoutMs;
+  const response = await call(payload, timeout);
   if (!response.ok) throw new Error(response.error || 'request failed');
   if (command === 'edit' || command === 'edit-json') {
     for (const message of response.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
     for (const item of response.candidates || []) process.stdout.write(`${item.token}\t${item.text}\n`);
   } else if (command === 'login') {
     for (const message of response.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
-    if (response.result?.userCode) process.stdout.write(`user_code=${response.result.userCode}\n`);
-    if (response.result?.command) {
-      process.stdout.write('Complete sign-in in the browser.\n');
-      const finish = await call({ op: 'finishLogin', command: { command: response.result.command.command, arguments: response.result.command.arguments || [] } });
-      if (!finish.ok) throw new Error(finish.error);
-      for (const message of finish.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
+    if (response.alreadySignedIn) {
+      process.stdout.write('already_signed_in=1\n');
+      if (response.result?.user) process.stdout.write(`user=${response.result.user}\n`);
+    } else {
+      if (response.result?.userCode) process.stdout.write(`user_code=${response.result.userCode}\n`);
+      const status = response.status || {};
+      process.stdout.write(`status=${status.status || status.kind || 'unknown'}\n`);
+      if (status.user) process.stdout.write(`user=${status.user}\n`);
+      if (status.message) process.stdout.write(`message=${status.message}\n`);
+      if (!['OK', 'MaybeOk', 'AlreadySignedIn'].includes(status.status)) {
+        process.stderr.write('lmline-copilot: complete the sign-in in the opened browser, then run: lmline copilot status\n');
+      }
     }
   } else if (command === 'status') {
     const status = response.status || {};
     process.stdout.write(`status=${status.status || status.kind || 'unknown'}\n`);
+    if (status.user) process.stdout.write(`user=${status.user}\n`);
     if (status.message) process.stdout.write(`message=${status.message}\n`);
   } else process.stdout.write('ok\n');
 }

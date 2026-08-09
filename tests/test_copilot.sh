@@ -13,6 +13,7 @@ copilot_env=(
   LMLINE_COPILOT_RUNTIME_DIR="$copilot_runtime"
   LMLINE_COPILOT_COMMAND="$repo_dir/tests/fake_copilot_ls.js"
   LMLINE_FAKE_COPILOT_LOG="$copilot_tmp/lsp.log"
+  LMLINE_COPILOT_OPEN_LOG="$copilot_tmp/open.log"
   LMLINE_COPILOT_TIMEOUT=3000
 )
 
@@ -28,9 +29,16 @@ grep -q 'github.copilot.didAcceptCompletionItem' "$copilot_tmp/lsp.log" || fail 
 grep -q '^workspace/configuration-response$' "$copilot_tmp/lsp.log" || fail "server configuration request handled"
 
 status_out=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" status) || fail "Copilot status"
-grep -q '^status=OK$' <<<"$status_out" || fail "Copilot status output"
+grep -q '^status=NotSignedIn$' <<<"$status_out" || fail "Copilot status output"
 login_out=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" login) || fail "Copilot login"
 grep -q '^user_code=TEST-CODE$' <<<"$login_out" || fail "Copilot device code"
+grep -q '^status=OK$' <<<"$login_out" || fail "Copilot login completion status"
+grep -q '^user=fake-user$' <<<"$login_out" || fail "Copilot login user"
+[[ $(wc -l <"$copilot_tmp/open.log" | tr -d ' ') == 1 ]] || fail "Copilot browser opened once despite duplicate showDocument"
+grep -q 'openExternalBrowser' "$copilot_tmp/lsp.log" || fail "Copilot browser command executed in daemon"
+login_again=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" login) || fail "Copilot re-login"
+grep -q '^already_signed_in=1$' <<<"$login_again" || fail "Copilot re-login short-circuits"
+[[ $(grep -c '^signIn$' "$copilot_tmp/lsp.log") == 1 ]] || fail "Copilot signIn not duplicated"
 env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" logout >/dev/null || fail "Copilot logout"
 cli_status=$(env "${copilot_env[@]}" "$repo_dir/lmline/lmline" copilot status) || fail "Copilot CLI status"
 grep -q '^status=OK$' <<<"$cli_status" || fail "Copilot CLI status output"
