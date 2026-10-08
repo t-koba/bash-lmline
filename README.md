@@ -102,9 +102,9 @@ catalog.
 
 The rewrite key (`Ctrl-x Ctrl-r`), generate (`Ctrl-x Ctrl-g`), and fix
 (`Ctrl-x Ctrl-f`) can optionally use the official GitHub Copilot Language
-Server: `textDocument/copilotInlineEdit` for rewrite and fix, and
-`textDocument/inlineCompletion` for generate (which preserves the typed prefix
-byte-for-byte). The normal OpenAI-compatible engine remains the default and
+Server's `textDocument/inlineCompletion`. Generate completes at the cursor and
+preserves the typed prefix byte-for-byte; rewrite and fix complete the whole
+line. The normal OpenAI-compatible engine remains the default and
 Copilot adds no dependency until it is enabled.
 
 Install the pinned Language Server package, sign in, and select a backend:
