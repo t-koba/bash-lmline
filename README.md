@@ -600,7 +600,7 @@ untrusted pasted text. Redaction masks these patterns:
 VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments
 Authorization: Bearer <token> headers
 sk-... OpenAI-style API keys (after the first 12 characters)
-ghp_... GitHub tokens (after the first 12 characters)
+ghp_/gho_/ghu_/ghs_/ghr_/github_pat_... GitHub tokens (body redacted, prefix kept)
 ```
 
 ```bash

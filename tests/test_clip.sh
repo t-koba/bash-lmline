@@ -12,7 +12,15 @@ clip_test_dir="$cfg_tmp/clip"
 mkdir -p "$clip_test_dir/bin" "$clip_test_dir/config"
 cat >"$clip_test_dir/bin/fakeclip" <<'EOF'
 #!/usr/bin/env bash
-printf 'API_KEY=secret-value\nAuthorization: Bearer abcdefghijklmnopqrstuvwxyz\nerror: failed\n'
+# Secret-shaped fixtures are assembled from parts at runtime so this
+# file never contains a contiguous provider-token literal.
+gh_a='gh'
+printf '%s\n' 'API_KEY=secret-value'
+printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123456789ABCD\n' "$gh_a" 'o_'
+printf 'token %s%sabcDEF123_tail_with_underscore_xyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_01\n' 'github' '_pat_'
+printf 'token %s%s12345_eyJhbGciOiJIUzI1NiJ9_stateless_jwt_body_0123456789\n' "$gh_a" 's_'
+printf '%s\n' 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
+printf '%s\n' 'error: failed'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -30,6 +38,11 @@ done
 [[ "$mode" == clip ]] || exit 10
 grep -Fq 'API_KEY=***REDACTED***' "$line_file" || exit 11
 grep -Fq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 12
+grep -Fq 'gho_***REDACTED***' "$line_file" || exit 14
+grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15
+grep -Fq 'ghs_***REDACTED***' "$line_file" || exit 17
+grep -Fq 'teless_jwt_body' "$line_file" && exit 16
+grep -Fq 'tail_with_underscore' "$line_file" && exit 18
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
