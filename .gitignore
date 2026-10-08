@@ -7,3 +7,6 @@
 *.secret
 request.md
 
+
+# Local mizu harness (private)
+/.mizu/
