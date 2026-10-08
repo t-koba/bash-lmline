@@ -322,20 +322,23 @@ __lmline_tool_files() {
     else
       cat
     fi |
-    sed -n "1,${LMLINE_TOOL_FILES_LIMIT}p"
+    sed -n "1,${LMLINE_TOOL_FILES_LIMIT}p" |
+    __lmline_tool_data_block "FILES" "${LMLINE_TOOL_FILES_LIMIT:-80}" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
 }
 
 __lmline_tool_git_status() {
   local max_lines=${LMLINE_TOOL_GIT_STATUS_LINES:-80} root
   [[ "$max_lines" =~ ^[1-9][0-9]*$ ]] || max_lines=80
   if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    printf 'repository=none\n'
+    printf 'repository=none\n' |
+      __lmline_tool_data_block "GIT_STATUS" "$max_lines" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
     return 0
   fi
-  root=$(git rev-parse --show-toplevel 2>/dev/null || printf '')
-  [[ -n "$root" ]] && printf 'root=%s\n' "$root"
-  git --no-optional-locks -c core.quotepath=false status --short --branch --untracked-files=normal 2>/dev/null |
-    __lmline_safe_tool_text "$max_lines" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
+  {
+    root=$(git rev-parse --show-toplevel 2>/dev/null || printf '')
+    [[ -n "$root" ]] && printf 'root=%s\n' "$root"
+    git --no-optional-locks -c core.quotepath=false status --short --branch --untracked-files=normal 2>/dev/null || true
+  } | __lmline_tool_data_block "GIT_STATUS" "$max_lines" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
 }
 
 __lmline_tool_file_excerpt() {
@@ -962,8 +965,10 @@ __lmline_context_file() {
     if __lmline_context_enabled LMLINE_INCLUDE_GIT_CONTEXT &&
       command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       printf '\n## git\n'
-      printf 'root=%s\n' "$(git rev-parse --show-toplevel 2>/dev/null)"
-      printf 'branch=%s\n' "$(git branch --show-current 2>/dev/null)"
+      {
+        printf 'root=%s\n' "$(git rev-parse --show-toplevel 2>/dev/null)"
+        printf 'branch=%s\n' "$(git branch --show-current 2>/dev/null)"
+      } | __lmline_tool_data_block "GIT" "${LMLINE_TOOL_GIT_STATUS_LINES:-80}" "${LMLINE_TOOL_INFO_LINE_BYTES:-240}"
     fi
 
     # explain/clip answer questions about existing text and do not generate
