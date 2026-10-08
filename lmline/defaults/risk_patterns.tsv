@@ -5,6 +5,8 @@
 high	*rm -rf*	recursive remove
 high	*rm -r*	recursive remove
 high	*find *-delete*	find delete action
+high	*find *-exec*rm*	find exec remove action
+high	*git clean -*f*	force git clean deletes untracked files
 high	*xargs rm*	bulk remove through xargs
 high	* dd *	raw disk/file overwrite command
 high	* mkfs*	filesystem formatting command
