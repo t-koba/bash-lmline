@@ -130,10 +130,11 @@ if command -v zsh >/dev/null 2>&1; then
     __LMLINE_ZSH_ASYNC_FILE=$ready
     __LMLINE_ZSH_ASYNC_PID=999999
     __LMLINE_ZSH_ASYNC_NOTIFIED=0
-    out=$(__lmline_zsh_async_prompt_check 2>&1)
-    [[ "$out" == *"suggestion ready"* ]]
-    (( __LMLINE_ZSH_ASYNC_NOTIFIED == 1 ))
-    rm -f "$ready"
+    tmp_out=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-ready-out.XXXXXX")
+    __lmline_zsh_async_prompt_check 2>"$tmp_out"
+    out=$(<"$tmp_out")
+    rm -f "$ready" "$tmp_out"
+    [[ "$out" == *"suggestion ready"* ]] && (( __LMLINE_ZSH_ASYNC_NOTIFIED == 1 ))
   ' _ "$repo_dir" || fail "zsh async notify announces once"
   rm -rf "$zsh_tmp"
   ok "zsh integration"
