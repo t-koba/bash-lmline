@@ -26,6 +26,8 @@ bash -c '
   [[ $(__lmline_risk_level "cp foo bar") == medium ]]
   [[ $(__lmline_risk_level "tee foo") == low ]]
   [[ $(__lmline_risk_level "cp /dev/null foo") == medium ]]
+  [[ $(__lmline_risk_level "echo guarantee /dev/sdb") == low ]]
+  [[ $(__lmline_risk_level "echo tcp /dev/sdb") == medium ]]
   [[ $(__lmline_risk_level "echo hi | bash") == high ]]
   [[ $(__lmline_risk_level "echo hi|sh") == high ]]
   [[ $(__lmline_risk_level "echo hi | /bin/sh") == high ]]
