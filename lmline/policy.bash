@@ -259,14 +259,16 @@ __lmline_risk_reason() {
 }
 
 # Minimal fail-closed canonicalization for risk matching only (not execution).
-# Strips quoting/backslash escapes and normalizes $IFS/${IFS} to a space so
+# Strips quoting/backslash escapes (including legacy backtick command
+# substitution, symmetric with the paren handling that already covers $())
+# and normalizes $IFS/${IFS} to a space so
 # trivially quoted forms ('"rm" -rf', 'rm${IFS}-rf') match the same rules as
 # their bare forms. Also normalizes pipe spacing (so 'a|sh' matches '| sh'),
 # command separators (so ';eval' matches ' eval '), and absolute command
 # paths after a pipe (so '| /bin/sh' matches '| sh'). Deliberately small:
 # no AST or full deobfuscation.
 __lmline_canonicalize_for_risk() {
-  sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g' \
+  sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g' -e 's/`//g' \
     -e 's/\|\|/ /g' -e 's/\|/ | /g' -e 's/[;&()]/ /g' \
     -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g'
 }
