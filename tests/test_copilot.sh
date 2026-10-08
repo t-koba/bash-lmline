@@ -2,6 +2,19 @@
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
+# Polls for an asynchronously appended LSP log line. Fire-and-forget
+# notifications (didShowCompletion/didClose) are written by the fake server
+# after the daemon already replied, so a single immediate grep flakes on
+# loaded runners (observed as a silent macOS CI failure).
+copilot_wait_log() {
+  local pattern=$1 file=$2 i
+  for ((i = 0; i < 100; i++)); do
+    grep -q -- "$pattern" "$file" 2>/dev/null && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
 copilot_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-copilot-test.XXXXXX")
 copilot_runtime="$repo_dir/.copilot-test-run.$$"
 mkdir -p "$copilot_runtime"
@@ -60,15 +73,23 @@ annotated=$(env "${copilot_env[@]}" bash -c '
 grep -q '^lmline-candidate: low' <<<"$annotated" || fail "Copilot candidate risk annotation"
 grep -q $'\techo 😀 new$' <<<"$annotated" || fail "Copilot candidate protocol"
 ! grep -q 'definitely-not-a-real-lmline-command' <<<"$annotated" || fail "unavailable Copilot command rejected"
-show_line=$(grep -n -m1 '^textDocument/didShowCompletion$' "$copilot_tmp/lsp.log" | cut -d: -f1)
-close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut -d: -f1)
+copilot_wait_log '^textDocument/didShowCompletion$' "$copilot_tmp/lsp.log" || {
+  tail -n 40 "$copilot_tmp/lsp.log" >&2 || true
+  fail "Copilot show notification arrives"
+}
+copilot_wait_log '^textDocument/didClose$' "$copilot_tmp/lsp.log" || {
+  tail -n 40 "$copilot_tmp/lsp.log" >&2 || true
+  fail "Copilot close notification arrives"
+}
+show_line=$(grep -n -m1 '^textDocument/didShowCompletion$' "$copilot_tmp/lsp.log" | cut -d: -f1 || true)
+close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut -d: -f1 || true)
 [[ -n "$show_line" && -n "$close_line" && "$show_line" -lt "$close_line" ]] || fail "Copilot show notification precedes close"
 grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus carries a top-level uri"
 
 empty_rt="$copilot_tmp/empty-run"
 mkdir -p "$empty_rt"
 empty_out=$(env "${copilot_env[@]}" LMLINE_COPILOT_RUNTIME_DIR="$empty_rt" LMLINE_FAKE_COPILOT_EMPTY=1 \
-  node "$repo_dir/lmline/copilot-client.js" edit 'echo x' 6 "$repo_dir" 2>&1)
+  node "$repo_dir/lmline/copilot-client.js" edit 'echo x' 6 "$repo_dir" 2>&1) || fail "Copilot empty-result edit"
 grep -q 'no candidates from Copilot' <<<"$empty_out" || fail "Copilot empty-result diagnostic"
 env "${copilot_env[@]}" LMLINE_COPILOT_RUNTIME_DIR="$empty_rt" node "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true
 
@@ -101,7 +122,7 @@ grep -q '^engine$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_GENERATE_BACKEND) || fail "Generate backend completion"
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete setting-values LMLINE_FIX_BACKEND) || fail "Fix backend completion"
 
-hint_out=$(LMLINE_CONFIG_DIR="$copilot_tmp/hint-config" "$repo_dir/lmline/lmline" config set LMLINE_REWRITE_BACKEND copilot 2>&1)
+hint_out=$(LMLINE_CONFIG_DIR="$copilot_tmp/hint-config" "$repo_dir/lmline/lmline" config set LMLINE_REWRITE_BACKEND copilot 2>&1) || fail "Copilot config set"
 grep -q 'Copilot enabled for LMLINE_REWRITE_BACKEND' <<<"$hint_out" || fail "Copilot config set hint"
 
 for shell_name in zsh bash; do
