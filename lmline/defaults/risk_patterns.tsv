@@ -15,13 +15,20 @@ high	* mkfs*	filesystem formatting command
 high	* shutdown*	system power operation
 high	* reboot*	system power operation
 high	* chmod -R*	recursive permission or ownership change
+high	*chmod --recursive*	recursive permission or ownership change
 high	* chown -R*	recursive permission or ownership change
+high	*chown --recursive*	recursive permission or ownership change
 high	* sudo *	privileged execution
 high	*curl *| sh*	downloaded script execution
 high	*curl *| bash*	downloaded script execution
 high	*curl *| eval*	downloaded code execution
 high	*curl *| bash -c*	downloaded code execution
-high	*source <(curl*	downloaded code execution
+high	*source < curl http*	downloaded code execution
+high	*source < wget http*	downloaded code execution
+high	*< curl http*	downloaded code execution
+high	*< wget http*	downloaded code execution
+high	*sh -c *curl http*	downloaded code execution
+high	*sh -c *wget http*	downloaded code execution
 high	*wget *| sh*	downloaded script execution
 high	*wget *| bash*	downloaded script execution
 high	*wget *| eval*	downloaded code execution
