@@ -114,5 +114,6 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests.
+- Native local tools (`LMLINE_TOOL_MODE=openai`/`auto`) and streaming (`LMLINE_STREAM`) are `chat`-only. `responses`/`messages` formats run buffered requests without native tool calls (`text` tool requests still apply); the engine emits an `lmline-progress:` warning when native tools or streaming are requested but disabled by the format.
 - API keys are passed to curl through `-H @file` header files, never on the
   curl command line.

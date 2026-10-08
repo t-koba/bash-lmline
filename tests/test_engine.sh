@@ -556,4 +556,38 @@ if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TEMPERATURE=bad "$repo_dir/lmline/
 fi
 grep -q "invalid LMLINE_TEMPERATURE" /tmp/lmline-bad-temperature.err || fail "invalid engine temperature error"
 
+# Non-chat formats run tool-less and warn instead of silently dropping tools.
+responses_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/responses-warn.err")
+! grep -q '"tools"' <<<"$responses_payload_out" || fail "responses payload unexpectedly carries tools"
+grep -q 'tools disabled for api_format=responses' "$cfg_tmp/responses-warn.err" || fail "responses tools warning"
+chat_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-chat LMLINE_API_FORMAT=chat LMLINE_TOOL_MODE=openai "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/chat-warn.err")
+grep -q '"tools"' <<<"$chat_payload_out" || fail "chat payload unexpectedly tool-less"
+! grep -q 'tools disabled' "$cfg_tmp/chat-warn.err" || fail "chat payload unexpected tools warning"
+LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/notools-warn.err" >/dev/null || fail "responses tool-less dry-run"
+! grep -q 'tools disabled' "$cfg_tmp/notools-warn.err" || fail "tool-less mode unexpected tools warning"
+doctor_format_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
+grep -q 'WARNING: LMLINE_API_FORMAT=responses disables local tools' <<<"$doctor_format_out" || fail "doctor format tools warning"
+doctor_stream_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
+grep -q 'WARNING: LMLINE_API_FORMAT=responses disables streaming' <<<"$doctor_stream_out" || fail "doctor format streaming warning"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"model":"model-responses","output_text":"echo streamed-fallback","usage":{"input_tokens":3,"output_tokens":2}}\n' >"$out"
+printf '200\tapplication/json'
+EOF
+chmod +x "$fake_bin/curl"
+printf 'date -r\n' >"$cfg_tmp/line-explain-format"
+stream_fallback_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line-explain-format" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/stream-warn.err")
+grep -q 'echo streamed-fallback' <<<"$stream_fallback_out" || fail "responses explain fallback output"
+grep -q 'tools disabled for api_format=responses' "$cfg_tmp/stream-warn.err" || fail "responses explain tools warning"
+grep -q 'warning: streaming disabled for api_format=responses' "$cfg_tmp/stream-warn.err" || fail "responses streaming warning"
+
 ok "engine"

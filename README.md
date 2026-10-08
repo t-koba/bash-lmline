@@ -815,8 +815,8 @@ notice at the next prompt (via `PROMPT_COMMAND` / `precmd`).
 `LMLINE_SELECTOR` is Bash-only. It is split on whitespace and executed as a
 command argv array when more than one candidate is available.
 
-`LMLINE_STREAM=1` streams `explain` and `clip` responses. Tool rounds still run
-between streamed provider responses.
+`LMLINE_STREAM=1` streams `explain` and `clip` responses on the `chat` format. Tool rounds still run
+between streamed provider responses. Other formats use buffered requests.
 
 `LMLINE_CACHE_TTL` caches `generate`, `rewrite`, and `explain` responses under
 `~/.config/lmline/cache/` (mode 0700). The default is 600 seconds, so
@@ -940,7 +940,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_BASE_URL` | empty | API base path used with the selected API format |
 | `LMLINE_ACTIVE_ENDPOINT` | empty | endpoint name last selected by `lmline use` |
 | `LMLINE_MODEL` | auto-discover | model ID; if unset, engine calls the configured model catalog except for `payload` |
-| `LMLINE_API_FORMAT` | `chat` | `chat`, `responses`, or `messages` |
+| `LMLINE_API_FORMAT` | `chat` | `chat`, `responses`, or `messages`; native local tools (`openai`/`auto`) and streaming are chat-only, so `responses`/`messages` run buffered requests without native tool calls |
 | `LMLINE_MODELS_URL` | `$LMLINE_BASE_URL/models` | model catalog URL used by `model refresh` and auto-discovery |
 | `LMLINE_MODELS_JQ` | built-in | jq expression that emits candidate model items from the catalog response |
 | `LMLINE_MODELS_PREFIX` | empty | keep only discovered model IDs with this prefix |

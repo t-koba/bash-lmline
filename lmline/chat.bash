@@ -458,7 +458,13 @@ __lmline_write_chat_payload() {
     __lmline_tool_enabled file_excerpt && enabled_tools+="file_excerpt "
     __lmline_tool_enabled command_run && enabled_tools+="command_run "
   fi
-  [[ "$api_format" == chat ]] || enabled_tools=
+  if [[ "$api_format" != chat && -n "$enabled_tools" && ( "$LMLINE_TOOL_MODE" == openai || "$LMLINE_TOOL_MODE" == auto ) ]]; then
+    enabled_tools=
+    if [[ -z "${__LMLINE_WARNED_FORMAT_TOOLS:-}" ]]; then
+      __LMLINE_WARNED_FORMAT_TOOLS=1
+      __lmline_progress "warning: native tools disabled for api_format=$api_format; using chat format preserves local tools"
+    fi
+  fi
   __lmline_tool_definitions_json >"$tool_defs_file"
   jq -n \
     --arg model "$LMLINE_MODEL" \
@@ -1143,6 +1149,11 @@ __lmline_chat_run() {
   fi
 
   tool_round=0
+  if [[ "$mode" == explain || "$mode" == clip ]] &&
+    [[ "${LMLINE_API_FORMAT:-chat}" != chat ]] &&
+    __lmline_flag_enabled "$LMLINE_STREAM"; then
+    __lmline_progress "warning: streaming disabled for api_format=${LMLINE_API_FORMAT:-chat}; using a buffered request"
+  fi
   if [[ "$mode" == explain || "$mode" == clip ]] &&
     [[ "${LMLINE_API_FORMAT:-chat}" == chat ]] &&
     __lmline_flag_enabled "$LMLINE_STREAM"; then
