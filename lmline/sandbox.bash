@@ -58,14 +58,41 @@ __lmline_select_exec_backend() {
   esac
 }
 
+# Portable deadline for model-requested execution. Uses GNU timeout when
+# available; otherwise polls in pure bash so execution stays bounded on
+# platforms without it (e.g. stock macOS). Returns 124 on timeout, matching
+# GNU timeout for the existing timed_out handling.
+__lmline_timeout_run() {
+  local timeout_s=$1
+  shift
+  [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_s" "$@"
+    return $?
+  fi
+  "$@" &
+  local child=$! i status=0
+  for ((i = 0; i < timeout_s; i++)); do
+    sleep 1
+    kill -0 "$child" 2>/dev/null || break
+  done
+  if kill -0 "$child" 2>/dev/null; then
+    kill "$child" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$child" 2>/dev/null; then
+      kill -9 "$child" 2>/dev/null || true
+    fi
+    wait "$child" 2>/dev/null || true
+    return 124
+  fi
+  wait "$child" || status=$?
+  return $status
+}
+
 __lmline_microsandbox_with_host_timeout() {
   local timeout_s=$1
   shift
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_s" "$@"
-  else
-    "$@"
-  fi
+  __lmline_timeout_run "$timeout_s" "$@"
 }
 
 __lmline_microsandbox_cli_capture() {

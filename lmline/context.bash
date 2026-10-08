@@ -258,11 +258,7 @@ __lmline_probe_command() {
   local cmd=$1 flag=$2 timeout_s=${LMLINE_TOOL_INFO_TIMEOUT:-2} max_lines=${LMLINE_TOOL_INFO_LINES:-40} max_bytes=${LMLINE_TOOL_INFO_LINE_BYTES:-240}
   local tmp status=0
   tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-probe.XXXXXX") || return 1
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_s" "$cmd" "$flag" </dev/null >"$tmp" 2>&1 || status=$?
-  else
-    "$cmd" "$flag" </dev/null >"$tmp" 2>&1 || status=$?
-  fi
+  __lmline_timeout_run "$timeout_s" "$cmd" "$flag" </dev/null >"$tmp" 2>&1 || status=$?
   if (( status == 124 || status == 143 || status == 137 )); then
     printf 'probe=%s timed_out_after=%ss\n' "$flag" "$timeout_s"
   elif [[ -s "$tmp" ]]; then
@@ -514,11 +510,7 @@ __lmline_command_run_sandbox_rejection_reason() {
 
 __lmline_run_local_capture() {
   local command_line=$1 timeout_s=$2 stdout_file=$3 stderr_file=$4 status=0
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_s" bash -lc "$command_line" >"$stdout_file" 2>"$stderr_file" || status=$?
-  else
-    bash -lc "$command_line" >"$stdout_file" 2>"$stderr_file" || status=$?
-  fi
+  __lmline_timeout_run "$timeout_s" bash -lc "$command_line" >"$stdout_file" 2>"$stderr_file" || status=$?
   __LMLINE_EXEC_STATUS=$status
   __LMLINE_EXEC_BACKEND_USED=local
   return 0

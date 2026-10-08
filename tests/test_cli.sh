@@ -743,5 +743,23 @@ grep -F -q -- "--volume $command_root:/workspace:ro" "$command_tmp/msb.log" || f
 sandbox_named_run_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --name lmline-test -- echo named)
 grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run named microsandbox"
 
+# Portable deadline stays bounded where GNU timeout is missing (e.g. stock macOS).
+notimeout_bin=$(mktemp -d "${TMPDIR:-/tmp}/lmline-notimeout.XXXXXX")
+ln -s "$(command -v sleep)" "$notimeout_bin/sleep"
+bash -c '
+  set -uo pipefail
+  source "$1/lmline/sandbox.bash"
+  export PATH="$2"
+  command -v timeout >/dev/null 2>&1 && exit 3
+  start=$SECONDS
+  status=0
+  __lmline_timeout_run 2 sleep 10 || status=$?
+  elapsed=$((SECONDS - start))
+  (( status == 124 )) || exit 5
+  (( elapsed < 8 )) || exit 6
+  out=$(__lmline_timeout_run 2 echo portable-ok) || exit 7
+  [[ "$out" == portable-ok ]] || exit 7
+' _ "$repo_dir" "$notimeout_bin" || fail "portable timeout without GNU timeout"
+rm -rf "$notimeout_bin"
 rm -rf "$cfg_tmp"
 ok "cli, config, and profiles"
