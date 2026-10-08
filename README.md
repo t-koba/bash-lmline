@@ -603,6 +603,8 @@ sk-... OpenAI-style API keys (after the first 12 characters)
 ghp_/gho_/ghu_/ghs_/ghr_/github_pat_... GitHub tokens (body redacted, prefix kept)
 AKIA/ASIA/ABIA/ACCA/A3T... AWS access key IDs (body redacted, prefix kept)
 xox*-/xapp-... Slack tokens (body redacted, prefix kept)
+glpat-... GitLab personal access tokens (body redacted, prefix kept)
+AIza... Google API keys (body redacted, prefix kept)
 -----BEGIN ... PRIVATE KEY----- blocks (whole block redacted, body included)
 ```
 

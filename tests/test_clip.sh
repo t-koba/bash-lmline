@@ -27,6 +27,8 @@ printf '%s\n' "-----END RSA $pem_b-----"
 printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123456789ABCD\n' "$gh_a" 'o_'
 printf 'token %s%sabcDEF123_tail_with_underscore_xyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_01\n' 'github' '_pat_'
 printf 'token %s%s12345_eyJhbGciOiJIUzI1NiJ9_stateless_jwt_body_0123456789\n' "$gh_a" 's_'
+printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123\n' 'glp' 'at-'
+printf 'key %s%sSyD12345678901234567890123456789012\n' 'AI' 'za'
 printf '%s\n' 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
 printf '%s\n' 'error: failed'
 EOF
@@ -56,6 +58,10 @@ grep -Fq 'spaced-secret-value' "$line_file" && exit 20
 grep -Fq 'AKIA***REDACTED***' "$line_file" || exit 21
 grep -Fq 'IOSFODNN7EXAMPLE' "$line_file" && exit 22
 grep -Fq 'xoxb-***REDACTED***' "$line_file" || exit 23
+grep -Fq 'glpat-***REDACTED***' "$line_file" || exit 28
+grep -Fq 'abcdefghijklmnopqrstuvwxyz0123' "$line_file" && exit 29
+grep -Fq 'AIza***REDACTED***' "$line_file" || exit 30
+grep -Fq 'SyD12345678901234567890123456789012' "$line_file" && exit 31
 grep -Fq '123456789012' "$line_file" && exit 24
 grep -Fq '***REDACTED PRIVATE KEY***' "$line_file" || exit 25
 grep -Fq 'FAKE-KEY-BODY-FOR-REDACT-TEST' "$line_file" && exit 26
