@@ -573,12 +573,6 @@ __lmline_tool_command_run() {
     printf 'reason=%s\n' "$rejection"
     return 0
   fi
-  if [[ "$backend" == local ]] && ! command -v timeout >/dev/null 2>&1; then
-    printf 'allowed=0\n'
-    printf 'backend=%s\n' "$backend"
-    printf 'reason=timeout_command_missing\n'
-    return 0
-  fi
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-command-run.XXXXXX") || {
     printf 'allowed=0\nreason=tempdir_failed\n'
     return 0
