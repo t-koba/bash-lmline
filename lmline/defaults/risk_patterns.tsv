@@ -30,6 +30,16 @@ high	*sh -c *wget *http*	downloaded code execution
 high	*wget *| sh*	downloaded script execution
 high	*wget *| bash*	downloaded script execution
 high	*wget *| eval*	downloaded code execution
+high	*curl *| python*	downloaded script execution
+high	*curl *| perl*	downloaded script execution
+high	*curl *| ruby*	downloaded script execution
+high	*curl *| php*	downloaded script execution
+high	*curl *| node*	downloaded script execution
+high	*wget *| python*	downloaded script execution
+high	*wget *| perl*	downloaded script execution
+high	*wget *| ruby*	downloaded script execution
+high	*wget *| php*	downloaded script execution
+high	*wget *| node*	downloaded script execution
 high	*| sh *	piped shell execution
 high	*| bash *	piped shell execution
 high	* eval *	dynamic code execution
