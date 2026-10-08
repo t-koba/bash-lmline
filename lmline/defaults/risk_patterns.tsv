@@ -2,7 +2,6 @@
 # Patterns are matched against the command with whitespace squeezed and the
 # whole line wrapped in single spaces, so "* dd *" matches "dd if=...",
 # "x | dd of=...", and a bare "dd".
-high	*rm -rf*	recursive remove
 high	*rm -r*	recursive remove
 high	*rm -R*	recursive remove
 high	*rm --recursive*	recursive remove
@@ -35,7 +34,6 @@ high	*truncate *	file truncation
 high	*> /dev/sd*	raw device write
 high	*> /etc/*	system config overwrite
 medium	*>*	writes to a file or descriptor
-medium	*>>*	writes to a file or descriptor
 medium	*git reset*	git reset changes repository state
 medium	*docker rm*	container deletion
 medium	*kill *	process signal
