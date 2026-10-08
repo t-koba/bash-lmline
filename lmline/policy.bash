@@ -258,11 +258,20 @@ __lmline_risk_reason() {
   fi
 }
 
+# Minimal fail-closed canonicalization for risk matching only (not execution).
+# Strips quoting/backslash escapes and normalizes $IFS/${IFS} to a space so
+# trivially quoted forms ('"rm" -rf', 'rm${IFS}-rf') match the same rules as
+# their bare forms. Deliberately small: no AST or full deobfuscation.
+__lmline_canonicalize_for_risk() {
+  sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g'
+}
+
 __lmline_risk_match() {
   local cmd=$1 file line level pattern reason
-  # Normalize: squeeze whitespace and wrap in single spaces so one pattern
-  # like "* dd *" matches the command at line start, mid-pipeline, and bare.
-  cmd=$(printf '%s' "$cmd" | tr -s '[:space:]' ' ')
+  # Normalize: canonicalize quoting/IFS, squeeze whitespace, and wrap in
+  # single spaces so one pattern like "* dd *" matches at line start,
+  # mid-pipeline, and bare.
+  cmd=$(__lmline_canonicalize_for_risk <<<"$cmd" | tr -s '[:space:]' ' ')
   cmd=${cmd# }
   cmd=${cmd% }
   cmd=" $cmd "
