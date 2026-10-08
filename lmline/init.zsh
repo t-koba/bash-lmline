@@ -604,3 +604,8 @@ if [[ "${LMLINE_BIND_KEYS:-1}" == 1 ]]; then
     bindkey "${pair%%:*}" "${pair#*:}"
   done
 fi
+
+if [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 1 ]]; then
+  typeset -ga precmd_functions
+  (( ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 )) && precmd_functions+=(__lmline_zsh_async_prompt_check)
+fi

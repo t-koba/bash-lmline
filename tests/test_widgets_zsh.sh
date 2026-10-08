@@ -110,6 +110,31 @@ if command -v zsh >/dev/null 2>&1; then
     [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-risk-test" ]]
     grep -q "high-risk; inserted as comment" /tmp/lmline-zsh-high.err
   ' _ "$repo_dir" || fail "zsh high risk hint"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-notify" LMLINE_ASYNC_NOTIFY=1 zsh -fic '
+    source "$1/lmline/init.zsh"
+    [[ " ${precmd_functions[@]} " == *"__lmline_zsh_async_prompt_check"* ]]
+    source "$1/lmline/init.zsh"
+    [[ " ${precmd_functions[@]} " == *"__lmline_zsh_async_prompt_check"* ]]
+    count=0
+    for fn in "${precmd_functions[@]}"; do [[ "$fn" == __lmline_zsh_async_prompt_check ]] && count=$((count + 1)); done
+    (( count == 1 ))
+  ' _ "$repo_dir" || fail "zsh async notify precmd wiring"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-no-notify" LMLINE_ASYNC_NOTIFY=0 zsh -fic '
+    source "$1/lmline/init.zsh"
+    [[ " ${precmd_functions[@]} " != *"__lmline_zsh_async_prompt_check"* ]]
+  ' _ "$repo_dir" || fail "zsh async notify stays off by default"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-notify-ready" LMLINE_ASYNC_NOTIFY=1 zsh -fic '
+    source "$1/lmline/init.zsh"
+    ready=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-ready.XXXXXX")
+    print -r -- "lmline-candidate: low\t-\t-\techo ready" >"$ready"
+    __LMLINE_ZSH_ASYNC_FILE=$ready
+    __LMLINE_ZSH_ASYNC_PID=999999
+    __LMLINE_ZSH_ASYNC_NOTIFIED=0
+    out=$(__lmline_zsh_async_prompt_check 2>&1)
+    [[ "$out" == *"suggestion ready"* ]]
+    (( __LMLINE_ZSH_ASYNC_NOTIFIED == 1 ))
+    rm -f "$ready"
+  ' _ "$repo_dir" || fail "zsh async notify announces once"
   rm -rf "$zsh_tmp"
   ok "zsh integration"
 else
