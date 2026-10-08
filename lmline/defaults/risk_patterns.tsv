@@ -4,10 +4,13 @@
 # "x | dd of=...", and a bare "dd".
 high	*rm -rf*	recursive remove
 high	*rm -r*	recursive remove
+high	*rm -R*	recursive remove
+high	*rm --recursive*	recursive remove
 high	*find *-delete*	find delete action
 high	*find *-exec*rm*	find exec remove action
-high	*git clean -*f*	force git clean deletes untracked files
-high	*xargs rm*	bulk remove through xargs
+high	*find *-exec*unlink*	find exec unlink action
+high	*git *clean -*f*	force git clean deletes untracked files
+high	*xargs *rm*	bulk remove through xargs
 high	* dd *	raw disk/file overwrite command
 high	* mkfs*	filesystem formatting command
 high	* shutdown*	system power operation
