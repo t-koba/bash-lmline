@@ -217,10 +217,13 @@ __lmline_clipboard_read() {
 
 __lmline_redact_clip_text() {
   sed -E \
-    -e 's/([A-Za-z_][A-Za-z0-9_]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_]*[=:][[:space:]]*)[^[:space:]]+/\1***REDACTED***/g' \
+    -e 's/([A-Za-z_][A-Za-z0-9_]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_]*[[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\1***REDACTED***/g' \
     -e 's/(Authorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]+/\1***REDACTED***/g' \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1***REDACTED***/g' \
-    -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1***REDACTED***/g'
+    -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1***REDACTED***/g' \
+    -e 's/(AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[^[:space:]]+/\1***REDACTED***/g' \
+    -e 's/(xox[a-z]-|xapp-)[^[:space:]]+/\1***REDACTED***/g' \
+    -e '/-----BEGIN[ A-Z0-9_-]*PRIVATE KEY/,/-----END[ A-Z0-9_-]*PRIVATE KEY/s/.*/***REDACTED PRIVATE KEY***/'
 }
 
 __lmline_prepare_clip_input() {

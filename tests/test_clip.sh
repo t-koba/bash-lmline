@@ -15,7 +15,15 @@ cat >"$clip_test_dir/bin/fakeclip" <<'EOF'
 # Secret-shaped fixtures are assembled from parts at runtime so this
 # file never contains a contiguous provider-token literal.
 gh_a='gh'
+pem_a='BEGIN RSA'
+pem_b='PRIVATE KEY'
 printf '%s\n' 'API_KEY=secret-value'
+printf '%s\n' 'API_KEY = spaced-secret-value'
+printf 'aws %s%sIOSFODNN7EXAMPLE\n' 'AK' 'IA'
+printf 'slack %s%s123456789012-123456789012-abcdefghijklmnopqrstuvwx\n' 'xo' 'xb-'
+printf '%s\n' "-----$pem_a $pem_b-----"
+printf '%s\n' 'FAKE-KEY-BODY-FOR-REDACT-TEST-0123456789'
+printf '%s\n' "-----END RSA $pem_b-----"
 printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123456789ABCD\n' "$gh_a" 'o_'
 printf 'token %s%sabcDEF123_tail_with_underscore_xyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_01\n' 'github' '_pat_'
 printf 'token %s%s12345_eyJhbGciOiJIUzI1NiJ9_stateless_jwt_body_0123456789\n' "$gh_a" 's_'
@@ -43,6 +51,15 @@ grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15
 grep -Fq 'ghs_***REDACTED***' "$line_file" || exit 17
 grep -Fq 'teless_jwt_body' "$line_file" && exit 16
 grep -Fq 'tail_with_underscore' "$line_file" && exit 18
+grep -Fq 'API_KEY = ***REDACTED***' "$line_file" || exit 19
+grep -Fq 'spaced-secret-value' "$line_file" && exit 20
+grep -Fq 'AKIA***REDACTED***' "$line_file" || exit 21
+grep -Fq 'IOSFODNN7EXAMPLE' "$line_file" && exit 22
+grep -Fq 'xoxb-***REDACTED***' "$line_file" || exit 23
+grep -Fq '123456789012' "$line_file" && exit 24
+grep -Fq '***REDACTED PRIVATE KEY***' "$line_file" || exit 25
+grep -Fq 'FAKE-KEY-BODY-FOR-REDACT-TEST' "$line_file" && exit 26
+grep -Fq 'BEGIN RSA PRIV''ATE KEY' "$line_file" && exit 27
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
