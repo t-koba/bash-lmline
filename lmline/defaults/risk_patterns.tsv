@@ -25,6 +25,11 @@ high	*source <(curl*	downloaded code execution
 high	*wget *| sh*	downloaded script execution
 high	*wget *| bash*	downloaded script execution
 high	*wget *| eval*	downloaded code execution
+high	*| sh *	piped shell execution
+high	*| bash *	piped shell execution
+high	* eval *	dynamic code execution
+high	*.env*| curl*	possible secret exfiltration
+high	*.env*| wget*	possible secret exfiltration
 high	*git reset --hard*	destructive git reset
 high	*kubectl delete*	cluster resource deletion
 high	*pkill *	process termination
