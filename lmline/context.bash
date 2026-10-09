@@ -896,10 +896,16 @@ __lmline_write_fix_input() {
     printf '\n## captured_execution\n'
     printf 'execution_backend=%s\n' "$backend"
     printf 'exit_status=%s\n' "$status"
-    printf '\n### stderr\n'
-    cat "$stderr_file" 2>/dev/null
-    printf '\n### stdout\n'
-    cat "$stdout_file" 2>/dev/null
+    # Captured output is untrusted model input: delimit it like other tool
+    # data so embedded instructions cannot pose as prompt text. Files are
+    # already condensed to LMLINE_FIX_MAX_OUTPUT upstream, so these limits
+    # are generous to add markers and sanitization without re-truncating.
+    if [[ -s "$stderr_file" ]]; then
+      __lmline_tool_data_block "STDERR" 10000 "${LMLINE_CONDENSE_LINE_BYTES:-2000}" <"$stderr_file"
+    fi
+    if [[ -s "$stdout_file" ]]; then
+      __lmline_tool_data_block "STDOUT" 10000 "${LMLINE_CONDENSE_LINE_BYTES:-2000}" <"$stdout_file"
+    fi
   } >"$out"
 }
 

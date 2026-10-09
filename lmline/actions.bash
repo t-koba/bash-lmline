@@ -443,10 +443,12 @@ __lmline_fix_run() {
       printf '## captured_execution\n'
       printf 'execution_backend=%s\n' "$backend"
       printf 'exit_status=%s\n' "$status"
-      printf '\n### stderr\n'
-      cat "$tmp/stderr" 2>/dev/null
-      printf '\n### stdout\n'
-      cat "$tmp/stdout" 2>/dev/null
+      if [[ -s "$tmp/stderr" ]]; then
+        __lmline_tool_data_block "STDERR" 10000 "${LMLINE_CONDENSE_LINE_BYTES:-2000}" <"$tmp/stderr"
+      fi
+      if [[ -s "$tmp/stdout" ]]; then
+        __lmline_tool_data_block "STDOUT" 10000 "${LMLINE_CONDENSE_LINE_BYTES:-2000}" <"$tmp/stdout"
+      fi
     } )
     __lmline_copilot_candidates "$line" "$point" "$shell_name" fix "$context_text" >"$tmp/engine" 2>&1
   else
