@@ -258,13 +258,20 @@ __lmline_response_error_detail() {
 }
 
 __lmline_report_request_failure() {
-  local http_code=$1 content_type=${2-} response=$3 detail hint=
+  local http_code=$1 content_type=${2-} response=$3 detail hint= detail_lower=
   detail=$(__lmline_response_error_detail "$response" "$content_type")
   case "$http_code" in
     401|403) hint='; try: lmline endpoint set-secret ENDPOINT' ;;
     404) hint='; check base_url and model: lmline current' ;;
     429) hint='; provider rate-limited; wait or raise LMLINE_HTTP_RETRIES' ;;
     5??) hint='; provider-side error; retry later' ;;
+    400)
+      detail_lower=$(printf '%s' "$detail" | tr '[:upper:]' '[:lower:]')
+      case "$detail_lower" in
+        *responses\ instead*|*reasoning_effort*|*function\ tools*)
+          hint='; try: LMLINE_API_FORMAT=responses or LMLINE_TOOL_MODE=text for this model' ;;
+      esac
+      ;;
   esac
   [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
   if [[ -n "$detail" ]]; then

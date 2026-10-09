@@ -464,6 +464,26 @@ grep -q 'bad key message' /tmp/lmline-json-error.err || fail "json error message
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.4 in /v1/chat/completions. Please use /v1/responses instead."}}\n' >"$out"
+printf '400\tapplication/json'
+EOF
+chmod +x "$fake_bin/curl"
+if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=openai LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-400-hint.out 2>/tmp/lmline-400-hint.err; then
+  fail "responses-required 400 unexpectedly succeeded"
+fi
+grep -q 'Please use /v1/responses instead' /tmp/lmline-400-hint.err || fail "responses-required detail"
+grep -q 'LMLINE_API_FORMAT=responses or LMLINE_TOOL_MODE=text' /tmp/lmline-400-hint.err || fail "responses-required hint"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
 data_file=
 prev=
 for arg in "$@"; do
