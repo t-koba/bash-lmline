@@ -601,7 +601,8 @@ if [[ "${LMLINE_BIND_KEYS:-1}" == 1 ]]; then
     "${LMLINE_KEY_NEXT}:lmline-zsh-next-widget" "${LMLINE_KEY_PREV}:lmline-zsh-prev-widget" \
     "${LMLINE_KEY_EXPLAIN}:lmline-zsh-explain-widget" "${LMLINE_KEY_FIX}:lmline-zsh-fix-widget" \
     "${LMLINE_KEY_CLIP}:lmline-zsh-clip-widget"; do
-    bindkey "${pair%%:*}" "${pair#*:}"
+    bindkey -M emacs "${pair%%:*}" "${pair#*:}"
+    bindkey -M viins "${pair%%:*}" "${pair#*:}"
   done
 fi
 
