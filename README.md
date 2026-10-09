@@ -1052,6 +1052,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_INCLUDE_EDITOR_CONTEXT` | `1` | include cursor point |
 | `LMLINE_INCLUDE_LOCALE_CONTEXT` | `1` | include locale variables for response language |
 | `LMLINE_INCLUDE_SUGGESTED_COMMANDS` | `1` | include configured suggested commands |
+| `LMLINE_SUGGESTED_COMMANDS_LIMIT` | `120` | suggested commands sent per request |
 | `LMLINE_TOOL_COMMANDS_LIMIT` | `120` | `commands` result limit |
 | `LMLINE_TOOL_FILES_LIMIT` | `80` | `files` result limit |
 | `LMLINE_TOOL_GIT_STATUS_LINES` | `80` | `git_status` result line limit |
