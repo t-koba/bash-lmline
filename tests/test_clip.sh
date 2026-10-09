@@ -16,6 +16,11 @@ cat >"$clip_test_dir/bin/fakeclip" <<'EOF'
 # file never contains a contiguous provider-token literal.
 gh_a='gh'
 pem_a='BEGIN RSA'
+st_sk='sk'
+st_rk='rk'
+st_pk='pk'
+st_live='_live_'
+st_test='_test_'
 pem_b='PRIVATE KEY'
 printf '%s\n' 'API_KEY=secret-value'
 printf '%s\n' 'API_KEY = spaced-secret-value'
@@ -26,6 +31,11 @@ printf '%s\n' 'FAKE-KEY-BODY-FOR-REDACT-TEST-0123456789'
 printf '%s\n' "-----END RSA $pem_b-----"
 printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123456789ABCD\n' "$gh_a" 'o_'
 printf 'token %s%sabcDEF123_tail_with_underscore_xyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_01\n' 'github' '_pat_'
+printf 'stripe %s%sStripeBodySkLive0123456789\n' "$st_sk" "$st_live"
+printf 'stripe %s%sStripeBodySkTest0123456789\n' "$st_sk" "$st_test"
+printf 'stripe %s%sStripeBodyRkLive0123456789\n' "$st_rk" "$st_live"
+printf 'stripe %s%sStripeBodyRkTest0123456789\n' "$st_rk" "$st_test"
+printf 'stripe %s%sStripePublicBody0123456789\n' "$st_pk" "$st_live"
 printf 'token %s%s12345_eyJhbGciOiJIUzI1NiJ9_stateless_jwt_body_0123456789\n' "$gh_a" 's_'
 printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123\n' 'glp' 'at-'
 printf 'key %s%sSyD12345678901234567890123456789012\n' 'AI' 'za'
@@ -56,6 +66,13 @@ grep -Fq 'tail_with_underscore' "$line_file" && exit 18
 grep -Fq 'API_KEY = ***REDACTED***' "$line_file" || exit 19
 grep -Fq 'spaced-secret-value' "$line_file" && exit 20
 grep -Fq 'AKIA***REDACTED***' "$line_file" || exit 21
+grep -Fq 'sk_live_***REDACTED***' "$line_file" || exit 32
+grep -Fq 'sk_test_***REDACTED***' "$line_file" || exit 33
+grep -Fq 'rk_live_***REDACTED***' "$line_file" || exit 34
+grep -Fq 'rk_test_***REDACTED***' "$line_file" || exit 35
+grep -Fq 'StripeBodySkLive' "$line_file" && exit 36
+grep -Fq 'StripeBodyRkLive' "$line_file" && exit 37
+grep -Fq 'pk_live_StripePublicBody0123456789' "$line_file" || exit 38
 grep -Fq 'IOSFODNN7EXAMPLE' "$line_file" && exit 22
 grep -Fq 'xoxb-***REDACTED***' "$line_file" || exit 23
 grep -Fq 'glpat-***REDACTED***' "$line_file" || exit 28

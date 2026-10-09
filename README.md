@@ -600,6 +600,7 @@ untrusted pasted text. Redaction masks these patterns:
 VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments (spaces around =/: allowed)
 Authorization: Bearer <token> headers
 sk-... OpenAI-style API keys (after the first 12 characters)
+sk_live_/sk_test_/rk_live_/rk_test_... Stripe keys (body redacted, prefix kept; pk_live_ publishable keys are left alone)
 ghp_/gho_/ghu_/ghs_/ghr_/github_pat_... GitHub tokens (body redacted, prefix kept)
 AKIA/ASIA/ABIA/ACCA/A3T... AWS access key IDs (body redacted, prefix kept)
 xox*-/xapp-... Slack tokens (body redacted, prefix kept)
