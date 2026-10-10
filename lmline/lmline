@@ -14,7 +14,16 @@ models_file=$config_dir/models.tsv
 __lmline_tmp_paths=()
 __lmline_lock_path=
 __lmline_cleanup() {
-  [[ -z "$__lmline_lock_path" ]] || rm -rf "$__lmline_lock_path"
+  if [[ -n "$__lmline_lock_path" ]]; then
+    # Owner-checked: never delete a successor's lock after a steal. The
+    # function is defined by config.bash, sourced below before any lock is
+    # taken; fall back to direct removal only if sourcing never ran.
+    if command -v __lmline_lock_release >/dev/null 2>&1; then
+      __lmline_lock_release "$__lmline_lock_path"
+    else
+      rm -rf "$__lmline_lock_path"
+    fi
+  fi
   ((${#__lmline_tmp_paths[@]} == 0)) || rm -rf "${__lmline_tmp_paths[@]}"
 }
 trap __lmline_cleanup EXIT

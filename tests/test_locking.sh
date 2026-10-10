@@ -53,6 +53,22 @@ fi
 grep -q 'locked by another lmline process' "$cfg_tmp/lock.err" || fail "lock timeout message"
 rm -rf "$cfg/.lmline.lock"
 
+# A stale holder must not delete the thief's replacement lock.
+# shellcheck source=lmline/config.bash
+source "$repo_dir/lmline/config.bash"
+steal_lock="$cfg_tmp/steal.lock"
+rm -rf "$steal_lock"
+mkdir -p "$steal_lock"
+printf '%s\n' 999999999 >"$steal_lock/pid"
+__lmline_lock_acquire "$steal_lock" 5 || fail "steal of dead-pid lock failed"
+[[ "$(cat "$steal_lock/pid")" == "$$" ]] || fail "thief pid was not recorded"
+bash -c 'source "$1/lmline/config.bash"; __lmline_lock_release "$2"' _ "$repo_dir" "$steal_lock" \
+  2>"$cfg_tmp/steal.err" || fail "stale release exited non-zero"
+[[ -d "$steal_lock" ]] || fail "stale release deleted the thief's lock"
+grep -q 'not owned' "$cfg_tmp/steal.err" || fail "stale release did not warn"
+__lmline_lock_release "$steal_lock" || fail "owned release failed"
+[[ ! -e "$steal_lock" ]] || fail "owned release did not remove the lock"
+
 # LMLINE_NO_LOCK=1 must bypass locking entirely.
 mkdir -p "$cfg/.lmline.lock"
 printf '%s\n' "$$" >"$cfg/.lmline.lock/pid"
