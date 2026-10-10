@@ -327,6 +327,18 @@ __lmline_canonicalize_for_risk() {
 # closed. Pure string surgery: never executes command substitution.
 # Newline-delimited strings (not arrays) keep this safe under set -u on
 # bash 4.2, where expanding an empty array is an unbound-variable error.
+# A brace group counts as a standalone word (joined with spaces) when it is
+# not glued to other word characters: empty or adjacent to whitespace or a
+# shell separator, which __lmline_canonicalize_for_risk normalizes to spaces
+# anyway. Prefix-glued groups (ev{al,xx}, project/{src,tests}) stay split
+# into per-alternative expansions.
+__lmline_brace_at_word_boundary() {
+  case "$1" in
+    ""|[[:space:]]|\;|\&|\||\(|\)) return 0 ;;
+  esac
+  return 1
+}
+
 __lmline_expand_braces_for_risk() {
   local current=$1 next="" s pre inner post joined o opts_rest a b mid rest
   local iter=0 changed=0 count=0 ob cb
@@ -354,7 +366,7 @@ __lmline_expand_braces_for_risk() {
         inner=${BASH_REMATCH[2]}
         post=${BASH_REMATCH[3]}
         if [[ $inner == *,* ]]; then
-          if [[ -z $pre || $pre == *[[:space:]] ]] && [[ -z $post || $post == [[:space:]]* ]]; then
+          if __lmline_brace_at_word_boundary "${pre: -1}" && __lmline_brace_at_word_boundary "${post:0:1}"; then
             joined=${inner//,/ }
             next+="${pre}${joined}${post}"$'\n'
           else
@@ -372,7 +384,7 @@ __lmline_expand_braces_for_risk() {
         elif [[ $inner == *..* ]]; then
           a=${inner%%..*}
           b=${inner#*..}
-          if [[ -z $pre || $pre == *[[:space:]] ]] && [[ -z $post || $post == [[:space:]]* ]]; then
+          if __lmline_brace_at_word_boundary "${pre: -1}" && __lmline_brace_at_word_boundary "${post:0:1}"; then
             next+="${pre}${a} ${b}${post}"$'\n'
           else
             next+="${pre}${a}${post}"$'\n'"${pre}${b}${post}"$'\n'
