@@ -1135,8 +1135,8 @@ case "$cmd" in
         profile_issues=$((profile_issues + 1))
       fi
     fi
-    if [[ "${LMLINE_API_FORMAT:-chat}" != chat && ( "${LMLINE_TOOL_MODE:-auto}" == auto || "${LMLINE_TOOL_MODE:-auto}" == openai ) ]]; then
-      printf '  WARNING: LMLINE_API_FORMAT=%s disables local tools; use chat format to preserve them\n' "${LMLINE_API_FORMAT:-chat}"
+    if [[ "${LMLINE_API_FORMAT:-chat}" == messages && ( "${LMLINE_TOOL_MODE:-auto}" == auto || "${LMLINE_TOOL_MODE:-auto}" == openai ) ]]; then
+      printf '  WARNING: LMLINE_API_FORMAT=%s disables native local tools; use chat or responses format to preserve them\n' "${LMLINE_API_FORMAT:-chat}"
       profile_issues=$((profile_issues + 1))
     fi
     if [[ "${LMLINE_API_FORMAT:-chat}" != chat && "${LMLINE_STREAM:-0}" == 1 ]]; then

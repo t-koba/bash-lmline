@@ -946,7 +946,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_BASE_URL` | empty | API base path used with the selected API format |
 | `LMLINE_ACTIVE_ENDPOINT` | empty | endpoint name last selected by `lmline use` |
 | `LMLINE_MODEL` | auto-discover | model ID; if unset, engine calls the configured model catalog except for `payload` |
-| `LMLINE_API_FORMAT` | `chat` | `chat`, `responses`, or `messages`; native local tools (`openai`/`auto`) and streaming are chat-only, so `responses`/`messages` run buffered requests without native tool calls |
+| `LMLINE_API_FORMAT` | `chat` | `chat`, `responses`, or `messages`; native local tools (`openai`/`auto`) work on `chat` and `responses`, streaming is chat-only, so `responses`/`messages` run buffered requests (`messages` without native tool calls) |
 | `LMLINE_MODELS_URL` | `$LMLINE_BASE_URL/models` | model catalog URL used by `model refresh` and auto-discovery |
 | `LMLINE_MODELS_JQ` | built-in | jq expression that emits candidate model items from the catalog response |
 | `LMLINE_MODELS_PREFIX` | empty | keep only discovered model IDs with this prefix |

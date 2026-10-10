@@ -114,7 +114,11 @@ __lmline_normalize_response() {
           model: (.model // ""),
           usage: (.usage // {}),
           choices: [{
-            message: {role: "assistant", content: response_text},
+            message: ({role: "assistant", content: response_text} + (
+              [.output[]? | select(.type == "function_call")
+                | {id: (.call_id // .id // ""), type: "function",
+                   function: {name: (.name // ""), arguments: (.arguments // "{}")}}]
+              | if length > 0 then {tool_calls: .} else {} end)),
             finish_reason: (.status // .finish_reason // "stop")
           }]
         }
@@ -459,7 +463,17 @@ __lmline_payload_for_format() {
           temperature: .temperature,
           max_output_tokens: .max_tokens,
           stream: false
-        }
+        } + (if (.tools // [] | length) > 0 then
+          {
+            tools: [.tools[]
+              | {
+                type: "function",
+                name: (.function.name // ""),
+                description: (.function.description // ""),
+                parameters: (.function.parameters // {type: "object", properties: {}})
+              }]
+          } + (if .tool_choice != null then {tool_choice: .tool_choice} else {} end)
+        else {} end)
       ' "$source" >"$out"
       ;;
     messages)
@@ -498,7 +512,7 @@ __lmline_write_chat_payload() {
     __lmline_tool_enabled file_excerpt && enabled_tools+="file_excerpt "
     __lmline_tool_enabled command_run && enabled_tools+="command_run "
   fi
-  if [[ "$api_format" != chat && -n "$enabled_tools" && ( "$LMLINE_TOOL_MODE" == openai || "$LMLINE_TOOL_MODE" == auto ) ]]; then
+  if [[ "$api_format" == messages && -n "$enabled_tools" && ( "$LMLINE_TOOL_MODE" == openai || "$LMLINE_TOOL_MODE" == auto ) ]]; then
     enabled_tools=
     if [[ -z "${__LMLINE_WARNED_FORMAT_TOOLS:-}" ]]; then
       __LMLINE_WARNED_FORMAT_TOOLS=1
