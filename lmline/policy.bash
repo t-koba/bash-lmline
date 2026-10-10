@@ -318,33 +318,140 @@ __lmline_canonicalize_for_risk() {
     -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g'
 }
 
+# Expand brace groups for risk matching only (not execution) without eval,
+# so prefix-split hides like ev{al,xx} are judged by each alternative
+# (eval/evxx) and whole-word groups like {rm,-rf,/tmp/x} by their joined
+# words. Groups without a comma or .. are literal in bash (r{m} stays r{m}),
+# so their braces become spaces. Output is one alternative per line; a
+# non-zero exit means the expansion was capped and the caller must fail
+# closed. Pure string surgery: never executes command substitution.
+# Newline-delimited strings (not arrays) keep this safe under set -u on
+# bash 4.2, where expanding an empty array is an unbound-variable error.
+__lmline_expand_braces_for_risk() {
+  local current=$1 next="" s pre inner post joined o opts_rest a b mid rest
+  local iter=0 changed=0 count=0 ob cb
+  printf -v ob "\001"
+  printf -v cb "\002"
+  # Hide ${...} parameter-expansion braces first: they are not brace
+  # expansion (rm${IFS}-rf must survive for the IFS rule, ${X=rm} for the
+  # unresolved-variable fallback), so their braces must not be expanded
+  # or spaced. Placeholders are restored at the end.
+  while [[ $current == *'${'* ]]; do
+    pre=${current%%'${'*}
+    rest=${current#*'${'}
+    [[ $rest == *}* ]] || break
+    mid=${rest%%\}*}
+    post=${rest#*\}}
+    current="${pre}\$${ob}${mid}${cb}${post}"
+  done
+  while (( iter++ < 20 )); do
+    next=""
+    changed=0
+    count=0
+    while IFS= read -r s || [[ -n $s ]]; do
+      if [[ $s =~ (.*)\{([^{}]*)\}(.*) ]]; then
+        pre=${BASH_REMATCH[1]}
+        inner=${BASH_REMATCH[2]}
+        post=${BASH_REMATCH[3]}
+        if [[ $inner == *,* ]]; then
+          if [[ -z $pre || $pre == *[[:space:]] ]] && [[ -z $post || $post == [[:space:]]* ]]; then
+            joined=${inner//,/ }
+            next+="${pre}${joined}${post}"$'\n'
+          else
+            opts_rest=$inner
+            while [[ $opts_rest == *,* ]]; do
+              o=${opts_rest%%,*}
+              next+="${pre}${o}${post}"$'\n'
+              opts_rest=${opts_rest#*,}
+              (( count += 1 ))
+              (( count <= 64 )) || return 1
+            done
+            next+="${pre}${opts_rest}${post}"$'\n'
+          fi
+          changed=1
+        elif [[ $inner == *..* ]]; then
+          a=${inner%%..*}
+          b=${inner#*..}
+          if [[ -z $pre || $pre == *[[:space:]] ]] && [[ -z $post || $post == [[:space:]]* ]]; then
+            next+="${pre}${a} ${b}${post}"$'\n'
+          else
+            next+="${pre}${a}${post}"$'\n'"${pre}${b}${post}"$'\n'
+          fi
+          changed=1
+        else
+          next+="${pre} ${inner} ${post}"$'\n'
+          changed=1
+        fi
+      else
+        next+="$s"$'\n'
+      fi
+      (( count += 1 ))
+      (( count <= 64 )) || return 1
+    done <<<"$current"
+    current=$next
+    (( changed )) || break
+  done
+  current=${current//$'\x01'/'{'}
+  current=${current//$'\x02'/'}'}
+  printf '%s' "$current"
+}
+
 __lmline_risk_match() {
-  local cmd=$1 expanded file line level pattern reason
+  local cmd=$1 expanded file line level pattern reason alt canon alts_str
+  local brace_capped=0 best_level="" best_reason=""
   # Decode ANSI-C quoting first so hex/octal hides are judged by content.
-  # Normalize: canonicalize quoting/IFS, squeeze whitespace, and wrap in
-  # single spaces so one pattern like "* dd *" matches at line start,
-  # mid-pipeline, and bare.
   expanded=$(__lmline_decode_ansi_c_for_risk "$cmd")
-  cmd=$(__lmline_canonicalize_for_risk <<<"$expanded" | tr -s '[:space:]' ' ')
-  cmd=${cmd# }
-  cmd=${cmd% }
-  cmd=" $cmd "
+  if alts_str=$(__lmline_expand_braces_for_risk "$expanded"); then
+    brace_capped=0
+  else
+    alts_str=$expanded
+    brace_capped=1
+  fi
+  [[ -n $alts_str ]] || alts_str=$expanded
   file=$(__lmline_resolve_data_file risk_patterns \
     "${LMLINE_RISK_PATTERNS_FILE:-}" \
     "$LMLINE_USER_RULES_DIR/risk_patterns.tsv" \
     "$LMLINE_DEFAULTS_DIR/risk_patterns.tsv") || return 1
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    IFS=$'\t' read -r level pattern reason <<<"$line"
-    [[ -n "$level" && -n "$pattern" ]] || continue
-    case "$level" in high|medium|low) ;; *) continue ;; esac
-    if [[ "$cmd" == $pattern ]]; then
-      printf '%s\t%s\n' "$level" "${reason:-matched policy rule}"
-      return 0
-    fi
-  done <"$file"
+  while IFS= read -r alt || [[ -n $alt ]]; do
+    # Normalize: canonicalize quoting/IFS/braces, squeeze whitespace, and
+    # wrap in single spaces so one pattern like "* dd *" matches at line
+    # start, mid-pipeline, and bare.
+    canon=$(__lmline_canonicalize_for_risk <<<"$alt" | tr -s '[:space:]' ' ')
+    canon=${canon# }
+    canon=${canon% }
+    canon=" $canon "
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -z "$line" || "$line" == \#* ]] && continue
+      IFS=$'\t' read -r level pattern reason <<<"$line"
+      [[ -n "$level" && -n "$pattern" ]] || continue
+      case "$level" in high|medium|low) ;; *) continue ;; esac
+      if [[ "$canon" == $pattern ]]; then
+        case "$level" in
+          high)
+            printf '%s\t%s\n' "$level" "${reason:-matched policy rule}"
+            return 0
+            ;;
+          medium)
+            [[ $best_level == "medium" ]] || { best_level="medium"; best_reason="${reason:-matched policy rule}"; }
+            ;;
+          low)
+            [[ -n $best_level ]] || { best_level="low"; best_reason="${reason:-matched policy rule}"; }
+            ;;
+        esac
+        break
+      fi
+    done <"$file"
+  done <<<"$alts_str"
+  if [[ -n $best_level ]]; then
+    printf '%s\t%s\n' "$best_level" "$best_reason"
+    return 0
+  fi
   if __lmline_risk_has_unresolved_var_command "$expanded"; then
     printf 'medium\tunresolved variable command\n'
+    return 0
+  fi
+  if (( brace_capped )); then
+    printf 'medium\tunresolved brace expansion\n'
     return 0
   fi
 }
