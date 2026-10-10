@@ -285,6 +285,17 @@ __lmline_report_request_failure() {
   fi
 }
 
+__lmline_accept_response() {
+  local response=$1 label=$2
+  __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
+    printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
+    return 1
+  }
+  __lmline_trace_file "$label" "$response"
+  jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
+  __lmline_record_usage "$response"
+}
+
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
   local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower
@@ -295,13 +306,7 @@ __lmline_post_chat() {
   IFS=$'\t' read -r http_code content_type <<<"$curl_meta"
   case "$http_code" in
     2??)
-      __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
-        printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
-        return 1
-      }
-      __lmline_trace_file "$label" "$response"
-      jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
-      __lmline_record_usage "$response"
+      __lmline_accept_response "$response" "$label" || return 1
       ;;
     *)
       # Provider compat: some OpenAI-compatible endpoints reject the store
@@ -320,13 +325,7 @@ __lmline_post_chat() {
                 IFS=$'\t' read -r http_code content_type <<<"$store_meta"
                 case "$http_code" in
                   2??)
-                    __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
-                      printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
-                      return 1
-                    }
-                    __lmline_trace_file "${label%.json}.no-store-response.json" "$response"
-                    jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
-                    __lmline_record_usage "$response"
+                    __lmline_accept_response "$response" "${label%.json}.no-store-response.json" || return 1
                     return 0
                     ;;
                 esac
@@ -360,13 +359,7 @@ __lmline_post_chat() {
                 IFS=$'\t' read -r http_code content_type <<<"$compat_meta"
                 case "$http_code" in
                   2??)
-                    __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
-                      printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
-                      return 1
-                    }
-                    __lmline_trace_file "${label%.json}.compat-response.json" "$response"
-                    jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
-                    __lmline_record_usage "$response"
+                    __lmline_accept_response "$response" "${label%.json}.compat-response.json" || return 1
                     return 0
                     ;;
                 esac
@@ -387,13 +380,7 @@ __lmline_post_chat() {
         IFS=$'\t' read -r retry_code retry_content_type <<<"$retry_meta"
         case "$retry_code" in
           2??)
-            __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
-              printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
-              return 1
-            }
-            __lmline_trace_file "${label%.json}.auto-text-response.json" "$response"
-            jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
-            __lmline_record_usage "$response"
+            __lmline_accept_response "$response" "${label%.json}.auto-text-response.json" || return 1
             return 0
             ;;
         esac
