@@ -336,18 +336,25 @@ __lmline_post_chat() {
             ;;
         esac
       fi
-      # Reasoning-model compat: chat sends max_tokens + temperature, while
-      # o-series/GPT-5 require max_completion_tokens and default temperature.
-      # On a chat 400 naming those params, retry once with the renamed shape.
-      if [[ "${LMLINE_API_FORMAT:-chat}" == chat && "$http_code" == 400 ]] \
-        && jq -e 'has("max_tokens")' "$payload" >/dev/null 2>&1; then
+      # Reasoning-model compat: chat sends max_tokens + temperature and
+      # responses sends max_output_tokens + temperature, while
+      # o-series/GPT-5 require max_completion_tokens (chat) and default temperature.
+      # On a chat/responses 400 naming those params, retry once without
+      # temperature (and with the renamed token cap on chat).
+      if [[ "$http_code" == 400 ]] \
+        && case "${LMLINE_API_FORMAT:-chat}" in chat|responses) true ;; *) false ;; esac \
+        && jq -e 'has("max_tokens") or has("max_output_tokens")' "$payload" >/dev/null 2>&1; then
         compat_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         compat_lower=$(printf '%s' "$compat_detail" | tr '[:upper:]' '[:lower:]')
         case "$compat_lower" in
-          *max_tokens*|*max_completion_tokens*|*temperature*)
+          *max_tokens*|*max_completion_tokens*|*max_output_tokens*|*temperature*)
             compat_payload=$work_dir/payload.compat.json
             if jq 'if has("max_tokens") then .max_completion_tokens = .max_tokens | del(.max_tokens) else . end | del(.temperature)' "$payload" >"$compat_payload"; then
-              __lmline_progress "compatibility fallback: retrying with max_completion_tokens and no temperature"
+              if [[ "${LMLINE_API_FORMAT:-chat}" == responses ]]; then
+                __lmline_progress "compatibility fallback: retrying without temperature"
+              else
+                __lmline_progress "compatibility fallback: retrying with max_completion_tokens and no temperature"
+              fi
               __lmline_trace_file "${label%.json}.compat-request.json" "$compat_payload"
               if compat_meta=$(__lmline_curl_chat_with_retry "$response" "$compat_payload"); then
                 IFS=$'\t' read -r http_code content_type <<<"$compat_meta"

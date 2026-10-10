@@ -519,6 +519,39 @@ grep -q 'compatibility fallback' "$cfg_tmp/compat.err" || fail "compat retry pro
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
+data=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+if [[ "$count" == 1 ]]; then
+  jq -e 'has("max_output_tokens") and (has("temperature")) and (has("max_tokens") | not)' "$data" >/dev/null || { echo "responses compat first payload shape" >&2; exit 7; }
+  printf '{"error":{"message":"Unsupported parameter: '\''temperature'\'' is not supported with this model"}}\n' >"$out"
+  printf '400\tapplication/json'
+else
+  jq -e 'has("max_output_tokens") and (has("temperature") | not)' "$data" >/dev/null || { echo "responses compat retry payload shape" >&2; cat "$data" >&2; exit 7; }
+  printf '{"model":"model-responses","output_text":"echo responses-compat-ok","usage":{"input_tokens":3,"output_tokens":2}}\n' >"$out"
+  printf '200\tapplication/json'
+fi
+EOF
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+responses_compat_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/responses-compat.err")
+[[ "$(candidates_of <<<"$responses_compat_out")" == "echo responses-compat-ok" ]] || fail "responses compat retry output"
+[[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "responses compat retry count"
+grep -q 'compatibility fallback' "$cfg_tmp/responses-compat.err" || fail "responses compat retry progress"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
 while (($#)); do
   case "$1" in
     -o) out=$2; shift 2 ;;
