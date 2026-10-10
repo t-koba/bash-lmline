@@ -287,7 +287,7 @@ __lmline_report_request_failure() {
 
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
-  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower
+  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
       __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
       return 1
@@ -304,6 +304,38 @@ __lmline_post_chat() {
       __lmline_record_usage "$response"
       ;;
     *)
+      # Provider compat: some OpenAI-compatible endpoints reject the store
+      # field. On a 400 naming store, retry once without it.
+      if [[ "$http_code" == 400 ]] \
+        && jq -e 'has("store")' "$payload" >/dev/null 2>&1; then
+        store_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
+        store_lower=$(printf '%s' "$store_detail" | tr '[:upper:]' '[:lower:]')
+        case "$store_lower" in
+          *store*)
+            store_payload=$work_dir/payload.no-store.json
+            if jq 'del(.store)' "$payload" >"$store_payload"; then
+              __lmline_progress "compatibility fallback: retrying without store field"
+              __lmline_trace_file "${label%.json}.no-store-request.json" "$store_payload"
+              if store_meta=$(__lmline_curl_chat_with_retry "$response" "$store_payload"); then
+                IFS=$'\t' read -r http_code content_type <<<"$store_meta"
+                case "$http_code" in
+                  2??)
+                    __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
+                      printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
+                      return 1
+                    }
+                    __lmline_trace_file "${label%.json}.no-store-response.json" "$response"
+                    jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
+                    __lmline_record_usage "$response"
+                    return 0
+                    ;;
+                esac
+                payload=$store_payload
+              fi
+            fi
+            ;;
+        esac
+      fi
       # Reasoning-model compat: chat sends max_tokens + temperature, while
       # o-series/GPT-5 require max_completion_tokens and default temperature.
       # On a chat 400 naming those params, retry once with the renamed shape.
@@ -556,6 +588,24 @@ __lmline_write_chat_payload() {
       exit 1
     }
     mv "$out.format" "$out"
+  fi
+  # Provider-side retention is opt-out on OpenAI APIs: an unset store keeps
+  # the request server-side. Fail closed by always sending an explicit store
+  # value on chat/responses; messages has no store field. Unknown providers
+  # that reject store fall back to a retry without it in __lmline_post_chat.
+  if [[ "$api_format" == chat || "$api_format" == responses ]]; then
+    if __lmline_flag_enabled "${LMLINE_STORE:-0}"; then
+      jq '. + {store: true}' "$out" >"$out.store" || {
+        printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+        exit 1
+      }
+    else
+      jq '. + {store: false}' "$out" >"$out.store" || {
+        printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+        exit 1
+      }
+    fi
+    mv "$out.store" "$out"
   fi
 }
 

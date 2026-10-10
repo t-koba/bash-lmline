@@ -112,7 +112,9 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 - The engine retries transient provider failures (HTTP 429/502/503/504 and
   curl errors) `LMLINE_HTTP_RETRIES` times. On a `chat`-format HTTP 400 naming
   `max_tokens`, `max_completion_tokens`, or `temperature`, it retries once with
-  `max_completion_tokens` in place of `max_tokens` and no `temperature`.
+  `max_completion_tokens` in place of `max_tokens` and no `temperature`. On an HTTP 400 naming `store`, it retries once without the `store` field.
+- Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. On an HTTP 400 naming `store`, the engine retries once without it and emits an `lmline-progress:` fallback line.
+- `chat` remains the default and stays supported; OpenAI recommends `responses` for new agentic flows. `responses` returns a single generation, so multiple candidates come from one text block, not parallel sampling. Newer reasoning models (GPT-5.4 and later, GPT-6 Astra/Sol) require `responses` for native tool calling.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests.

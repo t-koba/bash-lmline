@@ -64,6 +64,7 @@ __lmline_init_dirs "$script_dir"
 : "${LMLINE_TRACE_DIR:=}"
 : "${LMLINE_INCLUDE_EDITOR_CONTEXT:=1}"
 : "${LMLINE_INCLUDE_LOCALE_CONTEXT:=1}"
+: "${LMLINE_STORE:=0}"
 
 mode=
 line_file=

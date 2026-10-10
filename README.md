@@ -766,6 +766,7 @@ lmline config set LMLINE_INCLUDE_PROJECT_CONTEXT 0
 lmline config set LMLINE_INCLUDE_EDITOR_CONTEXT 0
 lmline config set LMLINE_INCLUDE_LOCALE_CONTEXT 0
 lmline config set LMLINE_INCLUDE_SUGGESTED_COMMANDS 0
+lmline config set LMLINE_STORE 0
 lmline debug trace off
 ```
 
@@ -785,6 +786,8 @@ check` runs `msb --version` only.
 
 API keys are passed to `curl` through `-H @file` header files created in a
 temporary directory. They are not placed on the `curl` command line.
+
+Provider-side request storage is opt-out on OpenAI APIs: an unset `store` keeps the request server-side (Responses stored by default; new-account Chat stored by default). lmline fails closed and always sends an explicit value: `store: false` by default (`LMLINE_STORE=0`), `store: true` when `LMLINE_STORE=1`. The `messages` format has no `store` field. Providers that reject `store` with HTTP 400 get one retry without it. Allowing storage does not change answers; it only changes provider retention.
 
 Trace files are disabled by default:
 
@@ -960,6 +963,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_RETRY_DELAY` | `1` | seconds between retries |
 | `LMLINE_CACHE_TTL` | `600` | response cache TTL in seconds (0 disables) |
 | `LMLINE_STREAM` | `0` | stream `explain` and `clip` responses |
+| `LMLINE_STORE` | `0` | request provider-side storage (`0` sends `store: false`, `1` sends `store: true`; `chat` and `responses` only) |
 | `LMLINE_TEMPERATURE` | `0.2` | chat completion temperature |
 | `LMLINE_FIX_TEMPERATURE` | `0.1` | sampling temperature for fix mode |
 | `LMLINE_MAX_TOKENS` | `1200` | max response tokens for command modes |
