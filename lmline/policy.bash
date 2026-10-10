@@ -408,6 +408,49 @@ __lmline_expand_braces_for_risk() {
   printf '%s' "$current"
 }
 
+# Structural pipe-to-shell check for risk matching only (not execution).
+# Any non-first pipeline segment whose command word (after stripping
+# wrapper prefixes, options, assignments, quoting and absolute paths) is an
+# interactive shell executes piped stdin as code. Judging the command word
+# structurally replaces enumerating wrapper/prefix combinations in
+# risk_patterns.tsv and closes flag variants like 'env -i sh' that patterns
+# miss. Only the sh family is judged here: piping a local file to python
+# and similar interpreters is ordinary use and stays low unless a
+# downloader-specific pattern matches.
+__lmline_risk_piped_shell() {
+  local cmd=$1 stripped segment token word cmdword base
+  local -a words
+  stripped=$(__lmline_split_pipeline "$cmd" 1)
+  local idx=0
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    idx=$((idx + 1))
+    (( idx > 1 )) || continue
+    [[ -n "${segment//[[:space:]()]/}" ]] || continue
+    read -r -a words <<<"$segment" || continue
+    cmdword=""
+    for token in "${words[@]}"; do
+      word=$(__lmline_unquote_simple_word "$token")
+      word=${word//[()]/}
+      [[ -n "$word" ]] || continue
+      case "$word" in
+        [A-Za-z_]*=*) continue ;;
+        -*) continue ;;
+        command|builtin|exec|env|time|sudo|nohup|nice|'!') continue ;;
+      esac
+      word=${word#\`}; word=${word%\`}
+      [[ -n "$word" ]] || continue
+      cmdword=$word
+      break
+    done
+    [[ -n "$cmdword" ]] || continue
+    base=${cmdword##*/}
+    case "$base" in
+      sh|bash|dash|ksh|zsh) return 0 ;;
+    esac
+  done <<<"$stripped"
+  return 1
+}
+
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
   local brace_capped=0 best_level="" best_reason=""
@@ -428,6 +471,10 @@ __lmline_risk_match() {
     # Normalize: canonicalize quoting/IFS/braces, squeeze whitespace, and
     # wrap in single spaces so one pattern like "* dd *" matches at line
     # start, mid-pipeline, and bare.
+    if __lmline_risk_piped_shell "$alt"; then
+      printf 'high\tpiped shell execution\n'
+      return 0
+    fi
     canon=$(__lmline_canonicalize_for_risk <<<"$alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
     canon=${canon% }

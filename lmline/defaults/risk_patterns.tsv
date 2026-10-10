@@ -40,20 +40,6 @@ high	*wget *| perl*	downloaded script execution
 high	*wget *| ruby*	downloaded script execution
 high	*wget *| php*	downloaded script execution
 high	*wget *| node*	downloaded script execution
-high	*| exec sh *	piped shell execution
-high	*| exec bash *	piped shell execution
-high	*| command sh *	piped shell execution
-high	*| command bash *	piped shell execution
-high	*| env sh *	piped shell execution
-high	*| env bash *	piped shell execution
-high	*| nohup sh *	piped shell execution
-high	*| nohup bash *	piped shell execution
-high	*| nice sh *	piped shell execution
-high	*| nice bash *	piped shell execution
-high	*| time sh *	piped shell execution
-high	*| time bash *	piped shell execution
-high	*| sh *	piped shell execution
-high	*| bash *	piped shell execution
 high	* eval *	dynamic code execution
 high	*.env*| curl*	possible secret exfiltration
 high	*.env*| wget*	possible secret exfiltration
