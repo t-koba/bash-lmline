@@ -258,6 +258,49 @@ __lmline_risk_reason() {
   fi
 }
 
+# Decode $'...' ANSI-C quoting for risk matching only (not execution) with the
+# shell's own %b expansion, so hex/octal hides like $'\x72\x6d' are judged by
+# the same rules as their bare forms. A trailing unbalanced $'... is left
+# as-is for the unresolved-variable fallback in __lmline_risk_match.
+__lmline_decode_ansi_c_for_risk() {
+  local str=$1 out="" pre rest inner ch i j esc decoded
+  [[ $str == *"\$'"* ]] || { printf '%s' "$str"; return 0; }
+  while [[ $str == *"\$'"* ]]; do
+    pre=${str%%"\$'"*}
+    rest=${str#*"\$'"}
+    inner=""
+    esc=0
+    j=-1
+    for ((i = 0; i < ${#rest}; i++)); do
+      ch=${rest:i:1}
+      if (( esc )); then
+        inner+="\\$ch"
+        esc=0
+        continue
+      fi
+      if [[ $ch == '\\' ]]; then
+        esc=1
+        continue
+      fi
+      if [[ $ch == "'" ]]; then
+        j=$i
+        break
+      fi
+      inner+="$ch"
+    done
+    if (( j < 0 )); then
+      out+="$pre\$'$rest"
+      str=""
+      break
+    fi
+    printf -v decoded '%b' "$inner" 2>/dev/null || decoded="$inner"
+    out+="$pre$decoded"
+    str=${rest:$((j + 1))}
+  done
+  out+="$str"
+  printf '%s' "$out"
+}
+
 # Minimal fail-closed canonicalization for risk matching only (not execution).
 # Strips quoting/backslash escapes (including legacy backtick command
 # substitution, symmetric with the paren handling that already covers $())
@@ -266,7 +309,8 @@ __lmline_risk_reason() {
 # their bare forms. Also normalizes pipe spacing (so 'a|sh' matches '| sh'),
 # command separators (so ';eval' matches ' eval '), and absolute command
 # paths after a pipe (so '| /bin/sh' matches '| sh'). Deliberately small:
-# no AST or full deobfuscation.
+# no AST or full deobfuscation; ANSI-C decoding and the unresolved-variable
+# fallback live in __lmline_risk_match.
 __lmline_canonicalize_for_risk() {
   sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g' -e 's/`//g' \
     -e 's/\|\|/ /g' -e 's/\|/ | /g' -e 's/[;&()]/ /g' \
@@ -274,11 +318,13 @@ __lmline_canonicalize_for_risk() {
 }
 
 __lmline_risk_match() {
-  local cmd=$1 file line level pattern reason
+  local cmd=$1 expanded file line level pattern reason
+  # Decode ANSI-C quoting first so hex/octal hides are judged by content.
   # Normalize: canonicalize quoting/IFS, squeeze whitespace, and wrap in
   # single spaces so one pattern like "* dd *" matches at line start,
   # mid-pipeline, and bare.
-  cmd=$(__lmline_canonicalize_for_risk <<<"$cmd" | tr -s '[:space:]' ' ')
+  expanded=$(__lmline_decode_ansi_c_for_risk "$cmd")
+  cmd=$(__lmline_canonicalize_for_risk <<<"$expanded" | tr -s '[:space:]' ' ')
   cmd=${cmd# }
   cmd=${cmd% }
   cmd=" $cmd "
@@ -296,6 +342,40 @@ __lmline_risk_match() {
       return 0
     fi
   done <"$file"
+  if __lmline_risk_has_unresolved_var_command "$expanded"; then
+    printf 'medium\tunresolved variable command\n'
+    return 0
+  fi
+}
+
+# Fail-closed net for variable indirection in the command word ($VAR, ${VAR},
+# or surviving $'...' residue): the value cannot be proven safe, so report
+# medium and let the insert warning and fix-mode gating apply. Concrete words
+# (echo $HOME), $(...) substitution (judged by its content rules), and
+# path-like $HOME/... are left alone: no stricter than needed.
+__lmline_risk_has_unresolved_var_command() {
+  local cmd=$1 stripped segment token dt
+  stripped=$(__lmline_split_pipeline "$cmd" 1)
+  while IFS= read -r segment; do
+    for token in $segment; do
+      [[ -n $token ]] || continue
+      case "$token" in
+        [A-Za-z_]*=*) continue ;;
+        \'*) break ;;
+      esac
+      dt=${token#\"}
+      dt=${dt%\"}
+      case "$dt" in
+        '$('*) break ;;
+        '$'*)
+          [[ $dt == */* ]] && break
+          return 0
+          ;;
+        *) break ;;
+      esac
+    done
+  done <<<"$stripped"
+  return 1
 }
 
 __lmline_extract_command_words() {
