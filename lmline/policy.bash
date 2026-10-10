@@ -409,17 +409,21 @@ __lmline_expand_braces_for_risk() {
 }
 
 # Structural pipe-to-shell check for risk matching only (not execution).
-# Any non-first pipeline segment whose command word (after stripping
-# wrapper prefixes, options, assignments, quoting and absolute paths) is an
-# interactive shell executes piped stdin as code. Judging the command word
-# structurally replaces enumerating wrapper/prefix combinations in
-# risk_patterns.tsv and closes flag variants like 'env -i sh' that patterns
-# miss. Only the sh family is judged here: piping a local file to python
-# and similar interpreters is ordinary use and stays low unless a
-# downloader-specific pattern matches.
+# Any non-first pipeline segment led by a wrapper (command/builtin/exec/env/
+# time/sudo/nohup/nice/!) or a shell itself, where any later word (after
+# stripping assignments, quoting and absolute paths) is an interactive shell,
+# executes piped stdin as code. Scanning every word after the wrapper gate
+# replaces per-flag value tables (which grow without bound: -a/-u/-g/-n, then
+# -C/-S/--unset/--chdir/--argv0/--adjustment/...) and closes short and long
+# separate-value forms at once. Only the sh family is judged here: piping a
+# local file to python and similar interpreters is ordinary use and stays low
+# unless a downloader-specific pattern matches. The leading-wrapper gate keeps
+# benign '| grep sh' / '| ssh user@host' / '| shuf' low; a contrived wrapper
+# call whose option value is literally named sh (exec -a sh echo) scores high,
+# which is the fail-closed direction.
 __lmline_risk_piped_shell() {
-  local cmd=$1 stripped segment token word cmdword base
-  local -a words
+  local cmd=$1 stripped segment token word base first_base
+  local -a words subs
   stripped=$(__lmline_split_pipeline "$cmd" 1)
   local idx=0
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -427,38 +431,30 @@ __lmline_risk_piped_shell() {
     (( idx > 1 )) || continue
     [[ -n "${segment//[[:space:]()]/}" ]] || continue
     read -r -a words <<<"$segment" || continue
-    cmdword=""
-    local skip_next=0
+    subs=()
     for token in "${words[@]}"; do
       word=$(__lmline_unquote_simple_word "$token")
       word=${word//[()]/}
       [[ -n "$word" ]] || continue
-      if (( skip_next )); then
-        skip_next=0
-        continue
-      fi
       case "$word" in
         [A-Za-z_]*=*) continue ;;
-        # Wrapper options that consume the next token (exec -a name,
-        # env/sudo -u name, sudo -g group, nice -n level): skip the value
-        # too, or it misreads as the command word (observed: nice -n 10 sh
-        # scored low). Deliberately excludes -p, which takes no value for
-        # command/time (time -p sh) but does for sudo (already high via the
-        # sudo rule), so skipping there would regress.
-        -a|-u|-g|-n) skip_next=1; continue ;;
-        -*) continue ;;
-        command|builtin|exec|env|time|sudo|nohup|nice|'!') continue ;;
       esac
       word=${word#\`}; word=${word%\`}
       [[ -n "$word" ]] || continue
-      cmdword=$word
-      break
+      subs+=("$word")
     done
-    [[ -n "$cmdword" ]] || continue
-    base=${cmdword##*/}
-    case "$base" in
-      sh|bash|dash|ksh|zsh) return 0 ;;
+    ((${#subs[@]} > 0)) || continue
+    first_base=${subs[0]##*/}
+    case "$first_base" in
+      command|builtin|exec|env|time|sudo|nohup|nice|'!'|sh|bash|dash|ksh|zsh) ;;
+      *) continue ;;
     esac
+    for word in "${subs[@]}"; do
+      base=${word##*/}
+      case "$base" in
+        sh|bash|dash|ksh|zsh) return 0 ;;
+      esac
+    done
   done <<<"$stripped"
   return 1
 }
