@@ -679,20 +679,23 @@ grep -q 'warning: streaming disabled for api_format=responses' "$cfg_tmp/stream-
 # Responses native tool loop: first round returns a function_call item, the
 # engine runs it locally, and the second round answers with the final text.
 printf '0\n' >"$cfg_tmp/resp-tool-state"
+mkdir -p "$cfg_tmp/resp-tool-bodies"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
-out=
+out=; data=
 while (($#)); do
   case "$1" in
     -o) out=$2; shift 2 ;;
     -w) shift 2 ;;
-    --data-binary) shift 2 ;;
+    --data-binary) data=$2; shift 2 ;;
     *) shift ;;
   esac
 done
 state=${LMLINE_FAKE_CURL_STATE:?}
+bodies=${LMLINE_FAKE_CURL_BODIES:?}
 count=0; [[ -f "$state" ]] && read -r count <"$state"
 count=$((count + 1)); printf '%s\n' "$count" >"$state"
+cp "${data#@}" "$bodies/body-$count.json"
 if (( count == 1 )); then
   cat >"$out" <<'JSON'
 {"model":"model-responses","output":[{"type":"function_call","call_id":"call_1","name":"command_exists","arguments":"{\"commands\":\"echo\"}"}],"usage":{"input_tokens":10,"output_tokens":5}}
@@ -705,10 +708,13 @@ fi
 printf '200\tapplication/json'
 EOF
 chmod +x "$fake_bin/curl"
-responses_tool_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_FAKE_CURL_STATE="$cfg_tmp/resp-tool-state" LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/resp-tool.err")
+responses_tool_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_FAKE_CURL_STATE="$cfg_tmp/resp-tool-state" LMLINE_FAKE_CURL_BODIES="$cfg_tmp/resp-tool-bodies" LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/resp-tool.err")
 [[ "$(candidates_of <<<"$responses_tool_out")" == "echo loop-ok" ]] || fail "responses native tool loop output"
 [[ $(cat "$cfg_tmp/resp-tool-state") == 2 ]] || fail "responses native tool loop rounds"
 grep -q 'tool command-exists (openai, round 1/4)' "$cfg_tmp/resp-tool.err" || fail "responses native tool progress"
 grep -q 'tools=command-exists' "$cfg_tmp/resp-tool.err" || fail "responses native tool meta"
+jq -e '.input | map(select(.type == "function_call" and .call_id == "call_1" and .name == "command_exists")) | length == 1' "$cfg_tmp/resp-tool-bodies/body-2.json" >/dev/null || fail "responses round 2 keeps function_call with call_id"
+jq -e '.input | map(select(.type == "function_call_output" and .call_id == "call_1")) | length == 1' "$cfg_tmp/resp-tool-bodies/body-2.json" >/dev/null || fail "responses round 2 pairs function_call_output with call_id"
+jq -e '[.input[]? | select(.role == "assistant" and .content == "")] | length == 0' "$cfg_tmp/resp-tool-bodies/body-2.json" >/dev/null || fail "responses round 2 drops empty assistant turn"
 
 ok "engine"

@@ -455,10 +455,19 @@ __lmline_payload_for_format() {
         .messages as $messages |
         {
           model: .model,
-          input: [$messages[]? | select(.role != "system") | {
-            role: (if .role == "assistant" then "assistant" else "user" end),
-            content: text_content(.content)
-          }],
+          input: ([$messages[]? | select(.role != "system") |
+            if .role == "assistant" and ((.tool_calls // [] | length) > 0) then
+              ((if (text_content(.content) | length) > 0 then [{role: "assistant", content: text_content(.content)}] else [] end) +
+               [(.tool_calls // [])[]? | {type: "function_call", call_id: (.id // ""), name: (.function.name // ""), arguments: (if (.function.arguments | type) == "string" then .function.arguments else ((.function.arguments // {}) | tojson) end)}])
+              | .[]
+            elif .role == "assistant" then
+              {role: "assistant", content: text_content(.content)}
+            elif .role == "tool" then
+              {type: "function_call_output", call_id: (.tool_call_id // .id // ""), output: text_content(.content)}
+            else
+              {role: "user", content: text_content(.content)}
+            end
+          ]),
           instructions: ([$messages[]? | select(.role == "system") | text_content(.content)] | join("\n\n")),
           temperature: .temperature,
           max_output_tokens: .max_tokens,
