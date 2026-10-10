@@ -63,6 +63,7 @@ store_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-st
 grep -q 'retrying without store field' "$cfg_tmp/store.err" || fail "store fallback progress"
 
 # config catalog documents the new setting
-LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_STORE | grep -q '^default=0$' || fail "store describe default"
+store_describe=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_STORE)
+grep -q '^default=0$' <<<"$store_describe" || fail "store describe default"
 
 ok "store"
