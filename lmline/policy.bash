@@ -428,12 +428,24 @@ __lmline_risk_piped_shell() {
     [[ -n "${segment//[[:space:]()]/}" ]] || continue
     read -r -a words <<<"$segment" || continue
     cmdword=""
+    local skip_next=0
     for token in "${words[@]}"; do
       word=$(__lmline_unquote_simple_word "$token")
       word=${word//[()]/}
       [[ -n "$word" ]] || continue
+      if (( skip_next )); then
+        skip_next=0
+        continue
+      fi
       case "$word" in
         [A-Za-z_]*=*) continue ;;
+        # Wrapper options that consume the next token (exec -a name,
+        # env/sudo -u name, sudo -g group, nice -n level): skip the value
+        # too, or it misreads as the command word (observed: nice -n 10 sh
+        # scored low). Deliberately excludes -p, which takes no value for
+        # command/time (time -p sh) but does for sudo (already high via the
+        # sudo rule), so skipping there would regress.
+        -a|-u|-g|-n) skip_next=1; continue ;;
         -*) continue ;;
         command|builtin|exec|env|time|sudo|nohup|nice|'!') continue ;;
       esac
