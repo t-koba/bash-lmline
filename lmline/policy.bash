@@ -307,13 +307,14 @@ __lmline_decode_ansi_c_for_risk() {
 # and normalizes $IFS/${IFS} to a space so
 # trivially quoted forms ('"rm" -rf', 'rm${IFS}-rf') match the same rules as
 # their bare forms. Also normalizes pipe spacing (so 'a|sh' matches '| sh'),
-# command separators (so ';eval' matches ' eval '), and absolute command
-# paths after a pipe (so '| /bin/sh' matches '| sh'). Deliberately small:
+# command separators (so ';eval' matches ' eval '), absolute command
+# paths after a pipe (so '| /bin/sh' matches '| sh'), and brace expansion
+# (so '{rm,-rf,/tmp/x}' matches ' rm -rf /tmp/x '). Deliberately small:
 # no AST or full deobfuscation; ANSI-C decoding and the unresolved-variable
 # fallback live in __lmline_risk_match.
 __lmline_canonicalize_for_risk() {
   sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g' -e 's/`//g' \
-    -e 's/\|\|/ /g' -e 's/\|/ | /g' -e 's/[;&()]/ /g' \
+    -e 's/\|\|/ /g' -e 's/\|/ | /g' -e 's/[;&()]/ /g' -e 's/[{},]/ /g' \
     -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g'
 }
 

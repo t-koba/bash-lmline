@@ -33,6 +33,8 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$HOME") == low ]]
   [[ $(__lmline_risk_level "rm \$f") == low ]]
   [[ $(__lmline_risk_level "printf \$${q}a\\nb${q}") == low ]]
+  [[ $(__lmline_risk_level "{rm,-rf,/tmp/x}") == high ]]
+  [[ $(__lmline_risk_level "mkdir -p project/{src,tests}") == low ]]
   [[ $(__lmline_risk_level "echo hi | sh") == high ]]
   [[ $(__lmline_risk_level "cp /dev/zero /dev/sdb") == high ]]
   [[ $(__lmline_risk_level "tee /dev/sdb < /dev/zero") == high ]]
