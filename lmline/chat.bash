@@ -283,7 +283,7 @@ __lmline_report_request_failure() {
 
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
-  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type
+  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
       __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
       return 1
@@ -300,6 +300,39 @@ __lmline_post_chat() {
       __lmline_record_usage "$response"
       ;;
     *)
+      # Reasoning-model compat: chat sends max_tokens + temperature, while
+      # o-series/GPT-5 require max_completion_tokens and default temperature.
+      # On a chat 400 naming those params, retry once with the renamed shape.
+      if [[ "${LMLINE_API_FORMAT:-chat}" == chat && "$http_code" == 400 ]] \
+        && jq -e 'has("max_tokens")' "$payload" >/dev/null 2>&1; then
+        compat_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
+        compat_lower=$(printf '%s' "$compat_detail" | tr '[:upper:]' '[:lower:]')
+        case "$compat_lower" in
+          *max_tokens*|*max_completion_tokens*|*temperature*)
+            compat_payload=$work_dir/payload.compat.json
+            if jq 'if has("max_tokens") then .max_completion_tokens = .max_tokens | del(.max_tokens) else . end | del(.temperature)' "$payload" >"$compat_payload"; then
+              __lmline_progress "compatibility fallback: retrying with max_completion_tokens and no temperature"
+              __lmline_trace_file "${label%.json}.compat-request.json" "$compat_payload"
+              if compat_meta=$(__lmline_curl_chat_with_retry "$response" "$compat_payload"); then
+                IFS=$'\t' read -r http_code content_type <<<"$compat_meta"
+                case "$http_code" in
+                  2??)
+                    __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
+                      printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
+                      return 1
+                    }
+                    __lmline_trace_file "${label%.json}.compat-response.json" "$response"
+                    jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
+                    __lmline_record_usage "$response"
+                    return 0
+                    ;;
+                esac
+                payload=$compat_payload
+              fi
+            fi
+            ;;
+        esac
+      fi
       if [[ "$LMLINE_TOOL_MODE" == auto ]] && jq -e 'has("tools")' "$payload" >/dev/null 2>&1; then
         retry_payload=$work_dir/payload.auto-text.json
         jq 'del(.tools, .tool_choice)' "$payload" >"$retry_payload" || return 1

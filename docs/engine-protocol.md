@@ -110,7 +110,9 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 
 - Empty `rewrite` input exits 0 with no output.
 - The engine retries transient provider failures (HTTP 429/502/503/504 and
-  curl errors) `LMLINE_HTTP_RETRIES` times.
+  curl errors) `LMLINE_HTTP_RETRIES` times. On a `chat`-format HTTP 400 naming
+  `max_tokens`, `max_completion_tokens`, or `temperature`, it retries once with
+  `max_completion_tokens` in place of `max_tokens` and no `temperature`.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests.

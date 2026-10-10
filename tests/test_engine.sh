@@ -484,6 +484,66 @@ grep -q 'LMLINE_API_FORMAT=responses or LMLINE_TOOL_MODE=text' /tmp/lmline-400-h
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
+data=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+if [[ "$count" == 1 ]]; then
+  jq -e 'has("max_tokens") and has("temperature")' "$data" >/dev/null || { echo "compat first payload shape" >&2; exit 7; }
+  printf '{"error":{"message":"Unsupported parameter: '\''max_tokens'\'' is not supported with this model. Use '\''max_completion_tokens'\'' instead."}}\n' >"$out"
+  printf '400\tapplication/json'
+else
+  jq -e 'has("max_completion_tokens") and (has("max_tokens") | not) and (has("temperature") | not)' "$data" >/dev/null || { echo "compat retry payload shape" >&2; cat "$data" >&2; exit 7; }
+  cat >"$out" <<'JSON'
+{"choices":[{"message":{"role":"assistant","content":"echo compat-ok"}}]}
+JSON
+  printf '200\tapplication/json'
+fi
+EOF
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+compat_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/compat.err")
+[[ "$(candidates_of <<<"$compat_out")" == "echo compat-ok" ]] || fail "compat retry output"
+[[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "compat retry count"
+grep -q 'compatibility fallback' "$cfg_tmp/compat.err" || fail "compat retry progress"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+printf '{"error":{"message":"unknown model slug"}}\n' >"$out"
+printf '400\tapplication/json'
+EOF
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-compat-noretry.out 2>/tmp/lmline-compat-noretry.err; then
+  fail "unrelated 400 unexpectedly succeeded"
+fi
+[[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "unrelated 400 should not retry"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
 data_file=
 prev=
 for arg in "$@"; do
