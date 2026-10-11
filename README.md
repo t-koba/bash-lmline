@@ -478,7 +478,7 @@ Cycling with `Ctrl-x Ctrl-n` / `Ctrl-x Ctrl-p` shows the current position
 truncated candidates and the preserved original (rewrite mode) are flagged in
 the same indicator.
 
-`Ctrl-x Ctrl-f` is the only interactive action that executes the current line.
+`Ctrl-x Ctrl-f` is the only key binding that executes the current line; the other execution paths are the opt-in `command_run` tool and `lmline sandbox run` (see intro and SECURITY.md).
 With the local backend, it refuses high-risk commands and medium-risk commands
 require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, the command runs
 through the configured `msb` CLI backend.
