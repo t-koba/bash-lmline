@@ -787,8 +787,9 @@ without sending locale environment variables.
 available; otherwise it uses the local backend. Set
 `LMLINE_MICROSANDBOX_COMMAND` if the CLI is installed under another name or
 path. lmline does not install microsandbox automatically. microsandbox is beta
-software and requires Linux with KVM or macOS on Apple Silicon. `lmline sandbox
-check` runs `msb --version` only.
+software and requires Linux with KVM, macOS on Apple Silicon, or Windows 10+
+with WHP (preview; see [Windows troubleshooting](https://docs.microsandbox.dev/troubleshooting/windows)).
+`lmline sandbox check` runs `msb --version` only.
 
 API keys are passed to `curl` through `-H @file` header files created in a
 temporary directory. They are not placed on the `curl` command line.
