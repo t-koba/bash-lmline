@@ -1,8 +1,8 @@
 # Security
 
-`lmline` inserts suggested commands into the shell editing buffer. It does not press Enter for normal generation and rewrite operations.
+`lmline` inserts suggested commands into the shell editing buffer. It never executes a candidate on its own; execution happens only through explicit, risk-gated paths the user invokes or enables: `Ctrl-x Ctrl-f` (fix), the opt-in `command_run` tool, and `lmline sandbox run`.
 
-`Ctrl-x Ctrl-f` is different: it executes the current line once through `LMLINE_EXEC_BACKEND` in order to capture stdout, stderr, exit status, and backend name for repair suggestions. With the local backend, high-risk commands are refused and medium-risk commands require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, execution requires the `msb` CLI or a configured `LMLINE_MICROSANDBOX_COMMAND`.
+`Ctrl-x Ctrl-f` executes the current line once through `LMLINE_EXEC_BACKEND` in order to capture stdout, stderr, exit status, and backend name for repair suggestions. With the local backend, high-risk commands are refused and medium-risk commands require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, execution requires the `msb` CLI or a configured `LMLINE_MICROSANDBOX_COMMAND`.
 
 Do not enable a remote provider unless you are comfortable sending shell context to that provider. By default, file contents and shell history are not sent.
 
