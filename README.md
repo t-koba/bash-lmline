@@ -142,8 +142,10 @@ daemon is started on the first Copilot command and shared by Bash and zsh.
 All three modes use the language server's `textDocument/inlineCompletion`
 (completion engine, not chat): generate completes at the cursor and keeps the
 typed prefix byte-for-byte; rewrite and fix complete the whole line and use
-the model's replacement. The completion engine is unlimited on Copilot Free
-and Student plans, but completion only *completes*: it returns nothing when
+the model's replacement. Plan completion limits apply: Copilot Free includes
+2,000 completions per month and Copilot Student includes unlimited completions
+(see [usage-based billing for individuals](https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-individuals)),
+but completion only *completes*: it returns nothing when
 the line is already complete, and fix suggestions depend on the model seeing
 a fixable line. lmline prints a diagnostic (`no candidates from Copilot`)
 when the server returns nothing.
