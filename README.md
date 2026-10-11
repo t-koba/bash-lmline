@@ -2,7 +2,11 @@
 
 `lmline` is a Bash/zsh line editor helper. It asks an OpenAI-compatible chat
 completion endpoint for command candidates and inserts the selected candidate
-into the current shell line buffer. It does not press Enter.
+into the current shell line buffer. It does not press Enter: generated
+candidates are inserted without executing them. The only exception is
+`Ctrl-x Ctrl-f` (fix), which explicitly re-runs the current line once through
+`LMLINE_EXEC_BACKEND` to capture failure evidence (`LMLINE_EXEC_BACKEND=off`
+disables it; see Candidate Handling and SECURITY.md).
 
 The bundled engine is `lmline/engine`. A replacement set with `LMLINE_ENGINE`
 must implement [docs/engine-protocol.md](docs/engine-protocol.md).
