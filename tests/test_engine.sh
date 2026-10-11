@@ -485,6 +485,47 @@ cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
 data=
+url=${@: -1}
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+case "$url" in
+  */chat/completions)
+    jq -e 'has("store") and has("tools")' "$data" >/dev/null || { echo "responses-fallback first payload shape" >&2; exit 7; }
+    printf '{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-5.4 in /v1/chat/completions. Please use /v1/responses instead."}}\n' >"$out"
+    printf '400\tapplication/json'
+    ;;
+  */responses)
+    jq -e 'has("store") and (.input | type) == "array" and (.tools | length) > 0' "$data" >/dev/null || { echo "responses-fallback retry payload shape" >&2; cat "$data" >&2; exit 7; }
+    printf '{"model":"model-responses","output_text":"echo responses-fallback-ok","usage":{"input_tokens":3,"output_tokens":2}}\n' >"$out"
+    printf '200\tapplication/json'
+    ;;
+  *)
+    echo "unexpected url: $url" >&2
+    exit 8
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+responses_fallback_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/responses-fallback.err")
+[[ "$(candidates_of <<<"$responses_fallback_out")" == "echo responses-fallback-ok" ]] || fail "responses fallback output"
+[[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "responses fallback count"
+grep -q 'compatibility fallback: retrying with LMLINE_API_FORMAT=responses' "$cfg_tmp/responses-fallback.err" || fail "responses fallback progress"
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+data=
 while (($#)); do
   case "$1" in
     -o) out=$2; shift 2 ;;

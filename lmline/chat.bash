@@ -286,9 +286,9 @@ __lmline_report_request_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2
-  __lmline_normalize_response "${LMLINE_API_FORMAT:-chat}" "$response" || {
-    printf 'lmline-engine: failed to normalize %s response\n' "${LMLINE_API_FORMAT:-chat}" >&2
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}}
+  __lmline_normalize_response "$api_format" "$response" || {
+    printf 'lmline-engine: failed to normalize %s response\n' "$api_format" >&2
     return 1
   }
   __lmline_trace_file "$label" "$response"
@@ -298,7 +298,7 @@ __lmline_accept_response() {
 
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
-  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower
+  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower responses_payload responses_store_value responses_detail responses_lower responses_meta responses_orig_code responses_orig_type
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
       __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
       return 1
@@ -364,6 +364,44 @@ __lmline_post_chat() {
                     ;;
                 esac
                 payload=$compat_payload
+              fi
+            fi
+            ;;
+        esac
+      fi
+      # Responses-model compat: GPT-5.4+/GPT-6 reject function tools and
+      # reasoning controls on chat with a 400 naming them. Convert the
+      # already-built chat payload and retry once against /responses so
+      # native tools keep working. The switch persists for this process so
+      # later tool rounds build responses payloads directly.
+      if [[ "$http_code" == 400 && "${LMLINE_API_FORMAT:-chat}" == chat ]]; then
+        responses_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
+        responses_lower=$(printf '%s' "$responses_detail" | tr '[:upper:]' '[:lower:]')
+        case "$responses_lower" in
+          *responses\ instead*|*reasoning_effort*|*function\ tools*)
+            responses_payload=$work_dir/payload.responses.json
+            responses_store_value=false
+            __lmline_flag_enabled "${LMLINE_STORE:-0}" && responses_store_value=true
+            if __lmline_payload_for_format responses "$payload" "$responses_payload" \
+              && jq --argjson store "$responses_store_value" '. + {store: $store}' "$responses_payload" >"$responses_payload.store" \
+              && mv "$responses_payload.store" "$responses_payload"; then
+              __lmline_progress "compatibility fallback: retrying with LMLINE_API_FORMAT=responses"
+              __lmline_trace_file "${label%.json}.responses-request.json" "$responses_payload"
+              cp "$response" "$work_dir/payload.responses.orig-body.json"
+              responses_orig_code=$http_code
+              responses_orig_type=$content_type
+              if responses_meta=$(__lmline_request_api_format=responses __lmline_curl_chat_with_retry "$response" "$responses_payload"); then
+                IFS=$'\t' read -r http_code content_type <<<"$responses_meta"
+                case "$http_code" in
+                  2??)
+                    __lmline_accept_response "$response" "${label%.json}.responses-response.json" responses || return 1
+                    export LMLINE_API_FORMAT=responses
+                    return 0
+                    ;;
+                esac
+                cp "$work_dir/payload.responses.orig-body.json" "$response"
+                http_code=$responses_orig_code
+                content_type=$responses_orig_type
               fi
             fi
             ;;
