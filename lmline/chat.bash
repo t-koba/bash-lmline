@@ -984,7 +984,7 @@ __lmline_cache_emit() {
     IFS=$'\t' read -r risk_old reason_old flags candidate <<<"$body"
     [[ -n "$candidate" ]] || continue
     [[ -n "$flags" ]] || flags='-'
-    rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode")
+    rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "${shell_name:-bash}")
     [[ "$rejection" == ok ]] || continue
     if ! risk_match=$(__lmline_risk_match "$candidate"); then
       risk_match=$'high\trisk rules unavailable'
@@ -1276,12 +1276,12 @@ __lmline_emit_candidates() {
       printf 'same-as-input\t%s\n' "$candidate" >>"$rejected_file"
       continue
     fi
-    reason=$(__lmline_candidate_rejection_reason "$candidate" "$mode")
+    reason=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "${shell_name:-bash}")
     if [[ "$reason" != ok ]]; then
       if (( truncated == 1 )); then
         printf 'truncated-then-commented:%s\t%s\n' "${reason:-unknown}" "$raw_candidate" >>"$rejected_file"
         candidate=$(__lmline_truncated_comment_candidate "$raw_candidate")
-        reason=$(__lmline_candidate_rejection_reason "$candidate" "$mode")
+        reason=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "${shell_name:-bash}")
         [[ "$reason" == ok ]] || {
           printf 'invalid:%s\t%s\n' "${reason:-unknown}" "$candidate" >>"$rejected_file"
           continue

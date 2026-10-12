@@ -95,12 +95,12 @@ __lmline_valid_candidates() {
 }
 
 __lmline_validate_candidate() {
-  local cmd=$1 mode=${2:-}
-  [[ $(__lmline_candidate_rejection_reason "$cmd" "$mode") == ok ]]
+  local cmd=$1 mode=${2:-} shell=${3:-bash}
+  [[ $(__lmline_candidate_rejection_reason "$cmd" "$mode" "$shell") == ok ]]
 }
 
 __lmline_candidate_rejection_reason() {
-  local cmd=$1 mode=${2:-}
+  local cmd=$1 mode=${2:-} shell=${3:-bash}
   [[ -n "$cmd" ]] || return 1
   [[ "$cmd" != *$'\n'* ]] || { printf 'multiline'; return 0; }
   [[ "$cmd" != *$'\r'* ]] || { printf 'carriage-return'; return 0; }
@@ -117,7 +117,7 @@ __lmline_candidate_rejection_reason() {
   bash -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
   __lmline_reject_env_only_pipeline "$cmd" || { printf 'env-only-command-segment'; return 0; }
   __lmline_reject_directory_file_operands "$cmd" || { printf 'directory-file-operand'; return 0; }
-  __lmline_validate_commands_available "$cmd" || { printf 'command-not-found'; return 0; }
+  __lmline_validate_commands_available "$cmd" "$shell" || { printf 'command-not-found'; return 0; }
   printf 'ok'
 }
 
@@ -663,14 +663,24 @@ __lmline_extract_command_words() {
   done <<<"$stripped"
 }
 
+# Target-shell command check for candidate validation only (never executes
+# the word): zsh -f skips startup files, and the quoted $1 stays data.
+__lmline_word_available_in_zsh() {
+  local word=$1
+  command -v zsh >/dev/null 2>&1 || return 1
+  zsh -f -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
+}
+
 __lmline_validate_commands_available() {
-  local cmd=$1
+  local cmd=$1 shell=${2:-bash}
   local word
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
     __lmline_word_is_policy_skip "$word" && continue
-    command -v "$word" >/dev/null 2>&1 || return 1
+    command -v "$word" >/dev/null 2>&1 && continue
+    [[ "$shell" == zsh ]] && __lmline_word_available_in_zsh "$word" && continue
+    return 1
   done < <(__lmline_extract_command_words "$cmd")
   return 0
 }

@@ -30,7 +30,7 @@ __lmline_copilot_candidates() {
     candidate=${entry#*$'\t'}
     [[ -n "$candidate" ]] || continue
     __lmline_candidate_truncated "$candidate" && continue
-    rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode")
+    rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "$shell_name")
     [[ "$rejection" == ok ]] || {
       [[ "${LMLINE_DEBUG:-0}" == 1 ]] && printf 'lmline-copilot: rejected candidate: %s\n' "$rejection" >&2
       continue

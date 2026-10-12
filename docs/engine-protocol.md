@@ -58,7 +58,7 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
 Candidates are validated and deduplicated by the engine before emission.
 Validation rejects multiline text, control characters, invalid `bash -n`,
 environment-assignment-only command segments, selected direct directory file
-operands, and unavailable command words. Frontends only parse, display, and
+operands, and command words unavailable in the target shell. Frontends only parse, display, and
 insert.
 
 ## Output: `explain` / `clip`

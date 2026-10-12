@@ -471,7 +471,7 @@ The engine filters candidates before printing them:
 - valid `bash -n`
 - no environment-assignment-only command segment
 - no direct directory operands for simple file readers such as `cat`
-- command words available locally, except words containing `/`, configured shell syntax words, and command prefixes
+- command words available locally, except words containing `/`, configured shell syntax words, and command prefixes (for zsh, its builtins count)
 - deduplicated
 - truncated to `LMLINE_MAX_CANDIDATE_BYTES` when needed
 

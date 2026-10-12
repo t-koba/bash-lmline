@@ -137,6 +137,14 @@ bash -c '
   [[ $(__lmline_candidate_rejection_reason "wc $1") == "directory-file-operand" ]]
   [[ $(__lmline_candidate_rejection_reason "## captured" fix) == "fix-heading" ]]
   [[ $(__lmline_candidate_rejection_reason "exit_status=2" fix) == "fix-status" ]]
+  if command -v zsh >/dev/null 2>&1; then
+    [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite zsh) == "ok" ]]
+    [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite bash) == "command-not-found" ]]
+    [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite) == "command-not-found" ]]
+    [[ $(__lmline_candidate_rejection_reason "definitely-not-a-command-for-lmline" rewrite zsh) == "command-not-found" ]]
+    __lmline_validate_candidate "print -r -- hello" rewrite zsh
+    ! __lmline_validate_candidate "print -r -- hello" rewrite bash
+  fi
   long_candidate=$(printf "printf %%s "; printf "a%.0s" {1..5000})
   [[ ${#long_candidate} -gt 4096 ]]
   truncated_candidate=$(printf "%s\n" "$long_candidate" | __lmline_valid_candidates)
@@ -224,3 +232,14 @@ bash -c '
   rm -rf "$risk_tmp"
 ' _ "$repo_dir" || fail "risk override contract"
 ok "risk override contract"
+
+# Without a zsh binary, zsh-only words fail closed instead of passing.
+nozsh_bin=$(mktemp -d "${TMPDIR:-/tmp}/lmline-nozsh.XXXXXX")
+ln -s "$(command -v bash)" "$nozsh_bin/bash"
+PATH="$nozsh_bin" bash -c '
+  set -euo pipefail
+  source "$1/lmline/policy.bash"
+  command -v zsh >/dev/null 2>&1 && exit 3
+  [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite zsh) == "command-not-found" ]]
+' _ "$repo_dir" || fail "zsh availability fails closed"
+rm -rf "$nozsh_bin"
