@@ -24,6 +24,10 @@ grep -q '^setting=LMLINE_EXEC_BACKEND$' <<<"$describe_backend" || fail "config d
 grep -q '^value=auto$' <<<"$describe_backend" || fail "config describe value"
 grep -q '^default=auto$' <<<"$describe_backend" || fail "config describe default"
 grep -q '^values=auto local microsandbox off$' <<<"$describe_backend" || fail "config describe values"
+describe_notify=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_ASYNC_NOTIFY)
+grep -q '^values=0 1$' <<<"$describe_notify" || fail "config describe async-notify values"
+describe_nolock=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NO_LOCK)
+grep -q '^values=0 1$' <<<"$describe_nolock" || fail "config describe no-lock values"
 describe_secret=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_API_KEY_FILE)
 grep -F -q 'value=***REDACTED***' <<<"$describe_secret" || fail "config describe redacts secret"
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NOT_A_SETTING >/tmp/lmline-describe-bad.out 2>/tmp/lmline-describe-bad.err; then

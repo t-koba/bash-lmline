@@ -1022,6 +1022,7 @@ single-setting help. Detailed tables are grouped below.
 | --- | --- | --- |
 | `LMLINE_CANDIDATE_COUNT` | `3` | requested candidate count, clamped to 1..10 |
 | `LMLINE_ASYNC` | `0` | background generation |
+| `LMLINE_ASYNC_NOTIFY` | `0` | announce finished background generation at the next prompt |
 | `LMLINE_BIND_KEYS` | `1` | bind keys when init file is sourced |
 | `LMLINE_KEY_GENERATE` | `\C-x\C-g` | generate key binding |
 | `LMLINE_KEY_REWRITE` | `\C-x\C-r` | rewrite key binding |
@@ -1041,6 +1042,8 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_PS0` | `🍋‍🟩 ` | lmline status prefix |
 | `LMLINE_FIX_TIMEOUT` | `12` | seconds for fix command execution |
 | `LMLINE_FIX_MAX_OUTPUT` | `12000` | stdout/stderr byte limit for fix |
+| `LMLINE_NO_LOCK` | `0` | disable config-dir locking |
+| `LMLINE_LOCK_TIMEOUT` | `5` | seconds to wait for the config lock |
 | `LMLINE_FIX_ALLOW_MEDIUM` | `0` | allow medium-risk fix execution |
 | `LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION` | `0` | Bash default completion hook |
 | `LMLINE_DEBUG` | `0` | verbose debug logging for Bash integration |
@@ -1096,6 +1099,9 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_TOOL_INFO_LINES` | `40` | lines kept per command-info block |
 | `LMLINE_TOOL_INFO_LINE_BYTES` | `240` | bytes kept per command-info line |
 | `LMLINE_TOOL_INFO_TIMEOUT` | `2` | seconds per command-info probe |
+| `LMLINE_CONDENSE_LINE_BYTES` | `2000` | per-line byte cap during output condensation |
+| `LMLINE_CONDENSE_RESCUE_LINES` | `20` | priority lines rescued from the omitted middle |
+| `LMLINE_CONDENSE_PATTERNS_FILE` | installed defaults | priority pattern file for condensation |
 
 </details>
 
