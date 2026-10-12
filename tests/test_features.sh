@@ -122,6 +122,37 @@ grep -q $'^lmline-candidate: high\t' <<<"$policy_high_out" || fail "cache policy
 [[ $(cat "$cfg_tmp/policy-state") == 1 ]] || fail "cache policy hit avoids refetch"
 grep -q 'lmline-status: m=test-model; cached' "$cfg_tmp/policy.err" || fail "cache policy hit status"
 
+# A fully stale cache entry must not emit its cached status before refetching:
+# the refetch owns the single status line.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do case "$1" in -o) out=$2; shift 2 ;; *) shift ;; esac; done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+printf '{"model":"m","choices":[{"message":{"content":"echo fresh-cmd"},"finish_reason":"stop"}]}' >"$out"
+printf '200\tapplication/json'
+EOF
+printf '# stale status\n' >"$cfg_tmp/stale-line"
+printf '0\n' >"$cfg_tmp/stale-state"
+mkdir -p "$cfg_tmp/stale-config"
+stale_engine_env=(LMLINE_CONFIG_DIR="$cfg_tmp/stale-config" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model)
+stale_base_env=(LMLINE_TOOL_MODE=none LMLINE_FAKE_CURL_STATE="$cfg_tmp/stale-state" LMLINE_CACHE_TTL=300)
+env PATH="$fake_bin:$PATH" "${stale_engine_env[@]}" "${stale_base_env[@]}" \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
+  --line-file "$cfg_tmp/stale-line" --context-file "$cfg_tmp/context" --n 1 >/dev/null 2>/dev/null || fail "stale cache first run"
+stale_entry=$(find "$cfg_tmp/stale-config/cache" -maxdepth 1 -type f | sed -n '1p')
+[[ -n "$stale_entry" ]] || fail "stale cache entry exists"
+printf 'lmline-candidate: low\ttest\t-\t```\n' >"$stale_entry"
+stale_out=$(env PATH="$fake_bin:$PATH" "${stale_engine_env[@]}" "${stale_base_env[@]}" \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
+  --line-file "$cfg_tmp/stale-line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/stale.err") || fail "stale cache second run"
+[[ $(cat "$cfg_tmp/stale-state") == 2 ]] || fail "stale cache refetches"
+[[ "$(candidates_of <<<"$stale_out")" == "echo fresh-cmd" ]] || fail "stale cache fresh output"
+[[ $(grep -c '^lmline-status:' "$cfg_tmp/stale.err") == 1 ]] || fail "stale cache single status"
+[[ $(grep -c '^lmline-meta:' "$cfg_tmp/stale.err") == 1 ]] || fail "stale cache single meta"
+
 # --- streaming (explain, tool mode none) -------------------------------------
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash

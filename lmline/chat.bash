@@ -969,10 +969,10 @@ __lmline_cache_lookup() {
 # candidate remains valid under the current policy, so the caller refetches.
 __lmline_cache_emit() {
   local cached_line body risk_old reason_old flags candidate rejection risk_match risk reason
-  local valid_count=0
-  printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
-  printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
+  local valid_count=0 valid_output= line
   if [[ "$output_format" != annotated ]]; then
+    printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
+    printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
     cat "$cache_file"
     return 0
   fi
@@ -995,10 +995,14 @@ __lmline_cache_emit() {
       reason='no matching risk rule'
     fi
     reason=${reason//$'\t'/ }
-    printf 'lmline-candidate: %s\t%s\t%s\t%s\n' "$risk" "$reason" "$flags" "$candidate"
+    printf -v line 'lmline-candidate: %s\t%s\t%s\t%s\n' "$risk" "$reason" "$flags" "$candidate"
+    valid_output+="$line"
     valid_count=$((valid_count + 1))
   done <"$cache_file"
-  (( valid_count > 0 ))
+  (( valid_count > 0 )) || return 1
+  printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
+  printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
+  printf '%s' "$valid_output"
 }
 
 __lmline_cache_store() {
