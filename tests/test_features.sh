@@ -153,6 +153,42 @@ stale_out=$(env PATH="$fake_bin:$PATH" "${stale_engine_env[@]}" "${stale_base_en
 [[ $(grep -c '^lmline-status:' "$cfg_tmp/stale.err") == 1 ]] || fail "stale cache single status"
 [[ $(grep -c '^lmline-meta:' "$cfg_tmp/stale.err") == 1 ]] || fail "stale cache single meta"
 
+# The declared working directory is part of the engine cache identity: the same
+# line from a fixed launching directory with different --cwd values must not collide.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do case "$1" in -o) out=$2; shift 2 ;; *) shift ;; esac; done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+if (( count == 1 )); then
+  printf '{"model":"m","choices":[{"message":{"content":"echo project-a"},"finish_reason":"stop"}]}' >"$out"
+else
+  printf '{"model":"m","choices":[{"message":{"content":"echo project-b"},"finish_reason":"stop"}]}' >"$out"
+fi
+printf '200\tapplication/json'
+EOF
+printf '# deploy\n' >"$cfg_tmp/cwd-line"
+printf '0\n' >"$cfg_tmp/cwd-state"
+mkdir -p "$cfg_tmp/cwd-config"
+cwd_engine_env=(LMLINE_CONFIG_DIR="$cfg_tmp/cwd-config" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model)
+cwd_base_env=(LMLINE_TOOL_MODE=none LMLINE_FAKE_CURL_STATE="$cfg_tmp/cwd-state" LMLINE_CACHE_TTL=300)
+cwd_a_out=$(env PATH="$fake_bin:$PATH" "${cwd_engine_env[@]}" "${cwd_base_env[@]}" \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd /work/project-a --point 0 \
+  --line-file "$cfg_tmp/cwd-line" --context-file "$cfg_tmp/context" --n 1 2>/dev/null) || fail "cwd cache first run"
+[[ "$(candidates_of <<<"$cwd_a_out")" == "echo project-a" ]] || fail "cwd cache first output"
+cwd_b_out=$(env PATH="$fake_bin:$PATH" "${cwd_engine_env[@]}" "${cwd_base_env[@]}" \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd /work/project-b --point 0 \
+  --line-file "$cfg_tmp/cwd-line" --context-file "$cfg_tmp/context" --n 1 2>/dev/null) || fail "cwd cache second run"
+[[ "$(candidates_of <<<"$cwd_b_out")" == "echo project-b" ]] || fail "cwd cache distinct directory output"
+[[ $(cat "$cfg_tmp/cwd-state") == 2 ]] || fail "cwd cache distinct directory refetches"
+cwd_b_hit=$(env PATH="$fake_bin:$PATH" "${cwd_engine_env[@]}" "${cwd_base_env[@]}" \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd /work/project-b --point 0 \
+  --line-file "$cfg_tmp/cwd-line" --context-file "$cfg_tmp/context" --n 1 2>/dev/null) || fail "cwd cache hit run"
+[[ "$(candidates_of <<<"$cwd_b_hit")" == "echo project-b" ]] || fail "cwd cache hit output"
+[[ $(cat "$cfg_tmp/cwd-state") == 2 ]] || fail "cwd cache same directory hits"
+
 # --- streaming (explain, tool mode none) -------------------------------------
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash

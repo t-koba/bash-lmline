@@ -946,6 +946,7 @@ __lmline_cache_eligible() {
 __lmline_cache_key() {
   {
     __lmline_request_key "$mode" "$line"
+    printf 'cwd=%s\n' "${cwd:-$PWD}"
     printf 'base=%s\nmodel=%s\napi_format=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
       "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
   } | __lmline_hash_stdin
