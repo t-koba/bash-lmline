@@ -2,6 +2,9 @@
 # Patterns are matched against the command with whitespace squeezed and the
 # whole line wrapped in single spaces, so "* dd *" matches "dd if=...",
 # "x | dd of=...", and a bare "dd".
+# With these defaults the highest level across patterns and structural
+# fallbacks wins (pipe-to-shell high, unresolved variable and capped brace
+# medium via LMLINE_RISK_*_LEVEL); a replacement file overrides instead.
 high	*rm -r*	recursive remove
 high	*rm -R*	recursive remove
 high	*rm --recursive*	recursive remove

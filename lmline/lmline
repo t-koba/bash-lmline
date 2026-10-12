@@ -293,6 +293,9 @@ LMLINE_FILE_SEARCH_EXCLUDES_FILE	user override or installed default	files tool e
 LMLINE_SHELL_SYNTAX_WORDS_FILE	user override or installed default	words ignored by command availability validation
 LMLINE_COMMAND_PREFIX_WORDS_FILE	user override or installed default	command prefixes ignored before command extraction
 LMLINE_RISK_PATTERNS_FILE	user override or installed default	candidate risk rules
+LMLINE_RISK_PIPED_SHELL_LEVEL	high	level for pipe-to-shell structural risk
+LMLINE_RISK_UNRESOLVED_VAR_LEVEL	medium	level for unresolved variable command structural risk
+LMLINE_RISK_BRACE_CAPPED_LEVEL	medium	level for capped brace expansion structural risk
 LMLINE_PROJECT_MARKERS_FILE	user override or installed default	project type markers
 LMLINE_LOCAL_COMMANDS_FILE	user override or installed default	local backend allowlist for command_run
 LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE	user override or installed default	required command list for doctor
@@ -319,7 +322,7 @@ __lmline_setting_value_candidates() {
     LMLINE_TOOL_CHOICE) printf '%s\n' auto none ;;
     LMLINE_STATUS_MODE) printf '%s\n' inline transient log debug silent none ;;
     LMLINE_EXPLAIN_DETAIL) printf '%s\n' brief normal detailed ;;
-    LMLINE_TOOL_COMMAND_RUN_MAX_RISK) printf '%s\n' low medium high ;;
+    LMLINE_TOOL_COMMAND_RUN_MAX_RISK|LMLINE_RISK_PIPED_SHELL_LEVEL|LMLINE_RISK_UNRESOLVED_VAR_LEVEL|LMLINE_RISK_BRACE_CAPPED_LEVEL) printf '%s\n' low medium high ;;
     LMLINE_CLIPBOARD_PROVIDER) source_support_files; printf 'auto\n'; __lmline_clipboard_provider_names ;;
     LMLINE_BIND_KEYS|LMLINE_ASYNC|LMLINE_STREAM|LMLINE_STORE|LMLINE_TOOL_RESULT_SUMMARIZE|LMLINE_INCLUDE_SHELL_CONTEXT|LMLINE_INCLUDE_CWD_CONTEXT|LMLINE_INCLUDE_GIT_CONTEXT|LMLINE_INCLUDE_PROJECT_CONTEXT|LMLINE_INCLUDE_EDITOR_CONTEXT|LMLINE_INCLUDE_LOCALE_CONTEXT|LMLINE_INCLUDE_SUGGESTED_COMMANDS|LMLINE_TOOL_COMMAND_EXISTS|LMLINE_TOOL_COMMANDS|LMLINE_TOOL_COMMAND_INFO|LMLINE_TOOL_FILES|LMLINE_TOOL_GIT_STATUS|LMLINE_TOOL_FILE_EXCERPT|LMLINE_TOOL_COMMAND_RUN|LMLINE_SPINNER|LMLINE_PROGRESS|LMLINE_DEBUG|LMLINE_FIX_ALLOW_MEDIUM|LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION)
       printf '%s\n' 0 1

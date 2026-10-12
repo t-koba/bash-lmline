@@ -469,10 +469,19 @@ The engine filters candidates before printing them:
 - deduplicated
 - truncated to `LMLINE_MAX_CANDIDATE_BYTES` when needed
 
-Each accepted candidate is classified with `risk_patterns.tsv`. High-risk
-candidates are inserted as comments prefixed with `# REVIEW REQUIRED:`.
-Medium-risk candidates are inserted with a warning. Low-risk candidates are
-inserted directly.
+Each accepted candidate is classified with the configured `risk_patterns.tsv`
+and structural pipe-to-shell, unresolved variable, and capped brace
+recognition. High-risk candidates are inserted as comments prefixed with
+`# REVIEW REQUIRED:`. Medium-risk candidates are inserted with a warning.
+Low-risk candidates are inserted directly. Structural levels are
+configuration (`LMLINE_RISK_PIPED_SHELL_LEVEL` default `high`,
+`LMLINE_RISK_UNRESOLVED_VAR_LEVEL` default `medium`,
+`LMLINE_RISK_BRACE_CAPPED_LEVEL` default `medium`); the highest applicable
+structural level wins. With the shipped defaults the highest level across
+patterns and structural wins, so a generic medium rule never shadows a
+structural high. A replacement `risk_patterns.tsv` overrides shipped
+patterns and structural defaults: a matching rule wins and structural
+fallbacks apply only when no rule matched.
 
 The first inserted candidate shows the candidate count and model metadata.
 Cycling with `Ctrl-x Ctrl-n` / `Ctrl-x Ctrl-p` shows the current position
@@ -675,7 +684,14 @@ clipboard_providers.tsv:  name<TAB>command<TAB>arg1<TAB>arg2...
 
 `risk_patterns.tsv` levels are `high`, `medium`, and `low`. The first matching
 rule wins after whitespace is squeezed and the command is wrapped with one
-leading and trailing space.
+leading and trailing space. Structural fallbacks use
+`LMLINE_RISK_PIPED_SHELL_LEVEL` (default `high`),
+`LMLINE_RISK_UNRESOLVED_VAR_LEVEL` (default `medium`), and
+`LMLINE_RISK_BRACE_CAPPED_LEVEL` (default `medium`), highest wins; unknown
+or empty levels fall back to their defaults. With the shipped defaults the
+highest level across patterns and structural wins. A replacement file
+overrides shipped patterns and structural defaults: a matching rule wins
+and structural fallbacks apply only when no rule matched.
 
 `local_commands.txt` lists command names allowed by `command_run` when the
 selected execution backend is `local`. The local backend also requires a low
@@ -1090,6 +1106,9 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_SHELL_SYNTAX_WORDS_FILE` | user override or installed default | words ignored by command availability validation |
 | `LMLINE_COMMAND_PREFIX_WORDS_FILE` | user override or installed default | command prefixes ignored before command extraction |
 | `LMLINE_RISK_PATTERNS_FILE` | user override or installed default | candidate risk rules |
+| `LMLINE_RISK_PIPED_SHELL_LEVEL` | `high` | level for pipe-to-shell structural risk |
+| `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` | `medium` | level for unresolved variable command structural risk |
+| `LMLINE_RISK_BRACE_CAPPED_LEVEL` | `medium` | level for capped brace expansion structural risk |
 | `LMLINE_PROJECT_MARKERS_FILE` | user override or installed default | project type markers |
 | `LMLINE_LOCAL_COMMANDS_FILE` | user override or installed default | local backend allowlist for `command_run` |
 | `LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE` | user override or installed default | required command list for `doctor` |

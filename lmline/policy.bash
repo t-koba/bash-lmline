@@ -408,7 +408,9 @@ __lmline_expand_braces_for_risk() {
   printf '%s' "$current"
 }
 
-# Structural pipe-to-shell check for risk matching only (not execution).
+# Structural pipe-to-shell recognition for risk matching only (not execution).
+# The resulting level is configuration (LMLINE_RISK_PIPED_SHELL_LEVEL,
+# default high); see __lmline_risk_match for precedence.
 # Any non-first pipeline segment led by a wrapper (command/builtin/exec/env/
 # time/sudo/nohup/nice/!) or a shell itself, where any later word (after
 # stripping assignments, quoting and absolute paths) is an interactive shell,
@@ -459,9 +461,41 @@ __lmline_risk_piped_shell() {
   return 1
 }
 
+# Structural risk levels are configuration, not hardcoded policy. Each
+# defaults to the historical protective value (piped shell high, the two
+# fallbacks medium); an unset, empty, or unknown value falls back to its
+# default so the check fails closed.
+__lmline_risk_structural_level() {
+  local value=${1-} default=${2:-medium}
+  case "$value" in
+    high|medium|low) printf '%s\n' "$value" ;;
+    *) printf '%s\n' "$default" ;;
+  esac
+}
+
+__lmline_risk_level_rank() {
+  case "${1-}" in
+    high) printf '3\n' ;;
+    medium) printf '2\n' ;;
+    low) printf '1\n' ;;
+    *) printf '0\n' ;;
+  esac
+}
+
+# Risk precedence: structural recognition (piped shell, unresolved variable
+# command, capped brace expansion) is mechanism only; its levels are
+# configuration (LMLINE_RISK_*_LEVEL, defaults high/medium/medium, unknown or
+# empty falls back to the default). A replacement risk_patterns file
+# overrides shipped patterns and structural defaults: with a user or explicit
+# file, the first matching rule wins and structural fallbacks apply only when
+# no rule matched. With the shipped default file, shipped patterns and
+# structural fallbacks compete and the highest level wins, so a generic
+# medium rule never shadows a structural high. LMLINE_RISK_*_LEVEL tunes
+# structural fallbacks in both modes. Defaults stay protective.
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
-  local brace_capped=0 best_level="" best_reason=""
+  local brace_capped=0 best_level="" best_reason="" piped_found=0
+  local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
   # Decode ANSI-C quoting first so hex/octal hides are judged by content.
   expanded=$(__lmline_decode_ansi_c_for_risk "$cmd")
   if alts_str=$(__lmline_expand_braces_for_risk "$expanded"); then
@@ -478,10 +512,12 @@ __lmline_risk_match() {
   while IFS= read -r alt || [[ -n $alt ]]; do
     # Normalize: canonicalize quoting/IFS/braces, squeeze whitespace, and
     # wrap in single spaces so one pattern like "* dd *" matches at line
-    # start, mid-pipeline, and bare.
+    # start, mid-pipeline, and bare. Structural pipe-to-shell recognition
+    # is recorded here and decided after pattern matching (see precedence
+    # below): a replacement rule can override it, while shipped defaults
+    # compete with it for the highest level.
     if __lmline_risk_piped_shell "$alt"; then
-      printf 'high\tpiped shell execution\n'
-      return 0
+      piped_found=1
     fi
     canon=$(__lmline_canonicalize_for_risk <<<"$alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
@@ -509,23 +545,71 @@ __lmline_risk_match() {
       fi
     done <"$file"
   done <<<"$alts_str"
-  if [[ -n $best_level ]]; then
-    printf '%s\t%s\n' "$best_level" "$best_reason"
-    return 0
+  if (( piped_found )); then
+    candidate_level=$(__lmline_risk_structural_level "${LMLINE_RISK_PIPED_SHELL_LEVEL:-high}" high)
+    rank=$(__lmline_risk_level_rank "$candidate_level")
+    if (( rank > struct_rank )); then
+      struct_rank=$rank
+      struct_level=$candidate_level
+      struct_reason="piped shell execution"
+    fi
   fi
   if __lmline_risk_has_unresolved_var_command "$expanded"; then
-    printf 'medium\tunresolved variable command\n'
-    return 0
+    candidate_level=$(__lmline_risk_structural_level "${LMLINE_RISK_UNRESOLVED_VAR_LEVEL:-medium}" medium)
+    rank=$(__lmline_risk_level_rank "$candidate_level")
+    if (( rank > struct_rank )); then
+      struct_rank=$rank
+      struct_level=$candidate_level
+      struct_reason="unresolved variable command"
+    fi
   fi
   if (( brace_capped )); then
-    printf 'medium\tunresolved brace expansion\n'
-    return 0
+    candidate_level=$(__lmline_risk_structural_level "${LMLINE_RISK_BRACE_CAPPED_LEVEL:-medium}" medium)
+    rank=$(__lmline_risk_level_rank "$candidate_level")
+    if (( rank > struct_rank )); then
+      struct_rank=$rank
+      struct_level=$candidate_level
+      struct_reason="unresolved brace expansion"
+    fi
+  fi
+  if [[ "$file" == "$LMLINE_DEFAULTS_DIR/risk_patterns.tsv" ]]; then
+    # Shipped defaults compete: highest wins so a generic medium rule never
+    # shadows a structural high (for example c{p,url} with *cp *).
+    if [[ -n $best_level && -n $struct_level ]]; then
+      best_rank=$(__lmline_risk_level_rank "$best_level")
+      if (( struct_rank >= best_rank )); then
+        printf '%s\t%s\n' "$struct_level" "$struct_reason"
+      else
+        printf '%s\t%s\n' "$best_level" "$best_reason"
+      fi
+      return 0
+    fi
+    if [[ -n $struct_level ]]; then
+      printf '%s\t%s\n' "$struct_level" "$struct_reason"
+      return 0
+    fi
+    if [[ -n $best_level ]]; then
+      printf '%s\t%s\n' "$best_level" "$best_reason"
+      return 0
+    fi
+  else
+    # Replacement file overrides: a matching rule wins over structural
+    # fallbacks, which apply only when no rule matched.
+    if [[ -n $best_level ]]; then
+      printf '%s\t%s\n' "$best_level" "$best_reason"
+      return 0
+    fi
+    if [[ -n $struct_level ]]; then
+      printf '%s\t%s\n' "$struct_level" "$struct_reason"
+      return 0
+    fi
   fi
 }
 
 # Fail-closed net for variable indirection in the command word ($VAR, ${VAR},
 # or surviving $'...' residue): the value cannot be proven safe, so report
-# medium and let the insert warning and fix-mode gating apply. Concrete words
+# the configured LMLINE_RISK_UNRESOLVED_VAR_LEVEL (default medium) and let
+# the insert warning and fix-mode gating apply. Concrete words
 # (echo $HOME), $(...) substitution (judged by its content rules), and
 # path-like $HOME/... are left alone: no stricter than needed.
 __lmline_risk_has_unresolved_var_command() {

@@ -186,3 +186,41 @@ bash -c '
   rm -rf "$project_tmp"
 ' _ "$repo_dir" || fail "policy/context"
 ok "policy and context"
+
+bash -c '
+  set -euo pipefail
+  source "$1/lmline/policy.bash"
+  risk_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-risk-override.XXXXXX")
+  # Empty replacement file: structural fallbacks decide.
+  : >"$risk_tmp/empty.tsv"
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_level "echo hi") == low ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_reason "echo hi") == "no matching risk rule" ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_level "\$X -rf build") == medium ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_reason "\$X -rf build") == "unresolved variable command" ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_level "echo hi | sh") == high ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_reason "echo hi | sh") == "piped shell execution" ]]
+  # Replacement low catch-all overrides pattern and structural defaults alike.
+  printf "low\t*\tuser override\n" >"$risk_tmp/override.tsv"
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "echo hi") == low ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_reason "echo hi") == "user override" ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "\$X -rf build") == low ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_reason "\$X -rf build") == "user override" ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "echo hi | sh") == low ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_reason "echo hi | sh") == "user override" ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "rm -rf build") == low ]]
+  # Explicit structural levels tune the fallbacks when the default file is kept.
+  [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=medium __lmline_risk_level "echo hi | sh") == medium ]]
+  [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=medium __lmline_risk_reason "echo hi | sh") == "piped shell execution" ]]
+  [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=low __lmline_risk_level "echo hi | sh") == low ]]
+  [[ $(LMLINE_RISK_UNRESOLVED_VAR_LEVEL=low __lmline_risk_level "\$X -rf build") == low ]]
+  [[ $(LMLINE_RISK_UNRESOLVED_VAR_LEVEL=high __lmline_risk_level "\$X -rf build") == high ]]
+  # Unknown or empty levels fail closed to their protective defaults.
+  [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=bogus __lmline_risk_level "echo hi | sh") == high ]]
+  [[ $(LMLINE_RISK_UNRESOLVED_VAR_LEVEL=bogus __lmline_risk_level "\$X -rf build") == medium ]]
+  [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL= __lmline_risk_level "echo hi | sh") == high ]]
+  # Highest applicable structural level wins.
+  [[ $(__lmline_risk_level "\$X | sh") == high ]]
+  [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=low LMLINE_RISK_UNRESOLVED_VAR_LEVEL=high __lmline_risk_level "\$X | sh") == high ]]
+  rm -rf "$risk_tmp"
+' _ "$repo_dir" || fail "risk override contract"
+ok "risk override contract"
