@@ -397,6 +397,12 @@ Later files override earlier values. Unset settings use built-in defaults.
 Config files are parsed as simple `export LMLINE_NAME='value'` assignments;
 they are not sourced as shell code.
 
+Project files (entries 3 and 4) are only loaded when the user enables
+`LMLINE_PROJECT_CONFIG` (`lmline config set LMLINE_PROJECT_CONFIG 1`) in
+their own settings or environment. It defaults to `0`, so a cloned
+repository cannot change the engine, provider, or tool settings on its own,
+and a project file cannot enable it by itself.
+
 ## Keys
 
 | Key | Action |
@@ -590,7 +596,7 @@ The default workspace mount is read-only. Use `--workspace writable` only when
 you deliberately want sandbox commands to write through to the project tree.
 Use `--workspace none` for image-only checks.
 
-After setup, persist the printed `next_config` commands in the project config.
+After setup, persist the printed `next_config` commands in the project config (and enable `LMLINE_PROJECT_CONFIG` so project files are loaded).
 Then `LMLINE_EXEC_BACKEND=microsandbox` uses `msb exec` in that named sandbox
 instead of ephemeral `msb run`.
 
@@ -1118,6 +1124,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_RISK_PIPED_SHELL_LEVEL` | `high` | level for pipe-to-shell structural risk |
 | `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` | `medium` | level for unresolved variable command structural risk |
 | `LMLINE_RISK_BRACE_CAPPED_LEVEL` | `medium` | level for capped brace expansion structural risk |
+| `LMLINE_PROJECT_CONFIG` | `0` | load project-local `.lmline.bash` files |
 | `LMLINE_PROJECT_MARKERS_FILE` | user override or installed default | project type markers |
 | `LMLINE_LOCAL_COMMANDS_FILE` | user override or installed default | local backend allowlist for `command_run` |
 | `LMLINE_DOCTOR_REQUIRED_COMMANDS_FILE` | user override or installed default | required command list for `doctor` |

@@ -16,6 +16,8 @@ The microsandbox backend isolates command execution from the host process, but c
 
 Project-local `.lmline.bash` files are parsed as `export LMLINE_NAME='value'` assignments only. They are not sourced as shell code. Lines that are not simple `LMLINE_*` assignments are ignored.
 
+Project files are ignored unless the user enables `LMLINE_PROJECT_CONFIG` in their own settings or environment (default `0`). Without that opt-in, a cloned repository cannot replace the engine executable, redirect the provider URL, or re-enable execution and file tools the user left disabled; a project file cannot enable the opt-in by itself.
+
 Debug tracing can save request/response payloads, accepted and rejected candidates, tool outputs, and captured output from `Ctrl-x Ctrl-f`. Keep tracing off unless you are actively debugging.
 
 When `LMLINE_CACHE_TTL` is above 0, generated candidates and explanation text are stored under `~/.config/lmline/cache/` (directory mode `0700`, files user-only). Cached entries can contain your prompt lines and model responses; expired entries are pruned opportunistically, and `rm -rf ~/.config/lmline/cache` clears the cache at any time. `fix` and `clip` responses are never cached.

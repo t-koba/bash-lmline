@@ -88,9 +88,13 @@ __lmline_init_dirs() {
 # Loads the full config hierarchy in precedence order: persistent settings,
 # then project config from the Git root, then project config from $PWD.
 # All entry points (CLI, engine, bash/zsh init) share this single loader.
+# Project files are only read when the user enabled LMLINE_PROJECT_CONFIG in
+# their own settings or environment (off by default). The check runs before
+# either project file is read, so a project file cannot enable itself.
 __lmline_load_all_config() {
   local config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline} root
   __lmline_load_export_file "$config_dir/settings.bash"
+  [[ "${LMLINE_PROJECT_CONFIG:-0}" == 1 ]] || return 0
   if command -v git >/dev/null 2>&1 && root=$(git rev-parse --show-toplevel 2>/dev/null); then
     if [[ -f "$root/.lmline.bash" ]]; then
       __lmline_load_export_file "$root/.lmline.bash"
