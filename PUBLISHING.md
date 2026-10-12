@@ -2,6 +2,9 @@
 
 Before publishing:
 
+Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
+`./scripts/publish-check.sh`; the check fails closed when `rg` is missing.
+
 1. Ensure `request.md` is not included in the repository or release artifact. It is ignored by `.gitignore` and marked `export-ignore` in `.gitattributes`; do not force-add it.
 2. Run:
 
