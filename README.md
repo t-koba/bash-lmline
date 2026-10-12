@@ -812,7 +812,7 @@ with WHP (preview; see [Windows troubleshooting](https://docs.microsandbox.dev/t
 API keys are passed to `curl` through `-H @file` header files created in a
 temporary directory. They are not placed on the `curl` command line.
 
-Provider-side request storage is opt-out on OpenAI APIs: an unset `store` keeps the request server-side (Responses stored by default; new-account Chat stored by default). lmline fails closed and always sends an explicit value: `store: false` by default (`LMLINE_STORE=0`), `store: true` when `LMLINE_STORE=1`. The `messages` format has no `store` field. Providers that reject `store` with HTTP 400 get one retry without it. Allowing storage does not change answers; it only changes provider retention.
+Provider-side request storage is opt-out on OpenAI APIs: an unset `store` keeps the request server-side (Responses stored by default; new-account Chat stored by default). lmline fails closed and always sends an explicit value: `store: false` by default (`LMLINE_STORE=0`), `store: true` when `LMLINE_STORE=1`. The `messages` format has no `store` field. Providers that reject the `store` field with HTTP 400 fail by default so an explicit `store: false` is never silently dropped; set `LMLINE_STORE_FALLBACK=1` to allow one retry without `store` for providers where omission is acceptable. Only errors indicating the `store` field itself was rejected trigger the fallback. Allowing storage does not change answers; it only changes provider retention.
 
 Trace files are disabled by default:
 
@@ -989,6 +989,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CACHE_TTL` | `600` | response cache TTL in seconds (0 disables) |
 | `LMLINE_STREAM` | `0` | stream `explain` and `clip` responses |
 | `LMLINE_STORE` | `0` | request provider-side storage (`0` sends `store: false`, `1` sends `store: true`; `chat` and `responses` only) |
+| `LMLINE_STORE_FALLBACK` | `0` | allow one retry without store field when provider rejects it (`0` fails the request, `1` omits store and retries once) |
 | `LMLINE_TEMPERATURE` | `0.2` | chat completion temperature |
 | `LMLINE_FIX_TEMPERATURE` | `0.1` | sampling temperature for fix mode |
 | `LMLINE_MAX_TOKENS` | `1200` | max response tokens for command modes |

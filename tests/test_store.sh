@@ -25,7 +25,8 @@ jq -e '.store == false' <<<"$out" >/dev/null || fail "responses default store:fa
 out=$(LMLINE_API_FORMAT=messages LMLINE_TOOL_MODE=none run_payload)
 jq -e 'has("store") | not' <<<"$out" >/dev/null || fail "messages omits store"
 
-# compat fallback: provider rejects store with 400, engine retries without it
+# compat fallback is explicit opt-in: default fails closed on store rejection,
+# LMLINE_STORE_FALLBACK=1 allows one omit-and-retry.
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"
 cat >"$fake_bin/curl" <<'CURL'
@@ -55,15 +56,52 @@ else
 fi
 CURL
 chmod +x "$fake_bin/curl"
-printf '0\n' >"$cfg_tmp/fake-curl-state"
 mkdir -p "$cfg_tmp/store-bodies"
-store_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_BODIES="$cfg_tmp/store-bodies" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/store.err")
+# Default: explicit store:false rejection fails without retry.
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_BODIES="$cfg_tmp/store-bodies" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/store-fail.out" 2>"$cfg_tmp/store-fail.err"; then
+  fail "store rejection without fallback passed open"
+fi
+[[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "store fail-closed count"
+grep -q 'LMLINE_STORE_FALLBACK=1' "$cfg_tmp/store-fail.err" || fail "store fail-closed hint"
+! grep -q 'retrying without store field' "$cfg_tmp/store-fail.err" || fail "store fail-closed retried"
+# Opt-in: LMLINE_STORE_FALLBACK=1 retries once without store.
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+store_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_BODIES="$cfg_tmp/store-bodies" LMLINE_TOOL_MODE=none LMLINE_STORE_FALLBACK=1 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/store.err")
 [[ "$(candidates_of <<<"$store_out")" == "echo store-fallback-ok" ]] || fail "store fallback output"
 [[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "store fallback count"
 grep -q 'retrying without store field' "$cfg_tmp/store.err" || fail "store fallback progress"
+# Broad mention alone does not trigger the fallback even when enabled.
+cat >"$fake_bin/curl" <<'CURL'
+#!/usr/bin/env bash
+out=; data=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+printf '{"error":{"message":"failed to restore session"}}\n' >"$out"
+printf '400\tapplication/json'
+CURL
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_STORE_FALLBACK=1 LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/restore.out" 2>"$cfg_tmp/restore.err"; then
+  fail "broad store mention retried"
+fi
+[[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "broad store mention count"
+! grep -q 'retrying without store field' "$cfg_tmp/restore.err" || fail "broad store mention retried"
 
-# config catalog documents the new setting
+# config catalog documents the settings
 store_describe=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_STORE)
 grep -q '^default=0$' <<<"$store_describe" || fail "store describe default"
+fallback_describe=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_STORE_FALLBACK)
+grep -q '^default=0$' <<<"$fallback_describe" || fail "store fallback describe default"
+grep -q '^values=0 1$' <<<"$fallback_describe" || fail "store fallback describe values"
 
 ok "store"

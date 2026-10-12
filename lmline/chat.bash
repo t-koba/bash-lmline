@@ -261,6 +261,22 @@ __lmline_response_error_detail() {
   printf '%s\n' "$detail" | __lmline_display_error_line 400
 }
 
+# True when a provider error indicates the store field itself was rejected,
+# not merely mentioning "store" in passing (restore/storefront). Requires
+# store as a separate word plus rejection context (unrecognized/unknown/etc.),
+# so broad errors cannot silently negate the explicit storage setting. The
+# omit-and-retry itself is additionally gated on LMLINE_STORE_FALLBACK.
+__lmline_store_field_rejected() {
+  local detail_lower=${1-}
+  [[ "$detail_lower" =~ (^|[^a-z])store([^a-z]|$) ]] || return 1
+  case "$detail_lower" in
+    *unrecogn*|*unknown*|*unsupport*|*unexpected*|*invalid*|*reject*|*not*suppor*|*not*allow*|*no*such*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 __lmline_report_request_failure() {
   local http_code=$1 content_type=${2-} response=$3 detail hint= detail_lower=
   detail=$(__lmline_response_error_detail "$response" "$content_type")
@@ -275,6 +291,13 @@ __lmline_report_request_failure() {
         *responses\ instead*|*reasoning_effort*|*function\ tools*)
           hint='; try: LMLINE_API_FORMAT=responses or LMLINE_TOOL_MODE=text for this model' ;;
       esac
+      if __lmline_store_field_rejected "$detail_lower"; then
+        if __lmline_flag_enabled "${LMLINE_STORE_FALLBACK:-0}"; then
+          hint+='; store field rejected (fallback enabled)'
+        else
+          hint+='; provider rejects store field; set LMLINE_STORE_FALLBACK=1 if omission is acceptable for this provider'
+        fi
+      fi
       ;;
   esac
   [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
@@ -309,14 +332,17 @@ __lmline_post_chat() {
       __lmline_accept_response "$response" "$label" || return 1
       ;;
     *)
-      # Provider compat: some OpenAI-compatible endpoints reject the store
-      # field. On a 400 naming store, retry once without it.
+      # Provider compat (explicit opt-in): some OpenAI-compatible endpoints
+      # reject the store field. When LMLINE_STORE_FALLBACK is enabled and the
+      # 400 indicates the store field itself was rejected, retry once without
+      # it. By default (0) the request fails closed so an explicit
+      # store:false is never silently dropped to a retention-defaulting omit.
       if [[ "$http_code" == 400 ]] \
         && jq -e 'has("store")' "$payload" >/dev/null 2>&1; then
         store_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         store_lower=$(printf '%s' "$store_detail" | tr '[:upper:]' '[:lower:]')
-        case "$store_lower" in
-          *store*)
+        if __lmline_store_field_rejected "$store_lower"; then
+          if __lmline_flag_enabled "${LMLINE_STORE_FALLBACK:-0}"; then
             store_payload=$work_dir/payload.no-store.json
             if jq 'del(.store)' "$payload" >"$store_payload"; then
               __lmline_progress "compatibility fallback: retrying without store field"
@@ -332,8 +358,8 @@ __lmline_post_chat() {
                 payload=$store_payload
               fi
             fi
-            ;;
-        esac
+          fi
+        fi
       fi
       # Reasoning-model compat: chat sends max_tokens + temperature and
       # responses sends max_output_tokens + temperature, while
@@ -623,8 +649,9 @@ __lmline_write_chat_payload() {
   fi
   # Provider-side retention is opt-out on OpenAI APIs: an unset store keeps
   # the request server-side. Fail closed by always sending an explicit store
-  # value on chat/responses; messages has no store field. Unknown providers
-  # that reject store fall back to a retry without it in __lmline_post_chat.
+  # value on chat/responses; messages has no store field. Providers that
+  # reject the store field fail by default; set LMLINE_STORE_FALLBACK=1 to
+  # allow one omit-and-retry for such providers (see __lmline_post_chat).
   if [[ "$api_format" == chat || "$api_format" == responses ]]; then
     if __lmline_flag_enabled "${LMLINE_STORE:-0}"; then
       jq '. + {store: true}' "$out" >"$out.store" || {
