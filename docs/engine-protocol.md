@@ -17,7 +17,7 @@ engine --mode MODE --shell SHELL --cwd DIR --point N \
 | --- | --- |
 | `--mode` | `generate`, `rewrite`, `fix`, `explain`, or `clip` |
 | `--shell` | frontend shell name (`bash` or `zsh`); informational |
-| `--cwd` | caller working directory; informational, included only when `LMLINE_INCLUDE_CWD_CONTEXT` is enabled |
+| `--cwd` | caller working directory; included in the prompt only when `LMLINE_INCLUDE_CWD_CONTEXT` is enabled, and always included in the response-cache identity |
 | `--point` | cursor position in the line; informational, included only when `LMLINE_INCLUDE_EDITOR_CONTEXT` is enabled |
 | `--line-file` | file containing the user line (for `fix`: line plus captured execution report; for `clip`: question plus redacted clipboard text) |
 | `--context-file` | file containing the shell context collected by `lmline context`; sections depend on `LMLINE_INCLUDE_*` and `LMLINE_TOOL_*` settings |
@@ -116,7 +116,8 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 - Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. On an HTTP 400 naming `store`, the engine retries once without it and emits an `lmline-progress:` fallback line.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
-  identical requests.
+  identical requests in the same declared working directory (`--cwd`). Cache
+  keys include the mode, line, declared directory, model, and prompt version.
 - Native local tools (`LMLINE_TOOL_MODE=openai`/`auto`) work on `chat` and `responses` (buffered tool loop); streaming (`LMLINE_STREAM`) is `chat`-only. Some reasoning models (GPT-5.4 and later) reject native tools on `chat` with HTTP 400; the engine hint then suggests `LMLINE_API_FORMAT=responses` or `LMLINE_TOOL_MODE=text`. Newer models (GPT-6 Astra/Sol) require `responses` for tool calling. The `messages` format runs buffered requests without native tool calls (`text` tool requests still apply); the engine emits an `lmline-progress:` warning when native tools or streaming are requested but disabled by the format.
 - API keys are passed to curl through `-H @file` header files, never on the
   curl command line.
