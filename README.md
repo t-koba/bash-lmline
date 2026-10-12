@@ -817,6 +817,9 @@ with WHP (preview; see [Windows troubleshooting](https://docs.microsandbox.dev/t
 
 API keys are passed to `curl` through `-H @file` header files created in a
 temporary directory. They are not placed on the `curl` command line.
+Provider requests ignore implicit curl configuration files, so only the
+configured provider receives them; proxy and CA environment variables still
+apply.
 
 Provider-side request storage is opt-out on OpenAI APIs: an unset `store` keeps the request server-side (Responses stored by default; new-account Chat stored by default). lmline fails closed and always sends an explicit value: `store: false` by default (`LMLINE_STORE=0`), `store: true` when `LMLINE_STORE=1`. The `messages` format has no `store` field. Providers that reject the `store` field with HTTP 400 fail by default so an explicit `store: false` is never silently dropped; set `LMLINE_STORE_FALLBACK=1` to allow one retry without `store` for providers where omission is acceptable. Only errors indicating the `store` field itself was rejected trigger the fallback. Allowing storage does not change answers; it only changes provider retention.
 

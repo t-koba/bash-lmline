@@ -279,7 +279,8 @@ if [[ -z "$LMLINE_MODEL" ]]; then
   model_record=
   models_url=$(profile_model_catalog_url "$base" "$LMLINE_MODELS_URL")
   models_jq=${LMLINE_MODELS_JQ:-$(profile_default_model_catalog_jq)}
-  models_body=$(curl -fsS --max-time "$LMLINE_ENGINE_TIMEOUT" "${curl_headers[@]}" "$models_url") || {
+  # -q first: ignore implicit curlrc so only the catalog URL is contacted.
+  models_body=$(curl -q -fsS --max-time "$LMLINE_ENGINE_TIMEOUT" "${curl_headers[@]}" "$models_url") || {
     printf 'lmline-engine: LMLINE_MODEL is unset and model discovery failed\n' >&2
     exit 1
   }

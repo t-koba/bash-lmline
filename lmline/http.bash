@@ -26,7 +26,8 @@ __lmline_http_build_headers() {
 # GET with the headers prepared by __lmline_http_build_headers.
 __lmline_http_get() {
   local url=$1 max_time=${2:-20}
-  curl -fsS --max-time "$max_time" "${__LMLINE_HTTP_HEADERS[@]}" "$url"
+  # -q first: ignore implicit curlrc so only the requested URL is contacted.
+  curl -q -fsS --max-time "$max_time" "${__LMLINE_HTTP_HEADERS[@]}" "$url"
 }
 
 # Maps raw engine/curl error text to a short actionable user message.

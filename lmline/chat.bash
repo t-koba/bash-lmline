@@ -51,7 +51,8 @@ __lmline_api_path() {
 
 __lmline_curl_chat() {
   local api_format=${__lmline_request_api_format:-${LMLINE_API_FORMAT:-chat}}
-  curl -sS --max-time "$LMLINE_ENGINE_TIMEOUT" \
+  # -q first: ignore implicit curlrc so only the configured provider is contacted.
+  curl -q -sS --max-time "$LMLINE_ENGINE_TIMEOUT" \
     -o "$1" \
     -w '%{http_code}\t%{content_type}' \
     "${curl_headers[@]}" \
@@ -1061,7 +1062,8 @@ __lmline_stream_handle_line() {
 }
 
 __lmline_stream_curl() {
-  curl -sS -N --max-time "$LMLINE_ENGINE_TIMEOUT" "${curl_headers[@]}" \
+  # -q first: ignore implicit curlrc so only the configured provider is contacted.
+  curl -q -sS -N --max-time "$LMLINE_ENGINE_TIMEOUT" "${curl_headers[@]}" \
     -X POST --data-binary @"$1" "$base/chat/completions" 2>"$err_file"
 }
 

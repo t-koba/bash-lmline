@@ -1180,7 +1180,8 @@ case "$cmd" in
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \
         "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp"
       if [[ -n "$api_base" ]]; then
-        api_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+        # -q first: ignore implicit curlrc so the probe contacts only the provider.
+        api_code=$(curl -q -sS -o /dev/null -w '%{http_code}' --max-time 5 \
           "${__LMLINE_HTTP_HEADERS[@]}" \
           "$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")" 2>/dev/null) || api_code=000
         case "$api_code" in
