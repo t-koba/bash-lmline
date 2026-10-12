@@ -87,4 +87,55 @@ grep -q 'connection=ok' <<<"$doctor_out" || fail "doctor probe connection"
 grep -qx -- '-q' "$cfg_tmp/argv0-doctor.log" || fail "doctor probe: no isolated request recorded"
 ! grep -vx -e '-q' -e '--version' "$cfg_tmp/argv0-doctor.log" || fail "doctor probe: request without leading -q"
 
+# Model catalog refresh path (__lmline_http_get).
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >>"${LMLINE_FAKE_CURL_ARGV0:?}"
+printf '{"data":[{"id":"catalog/m1"}]}\n'
+EOF
+chmod +x "$fake_bin/curl"
+: >"$cfg_tmp/argv0-refresh.log"
+LMLINE_CONFIG_DIR="$cfg_tmp/config-refresh" "$repo_dir/lmline/lmline" endpoint add catalog https://catalog.test.invalid/v1
+PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_ARGV0="$cfg_tmp/argv0-refresh.log" LMLINE_CONFIG_DIR="$cfg_tmp/config-refresh" \
+  "$repo_dir/lmline/lmline" model refresh catalog
+LMLINE_CONFIG_DIR="$cfg_tmp/config-refresh" "$repo_dir/lmline/lmline" model list catalog | grep -q 'catalog/m1' || fail "refresh catalog model"
+assert_isolated_requests "$cfg_tmp/argv0-refresh.log" "model refresh"
+
+# Engine model auto-discovery path.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >>"${LMLINE_FAKE_CURL_ARGV0:?}"
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+out=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ -z "$out" ]]; then
+  printf '{"data":[{"id":"discovered/m1"}]}\n'
+  exit 0
+fi
+cat >"$out" <<'JSON'
+{"model":"m","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"choices":[{"message":{"role":"assistant","content":"echo discovered"},"finish_reason":"stop"}]}
+JSON
+printf '200\tapplication/json'
+EOF
+chmod +x "$fake_bin/curl"
+LMLINE_CONFIG_DIR="$cfg_tmp/config-discovery" "$repo_dir/lmline/lmline" config set LMLINE_BASE_URL https://api.test.invalid/v1
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+: >"$cfg_tmp/argv0-discovery.log"
+discovery_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_ARGV0="$cfg_tmp/argv0-discovery.log" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config-discovery" \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+grep -q 'echo discovered' <<<"$discovery_out" || fail "discovery generate candidate"
+[[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "discovery plus generate request count"
+assert_isolated_requests "$cfg_tmp/argv0-discovery.log" "model discovery"
+
 ok "curl requests ignore implicit curlrc"
