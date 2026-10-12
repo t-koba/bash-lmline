@@ -60,14 +60,15 @@ __lmline_select_exec_backend() {
 
 # Portable deadline for model-requested execution. Uses GNU timeout when
 # available; otherwise polls in pure bash so execution stays bounded on
-# platforms without it (e.g. stock macOS). Returns 124 on timeout, matching
-# GNU timeout for the existing timed_out handling.
+# platforms without it (e.g. stock macOS). Returns 124 on timeout, or 137
+# when the command ignores TERM and is force-killed after a 1s grace period;
+# callers treat both as timed_out.
 __lmline_timeout_run() {
   local timeout_s=$1
   shift
   [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_s" "$@"
+    timeout -k 1s "$timeout_s" "$@"
     return $?
   fi
   "$@" &

@@ -771,5 +771,27 @@ bash -c '
   [[ "$out" == portable-ok ]] || exit 7
 ' _ "$repo_dir" "$notimeout_bin" || fail "portable timeout without GNU timeout"
 rm -rf "$notimeout_bin"
+
+# Forced termination bounds a TERM-ignoring command (GNU -k, fallback KILL).
+termignore_bin=$(mktemp -d "${TMPDIR:-/tmp}/lmline-termignore.XXXXXX")
+cat >"$termignore_bin/ignore-term" <<'SCRIPT_EOF'
+#!/usr/bin/env bash
+trap "" TERM
+exec sleep 10
+SCRIPT_EOF
+chmod +x "$termignore_bin/ignore-term"
+bash -c '
+  set -uo pipefail
+  source "$1/lmline/sandbox.bash"
+  start=$SECONDS
+  status=0
+  __lmline_timeout_run 2 "$2/ignore-term" || status=$?
+  elapsed=$((SECONDS - start))
+  (( status == 124 || status == 137 )) || exit 5
+  (( elapsed < 8 )) || exit 6
+  out=$(__lmline_timeout_run 2 echo force-ok) || exit 7
+  [[ "$out" == force-ok ]] || exit 7
+' _ "$repo_dir" "$termignore_bin" || fail "timeout force-kills TERM-ignoring command"
+rm -rf "$termignore_bin"
 rm -rf "$cfg_tmp"
 ok "cli, config, and profiles"
