@@ -96,6 +96,32 @@ third_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "cache expired run
 [[ $(cat "$cfg_tmp/cache-state") == 2 ]] || fail "expired cache refetches"
 [[ "$(candidates_of <<<"$third_out")" == "echo cached-cmd" ]] || fail "expired cache output"
 
+# Cache hits re-apply current risk policy: permissive entry cached as low
+# must serve as high after a strict policy change without refetching.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do case "$1" in -o) out=$2; shift 2 ;; *) shift ;; esac; done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+printf '{"model":"m","choices":[{"message":{"content":"printf x | sh"},"finish_reason":"stop"}]}' >"$out"
+printf '200\tapplication/json'
+EOF
+printf '# cache policy\n' >"$cfg_tmp/policy-line"
+printf '0\n' >"$cfg_tmp/policy-state"
+policy_base_env=(LMLINE_TOOL_MODE=none LMLINE_FAKE_CURL_STATE="$cfg_tmp/policy-state" LMLINE_CACHE_TTL=300)
+policy_low_out=$(env PATH="$fake_bin:$PATH" "${engine_env[@]}" "${policy_base_env[@]}" LMLINE_RISK_PIPED_SHELL_LEVEL=low \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
+  --line-file "$cfg_tmp/policy-line" --context-file "$cfg_tmp/context" --n 1 2>/dev/null) || fail "cache policy first run"
+grep -q $'^lmline-candidate: low\t' <<<"$policy_low_out" || fail "cache policy permissive risk"
+policy_high_out=$(env PATH="$fake_bin:$PATH" "${engine_env[@]}" "${policy_base_env[@]}" LMLINE_RISK_PIPED_SHELL_LEVEL=high \
+  "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
+  --line-file "$cfg_tmp/policy-line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/policy.err") || fail "cache policy second run"
+grep -q $'^lmline-candidate: high\t' <<<"$policy_high_out" || fail "cache policy strict reclassification"
+[[ $(cat "$cfg_tmp/policy-state") == 1 ]] || fail "cache policy hit avoids refetch"
+grep -q 'lmline-status: m=test-model; cached' "$cfg_tmp/policy.err" || fail "cache policy hit status"
+
 # --- streaming (explain, tool mode none) -------------------------------------
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash

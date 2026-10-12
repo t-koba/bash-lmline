@@ -935,10 +935,43 @@ __lmline_cache_lookup() {
   (( now - mtime <= LMLINE_CACHE_TTL ))
 }
 
+# Cache hits re-apply current validation and risk policy so a permissive
+# entry does not serve obsolete risk metadata after a strict policy change.
+# Annotated candidates are revalidated and reclassified; explain text has no
+# risk metadata and is served verbatim. Returns non-zero when no cached
+# candidate remains valid under the current policy, so the caller refetches.
 __lmline_cache_emit() {
+  local cached_line body risk_old reason_old flags candidate rejection risk_match risk reason
+  local valid_count=0
   printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
   printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
-  cat "$cache_file"
+  if [[ "$output_format" != annotated ]]; then
+    cat "$cache_file"
+    return 0
+  fi
+  while IFS= read -r cached_line || [[ -n "$cached_line" ]]; do
+    [[ "$cached_line" == 'lmline-candidate: '* ]] || continue
+    body=${cached_line#'lmline-candidate: '}
+    IFS=$'\t' read -r risk_old reason_old flags candidate <<<"$body"
+    [[ -n "$candidate" ]] || continue
+    [[ -n "$flags" ]] || flags='-'
+    rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode")
+    [[ "$rejection" == ok ]] || continue
+    if ! risk_match=$(__lmline_risk_match "$candidate"); then
+      risk_match=$'high\trisk rules unavailable'
+    fi
+    if [[ -n "$risk_match" ]]; then
+      risk=${risk_match%%$'\t'*}
+      reason=${risk_match#*$'\t'}
+    else
+      risk=low
+      reason='no matching risk rule'
+    fi
+    reason=${reason//$'\t'/ }
+    printf 'lmline-candidate: %s\t%s\t%s\t%s\n' "$risk" "$reason" "$flags" "$candidate"
+    valid_count=$((valid_count + 1))
+  done <"$cache_file"
+  (( valid_count > 0 ))
 }
 
 __lmline_cache_store() {
@@ -1289,8 +1322,10 @@ __lmline_chat_run() {
   emitted_file=$work_dir/emitted.txt
   : >"$emitted_file"
   if __lmline_cache_eligible && __lmline_cache_lookup; then
-    __lmline_cache_emit
-    exit 0
+    if __lmline_cache_emit; then
+      exit 0
+    fi
+    __lmline_progress "cached candidates stale under current policy; refetching"
   fi
 
   tool_round=0
