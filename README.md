@@ -916,8 +916,10 @@ Mutating CLI commands (`endpoint`, `model`, `use`, `config set/unset`,
 `debug on/off/trace`) take a lock on `~/.config/lmline/.lmline.lock` so
 concurrent `lmline` invocations from different terminals cannot lose each
 other's writes. The lock is a directory (`mkdir` is atomic on POSIX and
-portable to macOS, which lacks `flock`); a lock whose holder process has died
-is stolen automatically, and `lmline doctor` warns about stale locks.
+portable to macOS, which lacks `flock`). `lmline doctor` warns about stale
+locks. Locks are never reclaimed automatically: checking a PID then removing
+the directory can delete a successor's lock. After stopping all writers, remove
+a stale `.lmline.lock` directory manually under the configured config directory.
 `LMLINE_LOCK_TIMEOUT` (default 5s) bounds the wait; `LMLINE_NO_LOCK=1`
 disables locking for filesystems where `mkdir` atomicity is unreliable
 (some NFS mounts).

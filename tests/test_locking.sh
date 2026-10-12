@@ -35,13 +35,21 @@ for i in $(seq 1 "$n"); do
   grep -q "^local	model-$i	" "$cfg/models.tsv" || fail "parallel model add lost model-$i"
 done
 
-# A lock left behind by a dead process must be stolen, not block forever.
-mkdir -p "$cfg/.lmline.lock"
-printf '%s\n' 999999999 >"$cfg/.lmline.lock/pid"
+# Dead-owner and ownerless locks must fail closed, including old directories.
+for owner in 999999999 ''; do
+  mkdir -p "$cfg/.lmline.lock"
+  printf '%s\n' "$owner" >"$cfg/.lmline.lock/pid"
+  touch -t 200001010000 "$cfg/.lmline.lock"
+  if LMLINE_CONFIG_DIR="$cfg" LMLINE_LOCK_TIMEOUT=1 "$repo_dir/lmline/lmline" \
+    config set LMLINE_TEST_STALE no 2>"$cfg_tmp/lock.err"; then
+    fail "stale lock was reclaimed automatically"
+  fi
+  [[ -d "$cfg/.lmline.lock" ]] || fail "stale lock was deleted"
+  [[ "$(cat "$cfg/.lmline.lock/pid")" == "$owner" ]] || fail "owner changed"
+  rm -rf "$cfg/.lmline.lock"
+done
 LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set LMLINE_TEST_STALE ok \
-  || fail "stale lock was not stolen"
-grep -qxF "export LMLINE_TEST_STALE='ok'" "$cfg/settings.bash" || fail "write after stale steal"
-[[ ! -d "$cfg/.lmline.lock" ]] || fail "lock released after steal"
+  || fail "write after manual recovery failed"
 
 # A lock held by a live process must block the writer until timeout.
 mkdir -p "$cfg/.lmline.lock"
@@ -53,14 +61,12 @@ fi
 grep -q 'locked by another lmline process' "$cfg_tmp/lock.err" || fail "lock timeout message"
 rm -rf "$cfg/.lmline.lock"
 
-# A stale holder must not delete the thief's replacement lock.
+# A non-owner must not delete another process's lock.
 # shellcheck source=lmline/config.bash
 source "$repo_dir/lmline/config.bash"
 steal_lock="$cfg_tmp/steal.lock"
 rm -rf "$steal_lock"
-mkdir -p "$steal_lock"
-printf '%s\n' 999999999 >"$steal_lock/pid"
-__lmline_lock_acquire "$steal_lock" 5 || fail "steal of dead-pid lock failed"
+__lmline_lock_acquire "$steal_lock" 5 || fail "lock acquisition failed"
 [[ "$(cat "$steal_lock/pid")" == "$$" ]] || fail "thief pid was not recorded"
 bash -c 'source "$1/lmline/config.bash"; __lmline_lock_release "$2"' _ "$repo_dir" "$steal_lock" \
   2>"$cfg_tmp/steal.err" || fail "stale release exited non-zero"
