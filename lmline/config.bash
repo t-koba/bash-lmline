@@ -106,19 +106,20 @@ __lmline_load_all_config() {
   return 0
 }
 
-# Re-reads settings.bash when it changed on disk since the last load, so
-# "lmline config set" takes effect without restarting the shell. Widgets
-# call this before routing; config_dir must come from the caller because
-# LMLINE_CONFIG_DIR is not exported by the shell integrations.
+# Re-reads settings.bash when its content changed on disk since the last
+# load, so "lmline config set" takes effect without restarting the shell.
+# Content identity (not second-precision mtimes) catches atomic replacements
+# made within the same second. Widgets call this before routing; config_dir
+# must come from the caller because LMLINE_CONFIG_DIR is not exported by the
+# shell integrations.
 __lmline_reload_settings_if_changed() {
-  local config_dir=${1:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}} file mtime
+  local config_dir=${1:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}} file sum
   file=$config_dir/settings.bash
   [[ -f "$file" ]] || return 0
-  mtime=$(stat -f %m "$file" 2>/dev/null)
-  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -c %Y "$file" 2>/dev/null)
-  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
-  [[ "$mtime" == "${__LMLINE_SETTINGS_MTIME:-}" ]] && return 0
-  __LMLINE_SETTINGS_MTIME=$mtime
+  sum=$(cksum <"$file" 2>/dev/null) || sum=
+  [[ -n "$sum" ]] || return 0
+  [[ "$sum" == "${__LMLINE_SETTINGS_CKSUM:-}" ]] && return 0
+  __LMLINE_SETTINGS_CKSUM=$sum
   __lmline_load_all_config
   return 0
 }

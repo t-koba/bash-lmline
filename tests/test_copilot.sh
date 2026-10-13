@@ -151,6 +151,36 @@ for shell_name in zsh bash; do
   fi
 done
 
+# Same-second settings rewrites must reload without sleeping: the mtime is
+# forced equal so only content identity can notice the change.
+samesec_bash_cfg="$copilot_tmp/reload-samesec-bash"
+mkdir -p "$samesec_bash_cfg"
+LMLINE_CONFIG_DIR="$samesec_bash_cfg" "$repo_dir/lmline/lmline" config set LMLINE_TOOL_COMMAND_RUN 1 >/dev/null
+cp "$samesec_bash_cfg/settings.bash" "$samesec_bash_cfg/settings.v1"
+LMLINE_CONFIG_DIR="$samesec_bash_cfg" bash --norc -c '
+  source "$1/lmline/config.bash"
+  __lmline_reload_settings_if_changed "$2"
+  [[ "${LMLINE_TOOL_COMMAND_RUN:-}" == 1 ]] || exit 9
+  "$3/lmline" config set LMLINE_TOOL_COMMAND_RUN 0 >/dev/null 2>&1
+  touch -r "$2/settings.v1" "$2/settings.bash"
+  __lmline_reload_settings_if_changed "$2"
+  [[ "${LMLINE_TOOL_COMMAND_RUN:-}" == 0 ]]
+' _ "$repo_dir" "$samesec_bash_cfg" "$repo_dir/lmline" || fail "Bash same-second config reload"
+if command -v zsh >/dev/null 2>&1; then
+  samesec_zsh_cfg="$copilot_tmp/reload-samesec-zsh"
+  mkdir -p "$samesec_zsh_cfg"
+  LMLINE_CONFIG_DIR="$samesec_zsh_cfg" "$repo_dir/lmline/lmline" config set LMLINE_TOOL_COMMAND_RUN 1 >/dev/null
+  cp "$samesec_zsh_cfg/settings.bash" "$samesec_zsh_cfg/settings.v1"
+  LMLINE_CONFIG_DIR="$samesec_zsh_cfg" zsh -fic '
+    source "$1/lmline/init.zsh"
+    [[ "${LMLINE_TOOL_COMMAND_RUN:-}" == 1 ]] || exit 9
+    "$3/lmline" config set LMLINE_TOOL_COMMAND_RUN 0 >/dev/null 2>&1
+    touch -r "$2/settings.v1" "$2/settings.bash"
+    __lmline_zsh_reload_settings_if_changed
+    [[ "${LMLINE_TOOL_COMMAND_RUN:-}" == 0 ]]
+  ' _ "$repo_dir" "$samesec_zsh_cfg" "$repo_dir/lmline" || fail "zsh same-second config reload"
+fi
+
 env "${copilot_env[@]}" LMLINE_REWRITE_BACKEND=copilot LMLINE_ASYNC=0 bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="echo 😀 old"

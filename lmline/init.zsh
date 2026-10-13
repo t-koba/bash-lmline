@@ -24,19 +24,19 @@ __lmline_zsh_load_all_config() {
   done <<<"$exports"
 }
 
-typeset -g __LMLINE_ZSH_SETTINGS_MTIME=
+typeset -g __LMLINE_ZSH_SETTINGS_CKSUM=
 
 # Mirrors __lmline_reload_settings_if_changed for the zsh environment: re-exports
-# settings.bash values when the file changed, so "lmline config set" applies to
-# the next widget invocation without restarting the shell.
+# settings.bash values when the file content changed, so "lmline config set"
+# applies to the next widget invocation without restarting the shell. Content
+# identity (not second-precision mtimes) catches same-second replacements.
 __lmline_zsh_reload_settings_if_changed() {
-  local file=$LMLINE_CONFIG_DIR/settings.bash mtime
+  local file=$LMLINE_CONFIG_DIR/settings.bash sum
   [[ -f "$file" ]] || return 0
-  mtime=$(stat -f %m "$file" 2>/dev/null)
-  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=$(stat -c %Y "$file" 2>/dev/null)
-  [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
-  [[ "$mtime" == "$__LMLINE_ZSH_SETTINGS_MTIME" ]] && return 0
-  __LMLINE_ZSH_SETTINGS_MTIME=$mtime
+  sum=$(cksum <"$file" 2>/dev/null) || sum=
+  [[ -n "$sum" ]] || return 0
+  [[ "$sum" == "$__LMLINE_ZSH_SETTINGS_CKSUM" ]] && return 0
+  __LMLINE_ZSH_SETTINGS_CKSUM=$sum
   __lmline_zsh_load_all_config
   return 0
 }
