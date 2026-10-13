@@ -104,8 +104,13 @@ __lmline_normalize_response() {
   case "$api_format" in
     chat) return 0 ;;
     responses)
+      # Keep the raw output items alongside the normalized message so the
+      # next Responses request can replay opaque items (e.g. reasoning)
+      # verbatim in their original order; display and usage read only
+      # content, usage, and tool_calls.
       tmp=$response.normalized
       jq '
+        (.output // []) as $replay |
         def response_text:
           .output_text //
           ([.output[]?.content[]? |
@@ -119,7 +124,7 @@ __lmline_normalize_response() {
               [.output[]? | select(.type == "function_call")
                 | {id: (.call_id // .id // ""), type: "function",
                    function: {name: (.name // ""), arguments: (.arguments // "{}")}}]
-              | if length > 0 then {tool_calls: .} else {} end)),
+              | if length > 0 then {tool_calls: .} else {} end) + {responses_replay: $replay}),
             finish_reason: (.status // .finish_reason // "stop")
           }]
         }
@@ -534,7 +539,8 @@ __lmline_payload_for_format() {
   local api_format=$1 source=$2 out=$3
   case "$api_format" in
     chat)
-      cp "$source" "$out"
+      # Replay state is Responses-only; strip it from chat-completions bodies.
+      jq 'del(.messages[]?.responses_replay)' "$source" >"$out"
       ;;
     responses)
       jq '
@@ -543,13 +549,36 @@ __lmline_payload_for_format() {
           elif ($c | type) == "array" then
             [$c[]? | if type == "string" then . else (.text // .content // empty) end] | join("")
           else "" end;
+        # Re-emit stashed Responses output items verbatim in their original
+        # order relative to the function calls they accompany; message items
+        # are skipped (their text is sent separately) and function calls are
+        # rebuilt from tool_calls so call ids track the executed calls.
+        def replay_tool_items($m):
+          [($m.tool_calls // [])[]?
+            | {type: "function_call", call_id: (.id // ""),
+               name: (.function.name // ""),
+               arguments: (if (.function.arguments | type) == "string"
+                           then .function.arguments
+                           else ((.function.arguments // {}) | tojson) end)}] as $calls
+          | if ($m.responses_replay | type) == "array" then
+              (reduce ($m.responses_replay[]) as $item ({out: [], rest: $calls};
+                if ($item | type) != "object" then .
+                elif $item.type == "message" then .
+                elif $item.type == "function_call" then
+                  (($item.call_id // $item.id // "") as $id
+                   | (.rest | map(select(.call_id == $id))) as $hit
+                   | .out += $hit | .rest -= $hit)
+                else .out += [$item]
+                end)
+               | .out + .rest)
+            else $calls end;
         .messages as $messages |
         {
           model: .model,
           input: ([$messages[]? | select(.role != "system") |
             if .role == "assistant" and ((.tool_calls // [] | length) > 0) then
               ((if (text_content(.content) | length) > 0 then [{role: "assistant", content: text_content(.content)}] else [] end) +
-               [(.tool_calls // [])[]? | {type: "function_call", call_id: (.id // ""), name: (.function.name // ""), arguments: (if (.function.arguments | type) == "string" then .function.arguments else ((.function.arguments // {}) | tojson) end)}])
+               replay_tool_items(.))
               | .[]
             elif .role == "assistant" then
               {role: "assistant", content: text_content(.content)}
