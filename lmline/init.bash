@@ -549,6 +549,7 @@ __lmline_generate_async_widget() {
 }
 
 __lmline_generate_or_rewrite() {
+  __lmline_reload_settings_if_changed "$__LMLINE_CONFIG_DIR"
   local mode=$1 original
   original=$READLINE_LINE
   if [[ "$mode" == rewrite && -z "${original//[[:space:]]/}" ]]; then

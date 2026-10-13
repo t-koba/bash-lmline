@@ -550,6 +550,7 @@ __lmline_zsh_bridge_candidates() {
 }
 
 lmline-zsh-generate-widget() {
+  __lmline_zsh_reload_settings_if_changed
   local mode line point
   line=$BUFFER
   point=$CURSOR

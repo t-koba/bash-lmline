@@ -44,6 +44,33 @@ expect "echo pty-ok"
 send "\025exit\r"
 expect eof
 EOF
+  bash_async_marker=$pty_tmp/bash-async-executed
+  LMLINE_CONFIG_DIR=$pty_tmp/bash-async-config "$repo_dir/lmline/lmline" config set LMLINE_ASYNC 1 >/dev/null
+  cat >"$pty_tmp/engine-async" <<EOF
+#!/usr/bin/env bash
+printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch $bash_async_marker\\n'
+EOF
+  chmod +x "$pty_tmp/engine-async"
+  expect <<EOF >"$pty_tmp/bash-async-reload.out" 2>&1 || fail "bash pty async setting reload before generation"
+set timeout 5
+log_user 1
+spawn bash --norc -i
+expect "\\$ "
+send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-async-config LMLINE_ENGINE=$pty_tmp/engine-async\r"
+expect "\\$ "
+send "source $repo_dir/lmline/init.bash\r"
+expect "\\$ "
+send "$repo_dir/lmline/lmline config set LMLINE_ASYNC 0\r"
+expect "\\$ "
+send "#request"
+send "\030\007"
+expect -exact "touch $bash_async_marker"
+send "\025"
+send "exit\r"
+expect eof
+EOF
+  ! grep -F "generating in background" "$pty_tmp/bash-async-reload.out" >/dev/null || fail "bash pty async setting reload should use synchronous route"
+  [[ ! -e "$bash_async_marker" ]] || fail "bash pty candidate must not execute"
   expect <<EOF >"$pty_tmp/bash-next.out" 2>&1 || fail "bash pty next candidate"
 set timeout 5
 log_user 1
@@ -111,6 +138,33 @@ EOF
   ! grep -E '\[rewrite\].*(bash.*\$|echo pty-slow)' <<<"$bash_spinner_norm" >/dev/null || fail "bash pty spinner left rewrite text on prompt line"
   ! grep -E 'explaining.*(bash.*\$|explained pty)' <<<"$bash_spinner_norm" >/dev/null || fail "bash pty spinner left explain text on output line"
   if command -v zsh >/dev/null 2>&1; then
+    zsh_async_marker=$pty_tmp/zsh-async-executed
+    LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config "$repo_dir/lmline/lmline" config set LMLINE_ASYNC 1 >/dev/null
+    cat >"$pty_tmp/engine-zsh-async" <<EOF
+#!/usr/bin/env bash
+printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch $zsh_async_marker\\n'
+EOF
+    chmod +x "$pty_tmp/engine-zsh-async"
+    expect <<EOF >"$pty_tmp/zsh-async-reload.out" 2>&1 || fail "zsh pty async setting reload before generation"
+set timeout 5
+log_user 1
+spawn zsh -f
+expect "% "
+send "export LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config LMLINE_ENGINE=$pty_tmp/engine-zsh-async\r"
+expect "% "
+send "source $repo_dir/lmline/init.zsh\r"
+expect "% "
+send "$repo_dir/lmline/lmline config set LMLINE_ASYNC 0\r"
+expect "% "
+send "#request"
+send "\030\007"
+expect -exact "touch $zsh_async_marker"
+send "\025"
+send "exit\r"
+expect eof
+EOF
+    ! grep -F "generating in background" "$pty_tmp/zsh-async-reload.out" >/dev/null || fail "zsh pty async setting reload should use synchronous route"
+    [[ ! -e "$zsh_async_marker" ]] || fail "zsh pty candidate must not execute"
     expect <<EOF || fail "zsh pty key binding"
 set timeout 5
 log_user 0
