@@ -243,3 +243,94 @@ PATH="$nozsh_bin" bash -c '
   [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite zsh) == "command-not-found" ]]
 ' _ "$repo_dir" || fail "zsh availability fails closed"
 rm -rf "$nozsh_bin"
+
+# Raw text matters: stripping quotes/escapes first would mistake literals for
+# history references. These levels are the union of conventional Bash/zsh
+# interactive semantics, independent of the shell running the policy helper.
+bash -s -- "$repo_dir" <<'HISTORY_TEST' || fail "history expansion policy"
+set -euo pipefail
+source "$1/lmline/policy.bash"
+while IFS=$'\t' read -r expected candidate; do
+  actual=$(__lmline_risk_level "$candidate")
+  [[ $actual == "$expected" ]] || {
+    printf 'candidate=%s expected=%s actual=%s\n' "$candidate" "$expected" "$actual" >&2
+    exit 1
+  }
+done <<'CASES'
+high	echo !!
+high	echo "!!"
+high	echo !1
+high	echo !-1
+high	echo !echo
+high	echo !?HISTORY_SAFE?
+high	echo !#
+high	echo !$
+high	echo !^
+high	echo !*
+high	echo !:0
+high	echo !!:s/old/new/
+high	echo !{echo}
+high	echo "!echo"
+high	echo "'!!'"
+high	echo 'literal'!!
+high	echo \"!!\"
+high	echo \!!:p
+high	echo \$'\'!!
+low	echo '!!'
+low	echo '!echo !-1 !?text? !# !$ !^ !* !:0 !{echo}'
+low	echo 'literal\' '!!'
+low	echo \!\!
+low	echo "\!\!"
+low	echo \!echo
+low	echo "\!echo"
+low	echo \\!echo
+low	echo "\\!echo"
+low	echo $'it\'s !!'
+low	echo $'\x21\x21'
+low	echo '!'
+low	echo hello!
+low	echo "hello!"
+low	echo ! text
+low	echo !=text
+low	! false
+CASES
+candidate='echo "!!"'
+[[ $(__lmline_risk_reason "$candidate") == 'interactive history expansion' ]]
+for level in low medium high bogus HIGH ''; do
+  expected=$level
+  case "$level" in low|medium|high) ;; *) expected=high ;; esac
+  [[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=$level __lmline_risk_level "$candidate") == "$expected" ]]
+done
+# Shipped pattern levels compete with the history fallback, never mask it.
+[[ $(__lmline_risk_level 'cp !! copy') == high ]]
+[[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=low __lmline_risk_level 'cp !! copy') == medium ]]
+[[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=low __lmline_risk_level 'rm -rf !!') == high ]]
+# Combined structural recognition always takes the highest configured level.
+for levels in 'low medium high' 'high low medium' 'medium high low'; do
+  read -r history piped variable <<<"$levels"
+  [[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=$history LMLINE_RISK_PIPED_SHELL_LEVEL=$piped LMLINE_RISK_UNRESOLVED_VAR_LEVEL=$variable __lmline_risk_level '$X "!!" | sh') == high ]]
+done
+[[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=low LMLINE_RISK_PIPED_SHELL_LEVEL=low LMLINE_RISK_UNRESOLVED_VAR_LEVEL=low __lmline_risk_level '$X "!!" | sh') == low ]]
+# Force the existing brace cap with 7 binary groups (128 alternatives).
+capped='echo a{b,c}{b,c}{b,c}{b,c}{b,c}{b,c}{b,c} !!'
+[[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=low LMLINE_RISK_BRACE_CAPPED_LEVEL=high __lmline_risk_level "$capped") == high ]]
+[[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=high LMLINE_RISK_BRACE_CAPPED_LEVEL=low __lmline_risk_level "$capped") == high ]]
+
+risk_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-history-policy.XXXXXX")
+trap 'rm -rf "$risk_tmp"' EXIT
+: >"$risk_tmp/empty.tsv"
+printf 'low\t*unmatched*\tunmatched rule\n' >"$risk_tmp/unmatched.tsv"
+printf 'low\t*\tuser override\n' >"$risk_tmp/risk_patterns.tsv"
+for file in empty.tsv unmatched.tsv; do
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/$file" __lmline_risk_level "$candidate") == high ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/$file" LMLINE_RISK_HISTORY_EXPANSION_LEVEL=medium __lmline_risk_level "$candidate") == medium ]]
+done
+[[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/risk_patterns.tsv" __lmline_risk_level "$candidate") == low ]]
+[[ $(LMLINE_USER_RULES_DIR="$risk_tmp" __lmline_risk_level "$candidate") == low ]]
+[[ $(LMLINE_USER_RULES_DIR="$risk_tmp" __lmline_risk_reason "$candidate") == 'user override' ]]
+printf 'medium\t*!!*\tfirst match\nlow\t*\tlater match\n' >"$risk_tmp/risk_patterns.tsv"
+[[ $(LMLINE_USER_RULES_DIR="$risk_tmp" __lmline_risk_level "$candidate") == medium ]]
+# Classification must not mutate the source candidate.
+[[ $candidate == 'echo "!!"' ]]
+HISTORY_TEST
+ok "history expansion policy"

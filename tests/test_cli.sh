@@ -16,6 +16,16 @@ defaults_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" con
 grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "config defaults microsandbox command"
 grep -q $'^LMLINE_MODELS_URL\t\\$LMLINE_BASE_URL/models\t' <<<"$defaults_out" || fail "config defaults models url"
 grep -q $'^LMLINE_KEY_FIX\t' <<<"$defaults_out" || fail "config defaults key fix"
+grep -q $'^LMLINE_RISK_HISTORY_EXPANSION_LEVEL\thigh\t' <<<"$defaults_out" || fail "history risk catalog default"
+describe_history=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_RISK_HISTORY_EXPANSION_LEVEL)
+grep -q '^default=high$' <<<"$describe_history" || fail "history risk describe default"
+grep -q '^values=low medium high$' <<<"$describe_history" || fail "history risk describe values"
+history_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_RISK_HISTORY_EXPANSION_LEVEL)
+[[ $history_values == $'low\nmedium\nhigh' ]] || fail "history risk value completion"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"' | grep -q '^risk=high$' || fail "history risk CLI default"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_RISK_HISTORY_EXPANSION_LEVEL medium
+LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"' | grep -q '^risk=medium$' || fail "history risk persisted setting"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config unset LMLINE_RISK_HISTORY_EXPANSION_LEVEL
 effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
 grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
 grep -q $'^LMLINE_API_KEY_FILE\t\\*\\*\\*REDACTED\\*\\*\\*\t' <<<"$effective_out" || fail "config effective redacts secret file"
@@ -49,6 +59,7 @@ grep -q '^LMLINE_MICROSANDBOX_COMMAND$' <<<"$complete_settings" || fail "complet
 grep -q '^LMLINE_API_FORMAT$' <<<"$complete_settings" || fail "complete settings api format"
 grep -q '^LMLINE_MODELS_INCLUDE$' <<<"$complete_settings" || fail "complete settings models include"
 grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
+grep -q '^LMLINE_RISK_HISTORY_EXPANSION_LEVEL$' <<<"$complete_settings" || fail "history risk setting completion"
 complete_api_format_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_API_FORMAT)
 grep -q '^responses$' <<<"$complete_api_format_values" || fail "complete setting values api format"
 complete_backend_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_EXEC_BACKEND)

@@ -214,3 +214,92 @@ EOF
 else
   printf 'skip - pty key bindings (expect not found)\n'
 fi
+
+# Classify the raw candidate in a tiny replacement engine, then exercise the
+# normal protocol -> widget -> review-comment path in actual interactive
+# shells. The synthetic event breaks out of double quotes: without the review
+# comment, Enter would execute the marker (verified by the positive control).
+if command -v expect >/dev/null 2>&1; then
+  history_pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-history-pty.XXXXXX")
+  cat >"$history_pty_tmp/engine" <<'ENGINE'
+#!/usr/bin/env bash
+set -euo pipefail
+source "$LMLINE_PTY_ROOT/lmline/policy.bash"
+candidate='echo "!!"'
+printf 'lmline-candidate: %s\t%s\t-\t%s\n' \
+  "$(__lmline_risk_level "$candidate")" "$(__lmline_risk_reason "$candidate")" "$candidate"
+ENGINE
+  chmod +x "$history_pty_tmp/engine"
+  history_protocol=$(LMLINE_CONFIG_DIR="$history_pty_tmp/protocol-config" LMLINE_PTY_ROOT="$repo_dir" "$history_pty_tmp/engine")
+  [[ $history_protocol == $'lmline-candidate: high\tinteractive history expansion\t-\techo "!!"' ]] || fail "history risk protocol preserves candidate"
+  cat >"$history_pty_tmp/review.exp" <<'EXPECT'
+set timeout 5
+log_user 0
+lassign $argv shell root tmp
+set marker "$tmp/$shell-executed"
+proc prompt {} {
+  expect {
+    -re {[\r\n]HISTORY_PROMPT> } {}
+    timeout {puts stderr "history PTY prompt timeout"; exit 1}
+    eof {puts stderr "history PTY unexpected eof"; exit 1}
+  }
+}
+if {$shell eq "bash"} {
+  spawn env HISTFILE=/dev/null HISTSIZE=1000 bash --noprofile --norc -i
+} else {
+  spawn env HISTFILE=/dev/null HISTSIZE=1000 zsh -f
+}
+expect {
+  -re {[$%] } {}
+  timeout {exit 1}
+}
+send -- "PS1='HISTORY_PROMPT> '; export LMLINE_CONFIG_DIR=$tmp/$shell-config LMLINE_PTY_ROOT=$root LMLINE_ENGINE=$tmp/engine LMLINE_ASYNC=0 LMLINE_SPINNER=0\r"
+prompt
+send -- "source $root/lmline/init.$shell\r"
+prompt
+set event "\"; touch $marker; echo \""
+if {$shell eq "bash"} {
+  set seed "history -s '$event'"
+} else {
+  set seed "print -s -- '$event'"
+}
+# Positive control: the event must really execute if submitted without review.
+send -- "$seed\r"
+prompt
+send -- {echo "!!"}
+send -- "\r"
+prompt
+if {![file exists $marker]} {
+  puts stderr "history PTY positive control did not execute marker"
+  exit 1
+}
+file delete $marker
+send -- "$seed\r"
+prompt
+send -- "#request"
+send -- "\030\007"
+expect {
+  -exact {# REVIEW REQUIRED: echo "!!"} {}
+  timeout {puts stderr "history PTY missing unchanged review comment"; exit 1}
+}
+send -- "\r"
+prompt
+if {[file exists $marker]} {
+  puts stderr "history PTY review comment executed marker"
+  exit 1
+}
+send -- "exit\r"
+expect eof
+EXPECT
+  for history_shell in bash zsh; do
+    if command -v "$history_shell" >/dev/null 2>&1; then
+      expect "$history_pty_tmp/review.exp" "$history_shell" "$repo_dir" "$history_pty_tmp" || fail "$history_shell history risk review PTY"
+      ok "$history_shell history risk review PTY"
+    else
+      printf 'skip - %s history risk review PTY (shell not found)\n' "$history_shell"
+    fi
+  done
+  rm -rf "$history_pty_tmp"
+else
+  printf 'skip - history risk review PTY (expect not found)\n'
+fi

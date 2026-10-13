@@ -43,9 +43,12 @@ stdout carries one protocol line per accepted candidate:
 lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
 ```
 
-- `risk`: `high`, `medium`, or `low`, classified by the engine against
-  `risk_patterns.tsv`. Frontends render `high` candidates as
-  `# REVIEW REQUIRED:` comments and must not re-classify.
+- `risk`: `high`, `medium`, or `low`, classified by the engine using
+  `risk_patterns.tsv` and structural fallbacks. The bundled engine treats
+  potentially active default-character interactive history references as
+  structural risk (`LMLINE_RISK_HISTORY_EXPANSION_LEVEL`, default `high`);
+  replacement engines should preserve that policy. Frontends render `high`
+  candidates as `# REVIEW REQUIRED:` comments and must not re-classify.
 - `reason`: human-readable rule reason; tabs are replaced by spaces; `-` when
   not applicable.
 - `flags`: comma-separated markers, `-` when empty. Defined flags:

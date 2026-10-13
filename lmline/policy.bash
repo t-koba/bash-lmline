@@ -461,9 +461,63 @@ __lmline_risk_piped_shell() {
   return 1
 }
 
+# Detect potentially active default-character interactive history references on
+# the original text, before quote removal/ANSI-C decoding. This is a lexical
+# check, not a history parser: it never reads/expands history or edits text.
+# Ordinary and ANSI-C single quotes inhibit references; double quotes do not.
+# A backslash immediately before ! inhibits that character in both shells,
+# even when another backslash precedes it. A later ! can still start a
+# reference (\!!:p). Bare ! before whitespace, =, or end of input is literal;
+# ! before a closing double quote is not a reference (Bash literal, zsh
+# history-disable syntax). Other unescaped ! prefixes are potentially active,
+# including !!, !n, !-n, !word, !?text?, !#, word selectors and zsh's !{...}.
+# Assumes conventional Bash/zsh history settings, not custom histchars,
+# disabled expansion, or Bash POSIX mode. Quick ^ substitution and full
+# parsing of nested shell constructs are deliberately outside scope.
+__lmline_risk_history_expansion() {
+  local cmd=$1 quote="" ansi=0 i ch next
+  [[ $cmd == *'!'* ]] || return 1
+  for ((i = 0; i < ${#cmd}; i++)); do
+    ch=${cmd:i:1}
+    next=${cmd:i+1:1}
+    if [[ $quote == "'" ]]; then
+      if (( ansi )) && [[ $ch == '\' ]]; then
+        i=$((i + 1))
+      elif [[ $ch == "'" ]]; then
+        quote=""
+        ansi=0
+      fi
+      continue
+    fi
+    case "$ch" in
+      '\') i=$((i + 1)) ;;
+      '$')
+        if [[ -z $quote && $next == "'" ]]; then
+          quote="'"
+          ansi=1
+          i=$((i + 1))
+        fi
+        ;;
+      "'") [[ -n $quote ]] || quote="'" ;;
+      '"')
+        if [[ -z $quote ]]; then quote='"'; else quote=""; fi
+        ;;
+      '!')
+        (( i == 0 )) || [[ ${cmd:i-1:1} != '\' ]] || continue
+        case "$next" in
+          ""|[[:space:]]|'=') continue ;;
+          '"') [[ $quote == '"' ]] && continue ;;
+        esac
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 # Structural risk levels are configuration, not hardcoded policy. Each
-# defaults to the historical protective value (piped shell high, the two
-# fallbacks medium); an unset, empty, or unknown value falls back to its
+# defaults to its protective value (piped shell/history high, the two
+# unresolved fallbacks medium); an unset, empty, or unknown value falls back to its
 # default so the check fails closed.
 __lmline_risk_structural_level() {
   local value=${1-} default=${2:-medium}
@@ -482,10 +536,10 @@ __lmline_risk_level_rank() {
   esac
 }
 
-# Risk precedence: structural recognition (piped shell, unresolved variable
-# command, capped brace expansion) is mechanism only; its levels are
-# configuration (LMLINE_RISK_*_LEVEL, defaults high/medium/medium, unknown or
-# empty falls back to the default). A replacement risk_patterns file
+# Risk precedence: structural recognition (piped shell, interactive history,
+# unresolved variable command, capped brace expansion) is mechanism only; its
+# levels are configuration (LMLINE_RISK_*_LEVEL, defaults high/high/medium/medium;
+# unknown or empty falls back to the default). A replacement risk_patterns file
 # overrides shipped patterns and structural defaults: with a user or explicit
 # file, the first matching rule wins and structural fallbacks apply only when
 # no rule matched. With the shipped default file, shipped patterns and
@@ -494,9 +548,11 @@ __lmline_risk_level_rank() {
 # structural fallbacks in both modes. Defaults stay protective.
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
-  local brace_capped=0 best_level="" best_reason="" piped_found=0
+  local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
   local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
-  # Decode ANSI-C quoting first so hex/octal hides are judged by content.
+  # History is judged on raw quoting/escaping, never decoded/canonical text.
+  if __lmline_risk_history_expansion "$cmd"; then history_found=1; fi
+  # Decode ANSI-C quoting so hex/octal hides are judged by content.
   expanded=$(__lmline_decode_ansi_c_for_risk "$cmd")
   if alts_str=$(__lmline_expand_braces_for_risk "$expanded"); then
     brace_capped=0
@@ -552,6 +608,15 @@ __lmline_risk_match() {
       struct_rank=$rank
       struct_level=$candidate_level
       struct_reason="piped shell execution"
+    fi
+  fi
+  if (( history_found )); then
+    candidate_level=$(__lmline_risk_structural_level "${LMLINE_RISK_HISTORY_EXPANSION_LEVEL:-high}" high)
+    rank=$(__lmline_risk_level_rank "$candidate_level")
+    if (( rank > struct_rank )); then
+      struct_rank=$rank
+      struct_level=$candidate_level
+      struct_reason="interactive history expansion"
     fi
   fi
   if __lmline_risk_has_unresolved_var_command "$expanded"; then

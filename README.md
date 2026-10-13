@@ -476,11 +476,12 @@ The engine filters candidates before printing them:
 - truncated to `LMLINE_MAX_CANDIDATE_BYTES` when needed
 
 Each accepted candidate is classified with the configured `risk_patterns.tsv`
-and structural pipe-to-shell, unresolved variable, and capped brace
-recognition. High-risk candidates are inserted as comments prefixed with
+and structural pipe-to-shell, interactive history expansion, unresolved
+variable, and capped brace recognition. High-risk candidates are inserted as comments prefixed with
 `# REVIEW REQUIRED:`. Medium-risk candidates are inserted with a warning.
 Low-risk candidates are inserted directly. Structural levels are
 configuration (`LMLINE_RISK_PIPED_SHELL_LEVEL` default `high`,
+`LMLINE_RISK_HISTORY_EXPANSION_LEVEL` default `high`,
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` default `medium`,
 `LMLINE_RISK_BRACE_CAPPED_LEVEL` default `medium`); the highest applicable
 structural level wins. With the shipped defaults the highest level across
@@ -488,6 +489,27 @@ patterns and structural wins, so a generic medium rule never shadows a
 structural high. A replacement `risk_patterns.tsv` overrides shipped
 patterns and structural defaults: a matching rule wins and structural
 fallbacks apply only when no rule matched.
+
+History recognition checks the original candidate before quote stripping or
+ANSI-C decoding. It flags potentially active conventional `!` event references
+in unquoted and double-quoted text, such as `!!`, `!123`, `!-2`, `!echo`,
+`!?text?`, `!#`, word selectors (`!$`, `!^`, `!*`, `!:0`), modifiers
+(`!!:s/old/new/`), and zsh's `!{echo}`. Ordinary single-quoted literals
+(`echo '!!'`), ANSI-C single quotes, and backslash-escaped event characters
+(`echo \!\!` or `echo "\!\!"`) do not trigger this structural check. A bare
+`!` before whitespace, `=`, or end of input, and `!` immediately before a
+closing double quote, are not event references. All structural settings accept
+`low`, `medium`, or `high`; invalid or empty values use the documented default.
+
+This is a lexical risk check, not a shell/history parser: other unescaped
+`!` prefixes are conservatively flagged, even if the event does not exist.
+It assumes conventional default history characters and interactive Bash/zsh
+options. Custom `histchars`, disabled history expansion, Bash POSIX mode,
+quick `^old^new^` substitution, and full parsing of nested shell constructs
+are outside its supported scope; nested quoting can be classified
+conservatively. lmline neither reads/expands shell history nor changes history
+settings or `!` in candidate text. Only the existing high-risk review-comment
+prefix changes the presented line.
 
 The first inserted candidate shows the candidate count and model metadata.
 Cycling with `Ctrl-x Ctrl-n` / `Ctrl-x Ctrl-p` shows the current position
@@ -692,6 +714,7 @@ clipboard_providers.tsv:  name<TAB>command<TAB>arg1<TAB>arg2...
 rule wins after whitespace is squeezed and the command is wrapped with one
 leading and trailing space. Structural fallbacks use
 `LMLINE_RISK_PIPED_SHELL_LEVEL` (default `high`),
+`LMLINE_RISK_HISTORY_EXPANSION_LEVEL` (default `high`),
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` (default `medium`), and
 `LMLINE_RISK_BRACE_CAPPED_LEVEL` (default `medium`), highest wins; unknown
 or empty levels fall back to their defaults. With the shipped defaults the
@@ -1127,6 +1150,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_COMMAND_PREFIX_WORDS_FILE` | user override or installed default | command prefixes ignored before command extraction |
 | `LMLINE_RISK_PATTERNS_FILE` | user override or installed default | candidate risk rules |
 | `LMLINE_RISK_PIPED_SHELL_LEVEL` | `high` | level for pipe-to-shell structural risk |
+| `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` | `high` | level for default-character interactive history references (`low`, `medium`, `high`; invalid/empty uses `high`) |
 | `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` | `medium` | level for unresolved variable command structural risk |
 | `LMLINE_RISK_BRACE_CAPPED_LEVEL` | `medium` | level for capped brace expansion structural risk |
 | `LMLINE_PROJECT_CONFIG` | `0` | load project-local `.lmline.bash` files |
