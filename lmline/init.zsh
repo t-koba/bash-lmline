@@ -12,16 +12,68 @@ if ! command -v bash >/dev/null 2>&1 || ! bash -c '(( BASH_VERSINFO[0] > 4 || (B
   return 0
 fi
 
+# Reload bookkeeping shared with the bash loader: which settings the last
+# bridge load provided, so a later load can drop values the files no longer
+# contain instead of leaving them stale. Baselines are captured before the
+# first bridge load; per-key values live in double-underscore variables that
+# config files cannot define.
+typeset -g __LMLINE_ZSH_BASELINE_SET=0
+typeset -g __LMLINE_ZSH_BASELINE_KEYS=
+typeset -g __LMLINE_ZSH_BRIDGE_KEYS=
+
+__lmline_zsh_key_in_list() {
+  [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]
+}
+
+__lmline_zsh_capture_env_baseline() {
+  [[ "$__LMLINE_ZSH_BASELINE_SET" == 1 ]] && return 0
+  __LMLINE_ZSH_BASELINE_SET=1
+  local k
+  for k in ${(k)parameters}; do
+    [[ "$k" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
+    __LMLINE_ZSH_BASELINE_KEYS+="$k"$'\n'
+    typeset -g "__LMLINE_ZSHBASE_$k=${(P)k}"
+  done
+}
+
 __lmline_zsh_load_all_config() {
-  local exports line
-  exports=$(LMLINE_CONFIG_DIR=$LMLINE_CONFIG_DIR bash -c '
+  local exports line key new_keys old_keys cur stamp ref base uk
+  __lmline_zsh_capture_env_baseline
+  old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
+  exports=$(LMLINE_CONFIG_DIR=$LMLINE_CONFIG_DIR __LMLINE_ZSH_PREV_KEYS=$__LMLINE_ZSH_BRIDGE_KEYS bash -c '
     source "$1/config.bash"
+    __lmline_forget_bridge_keys
     __lmline_load_all_config
     env | awk -F= "/^LMLINE_[A-Z0-9_]*=/ { print }"
   ' _ "$LMLINE_DIR") || return 1
+  new_keys=
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" == LMLINE_*=* ]] && typeset -gx "$line"
+    [[ "$line" == LMLINE_*=* ]] || continue
+    key=${line%%=*}
+    typeset -gx "$line"
+    new_keys+="$key"$'\n'
+    typeset -g "__LMLINE_ZSHSTAMP_$key=${(P)key}"
   done <<<"$exports"
+  # Drop values the files no longer define: restore the pre-bridge
+  # environment value (or unset), but only while the shell still holds the
+  # value the bridge provided, so intentional user changes are never cleared.
+  for uk in ${(f)old_keys}; do
+    [[ -n "$uk" ]] || continue
+    __lmline_zsh_key_in_list "$new_keys" "$uk" && continue
+    ref=__LMLINE_ZSHSTAMP_$uk
+    if (( ${+parameters[$uk]} )); then cur=${(P)uk}; else cur=$'\001UNSET\001'; fi
+    stamp=${(P)ref}
+    if [[ "$cur" == "$stamp" ]]; then
+      if __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" "$uk"; then
+        base=__LMLINE_ZSHBASE_$uk
+        typeset -gx "$uk=${(P)base}"
+      else
+        unset "$uk"
+      fi
+    fi
+    unset "__LMLINE_ZSHSTAMP_$uk"
+  done
+  __LMLINE_ZSH_BRIDGE_KEYS=$new_keys
 }
 
 typeset -g __LMLINE_ZSH_SETTINGS_CKSUM=
@@ -32,9 +84,13 @@ typeset -g __LMLINE_ZSH_SETTINGS_CKSUM=
 # identity (not second-precision mtimes) catches same-second replacements.
 __lmline_zsh_reload_settings_if_changed() {
   local file=$LMLINE_CONFIG_DIR/settings.bash sum
-  [[ -f "$file" ]] || return 0
-  sum=$(cksum <"$file" 2>/dev/null) || sum=
-  [[ -n "$sum" ]] || return 0
+  if [[ -f "$file" ]]; then
+    sum=$(cksum <"$file" 2>/dev/null) || sum=
+    [[ -n "$sum" ]] || return 0
+  else
+    # A deleted file is also a change: reload so file-owned values are dropped.
+    sum="no-settings-file"
+  fi
   [[ "$sum" == "$__LMLINE_ZSH_SETTINGS_CKSUM" ]] && return 0
   __LMLINE_ZSH_SETTINGS_CKSUM=$sum
   __lmline_zsh_load_all_config

@@ -40,7 +40,88 @@ __lmline_load_export_file() {
     value=$(__lmline_parse_export_value "$raw") || continue
     printf -v "$key" '%s' "$value"
     export "$key"
+    __LMLINE_LOAD_KEYS+="$key"$'\n'
   done <"$file"
+}
+
+# Reload bookkeeping: which settings the loaded files define, so a later
+# reload can drop values the files no longer contain (config unset, profile
+# switches, file removal) instead of leaving them stale in long-lived
+# shells. Key lists are newline-delimited strings (safe under set -u on
+# bash 4.2); per-key values live in double-underscore variables that config
+# files cannot define, so project files can neither observe nor corrupt them.
+: "${__LMLINE_ENV_BASELINE_SET:=0}"
+: "${__LMLINE_ENV_BASELINE_KEYS:=}"
+: "${__LMLINE_FILE_KEYS:=}"
+: "${__LMLINE_LOAD_KEYS:=}"
+
+__lmline_key_in_list() {
+  [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]
+}
+
+# Forget values a previous bridge load provided (used by the zsh bridge,
+# which runs this loader in a fresh shell per load inheriting the merged
+# zsh environment). Keys listed in __LMLINE_ZSH_PREV_KEYS are dropped before
+# the environment baseline is captured so inherited stale values are not
+# mistaken for intentional user environment; files defining them re-set them.
+# Must run before __lmline_capture_env_baseline.
+__lmline_forget_bridge_keys() {
+  local k
+  for k in ${__LMLINE_ZSH_PREV_KEYS-}; do
+    [[ "$k" =~ ^LMLINE_[A-Z0-9_]+$ ]] || continue
+    # The bridge locates its files through LMLINE_CONFIG_DIR, so that
+    # locator survives forgetting; files defining it still override it.
+    [[ "$k" == LMLINE_CONFIG_DIR ]] && continue
+    unset "$k"
+  done
+}
+
+# Snapshot user-owned LMLINE_* values once per process, before file values
+# are applied, so reloads can restore them when files stop defining a key.
+__lmline_capture_env_baseline() {
+  if (( __LMLINE_ENV_BASELINE_SET )); then
+    return 0
+  fi
+  __LMLINE_ENV_BASELINE_SET=1
+  local k
+  for k in $(compgen -v LMLINE_ 2>/dev/null); do
+    [[ "$k" =~ ^LMLINE_[A-Z0-9_]+$ ]] || continue
+    __LMLINE_ENV_BASELINE_KEYS+="$k"$'\n'
+    printf -v "__LMLINE_ENV_BASELINE_$k" '%s' "${!k}"
+  done
+}
+
+# Drop values the current files no longer define. A previously file-owned key
+# missing now is restored to its pre-file environment value (or unset) --
+# but only while it still holds the value the files set, so intentional user
+# changes made meanwhile are never cleared.
+__lmline_reconcile_config_load() {
+  local old_keys=$__LMLINE_FILE_KEYS new_keys k cur stamp ref base
+  new_keys=$(printf '%s' "$__LMLINE_LOAD_KEYS" | awk 'NF && !seen[$0]++')
+  for k in $old_keys; do
+    [[ -n "$k" ]] || continue
+    if __lmline_key_in_list "$new_keys" "$k"; then
+      continue
+    fi
+    ref=__LMLINE_FILESTAMP_$k
+    cur=${!k-}
+    stamp=${!ref-}
+    if [[ "$cur" == "$stamp" ]]; then
+      if __lmline_key_in_list "$__LMLINE_ENV_BASELINE_KEYS" "$k"; then
+        base=__LMLINE_ENV_BASELINE_$k
+        printf -v "$k" '%s' "${!base}"
+        export "$k"
+      else
+        unset "$k"
+      fi
+    fi
+    unset "__LMLINE_FILESTAMP_$k"
+  done
+  __LMLINE_FILE_KEYS=$new_keys
+  for k in $new_keys; do
+    [[ -n "$k" ]] || continue
+    printf -v "__LMLINE_FILESTAMP_$k" '%s' "${!k-}"
+  done
 }
 
 # Portable mutual exclusion for config-dir writes. mkdir is atomic on POSIX
@@ -93,16 +174,20 @@ __lmline_init_dirs() {
 # either project file is read, so a project file cannot enable itself.
 __lmline_load_all_config() {
   local config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline} root
+  __lmline_capture_env_baseline
+  __LMLINE_LOAD_KEYS=
   __lmline_load_export_file "$config_dir/settings.bash"
-  [[ "${LMLINE_PROJECT_CONFIG:-0}" == 1 ]] || return 0
-  if command -v git >/dev/null 2>&1 && root=$(git rev-parse --show-toplevel 2>/dev/null); then
-    if [[ -f "$root/.lmline.bash" ]]; then
-      __lmline_load_export_file "$root/.lmline.bash"
+  if [[ "${LMLINE_PROJECT_CONFIG:-0}" == 1 ]]; then
+    if command -v git >/dev/null 2>&1 && root=$(git rev-parse --show-toplevel 2>/dev/null); then
+      if [[ -f "$root/.lmline.bash" ]]; then
+        __lmline_load_export_file "$root/.lmline.bash"
+      fi
+    fi
+    if [[ -f "$PWD/.lmline.bash" ]]; then
+      __lmline_load_export_file "$PWD/.lmline.bash"
     fi
   fi
-  if [[ -f "$PWD/.lmline.bash" ]]; then
-    __lmline_load_export_file "$PWD/.lmline.bash"
-  fi
+  __lmline_reconcile_config_load
   return 0
 }
 
@@ -115,9 +200,13 @@ __lmline_load_all_config() {
 __lmline_reload_settings_if_changed() {
   local config_dir=${1:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}} file sum
   file=$config_dir/settings.bash
-  [[ -f "$file" ]] || return 0
-  sum=$(cksum <"$file" 2>/dev/null) || sum=
-  [[ -n "$sum" ]] || return 0
+  if [[ -f "$file" ]]; then
+    sum=$(cksum <"$file" 2>/dev/null) || sum=
+    [[ -n "$sum" ]] || return 0
+  else
+    # A deleted file is also a change: reload so file-owned values are dropped.
+    sum="no-settings-file"
+  fi
   [[ "$sum" == "${__LMLINE_SETTINGS_CKSUM:-}" ]] && return 0
   __LMLINE_SETTINGS_CKSUM=$sum
   __lmline_load_all_config
