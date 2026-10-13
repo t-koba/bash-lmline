@@ -222,7 +222,10 @@ profile_endpoint_set_secret() {
   [[ -n "$value" ]] || { printf 'lmline: empty secret not stored\n' >&2; exit 2; }
   mkdir -p "$config_dir/secrets"
   chmod 700 "$config_dir/secrets" 2>/dev/null || true
-  safe_name=${name//\//_}
+  # Injective encoding of the full endpoint name: escape % first, then /,
+  # so distinct names (e.g. a/b and a_b) never share a credential file.
+  safe_name=${name//%/%%}
+  safe_name=${safe_name//\//%2F}
   secret_file=$config_dir/secrets/endpoint-${safe_name}-api-key.secret
   umask 077
   printf '%s' "$value" >"$secret_file"

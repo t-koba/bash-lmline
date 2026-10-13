@@ -390,6 +390,21 @@ if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/l
   fail "refresh failure rejected"
 fi
 [[ "$(cat "$profiles_dir/models.tsv")" == "$before_failed_refresh" ]] || fail "refresh failure preserved models"
+# Distinct endpoint names must never share a credential file.
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a/b" https://a-b.invalid/v1
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a_b" https://aub.invalid/v1
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint set-secret "a/b" <<<"collide-secret-one"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint set-secret "a_b" <<<"collide-secret-two"
+collide_path_one=$(awk -F'\t' '$1=="a/b" {print $5}' "$profiles_dir/endpoints.tsv")
+collide_path_two=$(awk -F'\t' '$1=="a_b" {print $5}' "$profiles_dir/endpoints.tsv")
+[[ -n "$collide_path_one" && -n "$collide_path_two" ]] || fail "colliding endpoints recorded secret paths"
+[[ "$collide_path_one" != "$collide_path_two" ]] || fail "endpoint secret paths collide"
+[[ $(cat "$collide_path_one") == "collide-secret-one" ]] || fail "colliding endpoint secret one preserved"
+[[ $(cat "$collide_path_two") == "collide-secret-two" ]] || fail "colliding endpoint secret two preserved"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint remove "a/b"
+[[ -f "$collide_path_two" ]] || fail "endpoint removal deleted survivor secret"
+[[ $(cat "$collide_path_two") == "collide-secret-two" ]] || fail "survivor secret content preserved"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint remove "a_b"
 install_like_dir="$cfg_tmp/install-like"
 install_like_bin="$cfg_tmp/bin"
 mkdir -p "$install_like_dir" "$install_like_bin"
