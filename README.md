@@ -865,8 +865,10 @@ between streamed provider responses. Other formats use buffered requests.
 `~/.config/lmline/cache/` (mode 0700). The default is 600 seconds, so
 repeating the same request in the same directory answers instantly without an
 API call; set `LMLINE_CACHE_TTL=0` to disable caching. `fix` and `clip` are
-not cached. Cache keys include the mode, line, directory, model, and prompt
-version, so prompt upgrades never serve stale entries.
+not cached. Cache keys include the mode, line, directory, model, prompt
+version, and the effective request payload (resolved prompts and
+sampling/output settings), so prompt upgrades and configuration changes such
+as the response language never serve stale entries.
 
 <details>
 <summary>Tool modes and available tools</summary>

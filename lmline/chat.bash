@@ -979,6 +979,10 @@ __lmline_cache_key() {
     printf 'cwd=%s\n' "${cwd:-$PWD}"
     printf 'base=%s\nmodel=%s\napi_format=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
       "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
+    # The effective request payload is already built at lookup time, so hash
+    # it: resolved prompts and sampling/output settings (language, detail,
+    # temperature, tools, ...) become cache identity without new key fields.
+    __lmline_hash_stdin <"$payload_file"
   } | __lmline_hash_stdin
 }
 
