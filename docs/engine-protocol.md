@@ -117,12 +117,25 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
   `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
   `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`). On an HTTP 400 naming `store`, it retries once without the `store` field.
 - Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. On an HTTP 400 naming `store`, the engine retries once without it and emits an `lmline-progress:` fallback line.
+- In buffered command modes (`generate`, `rewrite`, and `fix`), an explicitly
+  reported incomplete first-choice terminal status rejects the response before
+  tool calls are parsed or dispatched, and before candidates are emitted or
+  cached. The bundled engine recognizes only exact case-insensitive status
+  values `length`, `max_tokens`, and `incomplete` (normalized from Chat
+  `finish_reason`, Messages `stop_reason`, and Responses `status`). Missing or
+  null statuses and unfamiliar values remain accepted for provider
+  compatibility; this is not a success-status allowlist. The bounded error
+  recommends increasing `LMLINE_MAX_TOKENS` or shortening the request.
+  `explain`/`clip` buffered behavior and streaming behavior are unchanged.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests in the same declared working directory (`--cwd`). Cache
   keys include the mode, line, declared directory, model, prompt version, and
   the effective request payload (resolved prompts and sampling/output
-  settings).
+  settings). Generate/rewrite keys also include a fixed terminal-status
+  policy revision, so command entries written before incomplete-response
+  validation are missed; prose entries are not invalidated. `fix` is not
+  cache-eligible.
 - Native local tools (`LMLINE_TOOL_MODE=openai`/`auto`) work on `chat` and `responses` (buffered tool loop); streaming (`LMLINE_STREAM`) is `chat`-only. Some reasoning models (GPT-5.4 and later) reject native tools on `chat` with HTTP 400; the engine hint then suggests `LMLINE_API_FORMAT=responses` or `LMLINE_TOOL_MODE=text`. Newer models (GPT-6 Astra/Sol) require `responses` for tool calling. The `messages` format runs buffered requests without native tool calls (`text` tool requests still apply); the engine emits an `lmline-progress:` warning when native tools or streaming are requested but disabled by the format.
 - API keys are passed to curl through `-H @file` header files, never on the
   curl command line.

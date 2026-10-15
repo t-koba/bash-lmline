@@ -315,7 +315,7 @@ __lmline_report_request_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}}
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status
   __lmline_normalize_response "$api_format" "$response" || {
     printf 'lmline-engine: failed to normalize %s response\n' "$api_format" >&2
     return 1
@@ -323,6 +323,24 @@ __lmline_accept_response() {
   __lmline_trace_file "$label" "$response"
   jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
   __lmline_record_usage "$response"
+  # Command candidates must not be accepted when the provider explicitly
+  # signals output truncation. Missing, null, and unfamiliar statuses remain
+  # compatible; only these exact terminal values are known truncation signals.
+  case "$mode" in
+    generate|rewrite|fix)
+      finish_status=$(jq -r '
+        .choices[0].finish_reason as $status |
+        if ($status | type) == "string" then $status else "" end
+      ' "$response" 2>/dev/null) || finish_status=
+      case "${finish_status,,}" in
+        length|max_tokens|incomplete)
+          printf 'lmline-engine: provider returned an incomplete command response (%s); increase LMLINE_MAX_TOKENS or shorten the request and retry\n' \
+            "${finish_status,,}" >&2
+          return 1
+          ;;
+      esac
+      ;;
+  esac
 }
 
 __lmline_post_chat() {
@@ -977,6 +995,12 @@ __lmline_cache_key() {
   {
     __lmline_request_key "$mode" "$line"
     printf 'cwd=%s\n' "${cwd:-$PWD}"
+    # Command entries created before terminal-status validation cannot prove
+    # that their provider response was complete. Version only command caches;
+    # prose cache identities stay stable and old command entries expire.
+    case "$mode" in
+      generate|rewrite) printf 'command_cache_policy=terminal-status-v1\n' ;;
+    esac
     printf 'base=%s\nmodel=%s\napi_format=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
       "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
     # The effective request payload is already built at lookup time, so hash
