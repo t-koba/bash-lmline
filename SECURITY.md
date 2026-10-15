@@ -8,6 +8,13 @@ Do not enable a remote provider unless you are comfortable sending shell context
 
 `command_run` is disabled by default. When enabled, its bounded stdout/stderr is sent to the model as untrusted tool output. `LMLINE_EXEC_BACKEND=off` disables command execution. `LMLINE_EXEC_BACKEND=auto` uses the configured microsandbox CLI when `msb` is available; otherwise it uses the local backend. `lmline sandbox run` requires microsandbox and never falls back to local execution.
 
+The command-execution timeout helper uses GNU `timeout` when available. Its portable
+fallback cancels the launched job's isolated process group with TERM, then KILL
+after a one-second grace period, even if the group leader exits on TERM.
+Processes that intentionally detach or change process group (for example via
+`setpgid` or `setsid`) are outside this cancellation scope. A local execution
+deadline is not a security sandbox.
+
 The microsandbox backend isolates command execution from the host process, but command output can still expose data from the sandbox image or command input. lmline does not claim network isolation for microsandbox because that is controlled by the upstream runtime and CLI options.
 
 `lmline sandbox check` runs `msb --version` only. lmline does not install microsandbox automatically.

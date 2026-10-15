@@ -812,20 +812,61 @@ grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run na
 # Portable deadline stays bounded where GNU timeout is missing (e.g. stock macOS).
 notimeout_bin=$(mktemp -d "${TMPDIR:-/tmp}/lmline-notimeout.XXXXXX")
 ln -s "$(command -v sleep)" "$notimeout_bin/sleep"
-bash -c '
-  set -uo pipefail
-  source "$1/lmline/sandbox.bash"
-  export PATH="$2"
-  command -v timeout >/dev/null 2>&1 && exit 3
-  start=$SECONDS
-  status=0
-  __lmline_timeout_run 2 sleep 10 || status=$?
-  elapsed=$((SECONDS - start))
-  (( status == 124 )) || exit 5
-  (( elapsed < 8 )) || exit 6
-  out=$(__lmline_timeout_run 2 echo portable-ok) || exit 7
-  [[ "$out" == portable-ok ]] || exit 7
-' _ "$repo_dir" "$notimeout_bin" || fail "portable timeout without GNU timeout"
+# The leader exits on TERM, but its same-group child ignores TERM and would
+# write after the deadline + grace. Even a broken implementation leaves no
+# long-lived child: the synthetic workload ends after five seconds.
+cat >"$notimeout_bin/descendant" <<'SCRIPT_EOF'
+trap 'printf "term\n" >"$2"; exit 0' TERM
+(
+  trap "" TERM
+  printf 'ready\n' >"$3"
+  sleep 5
+  printf 'leaked\n' >"$1"
+) &
+wait
+SCRIPT_EOF
+for monitor in off on; do
+  if ! bash -c '
+    set -uo pipefail
+    source "$1/lmline/sandbox.bash"
+    export PATH="$2"
+    command -v timeout >/dev/null 2>&1 && exit 3
+    command -v sleep >/dev/null 2>&1 || exit 4
+    # This sibling is outside the launched job, and must survive cancellation.
+    sleep 10 &
+    sentinel=$!
+    cleanup() { set +m; kill "$sentinel" 2>/dev/null || :; wait "$sentinel" 2>/dev/null || :; }
+    trap cleanup EXIT
+    if [[ $3 == on ]]; then set -m; else set +m; fi
+    before=$-
+    trap : INT HUP TERM
+    before_traps=$(trap -p INT HUP TERM)
+    start=$SECONDS
+    status=0
+    __lmline_timeout_run 2 "$BASH" "$2/descendant" "$2/marker-$3" "$2/term-$3" "$2/ready-$3" || status=$?
+    elapsed=$((SECONDS - start))
+    (( status == 124 )) || exit 5
+    (( elapsed >= 3 && elapsed < 8 )) || exit 6
+    [[ $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 7
+    [[ -s "$2/ready-$3" && -s "$2/term-$3" ]] || exit 8
+    # Wait past the marker deadline even if the timeout returned too early.
+    while (( SECONDS - start < 6 )); do sleep 1; done
+    [[ ! -e "$2/marker-$3" ]] || exit 9
+    kill -0 "$sentinel" 2>/dev/null || exit 10
+    out=$(__lmline_timeout_run 2 echo portable-ok) || exit 11
+    [[ $out == portable-ok && $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 12
+    status=0
+    __lmline_timeout_run 2 "$BASH" -c "echo portable-stderr >&2; exit 23" || status=$?
+    [[ $status == 23 && $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 13
+    printf "portable-%s-ok\n" "$3"
+  ' _ "$repo_dir" "$notimeout_bin" "$monitor" >"$notimeout_bin/out" 2>"$notimeout_bin/err"; then
+    cat "$notimeout_bin/out" "$notimeout_bin/err" >&2
+    rm -rf "$notimeout_bin"
+    fail "portable timeout without GNU timeout (monitor $monitor)"
+  fi
+  [[ $(cat "$notimeout_bin/out") == "portable-$monitor-ok" ]] || fail "portable timeout stdout diagnostics"
+  [[ $(cat "$notimeout_bin/err") == portable-stderr ]] || fail "portable timeout stderr diagnostics"
+done
 rm -rf "$notimeout_bin"
 
 # Forced termination bounds a TERM-ignoring command (GNU -k, fallback KILL).

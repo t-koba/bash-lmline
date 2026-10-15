@@ -2,6 +2,81 @@
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
+# Ctrl-C must cancel the fallback's isolated job, not just its supervisor.
+if command -v expect >/dev/null 2>&1; then
+  cancel_pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-cancel-pty.XXXXXX")
+  mkdir "$cancel_pty_tmp/bin"
+  ln -s "$(command -v sleep)" "$cancel_pty_tmp/bin/sleep"
+  # The leader exits on TERM but a same-group descendant ignores it. A broken
+  # cancellation still ends naturally after five seconds, leaving a marker.
+  cat >"$cancel_pty_tmp/worker" <<'WORKER'
+trap 'exit 0' TERM
+(
+  trap '' TERM
+  printf 'cancel-ready\n'
+  sleep 5
+  printf 'leaked\n' >"$1"
+) &
+wait
+WORKER
+  cat >"$cancel_pty_tmp/cancel.exp" <<'EXPECT'
+set timeout 5
+log_user 1
+lassign $argv shell root tmp
+proc prompt {} {
+  expect {
+    -re {CANCEL_PROMPT> $} {}
+    timeout {puts stderr "cancellation PTY prompt timeout"; exit 1}
+    eof {puts stderr "cancellation PTY shell exited"; exit 1}
+  }
+}
+spawn $shell --noprofile --norc -i
+expect {
+  -re {[$#] $} {}
+  timeout {exit 1}
+}
+send -- "unset PROMPT_COMMAND; PS1='CANCEL_PROMPT> '; source '$root/lmline/sandbox.bash'; export PATH='$tmp/bin'\r"
+prompt
+send -- {if command -v timeout >/dev/null; then echo unexpected-timeout; else echo timeout-hidden; fi; command -v sleep >/dev/null && echo sleep-available; before=$-; before_traps=$(trap -p)}
+send -- "\r"
+expect -exact "\r\ntimeout-hidden\r\nsleep-available\r\n"
+prompt
+send -- "__lmline_timeout_run 30 \"\$BASH\" '$tmp/worker' '$tmp/marker'\r"
+expect {
+  -exact "\r\ncancel-ready\r\n" {}
+  timeout {puts stderr "cancellation PTY worker not ready"; exit 1}
+}
+send -- "\003"
+prompt
+# Read status in a new command: an interactive shell can discard the remainder
+# of the interrupted input line. The returned prompt must remain usable.
+send -- {printf 'cancel-status=%s\n' "$?"; [[ $- == "$before" && $(trap -p) == "$before_traps" ]] && echo caller-unchanged}
+send -- "\r"
+expect {
+  -exact "\r\ncancel-status=130\r\ncaller-unchanged\r\n" {}
+  timeout {puts stderr "cancellation PTY wrong status or caller state"; exit 1}
+}
+prompt
+# Wait beyond the naturally bounded worker, not merely the TERM grace period.
+after 6000
+if {[file exists "$tmp/marker"]} {
+  puts stderr "cancellation PTY descendant leaked"
+  exit 1
+}
+send -- "exit\r"
+expect eof
+EXPECT
+  if ! expect "$cancel_pty_tmp/cancel.exp" "$BASH" "$repo_dir" "$cancel_pty_tmp" >"$cancel_pty_tmp/transcript" 2>&1; then
+    cat "$cancel_pty_tmp/transcript" >&2
+    rm -rf "$cancel_pty_tmp"
+    fail "bash fallback timeout Ctrl-C cancellation PTY"
+  fi
+  rm -rf "$cancel_pty_tmp"
+  ok "bash fallback timeout Ctrl-C cancellation PTY"
+else
+  printf 'skip - bash fallback timeout Ctrl-C cancellation PTY (expect not found)\n'
+fi
+
 if command -v expect >/dev/null 2>&1; then
   pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-pty.XXXXXX")
   printf '#!/usr/bin/env bash\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo pty-ok\\n"\n' >"$pty_tmp/engine"

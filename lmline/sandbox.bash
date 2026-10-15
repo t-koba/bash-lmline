@@ -59,10 +59,10 @@ __lmline_select_exec_backend() {
 }
 
 # Portable deadline for model-requested execution. Uses GNU timeout when
-# available; otherwise polls in pure bash so execution stays bounded on
-# platforms without it (e.g. stock macOS). Returns 124 on timeout, or 137
-# when the command ignores TERM and is force-killed after a 1s grace period;
-# callers treat both as timed_out.
+# available (124 on timeout, or 137 after forced termination). The fallback
+# polls in Bash and always returns 124 on timeout, including after KILL
+# following a 1s TERM grace period.
+# Cancellation covers the isolated job's process group, not detached processes.
 __lmline_timeout_run() {
   local timeout_s=$1
   shift
@@ -71,23 +71,58 @@ __lmline_timeout_run() {
     timeout -k 1s "$timeout_s" "$@"
     return $?
   fi
-  "$@" &
-  local child=$! i status=0
-  for ((i = 0; i < timeout_s; i++)); do
-    sleep 1
-    kill -0 "$child" 2>/dev/null || break
-  done
-  if kill -0 "$child" 2>/dev/null; then
-    kill "$child" 2>/dev/null || true
-    sleep 1
-    if kill -0 "$child" 2>/dev/null; then
-      kill -9 "$child" 2>/dev/null || true
+  (
+    local child group i status=0 pending=
+    # Record cancellation before launch, including while the PGID is unvalidated.
+    # These traps and monitor mode changes are confined to this supervisor.
+    trap 'pending=${pending:-130}' INT
+    trap 'pending=${pending:-129}' HUP
+    trap 'pending=${pending:-143}' TERM
+    __lmline_timeout_cancel() {
+      # Neither a second interrupt nor the leader exiting may skip escalation.
+      trap '' INT HUP TERM
+      local result=${pending:-$1}
+      kill -TERM -- "-$group" 2>/dev/null || true
+      sleep 1
+      kill -KILL -- "-$group" 2>/dev/null || true
+      wait "$child" 2>/dev/null || true
+      exit "$result"
+    }
+    # Scope monitor mode to this supervisor. A monitored background job gets
+    # its own PGID; turn monitoring off in the child so its descendants share it.
+    set -m || return 1
+    [[ $- == *m* ]] || return 1
+    (set +m; "$@") &
+    child=$!
+    # Stop job notifications without changing the already-created job's PGID.
+    set +m
+    group=$(jobs -p %+) || group=
+    # jobs -p reports the job's process-group leader. Never send a group signal
+    # unless it matches this launch's positive PID, distinct from our own group.
+    if [[ ! $child =~ ^[0-9]+$ || $group != "$child" ]] || (( child <= 1 )); then
+      trap '' INT HUP TERM
+      if [[ $child =~ ^[0-9]+$ ]] && (( child > 1 )); then
+        kill -KILL "$child" 2>/dev/null || true
+        wait "$child" 2>/dev/null || true
+      fi
+      return "${pending:-1}"
     fi
-    wait "$child" 2>/dev/null || true
-    return 124
-  fi
-  wait "$child" || status=$?
-  return $status
+    # From here on cancellation can safely target the isolated group, even if
+    # a signal interrupts wait or races with normal command completion.
+    trap '__lmline_timeout_cancel 130' INT
+    trap '__lmline_timeout_cancel 129' HUP
+    trap '__lmline_timeout_cancel 143' TERM
+    [[ -z $pending ]] || __lmline_timeout_cancel "$pending"
+    for ((i = 0; i < timeout_s; i++)); do
+      sleep 1
+      kill -0 "$child" 2>/dev/null || break
+    done
+    if kill -0 "$child" 2>/dev/null; then
+      __lmline_timeout_cancel 124
+    fi
+    wait "$child" || status=$?
+    return $status
+  )
 }
 
 __lmline_microsandbox_with_host_timeout() {
