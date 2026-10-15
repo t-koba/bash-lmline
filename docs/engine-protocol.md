@@ -122,10 +122,12 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
   tool calls are parsed or dispatched, and before candidates are emitted or
   cached. The bundled engine recognizes only exact case-insensitive status
   values `length`, `max_tokens`, and `incomplete` (normalized from Chat
-  `finish_reason`, Messages `stop_reason`, and Responses `status`). Missing or
-  null statuses and unfamiliar values remain accepted for provider
-  compatibility; this is not a success-status allowlist. The bounded error
-  recommends increasing `LMLINE_MAX_TOKENS` or shortening the request.
+  `finish_reason`, Messages `stop_reason`, and Responses `status`), plus the
+  Messages stop reason `model_context_window_exceeded`. Missing or null statuses
+  and unfamiliar values remain accepted for provider compatibility; this is not
+  a success-status allowlist. The bounded error recommends increasing
+  `LMLINE_MAX_TOKENS` or shortening the request for token-limit statuses, and
+  shortening the prompt/context for context-window exhaustion.
   `explain`/`clip` buffered behavior and streaming behavior are unchanged.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for

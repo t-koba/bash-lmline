@@ -83,13 +83,13 @@ assert_complete() {
 }
 
 assert_truncated() {
-  local label=$1 status=$2
+  local label=$1 status=$2 guidance=${3:-LMLINE_MAX_TOKENS}
   invoke_engine
   [[ $engine_status != 0 ]] || fail "$label truncated response unexpectedly succeeded"
   [[ -z "$(candidates_of <<<"$engine_output")" ]] || fail "$label emitted candidate after truncation"
   [[ $(cache_count) == 0 ]] || fail "$label cached a truncated response"
   grep -Fq "incomplete command response ($status)" "$case_dir/stderr" || fail "$label safe truncation diagnostic"
-  grep -Fq 'LMLINE_MAX_TOKENS' "$case_dir/stderr" || fail "$label actionable diagnostic"
+  grep -Fq "$guidance" "$case_dir/stderr" || fail "$label actionable diagnostic"
   ! grep -Fq 'provider-candidate' "$case_dir/stderr" || fail "$label diagnostic leaked response content"
 }
 
@@ -118,6 +118,12 @@ cat >"$case_dir/response.json" <<'JSON'
 {"content":[{"type":"text","text":"echo provider-candidate"}],"stop_reason":"max_tokens"}
 JSON
 assert_truncated messages max_tokens
+
+init_case messages-context-window messages
+cat >"$case_dir/response.json" <<'JSON'
+{"content":[{"type":"text","text":"echo provider-candidate"}],"stop_reason":"model_context_window_exceeded"}
+JSON
+assert_truncated messages model_context_window_exceeded 'shorten the prompt/context'
 
 init_case responses-complete responses
 cat >"$case_dir/response.json" <<'JSON'

@@ -338,6 +338,11 @@ __lmline_accept_response() {
             "${finish_status,,}" >&2
           return 1
           ;;
+        model_context_window_exceeded)
+          printf 'lmline-engine: provider returned an incomplete command response (%s); shorten the prompt/context and retry\n' \
+            "${finish_status,,}" >&2
+          return 1
+          ;;
       esac
       ;;
   esac
