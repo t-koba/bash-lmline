@@ -7,14 +7,16 @@ if command -v expect >/dev/null 2>&1; then
   cancel_pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-cancel-pty.XXXXXX")
   mkdir "$cancel_pty_tmp/bin"
   ln -s "$(command -v sleep)" "$cancel_pty_tmp/bin/sleep"
-  # The leader exits on TERM but a same-group descendant ignores it. A broken
-  # cancellation still ends naturally after five seconds, leaving a marker.
+  # The leader exits on TERM but a same-group child ignores it. A broken
+  # cancellation ends naturally after two seconds, leaving a marker well before
+  # the five-second prompt timeout so timing failures remain distinguishable.
   cat >"$cancel_pty_tmp/worker" <<'WORKER'
-trap 'exit 0' TERM
+printf 'worker_pid=%s worker_ppid=%s\n' "$$" "$PPID" >"$3"
+trap 'printf "term\n" >"$2"; exit 0' TERM
 (
   trap '' TERM
   printf 'cancel-ready\n'
-  sleep 5
+  sleep 2
   printf 'leaked\n' >"$1"
 ) &
 wait
@@ -23,31 +25,56 @@ WORKER
 set timeout 5
 log_user 1
 lassign $argv shell root tmp
-proc prompt {} {
+set term_file "$tmp/worker-term"
+set pid_file "$tmp/worker-pids"
+proc prompt {term_file pid_file} {
   expect {
     -re {CANCEL_PROMPT> $} {}
-    timeout {puts stderr "cancellation PTY prompt timeout"; exit 1}
+    timeout {
+      puts stderr "cancellation PTY prompt timeout"
+      if {[file exists $term_file]} {
+        set f [open $term_file r]
+        puts stderr "worker_term=[read $f]"
+        close $f
+      } else {
+        puts stderr "worker_term=missing"
+      }
+      if {[file exists $pid_file]} {
+        set f [open $pid_file r]
+        puts stderr "worker_pids=[read $f]"
+        close $f
+      } else {
+        puts stderr "worker_pids=missing"
+      }
+      if {[catch {exec ps -A -o pid,ppid,pgid} states]} {
+        puts stderr "process_id_snapshot_unavailable=$states"
+      } else {
+        puts stderr "process_ids_at_timeout:\n$states"
+      }
+      exit 1
+    }
     eof {puts stderr "cancellation PTY shell exited"; exit 1}
   }
 }
+
 spawn $shell --noprofile --norc -i
 expect {
   -re {[$#] $} {}
   timeout {exit 1}
 }
 send -- "unset PROMPT_COMMAND; PS1='CANCEL_PROMPT> '; source '$root/lmline/sandbox.bash'; export PATH='$tmp/bin'\r"
-prompt
+prompt "$term_file" "$pid_file"
 send -- {if command -v timeout >/dev/null; then echo unexpected-timeout; else echo timeout-hidden; fi; command -v sleep >/dev/null && echo sleep-available; before=$-; before_traps=$(trap -p)}
 send -- "\r"
 expect -exact "\r\ntimeout-hidden\r\nsleep-available\r\n"
-prompt
-send -- "__lmline_timeout_run 30 \"\$BASH\" '$tmp/worker' '$tmp/marker'\r"
+prompt "$term_file" "$pid_file"
+send -- "__lmline_timeout_run 30 \"\$BASH\" '$tmp/worker' '$tmp/marker' '$term_file' '$pid_file'\r"
 expect {
   -exact "\r\ncancel-ready\r\n" {}
   timeout {puts stderr "cancellation PTY worker not ready"; exit 1}
 }
 send -- "\003"
-prompt
+prompt "$term_file" "$pid_file"
 # Read status in a new command: an interactive shell can discard the remainder
 # of the interrupted input line. The returned prompt must remain usable.
 send -- {printf 'cancel-status=%s\n' "$?"; [[ $- == "$before" && $(trap -p) == "$before_traps" ]] && echo caller-unchanged}
@@ -56,9 +83,13 @@ expect {
   -exact "\r\ncancel-status=130\r\ncaller-unchanged\r\n" {}
   timeout {puts stderr "cancellation PTY wrong status or caller state"; exit 1}
 }
-prompt
-# Wait beyond the naturally bounded worker, not merely the TERM grace period.
-after 6000
+prompt "$term_file" "$pid_file"
+if {![file exists $term_file]} {
+  puts stderr "cancellation PTY worker did not record TERM"
+  exit 1
+}
+# Wait beyond the worker deadline, not merely the TERM grace period.
+after 3000
 if {[file exists "$tmp/marker"]} {
   puts stderr "cancellation PTY descendant leaked"
   exit 1
