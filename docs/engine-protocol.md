@@ -84,12 +84,15 @@ explanation-truncated original_bytes=<N> max_bytes=<M>   # explain
 clip-output-truncated original_bytes=<N> max_bytes=<M>   # clip
 ```
 
-If streaming ends without usable output before any user-visible text is emitted,
-the engine falls back to the buffered request path, preserving any successfully
-completed tool rounds. If transport is interrupted after partial output, the engine
-keeps the emitted text, appends `stream-interrupted emitted_bytes=<N>`, and does
-not send a buffered retry. A local tool-round execution failure is fatal and
-does not trigger a buffered request, which could repeat side effects.
+A streamed round that ends without usable output and without a recognized tool call
+follows the buffered request path, preserving any successfully completed tool rounds.
+If an interrupted final-answer round has emitted user-visible text and has no
+recognized tool call, the engine keeps the text, appends
+`stream-interrupted emitted_bytes=<N>`, and does not send a buffered retry. If an
+interrupted round contains a recognized tool call, the engine handles it as a tool
+round; while the round budget permits, it executes the calls and continues streaming
+without adding the marker for that round. A local tool-round execution failure is
+fatal and does not trigger a buffered request, which could repeat side effects.
 
 ## Output: stderr side channel
 
