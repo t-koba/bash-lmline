@@ -18,11 +18,12 @@ mkdir -p "$fake_bin"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
+data=
 while (($#)); do
   case "$1" in
     -o) out=$2; shift 2 ;;
     -w) shift 2 ;;
-    --data-binary) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -33,11 +34,13 @@ count=$((count + 1))
 printf '%s\n' "$count" >"$state"
 case "$count" in
   1)
+    jq -e '[.tools[]? | select(.function.name == "command_exists" or .function.name == "commands" or .function.name == "files") | .function.description | select(test("untrusted"; "i"))] | length == 3' "$data" >/dev/null || { echo "native tool descriptions omit untrusted label" >&2; exit 7; }
     cat >"$out" <<'JSON'
 {"model":"test/tool-model","usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11},"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"command_exists","arguments":"{\"commands\":\"awk\"}"}}]}}]}
 JSON
     ;;
   2)
+    jq -e '[.messages[]? | select(.role == "tool") | .content | select(startswith("BEGIN_UNTRUSTED_COMMAND_EXISTS\n| awk found ") and endswith("END_UNTRUSTED_COMMAND_EXISTS"))] | length == 1' "$data" >/dev/null || { echo "native tool result was not preserved as marked data" >&2; exit 7; }
     cat >"$out" <<'JSON'
 {"model":"test/tool-model","usage":{"prompt_tokens":12,"completion_tokens":2,"total_tokens":14},"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_2","type":"function","function":{"name":"command_info","arguments":"{\"commands\":\"awk\"}"}}]}}]}
 JSON
@@ -160,11 +163,12 @@ grep -R "Previous tool results summarized" "$trace_dir" >/dev/null || fail "tool
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
+data=
 while (($#)); do
   case "$1" in
     -o) out=$2; shift 2 ;;
     -w) shift 2 ;;
-    --data-binary) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -180,6 +184,7 @@ case "$count" in
 JSON
     ;;
   2)
+    jq -e '[.messages[]? | select(.role == "user") | .content | select(startswith("Tool result for command_exists (untrusted reference data):\nBEGIN_UNTRUSTED_COMMAND_EXISTS\n| awk found ") and endswith("END_UNTRUSTED_COMMAND_EXISTS"))] | length == 1' "$data" >/dev/null || { echo "text tool result was not preserved as marked data" >&2; exit 7; }
     cat >"$out" <<'JSON'
 {"choices":[{"message":{"role":"assistant","content":"Tool command_info commands=\"awk\" ; tool command_exists commands=sed"}}]}
 JSON

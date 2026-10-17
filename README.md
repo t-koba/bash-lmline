@@ -921,6 +921,10 @@ command_run     bounded command execution through LMLINE_EXEC_BACKEND,
                 disabled by default
 ```
 
+All local tool results are untrusted reference data, including command names,
+filenames, repository status, and paths. The engine marks these results in
+bounded delimiter blocks; the markers do not execute or validate their contents.
+
 </details>
 
 ## Output Condensation
