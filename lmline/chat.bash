@@ -810,7 +810,7 @@ __lmline_progress() {
 # already incremented and the assistant turn already appended.
 __lmline_execute_tool_round() {
   local tool_messages_file=$work_dir/tool-messages.round-${tool_round}.jsonl
-  local call call_id name args_json short_name tool_output patterns_file tool_call_index=0
+  local call call_id name args_json short_name tool_output tool_result_content patterns_file tool_call_index=0
   patterns_file=$(__lmline_condense_patterns_file) || return 1
   : >"$tool_messages_file"
   while IFS= read -r call; do
@@ -842,10 +842,11 @@ __lmline_execute_tool_round() {
         --arg content "$tool_output" \
         '{role: $role, tool_call_id: $tool_call_id, name: $name, content: $content}' >>"$tool_messages_file"
     else
+      tool_result_content=$(printf 'Tool result for %s (untrusted reference data):\n%s\nEnd of tool result for %s.' "$name" "$tool_output" "$name")
       jq -n \
         --arg role user \
         --arg name "$name" \
-        --arg content "Tool result for $name (untrusted reference data):\n$tool_output" \
+        --arg content "$tool_result_content" \
         '{role: $role, content: $content}' >>"$tool_messages_file"
     fi
   done <"$tool_calls_file"
