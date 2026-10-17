@@ -86,13 +86,16 @@ clip-output-truncated original_bytes=<N> max_bytes=<M>   # clip
 
 A streamed round that ends without usable output and without a recognized tool call
 follows the buffered request path, preserving any successfully completed tool rounds.
-If an interrupted final-answer round has emitted user-visible text and has no
-recognized tool call, the engine keeps the text, appends
-`stream-interrupted emitted_bytes=<N>`, and does not send a buffered retry. If an
-interrupted round contains a recognized tool call, the engine handles it as a tool
-round; while the round budget permits, it executes the calls and continues streaming
-without adding the marker for that round. A local tool-round execution failure is
-fatal and does not trigger a buffered request, which could repeat side effects.
+In particular, when an interrupted stream has emitted zero user-visible bytes, the
+engine returns to buffered fallback before parsing tool-call deltas; calls from that
+stream are not dispatched, even if they look valid. If an interrupted final-answer
+round has emitted user-visible text and has no recognized tool call, the engine keeps
+the text, appends `stream-interrupted emitted_bytes=<N>`, and does not send a buffered
+retry. If an interrupted round has emitted user-visible text and contains a recognized
+tool call, the engine handles it as a tool round; while the round budget permits, it
+executes the calls and continues streaming without adding the marker for that round.
+A local tool-round execution failure is fatal and does not trigger a buffered request,
+which could repeat side effects.
 
 ## Output: stderr side channel
 
