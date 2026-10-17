@@ -936,8 +936,11 @@ run_sandbox_command() {
     rm -rf "$tmp"
     return 1
   fi
-  __lmline_condense_file "$tmp/stdout" "$max_output"
-  __lmline_condense_file "$tmp/stderr" "$max_output"
+  if ! __lmline_condense_file "$tmp/stdout" "$max_output" ||
+    ! __lmline_condense_file "$tmp/stderr" "$max_output"; then
+    rm -rf "$tmp"
+    return 1
+  fi
   cat "$tmp/stdout"
   cat "$tmp/stderr" >&2
   status=$__LMLINE_EXEC_STATUS

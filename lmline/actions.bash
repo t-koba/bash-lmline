@@ -231,13 +231,14 @@ __lmline_redact_clip_text() {
 
 __lmline_prepare_clip_input() {
   local question=$1 clipboard=$2 provider=$3 max_input=${LMLINE_CLIP_MAX_INPUT_BYTES:-65536}
-  local raw_bytes redacted input_bytes truncated=0
+  local raw_bytes redacted input_bytes truncated=0 patterns_file
   [[ "$max_input" =~ ^[1-9][0-9]*$ ]] || max_input=65536
   raw_bytes=$(LC_ALL=C printf '%s' "$clipboard" | wc -c | tr -d ' ')
   redacted=$(printf '%s' "$clipboard" | __lmline_redact_clip_text)
   input_bytes=$(LC_ALL=C printf '%s' "$redacted" | wc -c | tr -d ' ')
   if (( input_bytes > max_input )); then
-    redacted=$(printf '%s' "$redacted" | __lmline_condense_text "$max_input" "$(__lmline_condense_patterns_file)")
+    patterns_file=$(__lmline_condense_patterns_file) || return 1
+    redacted=$(printf '%s' "$redacted" | __lmline_condense_text "$max_input" "$patterns_file") || return 1
     truncated=1
   fi
   cat <<EOF
@@ -270,7 +271,10 @@ __lmline_print_clip() {
     printf '%sclipboard is empty (provider=%s)\n' "$prefix" "$provider"
     return 1
   }
-  clip_input=$(__lmline_prepare_clip_input "$question" "$clipboard" "$provider")
+  clip_input=$(__lmline_prepare_clip_input "$question" "$clipboard" "$provider") || {
+    rm -rf "$tmp"
+    return 1
+  }
   printf '%s' "$clip_input" >"$tmp/line"
   __lmline_context_file "$tmp/context" "$question" clip || {
     rm -rf "$tmp"
@@ -430,8 +434,11 @@ __lmline_fix_run() {
     return 3
   fi
   status=$__LMLINE_EXEC_STATUS
-  __lmline_condense_file "$tmp/stdout" "$max_output"
-  __lmline_condense_file "$tmp/stderr" "$max_output"
+  if ! __lmline_condense_file "$tmp/stdout" "$max_output" ||
+    ! __lmline_condense_file "$tmp/stderr" "$max_output"; then
+    rm -rf "$tmp"
+    return 1
+  fi
   if (( status == 0 )); then
     rm -rf "$tmp"
     printf '%scommand succeeded; no fix needed\n' "$prefix" >&2

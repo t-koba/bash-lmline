@@ -942,7 +942,13 @@ controlled by the existing `LMLINE_FIX_MAX_OUTPUT`,
 `LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT`, and `LMLINE_CLIP_MAX_INPUT_BYTES`
 settings, plus `LMLINE_CONDENSE_LINE_BYTES` (per-line cap),
 `LMLINE_CONDENSE_RESCUE_LINES` (max rescued lines), and
-`LMLINE_CONDENSE_PATTERNS_FILE` (custom priority patterns).
+`LMLINE_CONDENSE_PATTERNS_FILE` (custom priority patterns). A custom pattern
+file replaces the packaged `lmline/defaults/condense_priority_patterns.txt`
+list; it is not merged with it. Patterns are extended regular expressions,
+one per line, with blank and `#` comment lines ignored. An explicit empty file
+therefore disables priority-line rescue. If an explicitly configured file is
+missing or unreadable, condensation fails with a diagnostic rather than
+silently sending uncondensed output.
 
 ## Concurrency and Locking
 

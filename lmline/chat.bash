@@ -810,7 +810,8 @@ __lmline_progress() {
 # already incremented and the assistant turn already appended.
 __lmline_execute_tool_round() {
   local tool_messages_file=$work_dir/tool-messages.round-${tool_round}.jsonl
-  local call call_id name args_json short_name tool_output tool_call_index=0
+  local call call_id name args_json short_name tool_output patterns_file tool_call_index=0
+  patterns_file=$(__lmline_condense_patterns_file) || return 1
   : >"$tool_messages_file"
   while IFS= read -r call; do
     call_id=$(printf '%s' "$call" | jq -r '.id')
@@ -824,8 +825,13 @@ __lmline_execute_tool_round() {
     else
       # Condense before the result enters the conversation: unlike the LLM
       # summarization pass this costs no extra request.
-      tool_output=$(__lmline_tool_output "$name" "$args_json" \
-        | __lmline_condense_text "${LMLINE_TOOL_RESULT_MAX_BYTES:-8000}" "$(__lmline_condense_patterns_file)")
+      if ! tool_output=$(
+        set -o pipefail
+        __lmline_tool_output "$name" "$args_json" |
+          __lmline_condense_text "${LMLINE_TOOL_RESULT_MAX_BYTES:-8000}" "$patterns_file"
+      ); then
+        return 1
+      fi
     fi
     tool_call_index=$((tool_call_index + 1))
     if [[ "$tool_source" == openai ]]; then
@@ -887,7 +893,7 @@ __lmline_tool_output() {
       ;;
     command_run)
       command_line=$(printf '%s' "$args_json" | jq -r '.command // empty' 2>/dev/null || true)
-      __lmline_tool_command_run "$command_line" 2>/dev/null || true
+      __lmline_tool_command_run "$command_line"
       ;;
     *)
       printf 'unsupported tool: %s\n' "$name"

@@ -583,8 +583,11 @@ __lmline_tool_command_run() {
     return 0
   fi
   status=$__LMLINE_EXEC_STATUS
-  __lmline_condense_file "$tmp/stdout" "$max_output"
-  __lmline_condense_file "$tmp/stderr" "$max_output"
+  if ! __lmline_condense_file "$tmp/stdout" "$max_output" ||
+    ! __lmline_condense_file "$tmp/stderr" "$max_output"; then
+    rm -rf "$tmp"
+    return 1
+  fi
   stdout_bytes=$(wc -c <"$tmp/stdout" 2>/dev/null | tr -d '[:space:]')
   stderr_bytes=$(wc -c <"$tmp/stderr" 2>/dev/null | tr -d '[:space:]')
   printf 'allowed=1\n'
@@ -742,8 +745,7 @@ __lmline_condense_patterns_file() {
   __lmline_resolve_data_file condense_priority_patterns \
     "${LMLINE_CONDENSE_PATTERNS_FILE:-}" \
     "$LMLINE_USER_RULES_DIR/condense_priority_patterns.txt" \
-    "$LMLINE_DEFAULTS_DIR/condense_priority_patterns.txt" 2>/dev/null \
-    || printf '/dev/null'
+    "$LMLINE_DEFAULTS_DIR/condense_priority_patterns.txt"
 }
 
 # Condenses stdin to roughly max_bytes for model consumption. Unlike a blunt
@@ -754,7 +756,7 @@ __lmline_condense_patterns_file() {
 __lmline_condense_text() {
   local max_bytes=${1:-12000} patterns_file=${2:-}
   local line_max=${LMLINE_CONDENSE_LINE_BYTES:-2000} rescue_max=${LMLINE_CONDENSE_RESCUE_LINES:-20}
-  [[ -n "$patterns_file" && -r "$patterns_file" ]] || patterns_file=/dev/null
+  [[ -n "$patterns_file" && -r "$patterns_file" ]] || return 1
   LC_ALL=C awk -v max="$max_bytes" -v line_max="$line_max" -v rescue_max="$rescue_max" '
     function utf8_safe_cut(s, m,    t, c) {
       t = substr(s, 1, m)
@@ -782,8 +784,6 @@ __lmline_condense_text() {
       raw[++n] = $0; cnt[n] = 1
     }
     END {
-      if (np == 0)
-        np = split("error|fail|fatal|panic|denied|not found|no such|traceback|usage:|warning|exception|permission", pats, "|")
       total = 0
       for (i = 1; i <= n; i++) {
         ren[i] = (cnt[i] > 1) ? raw[i] " (repeated " cnt[i] "x)" : raw[i]
@@ -834,12 +834,19 @@ __lmline_condense_text() {
 # tail-only trim so the head of the output (usage lines, the command echo)
 # survives alongside the tail.
 __lmline_condense_file() {
-  local file=$1 max=${2:-12000} size
+  local file=$1 max=${2:-12000} size patterns_file
   [[ -f "$file" ]] || return 0
   size=$(wc -c <"$file")
   (( size > max )) || return 0
-  __lmline_condense_text "$max" "$(__lmline_condense_patterns_file)" <"$file" >"$file.condensed" \
-    && mv "$file.condensed" "$file"
+  patterns_file=$(__lmline_condense_patterns_file) || return 1
+  if ! __lmline_condense_text "$max" "$patterns_file" <"$file" >"$file.condensed"; then
+    rm -f "$file.condensed"
+    return 1
+  fi
+  if ! mv "$file.condensed" "$file"; then
+    rm -f "$file.condensed"
+    return 1
+  fi
 }
 
 __lmline_split_inline_comment() {
