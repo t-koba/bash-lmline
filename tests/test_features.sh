@@ -307,6 +307,46 @@ stream_tool_out=$(env PATH="$fake_bin:$PATH" "${engine_env[@]}" LMLINE_TOOL_MODE
 grep -q 'lmline-progress: tool command-exists (openai, round 1/4)' "$cfg_tmp/stream-tool.err" || fail "stream tool progress"
 grep -q 'lmline-status: .*tools=command-exists' "$cfg_tmp/stream-tool.err" || fail "stream tool status"
 
+# A failed streamed tool round is fatal, not a reason to issue a buffered
+# request that could repeat tool side effects.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+is_stream=0
+out=
+while (($#)); do
+  case "$1" in
+    -N) is_stream=1; shift ;;
+    -o) out=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+if (( is_stream )); then
+  printf '%s\n\n' 'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"command_exists","arguments":"{\"commands\":\"ls\"}"}}]}}]}'
+  printf 'data: [DONE]\n\n'
+  exit 0
+fi
+printf '%s' '{"choices":[{"message":{"content":"buffered fallback must not run"},"finish_reason":"stop"}]}' >"$out"
+printf '200\tapplication/json'
+EOF
+failed_tool_state="$cfg_tmp/failed-stream-tool-state"
+printf '0\n' >"$failed_tool_state"
+missing_patterns="$cfg_tmp/missing-condense-patterns.txt"
+if env PATH="$fake_bin:$PATH" "${engine_env[@]}" LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 \
+  LMLINE_FAKE_CURL_STATE="$failed_tool_state" LMLINE_CONDENSE_PATTERNS_FILE="$missing_patterns" \
+  "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 7 \
+  --line-file "$cfg_tmp/explain-line" --context-file "$cfg_tmp/context" --n 1 \
+  >"$cfg_tmp/failed-stream-tool.out" 2>"$cfg_tmp/failed-stream-tool.err"; then
+  fail "failed streamed tool round must exit nonzero"
+fi
+[[ $(cat "$failed_tool_state") == 1 ]] || fail "failed streamed tool round makes no fallback request"
+grep -Fq "lmline: condense_priority_patterns file is not readable: $missing_patterns" \
+  "$cfg_tmp/failed-stream-tool.err" || fail "failed streamed tool resolver diagnostic"
+! grep -q 'buffered fallback must not run' "$cfg_tmp/failed-stream-tool.out" || \
+  fail "failed streamed tool round does not emit buffered response"
+
 # --- endpoint/model CRUD and use auto-select ---------------------------------
 crud_dir="$cfg_tmp/crud"
 lm() { LMLINE_CONFIG_DIR="$crud_dir" "$repo_dir/lmline/lmline" "$@"; }

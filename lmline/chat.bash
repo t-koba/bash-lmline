@@ -1273,7 +1273,9 @@ __lmline_stream_chat() {
 
 # Streamed conversation loop: streams every round, runs collected tool calls
 # locally, and hands control back to the buffered loop (with the conversation
-# state intact) on any failure or when the tool round budget is exhausted.
+# state intact) on ordinary stream failures or when the tool round budget is
+# exhausted. Returns 2 when local tool-round execution fails, which must not
+# trigger a buffered retry because a tool may already have caused side effects.
 __lmline_stream_loop() {
   local stream_status
   while :; do
@@ -1295,7 +1297,9 @@ __lmline_stream_loop() {
       return 1
     fi
     tool_round=$((tool_round + 1))
-    __lmline_execute_tool_round
+    if ! __lmline_execute_tool_round; then
+      return 2
+    fi
     __lmline_write_chat_payload "$messages_file" "$payload_file" 1
     __lmline_trace_file "request.round-${tool_round}.json" "$payload_file"
   done
@@ -1392,6 +1396,7 @@ __lmline_retry_worthy_rejections() {
 }
 
 __lmline_chat_run() {
+  local stream_status
   payload_file=$work_dir/payload.json
   body_file=$work_dir/body.json
   err_file=$work_dir/curl.err
@@ -1442,6 +1447,11 @@ __lmline_chat_run() {
     if __lmline_stream_loop; then
       __lmline_cache_store "$emitted_file"
       exit 0
+    else
+      stream_status=$?
+    fi
+    if (( stream_status == 2 )); then
+      exit 1
     fi
     __lmline_progress "streaming unavailable; continuing with a buffered request"
   fi
@@ -1474,7 +1484,7 @@ __lmline_chat_run() {
     tool_round=$((tool_round + 1))
     jq -s '.[0] + [.[1].choices[0].message]' "$messages_file" "$body_file" >"$messages_file.next" || exit 1
     mv "$messages_file.next" "$messages_file"
-    __lmline_execute_tool_round
+    __lmline_execute_tool_round || exit 1
     __lmline_write_chat_payload "$messages_file" "$payload_file" 1
     __lmline_trace_file "request.round-${tool_round}.json" "$payload_file"
   done
