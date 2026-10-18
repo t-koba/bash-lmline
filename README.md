@@ -280,35 +280,44 @@ for current IDs.
 </details>
 
 <details>
-<summary>Command example: OpenCode Go</summary>
+<summary>OpenCode Go compatibility note</summary>
 
-```bash
-lmline endpoint add opencode-go https://opencode.ai/zen/go/v1 \
-  --auth-header Authorization --auth-scheme Bearer --tool-mode auto
-lmline endpoint set-secret opencode-go
-lmline model refresh opencode-go
-lmline use opencode-go <model-id>
-```
+OpenCode Go documents routes such as
+`https://opencode.ai/inference/go/openai/v1/responses`. Its client guidance
+also asks for a stable per-conversation `x-opencode-session` header and a
+client-specific user agent. `lmline` can configure the route and API format,
+but does not currently expose those per-request headers, so it does not meet
+that full Go client guidance. The Console OpenAI endpoints shown below do not
+require those Go-specific headers.
 
 </details>
 
 <details>
-<summary>Command example: OpenCode Zen</summary>
+<summary>Command example: OpenCode Console (OpenAI Responses)</summary>
 
 ```bash
-lmline endpoint add opencode-zen https://opencode.ai/zen/v1 \
-  --auth-header Authorization --auth-scheme Bearer --tool-mode auto
-lmline endpoint set-secret opencode-zen
-lmline model refresh opencode-zen
-lmline use opencode-zen <model-id>
+lmline endpoint add opencode-console https://opencode.ai/inference/openai/v1 \
+  --auth-header Authorization --auth-scheme Bearer
+lmline endpoint set-secret opencode-console
+lmline model add opencode-console gpt-5.5 --api-format responses
+lmline use opencode-console gpt-5.5
 ```
 
-OpenCode model catalogs can include `/chat/completions`, `/responses`, and
-`/messages` endpoints. `model refresh` stores the detected API format with each
-model. Use direct API model IDs without the OpenCode config prefix such as
-`opencode-go/` or `opencode/`. Use the OpenCode [Go](https://opencode.ai/docs/go)
-and [Zen](https://opencode.ai/docs/zen) docs for current endpoint/model
-mappings.
+OpenCode Console's OpenAI Responses route is
+`https://opencode.ai/inference/openai/v1/responses`; `lmline` appends that
+path when the model uses `--api-format responses`. OpenAI Chat Completions
+models use the same base URL with `--api-format chat` (the default). Use the
+model's direct API ID, not OpenCode's config prefix such as `opencode/`.
+
+The current Console model list (`https://opencode.ai/inference/v1/models`)
+returns model IDs without API-family metadata, so `model refresh` defaults
+those entries to `chat` and can overwrite a manually selected Responses
+format. Add Responses models explicitly with `--api-format responses` unless
+the catalog provides format metadata. This example covers OpenAI Chat/Responses
+routes; OpenCode's other API families use different base paths and must match
+the format configured in `lmline`. See OpenCode's
+[Console models](https://opencode.ai/v2/docs/console/models/) and
+[Inference API](https://opencode.ai/v2/docs/console/api/inference/) docs.
 
 </details>
 

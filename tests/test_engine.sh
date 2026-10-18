@@ -681,13 +681,13 @@ for arg in "$@"; do
 done
 url=${@: -1}
 case "$url" in
-  https://api-format.example/v1/responses)
-    jq -e '.model == "model-responses" and (.input | type) == "array" and (.instructions | type) == "string" and (.max_output_tokens | type) == "number"' "$data_file" >/dev/null || {
+  https://opencode.ai/inference/openai/v1/responses)
+    jq -e '.model == "gpt-5.5" and (.input | type) == "array" and (.instructions | type) == "string" and (.max_output_tokens | type) == "number"' "$data_file" >/dev/null || {
       echo "unexpected responses payload" >&2
       cat "$data_file" >&2
       exit 7
     }
-    printf '{"model":"model-responses","output_text":"echo responses-api","usage":{"input_tokens":3,"output_tokens":2}}\n' >"$out"
+    printf '{"model":"gpt-5.5","output_text":"echo responses-api","usage":{"input_tokens":3,"output_tokens":2}}\n' >"$out"
     printf '200\tapplication/json'
     ;;
   https://api-format.example/v1/messages)
@@ -706,7 +706,7 @@ case "$url" in
 esac
 EOF
 chmod +x "$fake_bin/curl"
-responses_api_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+responses_api_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://opencode.ai/inference/openai/v1 LMLINE_MODEL=gpt-5.5 LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$responses_api_out")" == "echo responses-api" ]] || fail "responses api format"
 messages_api_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-messages LMLINE_API_FORMAT=messages LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$messages_api_out")" == "echo messages-api" ]] || fail "messages api format"
@@ -772,13 +772,13 @@ grep -q 'tools disabled for api_format=messages' "$cfg_tmp/messages-warn.err" ||
 chat_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-chat LMLINE_API_FORMAT=chat LMLINE_TOOL_MODE=openai "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/chat-warn.err")
 grep -q '"tools"' <<<"$chat_payload_out" || fail "chat payload unexpectedly tool-less"
 ! grep -q 'tools disabled' "$cfg_tmp/chat-warn.err" || fail "chat payload unexpected tools warning"
-LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/notools-warn.err" >/dev/null || fail "responses tool-less dry-run"
+LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://opencode.ai/inference/openai/v1 LMLINE_MODEL=gpt-5.5 LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=none "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/notools-warn.err" >/dev/null || fail "responses tool-less dry-run"
 ! grep -q 'tools disabled' "$cfg_tmp/notools-warn.err" || fail "tool-less mode unexpected tools warning"
-doctor_format_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
+doctor_format_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://opencode.ai/inference/openai/v1 LMLINE_MODEL=gpt-5.5 LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
 ! grep -q 'disables native local tools' <<<"$doctor_format_out" || fail "doctor responses unexpected tools warning"
 doctor_messages_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-messages LMLINE_API_FORMAT=messages LMLINE_TOOL_MODE=openai "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
 grep -q 'WARNING: LMLINE_API_FORMAT=messages disables native local tools' <<<"$doctor_messages_out" || fail "doctor messages tools warning"
-doctor_stream_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
+doctor_stream_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/doctor-format" LMLINE_BASE_URL=https://opencode.ai/inference/openai/v1 LMLINE_MODEL=gpt-5.5 LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 "$repo_dir/lmline/lmline" doctor 2>/dev/null || true)
 grep -q 'WARNING: LMLINE_API_FORMAT=responses disables streaming' <<<"$doctor_stream_out" || fail "doctor format streaming warning"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -796,7 +796,7 @@ printf '200\tapplication/json'
 EOF
 chmod +x "$fake_bin/curl"
 printf 'date -r\n' >"$cfg_tmp/line-explain-format"
-stream_fallback_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line-explain-format" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/stream-warn.err")
+stream_fallback_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://opencode.ai/inference/openai/v1 LMLINE_MODEL=gpt-5.5 LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_STREAM=1 LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line-explain-format" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/stream-warn.err")
 grep -q 'echo streamed-fallback' <<<"$stream_fallback_out" || fail "responses explain fallback output"
 ! grep -q 'tools disabled' "$cfg_tmp/stream-warn.err" || fail "responses explain unexpected tools warning"
 grep -q 'warning: streaming disabled for api_format=responses' "$cfg_tmp/stream-warn.err" || fail "responses streaming warning"
@@ -833,7 +833,7 @@ fi
 printf '200\tapplication/json'
 EOF
 chmod +x "$fake_bin/curl"
-responses_tool_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_FAKE_CURL_STATE="$cfg_tmp/resp-tool-state" LMLINE_FAKE_CURL_BODIES="$cfg_tmp/resp-tool-bodies" LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/resp-tool.err")
+responses_tool_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://opencode.ai/inference/openai/v1 LMLINE_MODEL=gpt-5.5 LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai LMLINE_FAKE_CURL_STATE="$cfg_tmp/resp-tool-state" LMLINE_FAKE_CURL_BODIES="$cfg_tmp/resp-tool-bodies" LMLINE_CACHE_TTL=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/resp-tool.err")
 [[ "$(candidates_of <<<"$responses_tool_out")" == "echo loop-ok" ]] || fail "responses native tool loop output"
 [[ $(cat "$cfg_tmp/resp-tool-state") == 2 ]] || fail "responses native tool loop rounds"
 grep -q 'tool command-exists (openai, round 1/4)' "$cfg_tmp/resp-tool.err" || fail "responses native tool progress"
