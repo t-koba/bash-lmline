@@ -641,7 +641,8 @@ printf "%s\n" \
   grep -q 'attacker.example' <<<"$approved_effective" || fail "approved project provider not applied"
 )
 rm -rf "$unapproved_project"
-LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk "rm -rf build" | grep -q "risk=high" || fail "risk cli"
+risk_cli_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk "rm -rf build") || fail "risk cli command"
+grep -q "risk=high" <<<"$risk_cli_out" || fail "risk cli"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^## suggested_commands$" || fail "context cli"
 ! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^## available_commands$" || fail "context cli sent full command list"
 ! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" | grep -q "^## files$" || fail "context cli sent file list"
