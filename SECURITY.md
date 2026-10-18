@@ -6,6 +6,13 @@
 
 Do not enable a remote provider unless you are comfortable sending shell context to that provider. By default, file contents and shell history are not sent.
 
+Remote-provider requests use the host's installed `curl` and its linked TLS and protocol libraries. Keep
+this transport stack security-patched through your operating system or package manager; distributions may
+backport fixes, so check vendor advisories rather than relying only on upstream version numbers. For
+example, [curl's CVE-2026-92392 advisory](https://curl.se/docs/CVE-2026-92392.html) covers HTTP/2 upload
+handling. The `-q` flag used by lmline isolates requests from implicit curlrc settings; it does not
+disable HTTP/2 or replace dependency updates.
+
 `command_run` is disabled by default. When enabled, its bounded stdout/stderr is sent to the model as untrusted tool output. `LMLINE_EXEC_BACKEND=off` disables command execution. `LMLINE_EXEC_BACKEND=auto` uses the configured microsandbox CLI when `msb` is available; otherwise it uses the local backend. `lmline sandbox run` requires microsandbox and never falls back to local execution.
 
 The command-execution timeout helper uses GNU `timeout` when available. Its portable
