@@ -6,6 +6,9 @@ let buffer = Buffer.alloc(0);
 let signedIn = false;
 let lastOpenText = '';
 const emptyMode = process.env.LMLINE_FAKE_COPILOT_EMPTY === '1';
+if (process.env.LMLINE_FAKE_COPILOT_PID_FILE) {
+  fs.writeFileSync(process.env.LMLINE_FAKE_COPILOT_PID_FILE, `${process.pid}\n`);
+}
 
 function log(value) {
   if (process.env.LMLINE_FAKE_COPILOT_LOG) fs.appendFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, `${value}\n`);

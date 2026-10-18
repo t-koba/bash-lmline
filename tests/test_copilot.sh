@@ -86,6 +86,41 @@ close_line=$(grep -n -m1 '^textDocument/didClose$' "$copilot_tmp/lsp.log" | cut 
 [[ -n "$show_line" && -n "$close_line" && "$show_line" -lt "$close_line" ]] || fail "Copilot show notification precedes close"
 grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus carries a top-level uri"
 
+# A killed LSP must be replaced in the existing daemon, not take it down.
+(
+  recovery_runtime="$repo_dir/.copilot-recovery-test.$$"
+  recovery_env=(
+    "${copilot_env[@]}"
+    LMLINE_COPILOT_RUNTIME_DIR="$recovery_runtime"
+    LMLINE_FAKE_COPILOT_LOG="$copilot_tmp/recovery-lsp.log"
+    LMLINE_FAKE_COPILOT_PID_FILE="$copilot_tmp/recovery-lsp.pid"
+  )
+  trap 'env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true; rm -rf "$recovery_runtime"' EXIT
+  before_kill=$(env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" edit 'echo 😀 old' 10 "$repo_dir") || fail "Copilot edit before child death"
+  grep -q $'\techo 😀 new$' <<<"$before_kill" || fail "Copilot candidate before child death"
+  daemon_pid=$(cat "$recovery_runtime/daemon.pid")
+  lsp_pid=$(cat "$copilot_tmp/recovery-lsp.pid")
+  kill -KILL "$lsp_pid" || fail "kill Copilot LSP child"
+  # Wait for the daemon to reap the child; the next edit is not an in-flight
+  # request and must initialize a fresh server even for a signal-only exit.
+  for ((i = 0; i < 100; i++)); do
+    kill -0 "$lsp_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  ! kill -0 "$lsp_pid" 2>/dev/null || fail "Copilot LSP child exited"
+  after_kill=$(env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" edit 'echo 😀 old' 10 "$repo_dir") || {
+    sed -n '1,80p' "$recovery_runtime/daemon.log" >&2 || true
+    fail "Copilot edit recovers after child death"
+  }
+  grep -q $'\techo 😀 new$' <<<"$after_kill" || fail "Copilot candidate after child death"
+  [[ $(cat "$copilot_tmp/recovery-lsp.pid") != "$lsp_pid" ]] || fail "Copilot starts a new LSP child"
+  [[ $(cat "$recovery_runtime/daemon.pid") == "$daemon_pid" ]] || fail "Copilot preserves daemon after child death"
+  kill -0 "$daemon_pid" || fail "Copilot daemon stays alive"
+  ! grep -Eqi 'unhandled|throw er;' "$recovery_runtime/daemon.log" || fail "Copilot daemon has no unhandled pipe error"
+  [[ $(grep -c '^initialize$' "$copilot_tmp/recovery-lsp.log") == 2 ]] || fail "Copilot initializes replacement child"
+  [[ $(grep -c '^workspace/didChangeWorkspaceFolders$' "$copilot_tmp/recovery-lsp.log") == 2 ]] || fail "Copilot restores workspace for replacement child"
+)
+
 empty_rt="$copilot_tmp/empty-run"
 mkdir -p "$empty_rt"
 empty_out=$(env "${copilot_env[@]}" LMLINE_COPILOT_RUNTIME_DIR="$empty_rt" LMLINE_FAKE_COPILOT_EMPTY=1 \

@@ -157,10 +157,15 @@ function openDocument(uri) {
 
 class Lsp {
   constructor() {
-    this.child = null;
-    this.buffer = Buffer.alloc(0);
-    this.nextId = 1;
-    this.pending = new Map();
+    this.server = null;
+    this.accepted = new Map();
+    this.resetProtocol();
+  }
+
+  get child() { return this.server?.child; }
+
+  resetProtocol() {
+    this.accepted.clear();
     this.status = null;
     this.messages = [];
     this.workspaces = new Set();
@@ -185,70 +190,112 @@ class Lsp {
     throw new Error('Language Server not installed; run: lmline copilot setup');
   }
 
-  async start() {
-    if (this.child && this.child.exitCode === null) return;
-    const [command, ...args] = this.command();
-    this.child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
-    this.child.stdout.on('data', chunk => this.onData(chunk));
-    this.child.stderr.on('data', chunk => fs.appendFileSync(logPath, chunk, { mode: 0o600 }));
-    this.child.on('error', error => {
-      for (const { reject, timer } of this.pending.values()) { clearTimeout(timer); reject(new Error(`Language Server failed: ${error.message}`)); }
-      this.pending.clear();
-    });
-    this.child.on('exit', code => {
-      for (const { reject, timer } of this.pending.values()) { clearTimeout(timer); reject(new Error(`Language Server exited (${code})`)); }
-      this.pending.clear();
-    });
-    await this.request('initialize', {
-      processId: process.pid, workspaceFolders: null,
-      capabilities: {
-        textDocument: { synchronization: { didOpen: true, didChange: true, didClose: true }, inlineCompletion: { dynamicRegistration: true } },
-        workspace: { workspaceFolders: true, configuration: true },
-        window: { showDocument: { support: true } }
-      },
-      initializationOptions: { editorInfo: { name: 'lmline', version: '1' }, editorPluginInfo: { name: 'bash-lmline', version: '1' } }
-    }, timeoutMs * 2);
-    this.notify('initialized', {});
-    this.notify('workspace/didChangeConfiguration', { settings: {} });
+  ready(server = this.server) {
+    return server && !server.failure && !server.child.killed &&
+      server.child.exitCode === null && server.child.signalCode === null;
   }
 
-  send(message) {
+  failServer(server, error) {
+    if (server.failure) return;
+    server.failure = error;
+    // A retired child's late exit/pipe events must never reject requests
+    // belonging to its replacement (whose request IDs start at one again).
+    for (const { reject, timer } of server.pending.values()) {
+      clearTimeout(timer);
+      reject(error);
+    }
+    server.pending.clear();
+    if (server.child.exitCode === null && server.child.signalCode === null) server.child.kill();
+  }
+
+  async start() {
+    if (this.ready()) return;
+    if (this.server) this.failServer(this.server, new Error('Language Server is not running'));
+    const [command, ...args] = this.command();
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    const server = { child, failure: null, pending: new Map(), nextId: 1, buffer: Buffer.alloc(0) };
+    this.server = server;
+    this.resetProtocol();
+    const fail = error => this.failServer(server, error);
+    for (const stream of [child.stdin, child.stdout, child.stderr]) {
+      stream.on('error', error => fail(new Error(`Language Server pipe failed: ${error.message}`)));
+    }
+    child.stdout.on('data', chunk => this.onData(chunk, server));
+    child.stdout.on('end', () => fail(new Error('Language Server closed its output')));
+    child.stderr.on('data', chunk => {
+      if (this.server === server && !server.failure) fs.appendFileSync(logPath, chunk, { mode: 0o600 });
+    });
+    child.on('error', error => fail(new Error(`Language Server failed: ${error.message}`)));
+    child.on('exit', (code, signal) => fail(new Error(`Language Server exited (${signal || code})`)));
+    try {
+      await this.request('initialize', {
+        processId: process.pid, workspaceFolders: null,
+        capabilities: {
+          textDocument: { synchronization: { didOpen: true, didChange: true, didClose: true }, inlineCompletion: { dynamicRegistration: true } },
+          workspace: { workspaceFolders: true, configuration: true },
+          window: { showDocument: { support: true } }
+        },
+        initializationOptions: { editorInfo: { name: 'lmline', version: '1' }, editorPluginInfo: { name: 'bash-lmline', version: '1' } }
+      }, timeoutMs * 2);
+      this.notify('initialized', {});
+      this.notify('workspace/didChangeConfiguration', { settings: {} });
+    } catch (error) {
+      fail(error);
+      throw error;
+    }
+  }
+
+  send(message, server = this.server) {
+    if (server !== this.server || !this.ready(server)) {
+      const error = server?.failure || new Error('Language Server is not running');
+      if (server) this.failServer(server, error);
+      throw error;
+    }
     const body = Buffer.from(JSON.stringify(message));
-    this.child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
-    this.child.stdin.write(body);
+    try {
+      server.child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
+      server.child.stdin.write(body);
+    } catch (error) {
+      this.failServer(server, new Error(`Language Server pipe failed: ${error.message}`));
+      throw server.failure;
+    }
   }
 
   request(method, params, timeout = timeoutMs) {
-    const id = this.nextId++;
+    const server = this.server;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method} timed out`)); }, timeout);
-      this.pending.set(id, { resolve, reject, timer });
-      this.send({ jsonrpc: '2.0', id, method, params });
+      const id = server.nextId++;
+      const timer = setTimeout(() => { server.pending.delete(id); reject(new Error(`${method} timed out`)); }, timeout);
+      server.pending.set(id, { resolve, reject, timer });
+      try { this.send({ jsonrpc: '2.0', id, method, params }, server); }
+      catch (error) { clearTimeout(timer); server.pending.delete(id); reject(error); }
     });
   }
 
   notify(method, params) { this.send({ jsonrpc: '2.0', method, params }); }
 
-  onData(chunk) {
-    this.buffer = Buffer.concat([this.buffer, chunk]);
+  onData(chunk, server) {
+    if (this.server !== server || server.failure) return;
+    server.buffer = Buffer.concat([server.buffer, chunk]);
     while (true) {
-      const headerEnd = this.buffer.indexOf('\r\n\r\n');
+      const headerEnd = server.buffer.indexOf('\r\n\r\n');
       if (headerEnd < 0) return;
-      const match = this.buffer.slice(0, headerEnd).toString().match(/Content-Length:\s*(\d+)/i);
-      if (!match) { this.buffer = this.buffer.slice(headerEnd + 4); continue; }
+      const match = server.buffer.slice(0, headerEnd).toString().match(/Content-Length:\s*(\d+)/i);
+      if (!match) { server.buffer = server.buffer.slice(headerEnd + 4); continue; }
       const length = Number(match[1]);
-      if (this.buffer.length < headerEnd + 4 + length) return;
-      const body = this.buffer.slice(headerEnd + 4, headerEnd + 4 + length);
-      this.buffer = this.buffer.slice(headerEnd + 4 + length);
-      try { this.onMessage(JSON.parse(body.toString())); } catch (_) {}
+      if (server.buffer.length < headerEnd + 4 + length) return;
+      const body = server.buffer.slice(headerEnd + 4, headerEnd + 4 + length);
+      server.buffer = server.buffer.slice(headerEnd + 4 + length);
+      try { this.onMessage(JSON.parse(body.toString()), server); } catch (_) {}
     }
   }
 
-  onMessage(message) {
+  onMessage(message, server) {
+    if (this.server !== server || server.failure) return;
     if (message.id !== undefined && !message.method) {
-      const pending = this.pending.get(message.id);
+      const pending = server.pending.get(message.id);
       if (!pending) return;
-      clearTimeout(pending.timer); this.pending.delete(message.id);
+      clearTimeout(pending.timer); server.pending.delete(message.id);
       message.error ? pending.reject(new Error(message.error.message || 'LSP error')) : pending.resolve(message.result);
       return;
     }
@@ -264,7 +311,7 @@ class Lsp {
       if (message.method === 'workspace/configuration') result = (message.params?.items || []).map(() => ({}));
       else if (message.method === 'window/showDocument') result = { success: this.showDocument(message.params) };
       else if (message.method === 'window/showMessageRequest') result = null;
-      this.send({ jsonrpc: '2.0', id: message.id, result });
+      this.send({ jsonrpc: '2.0', id: message.id, result }, server);
     }
   }
 
@@ -306,7 +353,7 @@ async function runDaemon() {
   try { fs.unlinkSync(socketPath); } catch (_) {}
   fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
   const lsp = new Lsp();
-  const accepted = new Map();
+  const accepted = lsp.accepted;
   let queue = Promise.resolve();
 
   async function handle(request) {
