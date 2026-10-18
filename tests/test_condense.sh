@@ -2,6 +2,10 @@
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
+# Preserve the failing command location when an unexpected status triggers set -e.
+set -E
+trap 'status=$?; printf "not ok - test_condense.sh:%d (exit %d)\n" "$LINENO" "$status" >&2' ERR
+
 # shellcheck source=lmline/config.bash
 source "$repo_dir/lmline/config.bash"
 __lmline_init_dirs "$repo_dir/lmline"
