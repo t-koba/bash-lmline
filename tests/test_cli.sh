@@ -506,6 +506,25 @@ EOF
 PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh all-filtered >"$cfg_tmp/all-filtered-empty.out" 2>"$cfg_tmp/all-filtered-empty.err" || fail "all-filtered empty result succeeds"
 grep -Fxq 'lmline: refreshed 0 models for all-filtered (0 added, 0 updated, 2 removed); removed models: gone, manual' "$cfg_tmp/all-filtered-empty.err" || fail "all-filtered empty result accurate summary"
 [[ -z "$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list all-filtered)" ]] || fail "all-filtered empty endpoint set"
+# Catalog-provided model IDs stay inert through refresh and config reload.
+literal_marker="/tmp/lmline-model-id-executed-$$"
+rm -f "$literal_marker"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add literal-id https://literal.example/v1 >/dev/null
+literal_id="\$(touch\${IFS}$literal_marker)"
+cat >"$fake_refresh_bin/curl" <<EOF
+#!/usr/bin/env bash
+payload='\$(touch\${IFS}$literal_marker)'
+printf '{"data":[{"id":"%s"}]}\\n' "\$payload"
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh literal-id >"$cfg_tmp/literal-id-refresh.out" 2>"$cfg_tmp/literal-id-refresh.err" || fail "literal model ID refresh"
+literal_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list literal-id)
+grep -Fq "$literal_id" <<<"$literal_models" || fail "literal model ID stays data in model list"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use literal-id "$literal_id"
+literal_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
+grep -Fq "$literal_id" <<<"$literal_config" || fail "literal model ID stays data in persisted config"
+[[ ! -e "$literal_marker" ]] || fail "catalog model ID must not execute shell syntax"
+rm -f "$literal_marker"
 # Base-URL fallback warns only when the active endpoint is unset.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add fb https://fb.example/v1 >/dev/null
 cat >"$fake_refresh_bin/curl" <<'EOF'
