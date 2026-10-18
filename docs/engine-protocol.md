@@ -125,8 +125,8 @@ lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
 - The engine retries transient provider failures (HTTP 429/502/503/504 and
   curl errors) `LMLINE_HTTP_RETRIES` times. On a `chat`/`responses`-format HTTP 400 naming
   `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
-  `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`). On an HTTP 400 naming `store`, it retries once without the `store` field.
-- Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. On an HTTP 400 naming `store`, the engine retries once without it and emits an `lmline-progress:` fallback line.
+  `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`).
+- Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
 - In buffered command modes (`generate`, `rewrite`, and `fix`), an explicitly
   reported incomplete first-choice terminal status rejects the response before
   tool calls are parsed or dispatched, and before candidates are emitted or
