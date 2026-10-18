@@ -147,12 +147,13 @@ function openDocument(uri) {
   if (process.platform === 'darwin') { command = 'open'; args = [uri]; }
   else if (process.platform === 'win32') { command = 'cmd.exe'; args = ['/c', 'start', '', uri]; }
   else { command = 'xdg-open'; args = [uri]; }
-  try {
-    const child = spawn(command, args, { detached: true, stdio: 'ignore' });
-    child.on('error', () => {});
-    child.unref();
-    return true;
-  } catch (_) { return false; }
+  return new Promise(resolve => {
+    try {
+      const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+      child.once('error', () => resolve(false));
+      child.once('spawn', () => { child.unref(); resolve(true); });
+    } catch (_) { resolve(false); }
+  });
 }
 
 class Lsp {
@@ -169,6 +170,7 @@ class Lsp {
     this.workspaces = new Set();
     this.lastOpenedUri = null;
     this.lastOpenedAt = 0;
+    this.lastOpenResult = Promise.resolve(false);
   }
 
   command() {
@@ -307,13 +309,20 @@ class Lsp {
     if (message.id !== undefined) {
       let result = null;
       if (message.method === 'workspace/configuration') result = (message.params?.items || []).map(() => ({}));
-      else if (message.method === 'window/showDocument') result = { success: this.showDocument(message.params) };
+      else if (message.method === 'window/showDocument') {
+        this.showDocument(message.params).then(success => {
+          if (this.server === server && !server.failure) {
+            this.send({ jsonrpc: '2.0', id: message.id, result: { success } }, server);
+          }
+        }).catch(() => {});
+        return;
+      }
       else if (message.method === 'window/showMessageRequest') result = null;
       this.send({ jsonrpc: '2.0', id: message.id, result }, server);
     }
   }
 
-  showDocument(params) {
+  async showDocument(params) {
     const uri = params?.uri;
     if (params?.external !== true || !/^https?:\/\//i.test(uri || '')) return false;
     const now = Date.now();
@@ -321,10 +330,14 @@ class Lsp {
     this.lastOpenedUri = uri;
     this.lastOpenedAt = now;
     if (process.env.LMLINE_COPILOT_OPEN_LOG) {
-      try { fs.appendFileSync(process.env.LMLINE_COPILOT_OPEN_LOG, `${uri}\n`, { mode: 0o600 }); } catch (_) { return false; }
-      return true;
+      try {
+        fs.appendFileSync(process.env.LMLINE_COPILOT_OPEN_LOG, `${uri}\n`, { mode: 0o600 });
+        this.lastOpenResult = Promise.resolve(true);
+      } catch (_) { this.lastOpenResult = Promise.resolve(false); }
+    } else {
+      this.lastOpenResult = openDocument(uri);
     }
-    return openDocument(uri);
+    return this.lastOpenResult;
   }
 
   addWorkspace(cwd) {
@@ -368,14 +381,22 @@ async function runDaemon() {
       if (current && ['OK', 'MaybeOk', 'AlreadySignedIn'].includes(current.status)) {
         return { ok: true, alreadySignedIn: true, result: current, messages: lsp.messages.splice(0) };
       }
+      lsp.lastOpenedUri = null;
+      lsp.lastOpenedAt = 0;
+      lsp.lastOpenResult = Promise.resolve(false);
       const result = await lsp.request('signIn', {});
       return { ok: true, result, messages: lsp.messages.splice(0) };
     }
     if (request.op === 'finishLogin') {
+      let commandError;
       if (request.command?.command) {
-        try { await lsp.request('workspace/executeCommand', { command: request.command.command, arguments: request.command.arguments || [] }); } catch (_) {}
+        try {
+          await lsp.request('workspace/executeCommand', { command: request.command.command, arguments: request.command.arguments || [] });
+        } catch (error) { commandError = error.message; }
       }
-      return { ok: true, uri: lsp.lastOpenedUri, messages: lsp.messages.splice(0) };
+      // The command may reply before the launcher's asynchronous spawn event.
+      const browserOpened = await lsp.lastOpenResult;
+      return { ok: true, browserOpened, commandError, uri: lsp.lastOpenedUri, messages: lsp.messages.splice(0) };
     }
     if (request.op === 'logout') return { ok: true, result: await lsp.request('signOut', {}) };
     if (request.op === 'accept') {
@@ -508,10 +529,14 @@ async function main() {
     } else {
       if (response.result?.userCode) process.stdout.write(`user_code=${response.result.userCode}\n`);
       if (response.result?.command) {
-        const finish = await call({ op: 'finishLogin', command: { command: response.result.command.command, arguments: response.result.command.arguments || [] } }, timeout);
-        if (!finish.ok) throw new Error(finish.error);
+        let finish;
+        try {
+          finish = await call({ op: 'finishLogin', command: { command: response.result.command.command, arguments: response.result.command.arguments || [] } }, timeout);
+        } catch (error) { finish = { error: error.message }; }
         for (const message of finish.messages || []) process.stderr.write(`lmline-copilot: ${message}\n`);
-        process.stdout.write('browser_opened=1\n');
+        if (finish.commandError || finish.error) process.stderr.write(`lmline-copilot: browser command failed: ${finish.commandError || finish.error}\n`);
+        process.stdout.write(`browser_opened=${finish.browserOpened === true ? 1 : 0}\n`);
+        if (finish.browserOpened !== true) process.stderr.write('lmline-copilot: could not launch the browser; sign in manually using the device URL\n');
         if (finish.uri) process.stderr.write(`lmline-copilot: if the browser did not open, visit: ${finish.uri}\n`);
       }
       process.stderr.write('lmline-copilot: complete the sign-in in the browser, then run: lmline copilot status\n');

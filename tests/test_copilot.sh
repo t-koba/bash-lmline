@@ -46,12 +46,40 @@ grep -q '^status=NotSignedIn$' <<<"$status_out" || fail "Copilot status output"
 login_out=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" login) || fail "Copilot login"
 grep -q '^user_code=TEST-CODE$' <<<"$login_out" || fail "Copilot device code"
 grep -q '^browser_opened=1$' <<<"$login_out" || fail "Copilot login opens browser after code"
+copilot_wait_log '^showDocument-success=true$' "$copilot_tmp/lsp.log" || fail "Copilot simulated launcher reports LSP success"
 [[ $(wc -l <"$copilot_tmp/open.log" | tr -d ' ') == 1 ]] || fail "Copilot browser opened once despite duplicate showDocument"
 grep -q 'openExternalBrowser' "$copilot_tmp/lsp.log" || fail "Copilot browser command executed in daemon"
 login_again=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" login) || fail "Copilot re-login"
 grep -q '^already_signed_in=1$' <<<"$login_again" || fail "Copilot re-login short-circuits"
 [[ $(grep -c '^signIn$' "$copilot_tmp/lsp.log") == 1 ]] || fail "Copilot signIn not duplicated"
 env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" logout >/dev/null || fail "Copilot logout"
+
+# No launcher is available to this daemon. Node and the fake LSP still run via
+# Node's absolute path, independent of the deliberately empty PATH.
+for browser_error in 0 1; do (
+  no_browser_runtime="$repo_dir/.copilot-no-browser-test.$browser_error.$$"
+  node_path=$(command -v node)
+  mkdir -p "$copilot_tmp/no-browser-bin"
+  no_browser_env=(
+    "${copilot_env[@]}"
+    LMLINE_COPILOT_RUNTIME_DIR="$no_browser_runtime"
+    LMLINE_FAKE_COPILOT_LOG="$copilot_tmp/no-browser-$browser_error.log"
+    LMLINE_FAKE_COPILOT_BROWSER_ERROR="$browser_error"
+    LMLINE_COPILOT_OPEN_LOG=
+    PATH="$copilot_tmp/no-browser-bin"
+  )
+  trap 'env "${no_browser_env[@]}" "$node_path" "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true; rm -rf "$no_browser_runtime"' EXIT
+  no_browser_login=$(env "${no_browser_env[@]}" "$node_path" "$repo_dir/lmline/copilot-client.js" login 2>"$copilot_tmp/no-browser.err") || fail "Copilot login without a browser is nonfatal"
+  grep -q '^user_code=TEST-CODE$' <<<"$no_browser_login" || fail "Copilot device code without a browser"
+  grep -q '^browser_opened=0$' <<<"$no_browser_login" || fail "Copilot missing launcher reports false"
+  ! grep -q '^browser_opened=1$' <<<"$no_browser_login" || fail "Copilot missing launcher never reports success"
+  grep -q 'could not launch the browser' "$copilot_tmp/no-browser.err" || fail "Copilot missing launcher diagnostic"
+  grep -Fq 'visit: https://github.com/login/device?user_code=TEST-CODE' "$copilot_tmp/no-browser.err" || fail "Copilot manual device URL without a browser"
+  copilot_wait_log '^showDocument-success=false$' "$copilot_tmp/no-browser-$browser_error.log" || fail "Copilot missing launcher reports LSP failure"
+  if [[ "$browser_error" == 1 ]]; then
+    grep -q 'browser command failed: fake browser command failed' "$copilot_tmp/no-browser.err" || fail "Copilot executeCommand failure is surfaced"
+  fi
+); done
 cli_status=$(env "${copilot_env[@]}" "$repo_dir/lmline/lmline" copilot status) || fail "Copilot CLI status"
 grep -q '^status=OK$' <<<"$cli_status" || fail "Copilot CLI status output"
 grep -q '^copilot$' < <("$repo_dir/lmline/lmline" complete commands) || fail "Copilot command completion"

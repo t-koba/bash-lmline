@@ -22,6 +22,7 @@ function send(message) {
 
 function handle(message) {
   if (message.id === 900 && !message.method) log('workspace/configuration-response');
+  if (message.id === 901 && !message.method) log(`showDocument-success=${message.result?.success}`);
   if (message.method) log(message.method);
   if (message.method === 'workspace/executeCommand' && message.params?.command) log(message.params.command);
   if (message.method === 'textDocument/didOpen') {
@@ -71,7 +72,11 @@ function handle(message) {
   } else if (message.method === 'workspace/executeCommand' && message.params?.command === 'openExternalBrowser') {
     send({ jsonrpc: '2.0', id: 901, method: 'window/showDocument', params: { uri: 'https://github.com/login/device?user_code=TEST-CODE', external: true } });
     send({ jsonrpc: '2.0', id: 902, method: 'window/showDocument', params: { uri: 'https://github.com/login/device?user_code=TEST-CODE', external: true } });
-    send({ jsonrpc: '2.0', id: message.id, result: null });
+    if (process.env.LMLINE_FAKE_COPILOT_BROWSER_ERROR === '1') {
+      send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: 'fake browser command failed' } });
+    } else {
+      send({ jsonrpc: '2.0', id: message.id, result: null });
+    }
   } else if (message.method === 'signOut' || message.method === 'workspace/executeCommand') {
     send({ jsonrpc: '2.0', id: message.id, result: null });
   } else if (message.id !== undefined && message.method) {
