@@ -184,7 +184,8 @@ Common endpoint bases:
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` |
 | Sakura AI Engine | `https://api.ai.sakura.ad.jp/v1` |
 | Cloudflare Workers AI | account-scoped `/ai/v1` base plus separate models URL |
-| OpenCode Go/Zen | `https://opencode.ai/zen/go/v1` or `https://opencode.ai/zen/v1` |
+| OpenCode Console (OpenAI) | `https://opencode.ai/inference/openai/v1` |
+| OpenCode Go | See the compatibility note below; `lmline` does not meet Go’s full client guidance. |
 
 <details>
 <summary>Command example: LM Studio</summary>
