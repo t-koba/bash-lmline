@@ -401,6 +401,153 @@ if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/l
   fail "refresh failure rejected"
 fi
 [[ "$(cat "$profiles_dir/models.tsv")" == "$before_failed_refresh" ]] || fail "refresh failure preserved models"
+# Shrinking catalog: removed IDs drop out, surviving settings are preserved,
+# counts/names are reported, and a selected removed model warns without switching.
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add shrink https://shrink.example/v1 >/dev/null
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=${@: -1}
+if [[ "$url" == "https://shrink.example/v1/models" ]]; then
+  printf '{"data":[{"id":"keep-a"},{"id":"drop-b"}]}\n'
+elif [[ "$url" == "https://keep.example/models" ]]; then
+  printf '{"data":[{"id":"keep-yes"},{"id":"other-no"}]}\n'
+else
+  echo "unexpected url: $url" >&2; exit 8
+fi
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >/tmp/lmline-shrink-first.out 2>/tmp/lmline-shrink-first.err || fail "shrink first refresh"
+grep -q "refreshed 2 models for shrink (2 added, 0 updated, 0 removed)" /tmp/lmline-shrink-first.err || fail "shrink first counts"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add shrink keep-a --temperature 0.7 --max-tokens 111 --tool-mode openai >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use shrink drop-b >/dev/null
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=${@: -1}
+if [[ "$url" == "https://shrink.example/v1/models" ]]; then
+  printf '{"data":[{"id":"keep-a"}]}\n'
+elif [[ "$url" == "https://keep.example/models" ]]; then
+  printf '{"data":[{"id":"keep-yes"},{"id":"other-no"}]}\n'
+else
+  echo "unexpected url: $url" >&2; exit 8
+fi
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >/tmp/lmline-shrink-second.out 2>/tmp/lmline-shrink-second.err || fail "shrink second refresh"
+grep -q "refreshed 1 models for shrink (0 added, 1 updated, 1 removed)" /tmp/lmline-shrink-second.err || fail "shrink second counts"
+grep -Fxq "lmline: refreshed 1 models for shrink (0 added, 1 updated, 1 removed); removed models: drop-b" /tmp/lmline-shrink-second.err || fail "shrink removed name"
+grep -q "warning: selected model drop-b is no longer served by shrink; run lmline use shrink MODEL to select another" /tmp/lmline-shrink-second.err || fail "shrink selected removed warning"
+shrink_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list shrink)
+grep -q $'^shrink\tkeep-a\t0.7\t111\topenai\tchat$' <<<"$shrink_models" || fail "shrink kept settings survive"
+! grep -q $'^shrink\tdrop-b' <<<"$shrink_models" || fail "shrink removed id gone"
+shrink_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_MODEL=.*drop-b" <<<"$shrink_config" || fail "shrink config not silently switched"
+grep -q "LMLINE_ACTIVE_ENDPOINT=.*shrink" <<<"$shrink_config" || fail "shrink active endpoint unchanged"
+cloud_models_after_shrink=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list cloud)
+grep -q $'^cloud\tcloud/model-a' <<<"$cloud_models_after_shrink" || fail "shrink left other endpoint untouched"
+# Filtered-out but still-served manual model remains after refresh.
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add keep-filtered https://keep.example/v1 --models-url https://keep.example/models --models-include 'keep-' >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add keep-filtered other-no >/dev/null
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh keep-filtered >/tmp/lmline-keep-filtered.out 2>/tmp/lmline-keep-filtered.err || fail "keep-filtered refresh"
+grep -q "refreshed 2 models for keep-filtered (1 added, 0 updated, 0 removed)" /tmp/lmline-keep-filtered.err || fail "keep-filtered counts"
+keep_filtered_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list keep-filtered)
+grep -q $'^keep-filtered\tkeep-yes' <<<"$keep_filtered_models" || fail "keep-filtered imported model present"
+grep -q $'^keep-filtered\tother-no' <<<"$keep_filtered_models" || fail "keep-filtered still-served filtered-out model kept"
+! grep -q "warning: selected model" /tmp/lmline-keep-filtered.err || fail "keep-filtered must not warn for other endpoint selection"
+# A valid raw catalog with zero importable records still reconciles, preserving
+# manual rows byte-for-byte, removing stale rows, and never switching selection.
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add all-filtered https://all-filtered.example/v1 --models-include '^import-' >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add all-filtered manual --temperature 0.6 --max-tokens 222 --tool-mode text --api-format messages >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add all-filtered 'gone,model' >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use all-filtered 'gone,model' >/dev/null
+cp "$profiles_dir/settings.bash" "$cfg_tmp/all-filtered-settings.before"
+cp "$profiles_dir/endpoints.tsv" "$cfg_tmp/all-filtered-endpoints.before"
+awk -F '\t' '$1 != "all-filtered"' "$profiles_dir/models.tsv" >"$cfg_tmp/all-filtered-others.before"
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '{"data":[{"id":"manual"},{"id":"never-stored"},{"id":"manual"}]}\n'
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh all-filtered >"$cfg_tmp/all-filtered.out" 2>"$cfg_tmp/all-filtered.err" || fail "all-filtered refresh succeeds"
+grep -Fxq 'lmline: refreshed 1 models for all-filtered (0 added, 0 updated, 1 removed); removed models: gone,model' "$cfg_tmp/all-filtered.err" || fail "all-filtered summary counts and exact removed name on same line"
+grep -Fxq 'lmline: warning: selected model gone,model is no longer served by all-filtered; run lmline use all-filtered MODEL to select another' "$cfg_tmp/all-filtered.err" || fail "all-filtered exact comma-containing removal warning"
+all_filtered_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list all-filtered)
+[[ "$all_filtered_models" == $'all-filtered\tmanual\t0.6\t222\ttext\tmessages' ]] || fail "all-filtered preserves only manual model and all settings"
+cmp "$profiles_dir/settings.bash" "$cfg_tmp/all-filtered-settings.before" || fail "all-filtered config not silently switched"
+cmp "$profiles_dir/endpoints.tsv" "$cfg_tmp/all-filtered-endpoints.before" || fail "all-filtered endpoint profiles unchanged"
+awk -F '\t' '$1 != "all-filtered"' "$profiles_dir/models.tsv" >"$cfg_tmp/all-filtered-others.after"
+cmp "$cfg_tmp/all-filtered-others.before" "$cfg_tmp/all-filtered-others.after" || fail "all-filtered other endpoint rows unchanged"
+# A prefix of a comma-containing removed ID must not trigger a false warning.
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add all-filtered gone >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add all-filtered 'gone,model' >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use all-filtered gone >/dev/null
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '{"data":[{"id":"manual"},{"id":"gone"}]}\n'
+EOF
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh all-filtered >"$cfg_tmp/all-filtered-prefix.out" 2>"$cfg_tmp/all-filtered-prefix.err" || fail "all-filtered prefix refresh"
+! grep -q 'warning: selected model' "$cfg_tmp/all-filtered-prefix.err" || fail "all-filtered removal warning requires exact membership"
+# Empty or invalid raw catalogs must fail without modifying any stored rows.
+cp "$profiles_dir/models.tsv" "$cfg_tmp/all-filtered-models.before"
+for bad_catalog in '{"data":[]}' 'not-json' '{"data":[{"id":"invalid name"}]}'; do
+  cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$LMLINE_TEST_CATALOG"
+EOF
+  if PATH="$fake_refresh_bin:$PATH" LMLINE_TEST_CATALOG="$bad_catalog" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh all-filtered >"$cfg_tmp/all-filtered-bad.out" 2>"$cfg_tmp/all-filtered-bad.err"; then
+    fail "all-filtered empty or invalid raw catalog rejected"
+  fi
+  cmp "$profiles_dir/models.tsv" "$cfg_tmp/all-filtered-models.before" || fail "all-filtered bad raw catalog preserves models"
+done
+# A valid catalog may also reconcile to an empty endpoint set.
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '{"data":[{"id":"never-stored"}]}\n'
+EOF
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh all-filtered >"$cfg_tmp/all-filtered-empty.out" 2>"$cfg_tmp/all-filtered-empty.err" || fail "all-filtered empty result succeeds"
+grep -Fxq 'lmline: refreshed 0 models for all-filtered (0 added, 0 updated, 2 removed); removed models: gone, manual' "$cfg_tmp/all-filtered-empty.err" || fail "all-filtered empty result accurate summary"
+[[ -z "$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list all-filtered)" ]] || fail "all-filtered empty endpoint set"
+# Base-URL fallback warns only when the active endpoint is unset.
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add fb https://fb.example/v1 >/dev/null
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=${@: -1}
+if [[ "$url" == "https://fb.example/v1/models" ]]; then
+  printf '{"data":[{"id":"fb-a"},{"id":"fb-b"}]}\n'
+else
+  echo "unexpected url: $url" >&2; exit 8
+fi
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh fb >/dev/null 2>/tmp/lmline-fb-first.err || fail "fb first refresh"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use fb fb-b >/dev/null
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config unset LMLINE_ACTIVE_ENDPOINT
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=${@: -1}
+if [[ "$url" == "https://fb.example/v1/models" ]]; then
+  printf '{"data":[{"id":"fb-a"}]}\n'
+else
+  echo "unexpected url: $url" >&2; exit 8
+fi
+EOF
+chmod +x "$fake_refresh_bin/curl"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh fb >/dev/null 2>/tmp/lmline-fb-second.err || fail "fb second refresh"
+grep -q "refreshed 1 models for fb (0 added, 1 updated, 1 removed)" /tmp/lmline-fb-second.err || fail "fb second counts"
+grep -Fxq "lmline: refreshed 1 models for fb (0 added, 1 updated, 1 removed); removed models: fb-b" /tmp/lmline-fb-second.err || fail "fb removed name"
+grep -q "warning: selected model fb-b is no longer served by fb; run lmline use fb MODEL to select another" /tmp/lmline-fb-second.err || fail "fb fallback warning"
+fb_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_MODEL=.*fb-b" <<<"$fb_config" || fail "fb config not silently switched"
+# Failed refresh on the shrunken endpoint preserves the file.
+cat >"$fake_refresh_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+exit 9
+EOF
+chmod +x "$fake_refresh_bin/curl"
+before_shrink_failed=$(cat "$profiles_dir/models.tsv")
+if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >/tmp/lmline-shrink-fail.out 2>/tmp/lmline-shrink-fail.err; then
+  fail "shrink refresh failure rejected"
+fi
+[[ "$(cat "$profiles_dir/models.tsv")" == "$before_shrink_failed" ]] || fail "shrink refresh failure preserved models"
 # Distinct endpoint names must never share a credential file.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a/b" https://a-b.invalid/v1
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a_b" https://aub.invalid/v1

@@ -117,7 +117,7 @@ commands:
   model add ENDPOINT MODEL [options]
                           register or update a model under an endpoint
   model list [ENDPOINT]   list registered models
-  model refresh ENDPOINT  import models from the endpoint catalog
+  model refresh ENDPOINT  mirror models from the endpoint catalog
   model remove ENDPOINT MODEL
                           remove a registered model
   use ENDPOINT [MODEL]    activate a registered endpoint/model; MODEL can be
@@ -632,7 +632,10 @@ EOF
     model:refresh) cat <<'EOF'
 usage: lmline model refresh ENDPOINT
 
-Import model IDs from the endpoint catalog and update that endpoint's model profiles.
+Mirror model IDs from the endpoint catalog into that endpoint's model profiles.
+Adds new models, updates the stored API format, preserves per-model temperature,
+max tokens, and tool mode, and removes models the catalog no longer serves.
+Filtered-out but still-served models are kept; other endpoints are unchanged.
 EOF
       ;;
     model:remove) cat <<'EOF'

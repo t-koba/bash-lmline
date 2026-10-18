@@ -381,7 +381,7 @@ profile_extract_model_ids() {
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp records_file records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq expected merged new_count
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp merge_tmp records_file catalog_file catalog_raw dedup_tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq final_count added_count updated_count removed_count removed_names removed_display old_ids
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
@@ -401,18 +401,40 @@ profile_model_refresh() {
     printf 'lmline: model refresh response did not contain model IDs\n' >&2
     exit 1
   }
-  [[ -n "$records" ]] || { printf 'lmline: model refresh returned no models\n' >&2; exit 1; }
-  mkdir -p "$config_dir"
-  touch "$models_file"
   __lmline_mktemp records_file "${TMPDIR:-/tmp}/lmline-model-records.XXXXXX"
   while IFS=$'\t' read -r id api_format; do
     [[ -n "$id" ]] || continue
     profile_require_name model "$id"
     printf '%s\t%s\n' "$id" "$api_format"
   done <<<"$records" >"$records_file"
-  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-models.XXXXXX"
+  # Derive the unfiltered catalog membership from the same response using only
+  # the configured models_jq, before prefix/include/exclude filtering. Rows for
+  # this endpoint survive only when their ID is still served; a manually added
+  # model that is filtered out but still advertised is kept as-is.
+  __lmline_mktemp catalog_file "${TMPDIR:-/tmp}/lmline-model-catalog.XXXXXX"
+  catalog_raw=$(profile_extract_model_candidates "$catalog_jq" <<<"$body") || {
+    printf 'lmline: model refresh response did not contain model IDs\n' >&2
+    exit 1
+  }
+  [[ -n "$catalog_raw" ]] || { printf 'lmline: model refresh response did not contain model IDs\n' >&2; exit 1; }
+  awk -F '\t' '$1 != "" && !seen[$1]++ { print $1 }' <<<"$catalog_raw" >"$catalog_file"
+  [[ -s "$catalog_file" ]] || { printf 'lmline: model refresh response did not contain model IDs\n' >&2; exit 1; }
+  while IFS= read -r id; do
+    profile_require_name model "$id"
+  done <"$catalog_file"
+  mkdir -p "$config_dir"
+  touch "$models_file"
+  # De-duplicate filtered records, keeping the first api_format per ID so the
+  # endpoint/model key stays unique in models.tsv.
+  __lmline_mktemp dedup_tmp "${TMPDIR:-/tmp}/lmline-model-dedup.XXXXXX"
+  awk -F '\t' '!seen[$1]++' "$records_file" >"$dedup_tmp" || {
+    printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
+    exit 1
+  }
+  mv "$dedup_tmp" "$records_file"
+  __lmline_mktemp merge_tmp "${TMPDIR:-/tmp}/lmline-models-merge.XXXXXX"
   awk -F '\t' -v OFS='\t' -v endpoint="$endpoint" '
-    NR == FNR {
+    FILENAME == ARGV[1] {
       if ($1 == "") next
       order[++n] = $1
       new_format[$1] = $2
@@ -432,24 +454,91 @@ profile_model_refresh() {
         print endpoint, id, old_temp[id], old_tokens[id], old_tool[id], new_format[id]
       }
     }
-  ' "$records_file" "$models_file" >"$tmp" || {
+  ' "$records_file" "$models_file" >"$merge_tmp" || {
     printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
     exit 1
   }
-  expected=$(wc -l <"$records_file")
-  merged=$(awk -F '\t' -v endpoint="$endpoint" '$1 == endpoint { c++ } END { print c + 0 }' "$tmp")
-  (( merged >= expected )) || {
-    printf 'lmline: model refresh merge dropped records; keeping existing models\n' >&2
+  # Mirror the catalog for this endpoint only: drop rows whose ID is absent
+  # from the unfiltered catalog, keep filtered-out but still-served rows as-is,
+  # and leave other endpoints untouched. TSV schema is unchanged.
+  # Keep the replacement beside models.tsv so mv is a same-filesystem atomic rename.
+  __lmline_mktemp tmp "${models_file}.XXXXXX"
+  awk -F '\t' -v endpoint="$endpoint" '
+    FILENAME == ARGV[1] { catalog[$1] = 1; next }
+    $1 == endpoint && !($2 in catalog) { next }
+    { print }
+  ' "$catalog_file" "$merge_tmp" >"$tmp" || {
+    printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
     exit 1
   }
-  new_count=$(awk -F '\t' -v endpoint="$endpoint" '
-    NR == FNR { if ($1 == endpoint) old[$2] = 1; next }
-    $1 != "" && !($1 in old) { c++ }
-    END { print c + 0 }
-  ' "$models_file" "$records_file")
+  # The final keys must be exactly the union of imported IDs and existing
+  # endpoint IDs still advertised by the raw catalog, with no duplicates.
+  if ! awk -F '\t' -v endpoint="$endpoint" '
+    FILENAME == ARGV[1] { catalog[$1] = 1; next }
+    FILENAME == ARGV[2] { expected[$1] = 1; next }
+    FILENAME == ARGV[3] {
+      if ($1 == endpoint && ($2 in catalog)) expected[$2] = 1
+      next
+    }
+    $1 == endpoint {
+      if (!($2 in expected) || seen[$2]++) invalid = 1
+      found[$2] = 1
+    }
+    END {
+      for (id in expected) if (!(id in found)) invalid = 1
+      exit invalid
+    }
+  ' "$catalog_file" "$records_file" "$models_file" "$tmp"; then
+    printf 'lmline: model refresh merge changed expected IDs; keeping existing models\n' >&2
+    exit 1
+  fi
+  # Counts: added = filtered IDs not previously stored; updated = filtered IDs
+  # already stored (settings preserved, api_format synced); removed = stored
+  # IDs absent from the unfiltered catalog.
+  if ! old_ids=$(awk -F '\t' -v endpoint="$endpoint" '$1 == endpoint { print $2 }' "$models_file" | sort -u); then
+    printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
+    exit 1
+  fi
+  added_count=$(comm -23 <(cut -f1 "$records_file" | sort -u) <(printf '%s\n' "$old_ids" | sort -u) | grep -c . || true)
+  updated_count=$(comm -12 <(cut -f1 "$records_file" | sort -u) <(printf '%s\n' "$old_ids" | sort -u) | grep -c . || true)
+  removed_names=$(comm -23 <(printf '%s\n' "$old_ids" | sort -u) <(sort -u "$catalog_file") | grep . || true)
+  if [[ -n "$removed_names" ]]; then
+    removed_count=$(printf '%s\n' "$removed_names" | grep -c . || true)
+  else
+    removed_count=0
+  fi
+  final_count=$(awk -F '\t' -v endpoint="$endpoint" '$1 == endpoint { c++ } END { print c + 0 }' "$tmp")
   mv "$tmp" "$models_file"
   chmod 600 "$models_file" 2>/dev/null || true
-  printf 'lmline: refreshed %s models for %s (%s new)\n' "$((expected))" "$endpoint" "$new_count" >&2
+  removed_display=${removed_names//$'\n'/, }
+  printf 'lmline: refreshed %s models for %s (%s added, %s updated, %s removed)' "$final_count" "$endpoint" "$added_count" "$updated_count" "$removed_count" >&2
+  if (( removed_count > 0 )); then
+    printf '; removed models: %s' "$removed_display" >&2
+  fi
+  printf '\n' >&2
+  if (( removed_count > 0 )); then
+    profile_model_refresh_warn_removed "$endpoint" "$base" "$removed_names"
+  fi
+}
+
+# Warns when the effective selection points at a model just removed by refresh.
+# Reads LMLINE_ACTIVE_ENDPOINT/LMLINE_MODEL with a base-URL fallback only when
+# the active endpoint is unset. Never changes configuration. Membership uses
+# newline-separated IDs, not the display list: commas are valid in model IDs.
+profile_model_refresh_warn_removed() {
+  local endpoint=$1 base=$2 removed_ids=$3 id selected_model=${LMLINE_MODEL:-}
+  [[ -n "$selected_model" ]] || return 0
+  if [[ -n "${LMLINE_ACTIVE_ENDPOINT:-}" ]]; then
+    [[ "$LMLINE_ACTIVE_ENDPOINT" == "$endpoint" ]] || return 0
+  else
+    [[ -n "${LMLINE_BASE_URL:-}" && "${LMLINE_BASE_URL}" == "$base" ]] || return 0
+  fi
+  while IFS= read -r id; do
+    if [[ "$id" == "$selected_model" ]]; then
+      printf 'lmline: warning: selected model %s is no longer served by %s; run lmline use %s MODEL to select another\n' "$selected_model" "$endpoint" "$endpoint" >&2
+      break
+    fi
+  done <<<"$removed_ids"
 }
 
 profile_use() {

@@ -327,6 +327,20 @@ or `messages` in each model profile. When the catalog does not expose usable
 format metadata, lmline keeps the `chat` default; set `--api-format` manually
 for models that require another API shape.
 
+`model refresh` mirrors the endpoint catalog: it adds new models, updates the
+stored API format for imported models, preserves per-model temperature,
+max tokens, and tool mode, and removes that endpoint's rows whose IDs are no
+longer served. Removal is decided against the unfiltered catalog IDs (only
+`--models-jq` applied), so a manually added model that is filtered out but
+still advertised is kept. Other endpoints are untouched and `models.tsv`
+keeps its schema. Even when filters exclude every import candidate, refresh
+still reconciles existing rows against the raw catalog; an empty or invalid raw
+catalog instead fails without changing the stored models. The summary line
+reports the final stored model count, added/updated/removed counts, and removed
+names; when the active selection points at a removed model it warns with the
+next `lmline use` command but leaves configuration unchanged. A failed fetch,
+parse, or merge keeps the existing `models.tsv`.
+
 For endpoints that expect the raw API key in a custom header, use an empty auth
 scheme:
 
