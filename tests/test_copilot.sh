@@ -98,6 +98,8 @@ grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus ca
   trap 'env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true; rm -rf "$recovery_runtime"' EXIT
   before_kill=$(env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" edit 'echo 😀 old' 10 "$repo_dir") || fail "Copilot edit before child death"
   grep -q $'\techo 😀 new$' <<<"$before_kill" || fail "Copilot candidate before child death"
+  before_token=${before_kill%%$'\t'*}
+  [[ -n "$before_token" ]] || fail "Copilot candidate has an acceptance token"
   daemon_pid=$(cat "$recovery_runtime/daemon.pid")
   lsp_pid=$(cat "$copilot_tmp/recovery-lsp.pid")
   kill -KILL "$lsp_pid" || fail "kill Copilot LSP child"
@@ -108,6 +110,9 @@ grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus ca
     sleep 0.1
   done
   ! kill -0 "$lsp_pid" 2>/dev/null || fail "Copilot LSP child exited"
+  accept_after_kill=$(env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" accept "$before_token") || fail "Copilot acceptance after child death"
+  [[ "$accept_after_kill" == ok ]] || fail "Copilot acceptance response after child death"
+  grep -q '^github.copilot.didAcceptCompletionItem$' "$copilot_tmp/recovery-lsp.log" || fail "Copilot acceptance forwarded after child death"
   after_kill=$(env "${recovery_env[@]}" node "$repo_dir/lmline/copilot-client.js" edit 'echo 😀 old' 10 "$repo_dir") || {
     sed -n '1,80p' "$recovery_runtime/daemon.log" >&2 || true
     fail "Copilot edit recovers after child death"

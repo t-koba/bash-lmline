@@ -158,14 +158,12 @@ function openDocument(uri) {
 class Lsp {
   constructor() {
     this.server = null;
-    this.accepted = new Map();
     this.resetProtocol();
   }
 
   get child() { return this.server?.child; }
 
   resetProtocol() {
-    this.accepted.clear();
     this.status = null;
     this.messages = [];
     this.workspaces = new Set();
@@ -353,7 +351,7 @@ async function runDaemon() {
   try { fs.unlinkSync(socketPath); } catch (_) {}
   fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
   const lsp = new Lsp();
-  const accepted = lsp.accepted;
+  const accepted = new Map();
   let queue = Promise.resolve();
 
   async function handle(request) {
