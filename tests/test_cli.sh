@@ -22,9 +22,11 @@ grep -q '^default=high$' <<<"$describe_history" || fail "history risk describe d
 grep -q '^values=low medium high$' <<<"$describe_history" || fail "history risk describe values"
 history_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_RISK_HISTORY_EXPANSION_LEVEL)
 [[ $history_values == $'low\nmedium\nhigh' ]] || fail "history risk value completion"
-LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"' | grep -q '^risk=high$' || fail "history risk CLI default"
+history_risk_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"') || fail "history risk CLI default command"
+grep -q '^risk=high$' <<<"$history_risk_out" || fail "history risk CLI default"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_RISK_HISTORY_EXPANSION_LEVEL medium
-LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"' | grep -q '^risk=medium$' || fail "history risk persisted setting"
+persisted_history_risk_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"') || fail "history risk persisted setting command"
+grep -q '^risk=medium$' <<<"$persisted_history_risk_out" || fail "history risk persisted setting"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config unset LMLINE_RISK_HISTORY_EXPANSION_LEVEL
 effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
 grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
