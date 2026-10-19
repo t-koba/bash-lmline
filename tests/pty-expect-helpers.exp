@@ -1,0 +1,32 @@
+# Make required PTY output matches fail closed on timeout or early EOF.
+proc expect_required {args} {
+  set exact 0
+  if {[llength $args] == 2 && [lindex $args 0] eq "-exact"} {
+    set exact 1
+    set pattern [lindex $args 1]
+  } elseif {[llength $args] == 1} {
+    set pattern [lindex $args 0]
+  } else {
+    error {expect_required accepts one pattern, optionally preceded by -exact}
+  }
+
+  set timeout_action {puts stderr {timed out waiting for required PTY output}; exit 1}
+  set eof_action {puts stderr {PTY process exited before required output}; exit 1}
+  if {$exact} {
+    expect -exact $pattern {} timeout $timeout_action eof $eof_action
+  } else {
+    expect $pattern {} timeout $timeout_action eof $eof_action
+  }
+}
+
+# Spinner refreshes can race the model response, so require both in any order.
+proc expect_required_spinner_and_explanation {} {
+  # Preserve both messages even if frequent spinner redraws overrun Expect's
+  # small default buffer while the async display is finishing.
+  match_max 16384
+  expect {
+    -re {(?s)(explaining.*explained pty|explained pty.*explaining)} {}
+    timeout {puts stderr {timed out waiting for spinner and explanation}; exit 1}
+    eof {puts stderr {PTY process exited before spinner and explanation}; exit 1}
+  }
+}

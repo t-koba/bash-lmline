@@ -72,7 +72,7 @@ __lmline_timeout_run() {
     return $?
   fi
   (
-    local child group i status=0 pending=
+    local child i status=0 pending=
     # Record cancellation before launch, including while the PGID is unvalidated.
     # These traps and monitor mode changes are confined to this supervisor.
     trap 'pending=${pending:-130}' INT
@@ -82,9 +82,9 @@ __lmline_timeout_run() {
       # Neither a second interrupt nor the leader exiting may skip escalation.
       trap '' INT HUP TERM
       local result=${pending:-$1}
-      kill -TERM -- "-$group" 2>/dev/null || true
+      kill -TERM -- "-$child" 2>/dev/null || true
       sleep 1
-      kill -KILL -- "-$group" 2>/dev/null || true
+      kill -KILL -- "-$child" 2>/dev/null || true
       wait "$child" 2>/dev/null || true
       exit "$result"
     }
@@ -93,18 +93,14 @@ __lmline_timeout_run() {
     set -m || return 1
     [[ $- == *m* ]] || return 1
     (set +m; "$@") &
+    # This single monitored subshell is its process-group leader, so $! is
+    # both PID and PGID. Do not re-query it through command substitution: a
+    # racing Ctrl-C can be lost while Bash waits for that short-lived process.
     child=$!
     # Stop job notifications without changing the already-created job's PGID.
     set +m
-    group=$(jobs -p %+) || group=
-    # jobs -p reports the job's process-group leader. Never send a group signal
-    # unless it matches this launch's positive PID, distinct from our own group.
-    if [[ ! $child =~ ^[0-9]+$ || $group != "$child" ]] || (( child <= 1 )); then
-      trap '' INT HUP TERM
-      if [[ $child =~ ^[0-9]+$ ]] && (( child > 1 )); then
-        kill -KILL "$child" 2>/dev/null || true
-        wait "$child" 2>/dev/null || true
-      fi
+    # Only signal the positive PID from this isolated launch, never our group.
+    if [[ ! $child =~ ^[0-9]+$ ]] || (( child <= 1 )); then
       return "${pending:-1}"
     fi
     # From here on cancellation can safely target the isolated group, even if

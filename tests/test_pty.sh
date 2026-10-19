@@ -25,6 +25,7 @@ WORKER
 set timeout 5
 log_user 1
 lassign $argv shell root tmp
+source "$root/tests/pty-expect-helpers.exp"
 set term_file "$tmp/worker-term"
 set pid_file "$tmp/worker-pids"
 proc prompt {term_file pid_file} {
@@ -61,28 +62,23 @@ spawn $shell --noprofile --norc -i
 expect {
   -re {[$#] $} {}
   timeout {exit 1}
+  eof {puts stderr "cancellation PTY shell exited before prompt"; exit 1}
 }
 send -- "unset PROMPT_COMMAND; PS1='CANCEL_PROMPT> '; source '$root/lmline/sandbox.bash'; export PATH='$tmp/bin'\r"
 prompt "$term_file" "$pid_file"
 send -- {if command -v timeout >/dev/null; then echo unexpected-timeout; else echo timeout-hidden; fi; command -v sleep >/dev/null && echo sleep-available; before=$-; before_traps=$(trap -p)}
 send -- "\r"
-expect -exact "\r\ntimeout-hidden\r\nsleep-available\r\n"
+expect_required -exact "\r\ntimeout-hidden\r\nsleep-available\r\n"
 prompt "$term_file" "$pid_file"
 send -- "__lmline_timeout_run 30 \"\$BASH\" '$tmp/worker' '$tmp/marker' '$term_file' '$pid_file'\r"
-expect {
-  -exact "\r\ncancel-ready\r\n" {}
-  timeout {puts stderr "cancellation PTY worker not ready"; exit 1}
-}
+expect_required -exact "\r\ncancel-ready\r\n"
 send -- "\003"
 prompt "$term_file" "$pid_file"
 # Read status in a new command: an interactive shell can discard the remainder
 # of the interrupted input line. The returned prompt must remain usable.
 send -- {printf 'cancel-status=%s\n' "$?"; [[ $- == "$before" && $(trap -p) == "$before_traps" ]] && echo caller-unchanged}
 send -- "\r"
-expect {
-  -exact "\r\ncancel-status=130\r\ncaller-unchanged\r\n" {}
-  timeout {puts stderr "cancellation PTY wrong status or caller state"; exit 1}
-}
+expect_required -exact "\r\ncancel-status=130\r\ncaller-unchanged\r\n"
 prompt "$term_file" "$pid_file"
 if {![file exists $term_file]} {
   puts stderr "cancellation PTY worker did not record TERM"
@@ -109,6 +105,16 @@ else
 fi
 
 if command -v expect >/dev/null 2>&1; then
+  if expect <<EOF >/dev/null 2>&1
+set timeout 1
+source "$repo_dir/tests/pty-expect-helpers.exp"
+spawn sh -c {printf 'lmline-progress: tool files\n'; read line}
+expect_required "echo pty-suppressed"
+EOF
+  then
+    fail "PTY required-candidate negative control accepted suppressed output"
+  fi
+  ok "PTY required-candidate assertion rejects suppressed output"
   pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-pty.XXXXXX")
   printf '#!/usr/bin/env bash\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo pty-ok\\n"\n' >"$pty_tmp/engine"
   chmod +x "$pty_tmp/engine"
@@ -119,34 +125,33 @@ if command -v expect >/dev/null 2>&1; then
   chmod +x "$pty_tmp/engine-candidates"
   expect <<EOF || fail "bash pty key binding"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn bash --norc -i
-expect "\\$ "
+expect_required "\\$ "
 send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-config LMLINE_ENGINE=$pty_tmp/engine LMLINE_ASYNC=0\r"
-expect "\\$ "
+expect_required "\\$ "
 send "source $repo_dir/lmline/init.bash\r"
-expect "\\$ "
+expect_required "\\$ "
 send "#request"
 send "\030\007"
-expect {
-  "echo pty-ok" {}
-  timeout { exit 1 }
-}
+expect_required "echo pty-ok"
 send "\025exit\r"
   expect eof
 EOF
   expect <<EOF || fail "bash pty clip key binding"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn bash --norc -i
-expect "\\$ "
+expect_required "\\$ "
 send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-clip-config LMLINE_ENGINE=$pty_tmp/engine LMLINE_ASYNC=0 LMLINE_CLIPBOARD_PROVIDERS_FILE=$pty_tmp/clipboard.tsv LMLINE_CLIPBOARD_PROVIDER=fake\r"
-expect "\\$ "
+expect_required "\\$ "
 send "source $repo_dir/lmline/init.bash\r"
-expect "\\$ "
+expect_required "\\$ "
 send "\030\026"
-expect "clipboard provider=fake"
-expect "echo pty-ok"
+expect_required "clipboard provider=fake"
+expect_required "echo pty-ok"
 send "\025exit\r"
 expect eof
 EOF
@@ -159,18 +164,19 @@ EOF
   chmod +x "$pty_tmp/engine-async"
   expect <<EOF >"$pty_tmp/bash-async-reload.out" 2>&1 || fail "bash pty async setting reload before generation"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
-expect "\\$ "
+expect_required "\\$ "
 send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-async-config LMLINE_ENGINE=$pty_tmp/engine-async\r"
-expect "\\$ "
+expect_required "\\$ "
 send "source $repo_dir/lmline/init.bash\r"
-expect "\\$ "
+expect_required "\\$ "
 send "$repo_dir/lmline/lmline config set LMLINE_ASYNC 0\r"
-expect "\\$ "
+expect_required "\\$ "
 send "#request"
 send "\030\007"
-expect -exact "touch $bash_async_marker"
+expect_required -exact "touch $bash_async_marker"
 send "\025"
 send "exit\r"
 expect eof
@@ -179,35 +185,37 @@ EOF
   [[ ! -e "$bash_async_marker" ]] || fail "bash pty candidate must not execute"
   expect <<EOF >"$pty_tmp/bash-next.out" 2>&1 || fail "bash pty next candidate"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
-expect "\\$ "
+expect_required "\\$ "
 send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-next-config LMLINE_ENGINE=$pty_tmp/engine-candidates LMLINE_ASYNC=0\r"
-expect "\\$ "
+expect_required "\\$ "
 send "source $repo_dir/lmline/init.bash\r"
-expect "\\$ "
+expect_required "\\$ "
 send "#request"
 send "\030\007"
-expect "echo one"
+expect_required "echo one"
 send "\030\016"
-expect "echo two"
+expect_required "echo two"
 send "\030\016"
-expect "echo three"
+expect_required "echo three"
 send "\025exit\r"
     expect eof
 EOF
     expect <<EOF || fail "zsh pty clip key binding"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn zsh -f
-expect "% "
-send "export LMLINE_CONFIG_DIR=$pty_tmp/zsh-clip-config LMLINE_ENGINE=$pty_tmp/engine LMLINE_ASYNC=0 LMLINE_CLIPBOARD_PROVIDERS_FILE=$pty_tmp/clipboard.tsv LMLINE_CLIPBOARD_PROVIDER=fake\r"
-expect "% "
+expect_required "% "
+send "export PS1='ZSH_CLIP_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-clip-config LMLINE_ENGINE=$pty_tmp/engine LMLINE_ASYNC=0 LMLINE_CLIPBOARD_PROVIDERS_FILE=$pty_tmp/clipboard.tsv LMLINE_CLIPBOARD_PROVIDER=fake\r"
+expect_required "ZSH_CLIP_READY> "
 send "source $repo_dir/lmline/init.zsh\r"
-expect "% "
+expect_required "ZSH_CLIP_READY> "
 send "\030\026"
-expect "clipboard provider=fake"
-expect "echo pty-ok"
+expect_required "clipboard provider=fake"
+expect_required "echo pty-ok"
 send "\025exit\r"
 expect eof
 EOF
@@ -220,22 +228,22 @@ EOF
   chmod +x "$pty_tmp/engine-slow"
   expect <<EOF >"$pty_tmp/bash-spinner.out" 2>&1 || fail "bash pty spinner"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
-expect "\\$ "
+expect_required "\\$ "
 send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-spinner-config LMLINE_ENGINE=$pty_tmp/engine-slow LMLINE_ASYNC=0 LMLINE_SPINNER=1 LMLINE_SPINNER_INTERVAL=0.1\r"
-expect "\\$ "
+expect_required "\\$ "
 send "source $repo_dir/lmline/init.bash\r"
-expect "\\$ "
+expect_required "\\$ "
 send "echo old"
 send "\030\022"
-expect "\\[rewrite\\]"
-expect "tool files"
-expect "echo pty-slow"
+expect_required "\\[rewrite\\]"
+expect_required "tool files"
+expect_required "echo pty-slow"
 send "\025echo hi"
 send "\030\005"
-expect "explaining"
-expect "explained pty"
+expect_required_spinner_and_explanation
 send "\025exit\r"
 expect eof
 EOF
@@ -253,18 +261,19 @@ EOF
     chmod +x "$pty_tmp/engine-zsh-async"
     expect <<EOF >"$pty_tmp/zsh-async-reload.out" 2>&1 || fail "zsh pty async setting reload before generation"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn zsh -f
-expect "% "
-send "export LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config LMLINE_ENGINE=$pty_tmp/engine-zsh-async\r"
-expect "% "
+expect_required "% "
+send "export PS1='ZSH_ASYNC_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config LMLINE_ENGINE=$pty_tmp/engine-zsh-async\r"
+expect_required "ZSH_ASYNC_READY> "
 send "source $repo_dir/lmline/init.zsh\r"
-expect "% "
+expect_required "ZSH_ASYNC_READY> "
 send "$repo_dir/lmline/lmline config set LMLINE_ASYNC 0\r"
-expect "% "
+expect_required "ZSH_ASYNC_READY> "
 send "#request"
 send "\030\007"
-expect -exact "touch $zsh_async_marker"
+expect_required -exact "touch $zsh_async_marker"
 send "\025"
 send "exit\r"
 expect eof
@@ -273,47 +282,45 @@ EOF
     [[ ! -e "$zsh_async_marker" ]] || fail "zsh pty candidate must not execute"
     expect <<EOF || fail "zsh pty key binding"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn zsh -f
-expect "% "
-send "export LMLINE_CONFIG_DIR=$pty_tmp/zsh-config LMLINE_ENGINE=$pty_tmp/engine LMLINE_ASYNC=0\r"
-expect "% "
+expect_required "% "
+send "export PS1='ZSH_KEYS_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-config LMLINE_ENGINE=$pty_tmp/engine LMLINE_ASYNC=0\r"
+expect_required "ZSH_KEYS_READY> "
 send "source $repo_dir/lmline/init.zsh\r"
-expect "% "
+expect_required "ZSH_KEYS_READY> "
 send "#request"
 send "\030\007"
-expect {
-  "echo pty-ok" {}
-  timeout { exit 1 }
-}
+expect_required "echo pty-ok"
 send "\025exit\r"
 expect eof
 EOF
     expect <<EOF >"$pty_tmp/zsh-spinner.out" 2>&1 || fail "zsh pty spinner"
 set timeout 5
+source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn zsh -f
-expect "% "
-send "export LMLINE_CONFIG_DIR=$pty_tmp/zsh-spinner-config LMLINE_ENGINE=$pty_tmp/engine-slow LMLINE_ASYNC=0 LMLINE_SPINNER=1 LMLINE_SPINNER_INTERVAL=0.1\r"
-expect "% "
+expect_required "% "
+send "export PS1='ZSH_SPINNER_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-spinner-config LMLINE_ENGINE=$pty_tmp/engine-slow LMLINE_ASYNC=0 LMLINE_SPINNER=1 LMLINE_SPINNER_INTERVAL=0.1\r"
+expect_required "ZSH_SPINNER_READY> "
 send "source $repo_dir/lmline/init.zsh\r"
-expect "% "
+expect_required "ZSH_SPINNER_READY> "
 send "echo old"
 send "\030\022"
-expect "\\[rewrite\\]"
-expect "tool files"
-expect "echo pty-slow"
+expect_required "\\[rewrite\\]"
+expect_required "tool files"
+expect_required "echo pty-slow"
 send "\025echo hi"
 send "\030\005"
-expect "explaining"
-expect "explained pty"
+expect_required_spinner_and_explanation
 send "\025exit\r"
 expect eof
 EOF
     ! grep -E '\[[0-9]+\]|終了|Done|__lmline_zsh_bridge' "$pty_tmp/zsh-spinner.out" >/dev/null || fail "zsh pty spinner job noise"
     zsh_spinner_norm=$(tr '\r' '\n' <"$pty_tmp/zsh-spinner.out" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
-    ! grep -E '\[rewrite\].*(% |echo pty-slow)' <<<"$zsh_spinner_norm" >/dev/null || fail "zsh pty spinner left rewrite text on prompt line"
-    ! grep -E 'explaining.*(% |explained pty)' <<<"$zsh_spinner_norm" >/dev/null || fail "zsh pty spinner left explain text on output line"
+    ! grep -E '\[rewrite\].*(ZSH_SPINNER_READY> |echo pty-slow)' <<<"$zsh_spinner_norm" >/dev/null || fail "zsh pty spinner left rewrite text on prompt line"
+    ! grep -E 'explaining.*(ZSH_SPINNER_READY> |explained pty)' <<<"$zsh_spinner_norm" >/dev/null || fail "zsh pty spinner left explain text on output line"
   fi
   rm -rf "$pty_tmp"
   ok "pty key bindings"
@@ -358,6 +365,7 @@ if {$shell eq "bash"} {
 expect {
   -re {[$%] } {}
   timeout {exit 1}
+  eof {puts stderr "history PTY shell exited before prompt"; exit 1}
 }
 send -- "PS1='HISTORY_PROMPT> '; export LMLINE_CONFIG_DIR=$tmp/$shell-config LMLINE_PTY_ROOT=$root LMLINE_ENGINE=$tmp/engine LMLINE_ASYNC=0 LMLINE_SPINNER=0\r"
 prompt
@@ -387,6 +395,7 @@ send -- "\030\007"
 expect {
   -exact {# REVIEW REQUIRED: echo "!!"} {}
   timeout {puts stderr "history PTY missing unchanged review comment"; exit 1}
+  eof {puts stderr "history PTY exited before review comment"; exit 1}
 }
 send -- "\r"
 prompt
