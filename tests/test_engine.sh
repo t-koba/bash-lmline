@@ -57,15 +57,14 @@ chmod +x "$fake_bin/curl"
 printf '0\n' >"$cfg_tmp/fake-curl-state"
 printf '# list files\n' >"$cfg_tmp/line"
 printf '## available_tools\n' >"$cfg_tmp/context"
-multi_round_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+# Assert output and progress/metadata from the same multi-round engine request.
+multi_round_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/tool-progress.err")
 [[ "$(candidates_of <<<"$multi_round_out")" == "echo multi-round" ]] || fail "multi-round tool output"
 [[ $(cat "$cfg_tmp/fake-curl-state") == 3 ]] || fail "multi-round tool count"
-printf '0\n' >"$cfg_tmp/fake-curl-state"
-PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-tool-progress.out 2>/tmp/lmline-tool-progress.err
-grep -q '^lmline-progress: tool command-exists (openai, round 1/4)$' /tmp/lmline-tool-progress.err || fail "tool progress command_exists"
-grep -q '^lmline-progress: tool command-info (openai, round 2/4)$' /tmp/lmline-tool-progress.err || fail "tool progress command_info"
-grep -Eq '^lmline-meta: model=provider/kimi-k2.6-command-model-with-long-id tokens=50 prompt=42 completion=8 tools=command-exists,command-info time=[0-9]+s$' /tmp/lmline-tool-progress.err || fail "engine model/token/tool/time metadata"
-grep -Eq '^lmline-status: m=provider/kimi-k2.6-command-model-with-long-id; tok=42/8/50; tools=command-exists,command-info; t=[0-9]+s$' /tmp/lmline-tool-progress.err || fail "engine status keeps full model name"
+grep -q '^lmline-progress: tool command-exists (openai, round 1/4)$' "$cfg_tmp/tool-progress.err" || fail "tool progress command_exists"
+grep -q '^lmline-progress: tool command-info (openai, round 2/4)$' "$cfg_tmp/tool-progress.err" || fail "tool progress command_info"
+grep -Eq '^lmline-meta: model=provider/kimi-k2.6-command-model-with-long-id tokens=50 prompt=42 completion=8 tools=command-exists,command-info time=[0-9]+s$' "$cfg_tmp/tool-progress.err" || fail "engine model/token/tool/time metadata"
+grep -Eq '^lmline-status: m=provider/kimi-k2.6-command-model-with-long-id; tok=42/8/50; tools=command-exists,command-info; t=[0-9]+s$' "$cfg_tmp/tool-progress.err" || fail "engine status keeps full model name"
 printf '0\n' >"$cfg_tmp/fake-curl-state"
 printf 'date -r\n' >"$cfg_tmp/line-explain"
 explain_multi_round_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line-explain" --context-file "$cfg_tmp/context" --n 1)
