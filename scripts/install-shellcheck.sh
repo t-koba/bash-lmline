@@ -1,19 +1,14 @@
 #!/bin/sh
-# Install the ShellCheck release pinned in pinned-downloads.txt for CI.
-# The manifest's URL supplies the version; its digest is checked before use.
+# Resolve the ShellCheck release pinned in pinned-downloads.txt and print its
+# temporary binary directory to stdout (diagnostics go to stderr).
+# Prefers /pinned/sha256/<digest>/<asset> when readable (sandbox), otherwise
+# downloads the same manifest URL (GitHub CI). The digest is verified in both
+# cases before extraction; the binary version must match the URL tag.
 set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd) || exit 1
 MANIFEST="${SCRIPT_DIR}/../pinned-downloads.txt"
 
-if [ -z "${RUNNER_TEMP:-}" ] || [ ! -d "$RUNNER_TEMP" ]; then
-  printf 'install-shellcheck: RUNNER_TEMP must name an existing directory\n' >&2
-  exit 1
-fi
-if [ -z "${GITHUB_ENV:-}" ]; then
-  printf 'install-shellcheck: GITHUB_ENV is not set\n' >&2
-  exit 1
-fi
 if [ ! -f "$MANIFEST" ]; then
   printf 'install-shellcheck: pin manifest not found\n' >&2
   exit 1
@@ -35,6 +30,7 @@ COMMON_VERSION=
 MATCH_VERSION=
 MATCH_SHA=
 MATCH_URL=
+MATCH_FILENAME=
 MATCH_COUNT=0
 line=
 while IFS= read -r line || [ -n "$line" ]; do
@@ -103,6 +99,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     MATCH_VERSION=$version
     MATCH_SHA=$sha
     MATCH_URL=$url
+    MATCH_FILENAME=$filename
     MATCH_COUNT=$((MATCH_COUNT + 1))
   fi
 done < "$MANIFEST"
@@ -112,7 +109,7 @@ if [ "$MATCH_COUNT" -ne 1 ]; then
   exit 1
 fi
 
-for command_name in curl tar mktemp awk sed; do
+for command_name in tar mktemp awk; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     printf 'install-shellcheck: required command missing: %s\n' "$command_name" >&2
     exit 1
@@ -130,12 +127,24 @@ else
   fi
 fi
 
-WORK_DIR=$(mktemp -d "${RUNNER_TEMP}/shellcheck.XXXXXX") || exit 1
-trap 'rm -rf "$WORK_DIR"' 0
-ARCHIVE="${WORK_DIR}/shellcheck.tar.xz"
-if ! curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --silent --show-error --retry 3 "$MATCH_URL" -o "$ARCHIVE"; then
-  printf 'install-shellcheck: download failed\n' >&2
-  exit 1
+BIN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/shellcheck-bin.XXXXXX") || exit 1
+trap 'rm -rf "$BIN_DIR"' 0
+ARCHIVE="${BIN_DIR}/shellcheck.tar.xz"
+CACHED="/pinned/sha256/${MATCH_SHA}/${MATCH_FILENAME}"
+if [ -r "$CACHED" ]; then
+  if ! cp "$CACHED" "$ARCHIVE"; then
+    printf 'install-shellcheck: cannot copy cached archive\n' >&2
+    exit 1
+  fi
+else
+  if ! command -v curl >/dev/null 2>&1; then
+    printf 'install-shellcheck: cached archive missing and curl is not installed\n' >&2
+    exit 1
+  fi
+  if ! curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --silent --show-error --retry 3 "$MATCH_URL" -o "$ARCHIVE"; then
+    printf 'install-shellcheck: download failed\n' >&2
+    exit 1
+  fi
 fi
 
 if [ "$OS" = Darwin ]; then
@@ -147,29 +156,25 @@ if [ "$ACTUAL_SHA" != "$MATCH_SHA" ]; then
   printf 'install-shellcheck: SHA-256 mismatch for %s\n' "$PLATFORM" >&2
   exit 1
 fi
-if ! tar -xf "$ARCHIVE" -C "$WORK_DIR"; then
+if ! tar -xf "$ARCHIVE" -C "$BIN_DIR"; then
   printf 'install-shellcheck: archive extraction failed\n' >&2
   exit 1
 fi
-BIN_SRC="${WORK_DIR}/shellcheck-v${MATCH_VERSION}/shellcheck"
+BIN_SRC="${BIN_DIR}/shellcheck-v${MATCH_VERSION}/shellcheck"
 if [ ! -f "$BIN_SRC" ]; then
   printf 'install-shellcheck: binary missing after extraction\n' >&2
   exit 1
 fi
-chmod +x "$BIN_SRC" || exit 1
-VERSION_OUTPUT=$("$BIN_SRC" --version) || exit 1
+cp "$BIN_SRC" "${BIN_DIR}/shellcheck" || exit 1
+chmod +x "${BIN_DIR}/shellcheck" || exit 1
+rm -rf "$ARCHIVE" "${BIN_DIR}/shellcheck-v${MATCH_VERSION}" || exit 1
+VERSION_OUTPUT=$("${BIN_DIR}/shellcheck" --version) || exit 1
 ACTUAL_VERSION=$(printf '%s\n' "$VERSION_OUTPUT" | awk '$1 == "version:" { print $2; exit }')
 if [ "$ACTUAL_VERSION" != "$MATCH_VERSION" ]; then
   printf 'install-shellcheck: expected version %s, found %s\n' "$MATCH_VERSION" "$ACTUAL_VERSION" >&2
   exit 1
 fi
 
-BIN_DIR="${RUNNER_TEMP}/shellcheck-bin"
-mkdir -p "$BIN_DIR" || exit 1
-cp "$BIN_SRC" "${BIN_DIR}/shellcheck" || exit 1
-chmod +x "${BIN_DIR}/shellcheck" || exit 1
-if ! printf 'SHELLCHECK_BIN_DIR=%s\n' "$BIN_DIR" >> "$GITHUB_ENV"; then
-  printf 'install-shellcheck: cannot write GITHUB_ENV\n' >&2
-  exit 1
-fi
-printf 'install-shellcheck: installed ShellCheck %s for %s\n' "$MATCH_VERSION" "$PLATFORM"
+trap - 0
+printf '%s\n' "$BIN_DIR"
+printf 'install-shellcheck: installed ShellCheck %s for %s\n' "$MATCH_VERSION" "$PLATFORM" >&2

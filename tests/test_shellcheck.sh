@@ -3,12 +3,20 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 # init.zsh is excluded: shellcheck does not support zsh; zsh -n covers it in
-# test_syntax.sh. LMLINE_REQUIRE_SHELLCHECK=1 (set in CI) turns the local
-# skip into a failure so CI cannot silently lose lint coverage.
-if ! command -v shellcheck >/dev/null 2>&1; then
-  [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]] && fail "shellcheck required but not installed"
-  ok "shellcheck (skipped: not installed)"
-  exit 0
+# test_syntax.sh. LMLINE_REQUIRE_SHELLCHECK=1 (set in CI and mizu_verify)
+# always uses the manifest pin via scripts/install-shellcheck.sh (which
+# prefers /pinned and otherwise downloads the same URL); otherwise an
+# installed shellcheck is used, or the test skips when none is installed.
+if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
+  pinned_bin_dir=$(sh "$repo_dir/scripts/install-shellcheck.sh") || fail "pinned ShellCheck setup failed"
+  trap 'rm -rf "$pinned_bin_dir"' EXIT
+  PATH="$pinned_bin_dir:$PATH"
+  command -v shellcheck >/dev/null 2>&1 || fail "pinned shellcheck not found"
+else
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    ok "shellcheck (skipped: not installed)"
+    exit 0
+  fi
 fi
 
 shellcheck -s bash \

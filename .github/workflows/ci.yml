@@ -22,8 +22,6 @@ jobs:
         # macOS ships bash 3.2; the tests need bash 4.2+ first on PATH.
         run: brew install bash jq
         if: runner.os == 'macOS'
-      - name: Install pinned ShellCheck
-        run: sh scripts/install-shellcheck.sh
       - name: Run tests
         id: run_tests
         env:
@@ -32,8 +30,6 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             export PATH="$(brew --prefix)/bin:$PATH"
           fi
-          : "${SHELLCHECK_BIN_DIR:?pinned ShellCheck was not installed}"
-          export PATH="$SHELLCHECK_BIN_DIR:$PATH"
           bash tests/run.sh
       - name: Retry PTY test after a macOS suite failure for diagnostics
         if: ${{ always() && steps.run_tests.outcome == 'failure' && runner.os == 'macOS' }}
