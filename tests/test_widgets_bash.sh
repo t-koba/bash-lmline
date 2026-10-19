@@ -136,12 +136,20 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
   __lmline_prev_widget
   [[ "$READLINE_LINE" == "echo two" ]]
 ' _ "$repo_dir" || fail "rewrite candidate cycling"
-LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -i -c '
+cat >"$widget_tmp/engine-async" <<'EOF'
+#!/usr/bin/env bash
+sleep 0.3
+printf 'lmline-candidate: low\tno matching risk rule\t-\techo one\nlmline-candidate: low\tno matching risk rule\t-\techo two\n'
+EOF
+chmod +x "$widget_tmp/engine-async"
+LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
   __lmline_generate_widget >/tmp/lmline-widget-async1.out 2>/tmp/lmline-widget-async1.err
-  sleep 0.2
+  async_pid=$__LMLINE_ASYNC_PID
+  [[ $async_pid -gt 0 && "$READLINE_LINE" == "# say one" ]]
+  wait "$async_pid" || exit 1
   __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
@@ -166,7 +174,9 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="
   READLINE_LINE="# fail"
   READLINE_POINT=${#READLINE_LINE}
   __lmline_generate_widget >/tmp/lmline-widget-fail1.out 2>/tmp/lmline-widget-fail1.err
-  sleep 0.2
+  async_pid=$__LMLINE_ASYNC_PID
+  [[ $async_pid -gt 0 ]]
+  wait "$async_pid" || exit 1
   __lmline_generate_widget >/tmp/lmline-widget-fail2.out 2>/tmp/lmline-widget-fail2.err
   grep -q "synthetic async failure" /tmp/lmline-widget-fail2.err
 ' _ "$repo_dir" || fail "async failure hint"
