@@ -1027,9 +1027,21 @@ grep -F -q -- "--volume $command_root:/workspace:ro" "$command_tmp/msb.log" || f
 sandbox_named_run_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --name lmline-test -- echo named)
 grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run named microsandbox"
 
-# Portable deadline stays bounded where GNU timeout is missing (e.g. stock macOS).
+# Exercise the portable deadline with injected timer ticks when GNU timeout is
+# missing (e.g. stock macOS), avoiding real one-second sleeps in the test.
 notimeout_bin=$(mktemp -d "${TMPDIR:-/tmp}/lmline-notimeout.XXXXXX")
-ln -s "$(command -v sleep)" "$notimeout_bin/sleep"
+cat >"$notimeout_bin/sleep" <<'SLEEP_EOF'
+#!/bin/sh
+case "${1:-}" in
+  1)
+    printf 'tick\n' >>"${LMLINE_FAKE_SLEEP_TICKS:?}"
+    exec /bin/sleep 0.25
+    ;;
+  5|10) exec /bin/sleep 60 ;;
+  *) exec /bin/sleep "$@" ;;
+esac
+SLEEP_EOF
+chmod +x "$notimeout_bin/sleep"
 # The leader exits on TERM, but its same-group descendants ignore TERM and
 # would write after the deadline + grace. Record their PIDs so the test can
 # observe process-group cleanup instead of sleeping out the five-second job.
@@ -1052,6 +1064,7 @@ for monitor in off on; do
     set -uo pipefail
     source "$1/lmline/sandbox.bash"
     export PATH="$2"
+    export LMLINE_FAKE_SLEEP_TICKS="$2/sleep-ticks"
     command -v timeout >/dev/null 2>&1 && exit 3
     command -v sleep >/dev/null 2>&1 || exit 4
     # This sibling is outside the launched job, and must survive cancellation.
@@ -1063,12 +1076,13 @@ for monitor in off on; do
     before=$-
     trap : INT HUP TERM
     before_traps=$(trap -p INT HUP TERM)
-    start=$SECONDS
+    : >"$LMLINE_FAKE_SLEEP_TICKS"
     status=0
     __lmline_timeout_run 2 "$BASH" "$2/descendant" "$2/marker-$3" "$2/term-$3" "$2/ready-$3" "$2/child-shell-$3" "$2/child-sleep-$3" || status=$?
-    elapsed=$((SECONDS - start))
     (( status == 124 )) || exit 5
-    (( elapsed >= 3 && elapsed < 8 )) || exit 6
+    tick_count=0
+    while IFS= read -r _; do tick_count=$((tick_count + 1)); done <"$LMLINE_FAKE_SLEEP_TICKS"
+    (( tick_count == 3 )) || exit 6
     [[ $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 7
     [[ -s "$2/ready-$3" && -s "$2/term-$3" ]] || exit 8
     IFS= read -r child_shell <"$2/child-shell-$3" || exit 8
