@@ -84,8 +84,9 @@ if {![file exists $term_file]} {
   puts stderr "cancellation PTY worker did not record TERM"
   exit 1
 }
-# Wait beyond the worker deadline, not merely the TERM grace period.
-after 3000
+# The one-second TERM grace overlaps the worker's two-second sleep;
+# wait two more seconds so a leaked descendant must write its marker.
+after 2000
 if {[file exists "$tmp/marker"]} {
   puts stderr "cancellation PTY descendant leaked"
   exit 1
