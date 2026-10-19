@@ -1030,15 +1030,19 @@ grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run na
 # Portable deadline stays bounded where GNU timeout is missing (e.g. stock macOS).
 notimeout_bin=$(mktemp -d "${TMPDIR:-/tmp}/lmline-notimeout.XXXXXX")
 ln -s "$(command -v sleep)" "$notimeout_bin/sleep"
-# The leader exits on TERM, but its same-group child ignores TERM and would
-# write after the deadline + grace. Even a broken implementation leaves no
-# long-lived child: the synthetic workload ends after five seconds.
+# The leader exits on TERM, but its same-group descendants ignore TERM and
+# would write after the deadline + grace. Record their PIDs so the test can
+# observe process-group cleanup instead of sleeping out the five-second job.
 cat >"$notimeout_bin/descendant" <<'SCRIPT_EOF'
 trap 'printf "term\n" >"$2"; exit 0' TERM
 (
   trap "" TERM
+  sleep 5 &
+  child_sleep=$!
+  printf '%s\n' "$BASHPID" >"$4"
+  printf '%s\n' "$child_sleep" >"$5"
   printf 'ready\n' >"$3"
-  sleep 5
+  wait "$child_sleep"
   printf 'leaked\n' >"$1"
 ) &
 wait
@@ -1061,14 +1065,24 @@ for monitor in off on; do
     before_traps=$(trap -p INT HUP TERM)
     start=$SECONDS
     status=0
-    __lmline_timeout_run 2 "$BASH" "$2/descendant" "$2/marker-$3" "$2/term-$3" "$2/ready-$3" || status=$?
+    __lmline_timeout_run 2 "$BASH" "$2/descendant" "$2/marker-$3" "$2/term-$3" "$2/ready-$3" "$2/child-shell-$3" "$2/child-sleep-$3" || status=$?
     elapsed=$((SECONDS - start))
     (( status == 124 )) || exit 5
     (( elapsed >= 3 && elapsed < 8 )) || exit 6
     [[ $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 7
     [[ -s "$2/ready-$3" && -s "$2/term-$3" ]] || exit 8
-    # Wait past the marker deadline even if the timeout returned too early.
-    while (( SECONDS - start < 6 )); do sleep 1; done
+    IFS= read -r child_shell <"$2/child-shell-$3" || exit 8
+    IFS= read -r child_sleep <"$2/child-sleep-$3" || exit 8
+    [[ $child_shell =~ ^[1-9][0-9]*$ && $child_sleep =~ ^[1-9][0-9]*$ ]] || exit 8
+    for ((i = 0; i < 20; i++)); do
+      alive=0
+      kill -0 "$child_shell" 2>/dev/null && alive=1
+      kill -0 "$child_sleep" 2>/dev/null && alive=1
+      (( alive )) || break
+      sleep 0.05
+    done
+    kill -0 "$child_shell" 2>/dev/null && exit 9
+    kill -0 "$child_sleep" 2>/dev/null && exit 9
     [[ ! -e "$2/marker-$3" ]] || exit 9
     kill -0 "$sentinel" 2>/dev/null || exit 10
     out=$(__lmline_timeout_run 2 echo portable-ok) || exit 11
