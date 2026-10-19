@@ -11,9 +11,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Both runners execute the full suite: real PTY/Readline behavior, shell/system-tool
-        # differences, and platform-specific ShellCheck assets differ per OS, and the
-        # main-branch run after promotion catches flakes.
+        # Ubuntu runs the full suite including the sole pinned ShellCheck lint;
+        # macOS runs the same suite minus that platform-invariant lint to exercise
+        # real OS/terminal/shell differences; the full main-branch run after
+        # promotion remains the flake catch.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -25,21 +26,20 @@ jobs:
         # macOS ships bash 3.2; the tests need bash 4.2+ first on PATH.
         run: brew install bash jq
         if: runner.os == 'macOS'
-      - name: Run tests
-        id: run_tests
-        env:
-          LMLINE_REQUIRE_SHELLCHECK: "1"
+      - name: Run tests (Ubuntu)
+        id: run_tests_ubuntu
+        if: runner.os == 'Linux'
+        run: LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
+      - name: Run tests (macOS)
+        id: run_tests_macos
+        if: runner.os == 'macOS'
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            export PATH="$(brew --prefix)/bin:$PATH"
-          fi
-          bash tests/run.sh
+          export PATH="$(brew --prefix)/bin:$PATH"
+          bash tests/run.sh --skip-shellcheck
       - name: Retry PTY test after a macOS suite failure for diagnostics
-        if: ${{ always() && steps.run_tests.outcome == 'failure' && runner.os == 'macOS' }}
+        if: ${{ always() && steps.run_tests_macos.outcome == 'failure' && runner.os == 'macOS' }}
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            export PATH="$(brew --prefix)/bin:$PATH"
-          fi
+          export PATH="$(brew --prefix)/bin:$PATH"
           status=0
           for attempt in 1 2 3; do
             echo "PTY diagnostic attempt ${attempt}/3"

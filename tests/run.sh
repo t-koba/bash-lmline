@@ -2,7 +2,23 @@
 # Test runner: executes every tests/test_*.sh in order, reports all failures
 # instead of stopping at the first failing file, and exits non-zero if any
 # file failed. Individual files fail fast internally via lib.sh fail().
+# With no arguments runs every test. With exactly --skip-shellcheck, skips
+# only test_shellcheck.sh (platform-invariant lint runs once on Ubuntu in CI)
+# and runs everything else in the same order.
 set -u
+
+skip_shellcheck=0
+if (($# > 1)); then
+  printf 'usage: %s [--skip-shellcheck]\n' "$0" >&2
+  exit 2
+elif (($# == 1)); then
+  if [[ "$1" == "--skip-shellcheck" ]]; then
+    skip_shellcheck=1
+  else
+    printf 'usage: %s [--skip-shellcheck]\n' "$0" >&2
+    exit 2
+  fi
+fi
 
 tests_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 failed=()
@@ -11,6 +27,10 @@ suite_started=$SECONDS
 
 for test_file in "$tests_dir"/test_*.sh; do
   name=$(basename "$test_file")
+  if ((skip_shellcheck)) && [[ "$name" == "test_shellcheck.sh" ]]; then
+    printf 'skip - %s: platform-invariant ShellCheck runs once on Ubuntu\n' "$name"
+    continue
+  fi
   test_started=$SECONDS
   if ! bash "$test_file"; then
     printf 'not ok - %s\n' "$name" >&2
