@@ -2,6 +2,9 @@
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
+# Resolve ShellCheck source hints consistently, including direct invocations from elsewhere.
+cd -- "$repo_dir" || fail "could not enter repository root for ShellCheck"
+
 # init.zsh is excluded: shellcheck does not support zsh; zsh -n covers it in
 # test_syntax.sh. LMLINE_REQUIRE_SHELLCHECK=1 (set in CI and mizu_verify)
 # always uses the manifest pin via scripts/install-shellcheck.sh (which
