@@ -5,7 +5,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 widget_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-widget-test.XXXXXX")
 printf '#!/usr/bin/env bash\nprintf "lmline-status: m=widget-model; tok=100/23/123\\n" >&2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo one\\nlmline-candidate: low\\tno matching risk rule\\t-\\techo two\\n"\n' >"$widget_tmp/engine"
 chmod +x "$widget_tmp/engine"
-LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -i -c '
+# Child interactive Bash shells enable errexit explicitly; parent shell options do not propagate.
+LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   [[ $(__lmline_infer_mode "# request") == generate ]]
   [[ $(__lmline_infer_mode "#another request") == generate ]]
@@ -23,7 +24,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
 ' _ "$repo_dir" || fail "sync widget"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: curl: (28) Operation timed out after 12003 milliseconds with 0 bytes received\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
-LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
@@ -34,7 +35,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widge
 ' _ "$repo_dir" || fail "engine failure is surfaced"
 printf '#!/usr/bin/env bash\nprintf "lmline-candidate: medium\\twrites to a file or descriptor\\t-\\techo hi > out.txt\\n"\n' >"$widget_tmp/engine-medium"
 chmod +x "$widget_tmp/engine-medium"
-LMLINE_CONFIG_DIR="$widget_tmp/config-medium" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-medium" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-medium" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-medium" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# medium"
   READLINE_POINT=${#READLINE_LINE}
@@ -44,7 +45,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-medium" LMLINE_ASYNC=0 LMLINE_ENGINE="$wid
 ' _ "$repo_dir" || fail "bash medium risk hint"
 printf '#!/usr/bin/env bash\nprintf "lmline-candidate: high\\trecursive remove\\t-\\trm -rf /tmp/lmline-risk-test\\n"\n' >"$widget_tmp/engine-high"
 chmod +x "$widget_tmp/engine-high"
-LMLINE_CONFIG_DIR="$widget_tmp/config-high" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-high" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-high" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-high" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# high"
   READLINE_POINT=${#READLINE_LINE}
@@ -74,7 +75,7 @@ fi
 EOF
 chmod +x "$widget_tmp/engine-explain"
 long_explain_cmd=$(printf "printf %s " "%s"; printf "'"; printf "b%.0s" {1..5000}; printf "'")
-LMLINE_CONFIG_DIR="$widget_tmp/config-explain" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-explain" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="echo hi"
   READLINE_POINT=${#READLINE_LINE}
@@ -87,7 +88,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-explain" LMLINE_PS0="[lm] " LMLINE_ENGINE=
   grep -q "\\[lm\\] m=explain-model; tok=50/16/66" /tmp/lmline-widget-explain.err
   grep -q "explained command" /tmp/lmline-widget-explain.err
 ' _ "$repo_dir" || fail "bash explain widget"
-LMLINE_CONFIG_DIR="$widget_tmp/config-explain-long" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-explain-long" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE=$2
   READLINE_POINT=${#READLINE_LINE}
@@ -117,7 +118,7 @@ grep -q "explanation-truncated .*max_bytes=1000" <<<"$cli_truncated_explain_out"
 cli_pipeline_explain_out=$(LMLINE_CONFIG_DIR="$widget_tmp/config-explain-pipeline" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" "$repo_dir/lmline/lmline" explain "yes '' | nl -b a -v 0 | head -n 31 | xargs -I @ date -d '20201201 +@days' +'%Y%m%d' | factor | awk 'NF==2&&\$0=\$2'")
 grep -q '^date is ' <<<"$cli_pipeline_explain_out" || fail "cli explain covers xargs command"
 grep -q '^awk is ' <<<"$cli_pipeline_explain_out" || fail "cli explain covers long pipeline"
-LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   LMLINE_SELECTOR=definitely-not-a-selector
   READLINE_LINE=""
@@ -142,7 +143,7 @@ sleep 0.3
 printf 'lmline-candidate: low\tno matching risk rule\t-\techo one\nlmline-candidate: low\tno matching risk rule\t-\techo two\n'
 EOF
 chmod +x "$widget_tmp/engine-async"
-LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
@@ -155,7 +156,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
 ' _ "$repo_dir" || fail "async widget"
 printf '#!/usr/bin/env bash\nsleep 0.3\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo slow\\n"\n' >"$widget_tmp/engine-slow"
 chmod +x "$widget_tmp/engine-slow"
-LMLINE_CONFIG_DIR="$widget_tmp/config-clean" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-slow" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-clean" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-slow" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# first"
   READLINE_POINT=${#READLINE_LINE}
@@ -169,7 +170,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-clean" LMLINE_ASYNC=1 LMLINE_ENGINE="$widg
 ' _ "$repo_dir" || fail "async cleanup"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: synthetic async failure\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
-LMLINE_CONFIG_DIR="$widget_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -i -c '
+LMLINE_CONFIG_DIR="$widget_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="# fail"
   READLINE_POINT=${#READLINE_LINE}
