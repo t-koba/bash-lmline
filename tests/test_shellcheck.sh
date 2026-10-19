@@ -17,6 +17,7 @@ shellcheck -s bash \
   "$repo_dir"/lmline/*.bash \
   "$repo_dir/lmline/completions/lmline.bash" \
   "$repo_dir/install.sh" \
+  "$repo_dir/scripts/install-shellcheck.sh" \
   "$repo_dir"/tests/*.sh \
   || fail "shellcheck findings"
 ok "shellcheck"
