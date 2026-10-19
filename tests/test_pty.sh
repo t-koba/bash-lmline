@@ -155,11 +155,12 @@ expect_required "echo pty-ok"
 send "\025exit\r"
 expect eof
 EOF
+  # Keep PTY candidates short: long macOS TMPDIR paths wrap in Readline.
   bash_async_marker=$pty_tmp/bash-async-executed
   LMLINE_CONFIG_DIR=$pty_tmp/bash-async-config "$repo_dir/lmline/lmline" config set LMLINE_ASYNC 1 >/dev/null
   cat >"$pty_tmp/engine-async" <<EOF
 #!/usr/bin/env bash
-printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch $bash_async_marker\\n'
+printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch bash-async-executed\\n'
 EOF
   chmod +x "$pty_tmp/engine-async"
   expect <<EOF >"$pty_tmp/bash-async-reload.out" 2>&1 || fail "bash pty async setting reload before generation"
@@ -168,7 +169,7 @@ source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
 expect_required "\\$ "
-send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-async-config LMLINE_ENGINE=$pty_tmp/engine-async\r"
+send "export LMLINE_CONFIG_DIR=$pty_tmp/bash-async-config LMLINE_ENGINE=$pty_tmp/engine-async; cd '$pty_tmp'\r"
 expect_required "\\$ "
 send "source $repo_dir/lmline/init.bash\r"
 expect_required "\\$ "
@@ -176,7 +177,7 @@ send "$repo_dir/lmline/lmline config set LMLINE_ASYNC 0\r"
 expect_required "\\$ "
 send "#request"
 send "\030\007"
-expect_required -exact "touch $bash_async_marker"
+expect_required -exact "touch bash-async-executed"
 send "\025"
 send "exit\r"
 expect eof
@@ -256,7 +257,7 @@ EOF
     LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config "$repo_dir/lmline/lmline" config set LMLINE_ASYNC 1 >/dev/null
     cat >"$pty_tmp/engine-zsh-async" <<EOF
 #!/usr/bin/env bash
-printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch $zsh_async_marker\\n'
+printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch zsh-async-executed\\n'
 EOF
     chmod +x "$pty_tmp/engine-zsh-async"
     expect <<EOF >"$pty_tmp/zsh-async-reload.out" 2>&1 || fail "zsh pty async setting reload before generation"
@@ -265,7 +266,7 @@ source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn zsh -f
 expect_required "% "
-send "export PS1='ZSH_ASYNC_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config LMLINE_ENGINE=$pty_tmp/engine-zsh-async\r"
+send "export PS1='ZSH_ASYNC_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config LMLINE_ENGINE=$pty_tmp/engine-zsh-async; cd '$pty_tmp'\r"
 expect_required "ZSH_ASYNC_READY> "
 send "source $repo_dir/lmline/init.zsh\r"
 expect_required "ZSH_ASYNC_READY> "
@@ -273,7 +274,7 @@ send "$repo_dir/lmline/lmline config set LMLINE_ASYNC 0\r"
 expect_required "ZSH_ASYNC_READY> "
 send "#request"
 send "\030\007"
-expect_required -exact "touch $zsh_async_marker"
+expect_required -exact "touch zsh-async-executed"
 send "\025"
 send "exit\r"
 expect eof
