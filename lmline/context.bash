@@ -228,25 +228,35 @@ __lmline_safe_tool_text() {
   local max_lines=${1:-40} max_bytes=${2:-240}
   # Head+tail within the line budget instead of head-only, so trailing
   # sections of help output (EXAMPLES, exit codes) stay visible.
+  # Only a head buffer plus a bounded tail ring are retained, so
+  # arbitrarily long input still scans fully without growing storage.
   LC_ALL=C awk -v max_lines="$max_lines" -v max_bytes="$max_bytes" '
-    BEGIN { esc = sprintf("%c", 27) }
+    BEGIN {
+      esc = sprintf("%c", 27)
+      head = int(max_lines * 60 / 100)
+      tail = max_lines - head - 1
+      if (tail < 0) tail = 0
+      cap = tail + 1
+      if (cap < 1) cap = 1
+    }
     {
       gsub(esc "\\[[0-9;?]*[ -/]*[@-~]", "")
       gsub(/[[:cntrl:]]/, "?")
       if (length($0) > max_bytes) $0 = substr($0, 1, max_bytes) "...<truncated>"
-      lines[++n] = $0
+      ++n
+      if (n <= head) h[n] = $0
+      else r[(n - head - 1) % cap] = $0
     }
     END {
       if (n <= max_lines) {
-        for (i = 1; i <= n; i++) print lines[i]
+        for (i = 1; i <= n && i <= head; i++) print h[i]
+        for (k = 0; k < n - head; k++) print r[k]
         exit
       }
-      head = int(max_lines * 60 / 100)
-      tail = max_lines - head - 1
-      if (tail < 0) tail = 0
-      for (i = 1; i <= head; i++) print lines[i]
+      for (i = 1; i <= head; i++) print h[i]
       printf "...[omitted %d lines]...\n", n - head - tail
-      for (i = n - tail + 1; i <= n; i++) print lines[i]
+      m = n - head
+      for (k = m - tail; k < m; k++) print r[k % cap]
     }
   '
 }
