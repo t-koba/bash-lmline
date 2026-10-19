@@ -23,6 +23,7 @@ jobs:
         run: brew install bash jq shellcheck
         if: runner.os == 'macOS'
       - name: Run tests
+        id: run_tests
         env:
           LMLINE_REQUIRE_SHELLCHECK: "1"
         run: |
@@ -31,9 +32,14 @@ jobs:
           fi
           bash tests/run.sh
       - name: Retry PTY test after a macOS suite failure for diagnostics
-        if: ${{ failure() && runner.os == 'macOS' }}
+        if: ${{ always() && steps.run_tests.outcome == 'failure' && runner.os == 'macOS' }}
         run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export PATH="$(brew --prefix)/bin:$PATH"
+          fi
+          status=0
           for attempt in 1 2 3; do
             echo "PTY diagnostic attempt ${attempt}/3"
-            bash tests/test_pty.sh || exit $?
+            bash tests/test_pty.sh || status=$?
           done
+          exit "$status"
