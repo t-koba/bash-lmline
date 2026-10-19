@@ -799,7 +799,9 @@ clipboard. Tools can expose extra local facts only when enabled and only when
 the model calls them. `file_excerpt` is disabled by default because it reads
 bounded file content. `command_run` is disabled by default because it executes
 a command through the selected backend and sends bounded stdout/stderr back to
-the model. `Ctrl-x Ctrl-v` sends redacted clipboard text because that action is
+the model. `git_status`, `file_excerpt`, and `command_run` require exact `1`
+to enable; unset, empty, and any other value leave them disabled.
+`Ctrl-x Ctrl-v` sends redacted clipboard text because that action is
 explicitly about the clipboard. `Ctrl-x Ctrl-f` sends the captured stdout,
 stderr, exit status, and execution backend from the command it runs.
 

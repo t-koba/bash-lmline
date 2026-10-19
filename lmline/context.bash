@@ -154,11 +154,15 @@ __lmline_tool_enabled() {
     command_run) var=LMLINE_TOOL_COMMAND_RUN ;;
     *) return 1 ;;
   esac
+  # Default-off tools require affirmative opt-in: only the exact value `1`
+  # enables them. Unset, empty, documented false values, and any other
+  # value fail closed.
   if [[ "$name" == git_status || "$name" == file_excerpt || "$name" == command_run ]]; then
-    value=${!var-0}
-  else
-    value=${!var-1}
+    value=${!var-}
+    [[ "$value" == 1 ]]
+    return
   fi
+  value=${!var-1}
   case "$value" in
     0|false|FALSE|off|OFF|no|NO) return 1 ;;
     *) return 0 ;;
