@@ -11,10 +11,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu runs the full suite including the sole pinned ShellCheck lint;
-        # macOS runs the same suite minus that platform-invariant lint to exercise
-        # real OS/terminal/shell differences; the full main-branch run after
-        # promotion remains the flake catch.
+        # Ubuntu runs the full suite and the sole full pinned ShellCheck lint;
+        # macOS runs the pinned Darwin provisioning smoke plus the non-lint suite
+        # for native OS/terminal/shell differences. Together both jobs retain full
+        # coverage, and base-branch runs remain the flake catch.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,6 +30,11 @@ jobs:
         id: run_tests_ubuntu
         if: runner.os == 'Linux'
         run: LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
+      - name: Provision pinned ShellCheck (macOS smoke)
+        if: runner.os == 'macOS'
+        run: |
+          export PATH="$(brew --prefix)/bin:$PATH"
+          bash tests/test_shellcheck.sh --provision-only
       - name: Run tests (macOS)
         id: run_tests_macos
         if: runner.os == 'macOS'

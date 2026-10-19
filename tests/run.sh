@@ -3,7 +3,9 @@
 # instead of stopping at the first failing file, and exits non-zero if any
 # file failed. Individual files fail fast internally via lib.sh fail().
 # With no arguments runs every test. With exactly --skip-shellcheck, skips
-# only test_shellcheck.sh (platform-invariant lint runs once on Ubuntu in CI)
+# only test_shellcheck.sh (the full platform-invariant lint runs once on
+# Ubuntu in CI; macOS covers its pinned Darwin asset with
+# test_shellcheck.sh --provision-only plus this non-lint suite)
 # and runs everything else in the same order.
 set -u
 
@@ -28,7 +30,7 @@ suite_started=$SECONDS
 for test_file in "$tests_dir"/test_*.sh; do
   name=$(basename "$test_file")
   if ((skip_shellcheck)) && [[ "$name" == "test_shellcheck.sh" ]]; then
-    printf 'skip - %s: platform-invariant ShellCheck runs once on Ubuntu\n' "$name"
+    printf 'skip - %s: full ShellCheck lint runs once on Ubuntu (macOS covers pinned Darwin provisioning separately)\n' "$name"
     continue
   fi
   test_started=$SECONDS
