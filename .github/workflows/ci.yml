@@ -30,3 +30,10 @@ jobs:
             export PATH="$(brew --prefix)/bin:$PATH"
           fi
           bash tests/run.sh
+      - name: Retry PTY test after a macOS suite failure for diagnostics
+        if: ${{ failure() && runner.os == 'macOS' }}
+        run: |
+          for attempt in 1 2 3; do
+            echo "PTY diagnostic attempt ${attempt}/3"
+            bash tests/test_pty.sh || exit $?
+          done
