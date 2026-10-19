@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: the fix widget applies suggestions through the expected review and safety contract.
 
 fix_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix-widget.XXXXXX")
 printf '#!/usr/bin/env bash\nmode=\nline_file=\nwhile (($#)); do case "$1" in --mode) mode=$2; shift 2;; --line-file) line_file=$2; shift 2;; *) shift;; esac; done\nif [[ "$mode" == fix ]]; then grep -q "exit_status=" "$line_file" && printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo fixed\\n"; else printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo default\\n"; fi\n' >"$fix_tmp/engine"

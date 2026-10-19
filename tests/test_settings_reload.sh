@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: long-lived shells drop stale file settings on reload while preserving intentional environment values.
 
 reload_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-settings-reload-test.XXXXXX")
 trap 'rm -rf "$reload_tmp"' EXIT

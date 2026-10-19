@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: interactive Zsh widgets preserve ZLE integration, async behavior, risk review, and candidate cycling.
 
 if command -v zsh >/dev/null 2>&1; then
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: Responses API tool results and reasoning replay without leaking replay state into chat payloads.
 # shellcheck source=lmline/config.bash
 source "$repo_dir/lmline/config.bash"
 # shellcheck source=lmline/chat.bash

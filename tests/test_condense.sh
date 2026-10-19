@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: output condensation preserves useful context and leaves short input untouched.
 
 # Preserve the failing command location when an unexpected status triggers set -e.
 set -E

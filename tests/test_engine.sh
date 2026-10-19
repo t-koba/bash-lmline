@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: provider/protocol flows preserve tool rounds, retries, response parsing, candidate safety, and metadata.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-engine-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: pinned ShellCheck covers every supported Bash source/test input with correct source resolution.
 
 # Resolve ShellCheck source hints consistently, including direct invocations from elsewhere.
 cd -- "$repo_dir" || fail "could not enter repository root for ShellCheck"

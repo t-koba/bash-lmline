@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: conversation storage is opt-in and stored/provider content obeys the storage policy.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-store-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT

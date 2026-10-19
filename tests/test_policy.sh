@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: command-risk classification, overrides, and candidate validation fail safely across shell syntax/history.
 
 bash -c '
   set -euo pipefail

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: real PTY behavior, cancellation/child cleanup, and terminal-specific candidate review stay correct.
 
 # Ctrl-C must cancel the fallback's isolated job, not just its supervisor.
 if command -v expect >/dev/null 2>&1; then

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: provider requests cannot inherit implicit curlrc options or credentials.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-curl-isolation-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT

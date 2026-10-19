@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: interrupted SSE is surfaced or safely falls back, and complete streams remain accepted.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-stream-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT

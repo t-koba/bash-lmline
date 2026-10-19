@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: a changed effective request identity must miss cache while an identical request hits it.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-cache-invalidation-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT

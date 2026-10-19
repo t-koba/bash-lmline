@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: privacy scanning fails closed before packaging or heavyweight publish steps.
 
 # The privacy scan must fail closed: missing rg, scanner error, and match
 # content all reject before the heavy test/install stages, so none of these

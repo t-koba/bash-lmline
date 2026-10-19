@@ -11,6 +11,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Both runners execute the full suite: real PTY/Readline behavior, shell/system-tool
+        # differences, and platform-specific ShellCheck assets differ per OS, and the
+        # main-branch run after promotion catches flakes.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:

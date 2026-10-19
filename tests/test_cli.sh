@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: public CLI, config, profile, endpoint, and model contracts remain correct and safe.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-config-test.XXXXXX")
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" endpoint add openai https://api.openai.com/v1 --auth-header Authorization --auth-scheme Bearer >/dev/null

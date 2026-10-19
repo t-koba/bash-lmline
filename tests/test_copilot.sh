@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: Copilot LSP request/reply, daemon lifecycle, completion, and async widget integration remain correct.
 
 # Polls for an asynchronously appended LSP log line. Fire-and-forget
 # notifications (didShowCompletion/didClose) are written by the fake server

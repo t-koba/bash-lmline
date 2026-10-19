@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: protocol metadata, retries, cache, streaming, endpoint CRUD, and risk contracts remain consistent.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-features-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: engine entry behavior against a live local server yields a candidate, while empty rewrite remains empty.
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-test.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT

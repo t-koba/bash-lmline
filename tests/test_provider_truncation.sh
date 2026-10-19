@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Risk: incomplete provider responses are rejected before cache or tool dispatch across API formats.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-provider-truncation-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT
