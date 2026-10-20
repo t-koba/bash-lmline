@@ -213,14 +213,44 @@ __lmline_reload_settings_if_changed() {
   return 0
 }
 
+__lmline_decimal_gt() {
+  local left=$1 right=$2
+  (( ${#left} > ${#right} )) && return 0
+  (( ${#left} < ${#right} )) && return 1
+  # Inputs are canonical ASCII decimals; compare equal-length strings in C
+  # locale so the result cannot overflow Bash arithmetic.
+  # shellcheck disable=SC2071
+  if [[ "$left" > "$right" ]]; then
+    return 0
+  fi
+  return 1
+}
+
 __lmline_clamp_int() {
-  local name=$1 default=$2 max=${3:-0} allow_zero=${4:-0} value pattern='^[1-9][0-9]*$'
+  local name=$1 default=$2 max=${3:-0} allow_zero=${4:-0} value pattern='^[1-9][0-9]*$' LC_ALL=C
   [[ "$allow_zero" == 1 ]] && pattern='^[0-9]+$'
   value=${!name-}
   if [[ ! "$value" =~ $pattern ]]; then
     value=$default
-  elif (( max > 0 && value > max )); then
-    value=$max
+  else
+    if [[ "$allow_zero" == 1 ]]; then
+      # Bash reads leading zeros as octal, so canonicalize accepted decimals
+      # before any arithmetic: 010 becomes 10 and 08 becomes 8.
+      value=${value#"${value%%[!0]*}"}
+      [[ -z "$value" ]] && value=0
+    fi
+    # Compare decimals as strings so arbitrarily long inputs cannot wrap
+    # Bash arithmetic and miss the bound.
+    local max_norm=$max
+    max_norm=${max_norm#"${max_norm%%[!0]*}"}
+    [[ -z "$max_norm" ]] && max_norm=0
+    if [[ "$max_norm" != 0 ]]; then
+      __lmline_decimal_gt "$value" "$max_norm" && value=$max_norm
+    elif __lmline_decimal_gt "$value" 9223372036854775807; then
+      # Unbounded settings must still fit Bash arithmetic; anything larger
+      # falls back to the existing default instead of erroring or wrapping.
+      value=$default
+    fi
   fi
   printf -v "$name" '%s' "$value"
 }

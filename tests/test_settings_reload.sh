@@ -59,6 +59,17 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   "$cli" config set LMLINE_ASYNC 1 >/dev/null
   R
   [[ "${LMLINE_ASYNC:-}" == 1 ]] || exit 20
+  # G: candidate policy normalizes a file-owned decimal locally, so config
+  # reconciliation can still remove the raw file value on the next reload.
+  source "$1/lmline/policy.bash"
+  "$cli" config set LMLINE_MAX_CANDIDATE_BYTES 010 >/dev/null
+  R
+  [[ "${LMLINE_MAX_CANDIDATE_BYTES:-}" == 010 ]] || exit 21
+  ! __lmline_candidate_truncated 123456789
+  [[ "${LMLINE_MAX_CANDIDATE_BYTES:-}" == 010 ]] || exit 22
+  "$cli" config unset LMLINE_MAX_CANDIDATE_BYTES >/dev/null
+  R
+  [[ -z "${LMLINE_MAX_CANDIDATE_BYTES-}" ]] || exit 23
 ' _ "$repo_dir" "$reload_tmp/bash-config" "$repo_dir/lmline/lmline" || fail "Bash settings reload drops obsolete values"
 
 if command -v zsh >/dev/null 2>&1; then

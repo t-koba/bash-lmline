@@ -881,4 +881,18 @@ poisoned_system=$(jq -r '.messages[] | select(.role=="system") | .content' <<<"$
 grep -Fq 'BEGIN_UNTRUSTED_CONTEXT' <<<"$poisoned_system" || fail "system context boundary marker"
 grep -Fq 'END_UNTRUSTED_CONTEXT' <<<"$poisoned_system" || fail "system context end marker"
 
+# Bounded counts clamp without overflow: --n 11 and signed-range-crossing
+# decimals all advertise the documented limit 10 in the dry-run payload,
+# while ordinary values are unchanged.
+for huge_n in 11 9223372036854775808 18446744073709551617; do
+  huge_payload=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n "$huge_n" --dry-run-payload 2>/dev/null)
+  huge_user=$(jq -r '.messages[] | select(.role=="user") | .content' <<<"$huge_payload")
+  grep -Fq 'Requested candidate limit: 10' <<<"$huge_user" || fail "dry-run clamp --n $huge_n limit"
+  grep -Fq 'Return up to 10 candidates.' <<<"$huge_user" || fail "dry-run clamp --n $huge_n return"
+done
+normal_payload=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 3 --dry-run-payload 2>/dev/null)
+normal_user=$(jq -r '.messages[] | select(.role=="user") | .content' <<<"$normal_payload")
+grep -Fq 'Requested candidate limit: 3' <<<"$normal_user" || fail "dry-run normal --n 3 limit"
+grep -Fq 'Return up to 3 candidates.' <<<"$normal_user" || fail "dry-run normal --n 3 return"
+
 ok "engine"

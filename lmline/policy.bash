@@ -63,17 +63,20 @@ __lmline_filter_candidates() {
 
 __lmline_candidate_truncated() {
   local cmd=$1 max_len=${LMLINE_MAX_CANDIDATE_BYTES:-4096} byte_len
+  __lmline_clamp_int max_len 4096 0 1
   byte_len=$(LC_ALL=C printf '%s' "$cmd" | wc -c)
   (( byte_len > max_len ))
 }
 
 __lmline_truncate_candidate() {
   local cmd=$1 max_len=${LMLINE_MAX_CANDIDATE_BYTES:-4096}
+  __lmline_clamp_int max_len 4096 0 1
   printf '%s' "$cmd" | LC_ALL=C cut -c "1-$max_len"
 }
 
 __lmline_truncated_comment_candidate() {
   local cmd=$1 max_len=${LMLINE_MAX_CANDIDATE_BYTES:-4096} prefix="# TRUNCATED: " prefix_len body_len
+  __lmline_clamp_int max_len 4096 0 1
   prefix_len=$(LC_ALL=C printf '%s' "$prefix" | wc -c | tr -d ' ')
   body_len=$((max_len - prefix_len))
   (( body_len > 0 )) || { __lmline_truncate_candidate "$cmd"; return 0; }

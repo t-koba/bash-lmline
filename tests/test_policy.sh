@@ -158,6 +158,52 @@ bash -c '
   broken_truncated_candidate=$(printf "%s\n" "$broken_long_candidate" | __lmline_valid_candidates)
   [[ "$broken_truncated_candidate" == "# TRUNCATED: "* ]]
   [[ ${#broken_truncated_candidate} == 4096 ]]
+  # Decimal, overflow-safe integer limits: allow-zero leading zeros normalize
+  # (010 -> 10, 08 -> 8) instead of reading as octal; bounded clamps handle
+  # arbitrarily long inputs; unbounded overflow falls back to the default.
+  LMLINE_MAX_CANDIDATE_BYTES=010
+  __lmline_clamp_int LMLINE_MAX_CANDIDATE_BYTES 4096 0 1
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 10 ]]
+  LMLINE_MAX_CANDIDATE_BYTES=08
+  __lmline_clamp_int LMLINE_MAX_CANDIDATE_BYTES 4096 0 1
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 8 ]]
+  LMLINE_MAX_CANDIDATE_BYTES=0
+  __lmline_clamp_int LMLINE_MAX_CANDIDATE_BYTES 4096 0 1
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 0 ]]
+  LMLINE_MAX_CANDIDATE_BYTES=000
+  __lmline_clamp_int LMLINE_MAX_CANDIDATE_BYTES 4096 0 1
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 0 ]]
+  LMLINE_MAX_CANDIDATE_BYTES=4096
+  __lmline_clamp_int LMLINE_MAX_CANDIDATE_BYTES 4096 0 1
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 4096 ]]
+  nine_bytes=$(printf "a%.0s" {1..9})
+  eleven_bytes=$(printf "a%.0s" {1..11})
+  seven_bytes=$(printf "a%.0s" {1..7})
+  LMLINE_MAX_CANDIDATE_BYTES=0
+  __lmline_candidate_truncated "$nine_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 0 ]] || exit 30
+  LMLINE_MAX_CANDIDATE_BYTES=010
+  ! __lmline_candidate_truncated "$nine_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 010 ]] || exit 31
+  __lmline_candidate_truncated "$eleven_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 010 ]] || exit 32
+  LMLINE_MAX_CANDIDATE_BYTES=08
+  __lmline_candidate_truncated "$nine_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 08 ]] || exit 33
+  truncated_eight=$(LMLINE_MAX_CANDIDATE_BYTES=08 __lmline_truncate_candidate "$nine_bytes")
+  [[ "${#truncated_eight}" == 8 ]]
+  LMLINE_MAX_CANDIDATE_BYTES=08
+  ! __lmline_candidate_truncated "$seven_bytes"
+  LMLINE_MAX_CANDIDATE_BYTES=bad
+  ! __lmline_candidate_truncated "$nine_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == bad ]] || exit 34
+  LMLINE_MAX_CANDIDATE_BYTES=9223372036854775808
+  ! __lmline_candidate_truncated "$nine_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 9223372036854775808 ]] || exit 35
+  LMLINE_MAX_CANDIDATE_BYTES=18446744073709551617
+  ! __lmline_candidate_truncated "$nine_bytes"
+  [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 18446744073709551617 ]] || exit 36
+  LMLINE_MAX_CANDIDATE_BYTES=4096
   ! __lmline_split_inline_comment "curl http://x.com#frag" >/dev/null 2>&1
   mapfile -t inline_parts < <(__lmline_split_inline_comment "curl http://x.com#frag # fetch")
   [[ ${inline_parts[0]} == "curl http://x.com#frag " ]]
