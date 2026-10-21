@@ -143,9 +143,11 @@ lmline use openai-plan MODEL
 ```
 
 The plan route is account scoped: only the models the signed-in account can
-use are accepted. OpenAI serves the account's own catalog with the plan
-token, so lmline reads it when no model is selected; its entries carry the
-plan slug as the model id. A model can also be registered by hand, and the
+use are accepted. lmline reads the endpoint's model catalog
+(`$LMLINE_BASE_URL/models` by default) with the plan token when no model is
+selected, and uses the model id each entry carries. That a real plan serves
+the account's own models at that URL is not proven offline, like the rest of
+the subscription route. A model can also be registered by hand, and the
 plan route needs the Responses format:
 
 ```bash

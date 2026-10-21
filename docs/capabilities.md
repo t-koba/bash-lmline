@@ -105,4 +105,6 @@ The test suite runs against local mock servers and never contacts a provider.
 It proves the request shapes, the refusals, the credential handling, and the
 reporting. It cannot prove that a real ChatGPT plan, a real model, or a real
 billed search behaves the same way; those cells stay marked as allowed,
-unverified.
+unverified. The plan route's catalog read is one of them: the offline suite
+proves that the plan token reaches the endpoint's model catalog under the
+host rule, not that a real plan serves the account's own models there.
