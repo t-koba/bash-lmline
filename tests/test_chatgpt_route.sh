@@ -70,8 +70,9 @@ JSON
   exit 0
 fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-401 ]]; then
+  # The provider's own shape has no param field.
   cat >"$out" <<'JSON'
-{"error":{"code":"subscription_sharing_invalid_user","param":"","message":"the sign-in is not valid"}}
+{"error":{"code":"subscription_sharing_invalid_user","message":"the sign-in is not valid"}}
 JSON
   printf '401\tapplication/json'
   exit 0
@@ -352,6 +353,9 @@ fi
 grep -q 'lmline chatgpt login' "$route_tmp/plan-401.err" \
   || fail "the refused plan sign-in has no recovery: $(sed -n '1p' "$route_tmp/plan-401.err")"
 ! grep -q 'set-secret' "$route_tmp/plan-401.err" || fail "the plan route gives API-key advice"
+grep -q 'the sign-in is not valid' "$route_tmp/plan-401.err" \
+  || fail "the provider message is lost: $(sed -n '1p' "$route_tmp/plan-401.err")"
+! grep -q '{"error"' "$route_tmp/plan-401.err" || fail "the raw provider body is shown instead of the message"
 ok "the plan route reports its own recovery"
 
 # A request after a single-quoted string that ends in a backslash is a

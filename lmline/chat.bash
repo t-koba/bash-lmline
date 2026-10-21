@@ -273,10 +273,10 @@ __lmline_response_error_detail() {
     *json*)
       # Providers disagree on the error field; try the common shapes first.
       if detail=$(jq -re '
-          (.error.code? // empty) as $code
-          | (.error.param? // empty) as $param
+          (.error.code? // "") as $code
+          | (.error.param? // "") as $param
           | ([.error.message?, (.error? | select(type == "string")), .message?, .detail?]
-             | map(select(type == "string" and length > 0)) | first // empty) as $message
+             | map(select(type == "string" and length > 0)) | first // "") as $message
           | if $code != "" then
               (if $param != "" then $code + " (param=" + $param + ")" else $code end)
                 + (if $message != "" then ": " + $message else "" end)
