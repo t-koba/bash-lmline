@@ -162,8 +162,9 @@ and select it again.
 
 The account catalog is read with the plan token, so it travels under the
 same host rule as a request: a plan endpoint on a host the route does not
-allow, or with a catalog URL on such a host, is refused before the token is
-fetched and before any request is made.
+allow is refused before the token is fetched and before any request is
+made, and a catalog URL on such a host is refused the same way whenever the
+catalog is read.
 
 The credentials live in `$LMLINE_CONFIG_DIR/chatgpt/credentials.json`, mode
 `0600` inside an owner-only directory, and the stable host identifier in
