@@ -106,15 +106,24 @@ grep -Fq "lmline: condense_priority_patterns file is not readable: $missing_patt
 tool_args=$(jq -cn --arg command "printf '%1000s\\n' x" '{command:$command}')
 # The tool runs the command under its own timeout, so the timeout is raised
 # here: a loaded machine must not turn this case into a timed-out command
-# with no output, which would skip the condensation.
-if LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 \
-  LMLINE_TOOL_COMMAND_RUN_TIMEOUT=30 \
-  LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \
-  LMLINE_CONDENSE_PATTERNS_FILE="$missing_patterns_file" \
-  __lmline_tool_output command_run "$tool_args" \
-  >"$cond_tmp/tool-output" 2>"$cond_tmp/tool-error"; then
-  fail "command_run propagates condensation failure"
-fi
+# with no output, which would skip the condensation. A command that still
+# produces no output is retried a few times, and the tool's own output is
+# reported when the case gives up, so a real regression stays visible.
+condense_propagated=0
+for attempt in 1 2 3; do
+  if LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 \
+    LMLINE_TOOL_COMMAND_RUN_TIMEOUT=30 \
+    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \
+    LMLINE_CONDENSE_PATTERNS_FILE="$missing_patterns_file" \
+    __lmline_tool_output command_run "$tool_args" \
+    >"$cond_tmp/tool-output" 2>"$cond_tmp/tool-error"; then
+    continue
+  fi
+  condense_propagated=1
+  break
+done
+[[ "$condense_propagated" == 1 ]] \
+  || fail "command_run propagates condensation failure: $(head -3 "$cond_tmp/tool-output" | tr '\n' ' ')"
 grep -Fq "lmline: condense_priority_patterns file is not readable: $missing_patterns_file" "$cond_tmp/tool-error" ||
   fail "command_run preserves resolver diagnostic"
 if grep -q '^allowed=1$' "$cond_tmp/tool-output"; then

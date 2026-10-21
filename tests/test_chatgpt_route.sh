@@ -50,6 +50,17 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-escaped ]]; then
+  # A command whose quoted string holds an escaped quote stays a command.
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant",
+  "content":[{"type":"output_text","text":"echo \"a\\\"; TOOL files query=x\""}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-quoted ]]; then
   # A command that mentions the protocol inside a string is a command.
   cat >"$out" <<'JSON'
@@ -285,5 +296,15 @@ quoted_candidate=$(candidates_of <"$route_tmp/tool-quoted.out")
 [[ "$quoted_candidate" == 'echo "see; TOOL files query=x"' ]] \
   || fail "the paid route dropped a command that mentions the tool protocol: $quoted_candidate"
 ok "the subscription route keeps a command that mentions the tool protocol"
+
+# A command whose quoted string holds an escaped quote stays a command too.
+reset_fake
+if ! run_engine LMLINE_FAKE_CURL_MODE=tool-escaped >"$route_tmp/tool-escaped.out" 2>"$route_tmp/tool-escaped.err"; then
+  fail "the paid route dropped a command with an escaped quote: $(sed -n '1p' "$route_tmp/tool-escaped.err")"
+fi
+escaped_candidate=$(candidates_of <"$route_tmp/tool-escaped.out")
+[[ "$escaped_candidate" == 'echo "a\"; TOOL files query=x"' ]] \
+  || fail "the paid route dropped a command with an escaped quote: $escaped_candidate"
+ok "the subscription route keeps a command with an escaped quote"
 
 ok "chatgpt route"

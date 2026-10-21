@@ -1007,9 +1007,13 @@ __lmline_is_local_tool_name() {
 __lmline_normalize_tool_requests() {
   printf '%s\n' "$1" | awk '
     {
-      out = ""; in_s = 0; in_d = 0; i = 1; n = length($0)
+      out = ""; in_s = 0; in_d = 0; esc = 0; i = 1; n = length($0)
       while (i <= n) {
         c = substr($0, i, 1)
+        # A backslash consumes the next character: it never ends a quoted
+        # string and never acts as the request separator.
+        if (esc) { esc = 0; out = out c; i++; continue }
+        if (c == "\\") { esc = 1; out = out c; i++; continue }
         if (c == "\047") { if (!in_d) { in_s = 1 - in_s } }
         else if (c == "\"") { if (!in_s) { in_d = 1 - in_d } }
         else if (!in_s && !in_d && c == ";") {
