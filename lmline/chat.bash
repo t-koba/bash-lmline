@@ -34,7 +34,7 @@ fi
 
 __lmline_trace_dir_ready() {
   # Traces contain prompts and provider responses; keep them user-only.
-  [[ -n "$LMLINE_TRACE_DIR" ]] || return 1
+  [[ -n "${LMLINE_TRACE_DIR:-}" ]] || return 1
   mkdir -p "$LMLINE_TRACE_DIR" 2>/dev/null || return 1
   chmod 700 "$LMLINE_TRACE_DIR" 2>/dev/null || true
 }
@@ -1063,18 +1063,49 @@ __lmline_normalize_tool_requests() {
     }'
 }
 
-# The tool name of a request line, empty when the line names no local tool.
-__lmline_tool_request_name() {
+# True when the line claims to be a tool request: it starts with the "TOOL"
+# word of the text protocol.
+__lmline_tool_request_claimed() {
+  case "$1" in
+    TOOL|Tool|tool|TOOL\ *|Tool\ *|tool\ *) return 0 ;;
+  esac
+  return 1
+}
+
+# The request of a line, the tool it names, and whether the line claims to
+# be a request. The request is the line without its leading "TOOL" word; the
+# name is empty when the line names no local tool. The candidate check and
+# the parser read these answers, so they cannot drift apart.
+__lmline_tool_request() {
   local request=$1 name
   case "$request" in
     TOOL\ *) request=${request#TOOL } ;;
     Tool\ *) request=${request#Tool } ;;
     tool\ *) request=${request#tool } ;;
   esac
+  __LMLINE_TOOL_REQUEST_BODY=$request
   name=${request%%[[:space:]]*}
-  name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
-  __lmline_is_local_tool_name "$name" || return 1
-  printf '%s' "$name"
+  __LMLINE_TOOL_REQUEST_NAME=${name,,}
+  __lmline_is_local_tool_name "$__LMLINE_TOOL_REQUEST_NAME" || __LMLINE_TOOL_REQUEST_NAME=
+  if __lmline_tool_request_claimed "$1"; then
+    __LMLINE_TOOL_REQUEST_CLAIMED=1
+  else
+    __LMLINE_TOOL_REQUEST_CLAIMED=0
+  fi
+}
+
+# The tool name of a request line, empty when the line names no local tool.
+__lmline_tool_request_name() {
+  __lmline_tool_request "$1"
+  [[ -n "$__LMLINE_TOOL_REQUEST_NAME" ]] || return 1
+  printf '%s' "$__LMLINE_TOOL_REQUEST_NAME"
+}
+
+# Records a note about a text-protocol request that the parser did not use.
+__lmline_trace_tool_parse() {
+  [[ -n "${LMLINE_TRACE_DIR:-}" ]] || return 0
+  __lmline_trace_dir_ready || return 0
+  printf '%s\n' "$1" >>"${LMLINE_TRACE_DIR}/${trace_id:-trace}.text-tool-parse.log" 2>/dev/null || true
 }
 
 # True when the text names a local tool request anywhere in it.
@@ -1098,24 +1129,31 @@ __lmline_text_tool_requests_from_text() {
     line=${line#"${line%%[![:space:]]*}"}
     line=${line%"${line##*[![:space:]]}"}
     [[ -n "$line" ]] || continue
-    request=$line
-    case "$request" in
-      TOOL\ *) request=${request#TOOL } ;;
-      Tool\ *) request=${request#Tool } ;;
-      tool\ *) request=${request#tool } ;;
-    esac
+    # A line that names no local tool is prose, not a request: the text
+    # protocol accepts a request after a sentence ("cmd; TOOL name args"),
+    # and the candidate check and the parser must answer the same way about
+    # the line in front of it. A request that cannot be used is skipped, so
+    # one unusable line does not silence the requests around it.
+    __lmline_tool_request "$line"
+    name=$__LMLINE_TOOL_REQUEST_NAME
+    if [[ -z "$name" ]]; then
+      if [[ "$__LMLINE_TOOL_REQUEST_CLAIMED" == 1 ]]; then
+        __lmline_trace_tool_parse "unknown tool name: ${__LMLINE_TOOL_REQUEST_BODY%%[[:space:]]*}"
+      fi
+      continue
+    fi
+    request=$__LMLINE_TOOL_REQUEST_BODY
     name_raw=${request%%[[:space:]]*}
-    name=$(printf '%s' "$name_raw" | tr '[:upper:]' '[:lower:]')
     rest=${request#"$name_raw"}
     rest=${rest#"${rest%%[![:space:]]*}"}
-    if ! __lmline_is_local_tool_name "$name"; then
-      if __lmline_trace_dir_ready; then
-        printf 'unknown tool name: %s\n' "$name" >>"$LMLINE_TRACE_DIR/$trace_id.text-tool-parse.log" 2>/dev/null || true
-      fi
-      return 1
+    if ! __lmline_tool_enabled "$name"; then
+      __lmline_trace_tool_parse "tool is not enabled: $name"
+      continue
     fi
-    __lmline_tool_enabled "$name" || return 1
-    [[ -n "$rest" || "$name" == git_status ]] || return 1
+    if [[ -z "$rest" && "$name" != git_status ]]; then
+      __lmline_trace_tool_parse "tool request without arguments: $name"
+      continue
+    fi
     case "$name" in
       command_exists|command_info)
         case "$rest" in commands=*) value=${rest#commands=} ;; *) value=$rest ;; esac

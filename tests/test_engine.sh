@@ -202,6 +202,45 @@ printf '0\n' >"$cfg_tmp/fake-curl-state"
 text_tool_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=text LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$text_tool_out")" == "echo text-tool-round" ]] || fail "text tool output"
 [[ $(cat "$cfg_tmp/fake-curl-state") == 3 ]] || fail "text tool count"
+
+# A tool request appended to a sentence is a request: the route runs the tool
+# and asks the provider again.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+data=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+case "$count" in
+  1)
+    cat >"$out" <<'JSON'
+{"choices":[{"message":{"role":"assistant","content":"echo hi; TOOL command_exists commands=awk"}}]}
+JSON
+    ;;
+  *)
+    cat >"$out" <<'JSON'
+{"choices":[{"message":{"role":"assistant","content":"echo inline-tool-round"}}]}
+JSON
+    ;;
+esac
+printf '200'
+EOF
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+inline_tool_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=text LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+[[ "$(candidates_of <<<"$inline_tool_out")" == "echo inline-tool-round" ]] || fail "inline text tool output"
+[[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "inline text tool count"
 cat >"$fake_bin/spoofer" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1-}" == --version ]]; then
