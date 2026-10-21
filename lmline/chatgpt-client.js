@@ -281,6 +281,9 @@ async function withCredentialLock(action) {
   // A signal ends the process without running the exit handler, so the
   // signals that end a command release the lock themselves.
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  // The conventional exit code of each signal, so a caller sees why the
+  // command ended.
+  const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
   const handlers = {};
   let released = false;
   const release = () => {
@@ -297,7 +300,7 @@ async function withCredentialLock(action) {
   for (const signal of signals) {
     handlers[signal] = () => {
       release();
-      process.exit(signal === 'SIGINT' ? 130 : 143);
+      process.exit(signalExitCodes[signal] || 143);
     };
     process.on(signal, handlers[signal]);
   }

@@ -158,6 +158,7 @@ const server = http.createServer(async (request, response) => {
         await new Promise(resolve => setTimeout(resolve, refreshDelayMs));
       }
       const refreshed = tokenPayload(clientId || issuedClientId);
+      record('issued_token', `refresh:${refreshed.access_token}`);
       if (mode === 'rotate_refresh') currentRefreshToken = refreshed.refresh_token;
       // A refresh answer that states no scope leaves the grant unproven.
       if (mode === 'no_scope_refresh') delete refreshed.scope;
@@ -170,6 +171,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       const issued = tokenPayload(clientId || issuedClientId);
+      record('issued_token', `authorization_code:${issued.access_token}`);
       if (mode === 'rotate_refresh') currentRefreshToken = issued.refresh_token;
       sendJson(response, 200, issued);
       return;

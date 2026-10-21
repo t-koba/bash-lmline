@@ -247,8 +247,8 @@ LMLINE_CONDENSE_PATTERNS_FILE	installed defaults	priority pattern file for conde
 LMLINE_SUGGESTED_COMMANDS_LIMIT	120	suggested commands sent per request
 LMLINE_NO_LOCK	0	disable config-dir locking
 LMLINE_LOCK_TIMEOUT	5	seconds to wait for the config lock
-LMLINE_CHATGPT_LOCK_WAIT_MS	180000	milliseconds a ChatGPT command waits for the credential lock
-LMLINE_CHATGPT_LOCK_STALE_MS	60000	milliseconds before an abandoned ChatGPT credential lock is reclaimed; keep it below the wait budget
+LMLINE_CHATGPT_LOCK_WAIT_MS	180000	milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger
+LMLINE_CHATGPT_LOCK_STALE_MS	60000	milliseconds before an abandoned ChatGPT credential lock is reclaimed; the wait budget is raised to at least this value plus 30 s
 LMLINE_FIX_ALLOW_MEDIUM	0	allow medium-risk fix execution with local backend
 LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION	0	Bash default completion hook
 LMLINE_DEBUG	0	verbose debug logging for Bash integration

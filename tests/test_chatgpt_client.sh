@@ -359,3 +359,38 @@ wait "$signalled_pid" 2>/dev/null || true
 client token >"$chatgpt_tmp/signalled-2.out" 2>"$chatgpt_tmp/signalled-2.err" \
   || fail "the command after a signalled one fails: $(sed -n '1p' "$chatgpt_tmp/signalled-2.err")"
 ok "ChatGPT releases the credential lock when the command is signalled"
+
+# 19. A lock that a dead holder left behind is reclaimed: the wait budget
+# outlives the stale threshold, so the waiter can remove it itself.
+credentials_file="$chatgpt_tmp/credentials-reclaim.json"
+start_mock "" "$chatgpt_tmp/mock-reclaim.log"
+client login >/dev/null 2>&1 || fail "ChatGPT login before the reclaim test"
+lock_file="$chatgpt_tmp/credentials.lock"
+: >"$lock_file"
+touch -t 200001010000 "$lock_file"
+export LMLINE_CHATGPT_LOCK_STALE_MS=1000
+export LMLINE_CHATGPT_LOCK_WAIT_MS=500
+client token >"$chatgpt_tmp/reclaim.out" 2>"$chatgpt_tmp/reclaim.err" \
+  || fail "the command does not reclaim an abandoned lock: $(sed -n '1p' "$chatgpt_tmp/reclaim.err")"
+unset LMLINE_CHATGPT_LOCK_STALE_MS LMLINE_CHATGPT_LOCK_WAIT_MS
+[[ ! -e "$lock_file" ]] || fail "the reclaimed lock is still on disk"
+ok "ChatGPT reclaims an abandoned credential lock"
+
+# 20. A sign-in that overlaps a refresh is not overwritten by it.
+credentials_file="$chatgpt_tmp/credentials-signin-race.json"
+start_mock "rotate_refresh" "$chatgpt_tmp/mock-signin-race.log" 2000
+client login >/dev/null 2>&1 || fail "ChatGPT login before the sign-in race"
+expire_credential "$credentials_file"
+client token >"$chatgpt_tmp/signin-race-token.out" 2>"$chatgpt_tmp/signin-race-token.err" &
+signin_race_pid=$!
+sleep 0.3
+client login >"$chatgpt_tmp/signin-race-login.out" 2>"$chatgpt_tmp/signin-race-login.err" \
+  || fail "ChatGPT login during a refresh: $(sed -n '1p' "$chatgpt_tmp/signin-race-login.err")"
+signin_race_rc=0
+wait "$signin_race_pid" || signin_race_rc=$?
+login_token=$(grep '^issued_token=authorization_code:' "$chatgpt_tmp/mock-signin-race.log" | tail -n 1 | cut -d: -f2)
+stored_token=$(json_field "$credentials_file" access_token)
+[[ -n "$login_token" ]] || fail "the sign-in race issued no sign-in token"
+[[ "$stored_token" == "$login_token" ]] \
+  || fail "the refresh overwrote the fresh sign-in: $stored_token"
+ok "ChatGPT keeps a fresh sign-in over an overlapping refresh"
