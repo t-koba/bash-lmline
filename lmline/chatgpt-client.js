@@ -244,7 +244,7 @@ const LOCK_WAIT_MS = Math.max(
 );
 // The heartbeat keeps a live lock fresh; it must be well inside the stale
 // threshold, so a slow holder is never mistaken for a dead one.
-const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(100, Math.floor(LOCK_STALE_MS / 10)));
+const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(50, Math.floor(LOCK_STALE_MS / 20)));
 
 function credentialLockPath() {
   return path.join(path.dirname(credentialsFile), 'credentials.lock');
