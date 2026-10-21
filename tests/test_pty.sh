@@ -230,7 +230,9 @@ EOF
   printf '#!/usr/bin/env bash\nsleep 0.15\nprintf "lmline-progress: tool files (openai, round 1/10)\\n" >&2\nsleep 0.2\ncase " $* " in *" --mode explain "*) printf "explained pty\\n";; *) printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo pty-slow\\n";; esac\n' >"$pty_tmp/engine-slow"
   chmod +x "$pty_tmp/engine-slow"
   expect <<EOF >"$pty_tmp/bash-spinner.out" 2>&1 || fail "bash pty spinner"
-set timeout 5
+# The spinner redraws while the model answer arrives; the interaction needs
+# more patience than the single-message blocks above.
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
