@@ -4,11 +4,14 @@
 completion endpoint for command candidates and inserts the selected candidate
 into the current shell line buffer. It does not press Enter: generated
 candidates are inserted without executing them. It never executes a candidate
-on its own; execution happens only through explicit, risk-gated paths the user
-invokes or enables: `Ctrl-x Ctrl-f` (fix), which explicitly re-runs the current
-line once through `LMLINE_EXEC_BACKEND` to capture failure evidence
-(`LMLINE_EXEC_BACKEND=off` disables it), the opt-in `command_run` tool, and
-`lmline sandbox run` (see Candidate Handling and SECURITY.md).
+on its own; the paths that run a command are `Ctrl-x Ctrl-f` (fix), which
+explicitly re-runs the current line once through `LMLINE_EXEC_BACKEND` to
+capture failure evidence (`LMLINE_EXEC_BACKEND=off` disables it), the opt-in
+`command_run` tool, and `lmline sandbox run`, all of which the user invokes or
+enables and all of which are risk-gated (see Candidate Handling and
+SECURITY.md). One more path runs a program without the user invoking it: the
+`command_info` tool is on by default and probes an external program the model
+names with the fixed flag `--version` under a short timeout (see SECURITY.md).
 
 The bundled engine is `lmline/engine`. A replacement set with `LMLINE_ENGINE`
 must implement [docs/engine-protocol.md](docs/engine-protocol.md).
@@ -651,7 +654,7 @@ Cycling with `Ctrl-x Ctrl-n` / `Ctrl-x Ctrl-p` shows the current position
 truncated candidates and the preserved original (rewrite mode) are flagged in
 the same indicator.
 
-`Ctrl-x Ctrl-f` is the only key binding that executes the current line; the other execution paths are the opt-in `command_run` tool and `lmline sandbox run` (see intro and SECURITY.md).
+`Ctrl-x Ctrl-f` is the only key binding that executes the current line; the other execution paths are the opt-in `command_run` tool, `lmline sandbox run`, and the `command_info` version probe (see intro and SECURITY.md).
 With the local backend, it refuses high-risk commands and medium-risk commands
 require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, the command runs
 through the configured `msb` CLI backend.

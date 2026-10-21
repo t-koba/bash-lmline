@@ -1,6 +1,6 @@
 # Security
 
-`lmline` inserts suggested commands into the shell editing buffer. It never executes a candidate on its own; execution happens only through explicit, risk-gated paths the user invokes or enables: `Ctrl-x Ctrl-f` (fix), the opt-in `command_run` tool, and `lmline sandbox run`.
+`lmline` inserts suggested commands into the shell editing buffer. It never executes a candidate on its own; the paths that run a command are `Ctrl-x Ctrl-f` (fix), the opt-in `command_run` tool, and `lmline sandbox run`, all of which the user invokes or enables and all of which are risk-gated. A fourth path runs a program without the user invoking it: the `command_info` tool is on by default, and it probes an external program the model names by running it with the fixed flag `--version` under a short timeout (`LMLINE_TOOL_INFO_TIMEOUT`, two seconds by default; a few macOS tools that do not accept the flag are not probed). That probe is not restricted by the `local_commands.txt` list, so it can run any program on your `PATH`, and what the program prints is sent back to the model.
 
 `Ctrl-x Ctrl-f` executes the current line once through `LMLINE_EXEC_BACKEND` in order to capture stdout, stderr, exit status, and backend name for repair suggestions. With the local backend, high-risk commands are refused and medium-risk commands require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, execution requires the `msb` CLI or a configured `LMLINE_MICROSANDBOX_COMMAND`.
 
