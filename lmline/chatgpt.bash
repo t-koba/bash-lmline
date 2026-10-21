@@ -107,7 +107,7 @@ __lmline_chatgpt_require_allowed_url() {
 # sign-in failed is the same everywhere.
 __lmline_chatgpt_access_token() {
   local out=$1 program=${__lmline_program_name:-lmline}
-  local client err_file err_tmp= status=0 result=0
+  local client err_file status=0 result=0
   client=$(__lmline_chatgpt_client_path)
   if ! command -v node >/dev/null 2>&1; then
     printf '%s: ChatGPT subscription auth requires Node.js; install Node.js or use API-key auth (LMLINE_AUTH_MODE=api-key)\n' "$program" >&2
@@ -117,13 +117,10 @@ __lmline_chatgpt_access_token() {
     printf '%s: the ChatGPT auth client is missing; reinstall lmline\n' "$program" >&2
     return 1
   fi
-  # The client names the reason a sign-in failed in its own stderr. It stays
-  # in the work directory of the engine and in a temporary file elsewhere.
-  err_file=${work_dir:+$work_dir/chatgpt-token.err}
-  if [[ -z "$err_file" ]]; then
-    err_tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-chatgpt-token.XXXXXX") || return 1
-    err_file=$err_tmp
-  fi
+  # The client names the reason a sign-in failed in its own stderr. It goes
+  # to a private temporary file that this function removes, so the place is
+  # the function's business and not a name that only one caller defines.
+  err_file=$(mktemp "${TMPDIR:-/tmp}/lmline-chatgpt-token.XXXXXX") || return 1
   node "$client" token >"$out" 2>"$err_file" || status=$?
   if (( status != 0 )); then
     case "$status" in
@@ -143,7 +140,7 @@ __lmline_chatgpt_access_token() {
   else
     chmod 600 "$out" 2>/dev/null || true
   fi
-  [[ -z "$err_tmp" ]] || rm -f "$err_tmp"
+  rm -f "$err_file"
   return "$result"
 }
 
