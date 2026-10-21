@@ -121,6 +121,24 @@ profile_require_regex() {
   }
 }
 
+# The plan token for the account catalog of a ChatGPT endpoint.
+__lmline_chatgpt_plan_token() {
+  local client=${LMLINE_CHATGPT_CLIENT:-} token
+  if [[ -z "$client" || ! -r "$client" ]]; then
+    printf 'lmline: the ChatGPT client is missing; reinstall lmline\n' >&2
+    return 1
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    printf 'lmline: the ChatGPT plan catalog needs Node.js\n' >&2
+    return 1
+  fi
+  if ! token=$(node "$client" token 2>/dev/null) || [[ -z "$token" ]]; then
+    printf 'lmline: the ChatGPT plan sign-in is not usable; run: lmline chatgpt login\n' >&2
+    return 1
+  fi
+  printf '%s' "$token"
+}
+
 profile_require_jq_expr() {
   local label=$1 value=$2
   profile_require_field "$label" "$value"
@@ -417,13 +435,22 @@ profile_model_refresh() {
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
-  profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _ _ _ models_url models_jq models_prefix models_include models_exclude
+  profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _ _ _ models_url models_jq models_prefix models_include models_exclude auth_mode
+  auth_mode=$(profile_stored_auth_mode "$auth_mode")
   profile_require_jq_expr models_jq "$models_jq"
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
   catalog_url=$(profile_model_catalog_url "$base" "$models_url")
   catalog_jq=${models_jq:-$(profile_default_model_catalog_jq)}
   __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
-  __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp"
+  if [[ "$auth_mode" == chatgpt ]]; then
+    # A plan endpoint has no endpoint secret: the account catalog is served
+    # with the plan token.
+    plan_token=$(__lmline_chatgpt_plan_token) || exit 1
+    (umask 077; printf 'Authorization: Bearer %s\n' "$plan_token" >"$header_tmp")
+    __LMLINE_HTTP_HEADERS=(-H 'Content-Type: application/json' -H "@$header_tmp")
+  else
+    __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp"
+  fi
   printf 'lmline: fetching model catalog from %s\n' "$catalog_url" >&2
   body=$(__lmline_http_get "$catalog_url" 20) || {
     printf 'lmline: model refresh failed for endpoint: %s\n' "$endpoint" >&2
@@ -433,6 +460,10 @@ profile_model_refresh() {
     printf 'lmline: model refresh response did not contain model IDs\n' >&2
     exit 1
   }
+  if [[ "$auth_mode" == chatgpt ]]; then
+    # The plan route speaks the Responses API, whatever the model id suggests.
+    records=$(printf '%s\n' "$records" | awk -F '\t' -v OFS='\t' 'NF { $2="responses" } 1')
+  fi
   __lmline_mktemp records_file "${TMPDIR:-/tmp}/lmline-model-records.XXXXXX"
   while IFS=$'\t' read -r id api_format; do
     [[ -n "$id" ]] || continue

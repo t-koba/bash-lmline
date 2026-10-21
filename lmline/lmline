@@ -61,6 +61,10 @@ source "$script_dir/config.bash"
 __lmline_load_all_config
 # shellcheck source=lmline/http.bash
 source "$script_dir/http.bash"
+# The ChatGPT client is installed next to the CLI; a test or an unusual
+# install can point somewhere else.
+LMLINE_CHATGPT_CLIENT=${LMLINE_CHATGPT_CLIENT:-$script_dir/chatgpt-client.js}
+export LMLINE_CHATGPT_CLIENT
 # shellcheck source=lmline/profiles.bash
 source "$script_dir/profiles.bash"
 : "${LMLINE_CANDIDATE_COUNT:=3}"
@@ -215,6 +219,7 @@ LMLINE_FIX_BACKEND	engine	fix backend: engine or copilot
 LMLINE_COPILOT_TIMEOUT	15000	Copilot Language Server request timeout in milliseconds
 LMLINE_COPILOT_RUNTIME_DIR	$LMLINE_CONFIG_DIR/copilot/runtime	Copilot daemon socket, pid, and log directory
 LMLINE_COPILOT_COMMAND	empty	optional Copilot Language Server executable override
+LMLINE_CHATGPT_CLIENT	installed client	optional ChatGPT client executable override
 LMLINE_PROMPT_DIR	installed prompts	prompt override directory
 LMLINE_PROMPT_VERSION	3	prompt/context version marker used in request keys
 LMLINE_RESPONSE_LOCALE	locale-derived when locale context is enabled	response language selector

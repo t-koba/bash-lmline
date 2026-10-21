@@ -73,4 +73,41 @@ grep -q $'^legacy\thttps://api.example.invalid/v1' <<<"$legacy_out" || fail "leg
 [[ "$(endpoint_auth_mode legacy <<<"$legacy_out")" == api-key ]] || fail "legacy endpoint line keeps the api-key auth mode"
 ok "a legacy endpoint line keeps the api-key auth mode"
 
+# The model catalog of a plan endpoint is read with the plan token, and its
+# entries carry the plan slug as the model id.
+plan_bin="$cli_tmp/plan-bin"
+mkdir -p "$plan_bin"
+cat >"$plan_bin/client" <<'CLIENT'
+#!/usr/bin/env node
+process.stdout.write('plan-token\n');
+CLIENT
+chmod +x "$plan_bin/client"
+cat >"$plan_bin/curl" <<'CURL'
+#!/usr/bin/env bash
+header=
+for arg in "$@"; do
+  case "$arg" in
+    @*) header=${arg#@} ;;
+  esac
+done
+if [[ -n "$header" && -r "$header" ]] && grep -q 'Bearer plan-token' "$header"; then
+  printf '%s\n' '{"models":[{"slug":"gpt-plan-one","display_name":"Plan One","visibility":"list"},{"slug":"gpt-plan-hidden","display_name":"Hidden","visibility":"hidden"}]}'
+  exit 0
+fi
+printf 'the catalog request carried no plan token\n' >&2
+exit 22
+CURL
+chmod +x "$plan_bin/curl"
+lmline endpoint add plan https://api.openai.com/v1 --auth-mode chatgpt \
+  --models-jq '.models[] | select(.visibility == "list") | {id: .slug, name: .display_name}' >/dev/null \
+  || fail "the plan endpoint registration"
+PATH="$plan_bin:$PATH" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
+  lmline model refresh plan >"$cli_tmp/plan-refresh.out" 2>"$cli_tmp/plan-refresh.err" \
+  || fail "the plan model refresh: $(sed -n '1p' "$cli_tmp/plan-refresh.err")"
+plan_models=$(lmline model list plan)
+grep -q $'^plan\tgpt-plan-one\t' <<<"$plan_models" || fail "the plan model is missing: $plan_models"
+grep -q $'\tresponses$' <<<"$plan_models" || fail "the plan model has no Responses format: $plan_models"
+! grep -q 'gpt-plan-hidden' <<<"$plan_models" || fail "a model the account does not list is stored"
+ok "the plan endpoint reads its account model catalog"
+
 ok "chatgpt cli"
