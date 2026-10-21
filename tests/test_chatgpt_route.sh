@@ -252,7 +252,7 @@ fi
 [[ "$(cat "$count_file")" == 0 ]] || fail "subscription route contacted a foreign catalog host"
 grep -q 'the ChatGPT subscription token is not sent to' "$route_tmp/catalog.err" \
   || fail "the refused catalog host has no reason: $(sed -n '1p' "$route_tmp/catalog.err")"
-ok "subscription route keeps the plan token on an allowed catalog host"
+ok "subscription route refuses a foreign catalog host"
 
 # The account catalog of the plan route is read on a host the route allows,
 # with the plan token, and the run continues with the model it names.
