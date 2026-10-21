@@ -24,7 +24,16 @@ if command -v zsh >/dev/null 2>&1; then
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-1.out 2>/tmp/lmline-zsh-widget-async-1.err
     [[ "$BUFFER" == "# say one" ]]
     [[ -z $(jobs) ]]
-    sleep 1
+    # The engine writes its answer when it finishes, and the widget reads it
+    # only once the engine is gone. The test waits for both instead of for a
+    # second, so a loaded machine does not fail it.
+    for i in {1..150}; do
+      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]]
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-2.out 2>/tmp/lmline-zsh-widget-async-2.err
     [[ "$BUFFER" == "echo zsh-widget" ]]
   ' _ "$repo_dir" || fail "zsh async widget"
@@ -35,7 +44,16 @@ if command -v zsh >/dev/null 2>&1; then
     BUFFER="# fail"
     CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/tmp/lmline-zsh-async-fail1.out 2>/tmp/lmline-zsh-async-fail1.err
-    sleep 1
+    # The failed engine writes its reason when it finishes, and the widget
+    # reports it only once the engine is gone. The test waits for both
+    # instead of for a second.
+    for i in {1..150}; do
+      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE.status.err" ]] && ! kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    [[ -s "$__LMLINE_ZSH_ASYNC_FILE.status.err" ]]
     lmline-zsh-generate-widget >/tmp/lmline-zsh-async-fail2.out 2>/tmp/lmline-zsh-async-fail2.err
     grep -q "synthetic zsh async failure" /tmp/lmline-zsh-async-fail2.err
   ' _ "$repo_dir" || fail "zsh async failure hint"
