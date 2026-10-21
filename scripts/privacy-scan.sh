@@ -57,15 +57,16 @@ dir=$scan_root
 cd -- "$dir"
 
 # A local path or a user name of the machine that wrote the file.
-path_pattern='(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local)'
+path_pattern='(/Users/|/home/[^[:space:]/]+|/private/var/|[A-Za-z0-9._-]+\.local)'
 # A host that only the writer's network reaches: a private network address
-# or a name under an internal top-level domain.
-host_pattern='((^|[^0-9.])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}|169\.254\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)|(fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)|[A-Za-z0-9-]+\.(internal|corp|lan|home|intranet|private)([^A-Za-z0-9-]|$))'
+# or a name under an internal top-level domain. The link-local range is
+# fe80::/10 and the unique-local range is fc00::/7.
+host_pattern='((^|[^0-9.])(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}|169\.254\.[0-9]{1,3}\.[0-9]{1,3})([^0-9.]|$)|(fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe[89ab][0-9a-f]:)|[A-Za-z0-9-]+\.(internal|corp|lan|home|intranet|private)([^A-Za-z0-9-]|$))'
 # A value that looks like a credential.
 credential_pattern='(BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})'
 # A person's address. The reserved documentation domains are not user data.
 address_pattern='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
-reserved_address='@([A-Za-z0-9-]+\.)*(example\.(com|net|org)|[A-Za-z0-9-]+\.(invalid|test|example|localhost))([^A-Za-z0-9-]|$)'
+reserved_domain='(^|\.)(example\.(com|net|org)|[A-Za-z0-9-]+\.(invalid|test|example|localhost))$'
 
 scan_globs=(-uu --glob '!.git/**' --glob '!scripts/privacy-scan.sh' --glob '!request.md')
 
@@ -83,7 +84,8 @@ report() {
 # returns 2 when the scanner itself failed.
 run_pattern() {
   local label=$1 pattern=$2 status=0 out
-  out=$(rg -n --no-heading "$pattern" "${scan_globs[@]}" . 2>&1) || status=$?
+  shift 2
+  out=$(rg -n --no-heading "$@" "$pattern" "${scan_globs[@]}" . 2>&1) || status=$?
   case "$status" in
     0)
       report "$label" "$(printf '%s\n' "$out" | sed 's|^\./||')"
@@ -97,18 +99,29 @@ run_pattern() {
 }
 
 run_pattern 'a local path or a user name found' "$path_pattern"
-run_pattern 'a private host name found' "$host_pattern"
+# A host name is written in either case.
+run_pattern 'a private host name found' "$host_pattern" -i
 run_pattern 'a credential-looking value found' "$credential_pattern"
 
-# The addresses the reserved documentation domains carry are placeholders,
-# so only the other ones count as user data.
+# The addresses are taken out of the tree one by one, so that a personal
+# address beside a documentation address on the same line is still found.
 status=0
-out=$(rg -n --no-heading "$address_pattern" "${scan_globs[@]}" . 2>&1) || status=$?
+out=$(rg -n -o --no-heading "$address_pattern" "${scan_globs[@]}" . 2>&1) || status=$?
 case "$status" in
   0)
-    personal=$(printf '%s\n' "$out" | sed 's|^\./||' | grep -v -E "$reserved_address" || true)
+    out=$(printf '%s\n' "$out" | sed 's|^\./||')
+    personal=''
+    while IFS= read -r hit; do
+      [[ -n "$hit" ]] || continue
+      address=${hit##*:}
+      domain=${address#*@}
+      # A domain is reserved only when it ends with a reserved domain.
+      if [[ ! "$domain" =~ $reserved_domain ]]; then
+        personal+="${hit}"$'\n'
+      fi
+    done <<<"$out"
     if [[ -n "$personal" ]]; then
-      report 'a personal address found' "$personal"
+      report 'a personal address found' "${personal%$'\n'}"
     fi
     ;;
   1) ;;

@@ -21,6 +21,9 @@ private_address="192.168.""0"".""5"
 internal_host='build-box.'"inter""nal"
 personal_address='writer@'"personalmail.net"
 token_value='sk-'"abcdefghijklmnopqrstuvwxyz"
+link_local='fe9'"0::1"
+link_local_upper='FE9'"0::1"
+lookalike_address="alice@example.""com.evil.net"
 
 # A tree that holds public content only stays clean.
 clean=$work/clean
@@ -73,6 +76,11 @@ finding_case privateaddress 'private host name' "host $private_address"
 finding_case internalthost 'private host name' "host $internal_host"
 finding_case personaladdress 'personal address' "mail $personal_address"
 finding_case credential 'credential-looking value' "token $token_value"
+finding_case homepath 'local path' "cd $home_root/alice"
+finding_case linklocal 'private host name' "host $link_local"
+finding_case linklocalupper 'private host name' "host $link_local_upper"
+finding_case mixedaddress 'personal address' "mail $personal_address and writer@example.com"
+finding_case lookalike 'personal address' "mail $lookalike_address"
 
 # A secret-like file name is reported as well.
 secret_dir=$work/secretfile
