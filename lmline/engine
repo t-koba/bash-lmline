@@ -256,6 +256,14 @@ if [[ "$LMLINE_AUTH_MODE" == api-key ]] &&
 fi
 if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   __lmline_chatgpt_require_allowed_url "$base" || exit $?
+  # The account catalog is read with the same plan token, so the route
+  # decides about its host as well, before the token is fetched. The catalog
+  # is only read when no model is selected, so only then is its host asked
+  # about.
+  if [[ -z "$LMLINE_MODEL" && "$dry_run_payload" != 1 ]]; then
+    models_url=$(profile_model_catalog_url "$base" "$LMLINE_MODELS_URL")
+    __lmline_chatgpt_require_allowed_url "$models_url" || exit $?
+  fi
 fi
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-call.XXXXXX") || exit 1

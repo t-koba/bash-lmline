@@ -227,6 +227,19 @@ fi
 grep -q 'only the OpenAI API and a loopback proxy are allowed' "$route_tmp/host.err" || fail "subscription route host rejection message"
 ok "subscription route keeps the plan token on the OpenAI host"
 
+# The account catalog is read with the same plan token, so a catalog URL on
+# a host the route does not allow is refused before the token is fetched,
+# and no request is made.
+reset_fake
+if run_engine LMLINE_MODEL= LMLINE_MODELS_URL=https://foreign.example.invalid/v1/models \
+    >"$route_tmp/catalog.out" 2>"$route_tmp/catalog.err"; then
+  fail "subscription route accepted a foreign catalog host"
+fi
+[[ "$(cat "$count_file")" == 0 ]] || fail "subscription route contacted a foreign catalog host"
+grep -q 'the ChatGPT subscription token is not sent to' "$route_tmp/catalog.err" \
+  || fail "the refused catalog host has no reason: $(sed -n '1p' "$route_tmp/catalog.err")"
+ok "subscription route keeps the plan token on an allowed catalog host"
+
 # The route requires the Responses API format.
 reset_fake
 if run_engine LMLINE_API_FORMAT=chat >"$route_tmp/format.out" 2>"$route_tmp/format.err"; then
