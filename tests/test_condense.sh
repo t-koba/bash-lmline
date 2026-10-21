@@ -104,7 +104,11 @@ grep -Fq "lmline: condense_priority_patterns file is not readable: $missing_patt
 # The command_run tool must propagate both the failure and resolver message,
 # rather than reporting a successful tool result with uncondensed output.
 tool_args=$(jq -cn --arg command "printf '%1000s\\n' x" '{command:$command}')
+# The tool runs the command under its own timeout, so the timeout is raised
+# here: a loaded machine must not turn this case into a timed-out command
+# with no output, which would skip the condensation.
 if LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 \
+  LMLINE_TOOL_COMMAND_RUN_TIMEOUT=30 \
   LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \
   LMLINE_CONDENSE_PATTERNS_FILE="$missing_patterns_file" \
   __lmline_tool_output command_run "$tool_args" \

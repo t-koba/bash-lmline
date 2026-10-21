@@ -410,6 +410,9 @@ if [[ "$LMLINE_TOOL_MODE" != none ]] && {
 - If native tool calls fail, use this text format: TOOL command_exists commands=awk
 - Plan tool use within the stated tool round budget.'
 fi
+if [[ -z "$tool_rules" && "$LMLINE_AUTH_MODE" == chatgpt ]]; then
+  tool_rules='- The local tools are not available in this request; do not ask for them.'
+fi
 # Mode system prompts are data files users can override via LMLINE_PROMPT_DIR.
 # The safety rules above stay code-appended so overrides cannot drop them.
 web_search_rules=

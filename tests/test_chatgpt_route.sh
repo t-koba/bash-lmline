@@ -241,6 +241,8 @@ ok "subscription route refuses a base without a scheme"
 reset_fake
 run_engine LMLINE_FAKE_CURL_MODE=tool-text >"$route_tmp/tool-text.out" 2>"$route_tmp/tool-text.err" || true
 [[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated the request for a text tool request"
+grep -q 'does not run local tools' "$route_tmp/tool-text.err" \
+  || fail "the paid route reports a tool request as a missing command: $(sed -n '1p' "$route_tmp/tool-text.err")"
 ok "the subscription route makes one provider request per exchange"
 
 ok "chatgpt route"

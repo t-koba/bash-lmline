@@ -1417,6 +1417,24 @@ __lmline_print_candidate() {
   printf 'lmline-candidate: %s\t%s\t%s\t%s\n' "$risk" "$reason" "$flags" "$candidate" >>"$emitted_file"
 }
 
+# A candidate that asks for a local tool is not a command. On a route where
+# the local tools are off, the model still asks sometimes, and the reason
+# must name that instead of a missing command.
+__lmline_looks_like_tool_request() {
+  local candidate=$1 name
+  case "$candidate" in
+    TOOL\ *|Tool\ *|tool\ *) ;;
+    *) return 1 ;;
+  esac
+  name=${candidate#* }
+  name=${name%%[[:space:]]*}
+  name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+  case "$name" in
+    command_exists|command_info|commands|files|git_status|file_excerpt|command_run) return 0 ;;
+  esac
+  return 1
+}
+
 __lmline_emit_candidates() {
   local source_text=$1 candidate raw_candidate reason truncated
   while IFS= read -r candidate; do
@@ -1431,6 +1449,10 @@ __lmline_emit_candidates() {
     fi
     if [[ "$candidate" == "$line" || "$candidate" == "$original_line" || ( "$mode" != generate && "$candidate" == "$request_text" ) ]]; then
       printf 'same-as-input\t%s\n' "$candidate" >>"$rejected_file"
+      continue
+    fi
+    if [[ "$LMLINE_TOOL_MODE" == none ]] && __lmline_looks_like_tool_request "$candidate"; then
+      printf 'invalid:tool-request-unsupported\t%s\n' "$candidate" >>"$rejected_file"
       continue
     fi
     reason=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "${shell_name:-bash}")
@@ -1657,7 +1679,11 @@ __lmline_chat_run() {
   if (( count == 0 )); then
     if [[ -s "$rejected_file" ]]; then
       first_rejection=$(sed -n '1p' "$rejected_file" | cut -f1)
-      printf 'lmline-engine: no valid candidate: %s\n' "${first_rejection:-all candidates rejected}" >&2
+      if [[ "$first_rejection" == "invalid:tool-request-unsupported" ]]; then
+        printf 'lmline-engine: no valid candidate: the model asked for a local tool, and this route does not run local tools\n' >&2
+      else
+        printf 'lmline-engine: no valid candidate: %s\n' "${first_rejection:-all candidates rejected}" >&2
+      fi
     else
       printf 'lmline-engine: no valid candidate: empty response\n' >&2
     fi
