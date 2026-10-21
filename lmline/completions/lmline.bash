@@ -6,7 +6,7 @@
 __lmline_cli_complete() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   local prev=${COMP_WORDS[COMP_CWORD-1]}
-  local subcommands="doctor context command-exists command-info commands payload sandbox clip config endpoint model copilot use current complete history risk help debug keys explain enable disable"
+  local subcommands="doctor context command-exists command-info commands payload sandbox clip config endpoint model copilot chatgpt use current complete history risk help debug keys explain enable disable"
   local command=${COMP_WORDS[1]-}
   local sub=${COMP_WORDS[2]-}
   if (( COMP_CWORD == 1 )); then
@@ -31,6 +31,8 @@ __lmline_cli_complete() {
     COMPREPLY=( $(compgen -W "--name --image --timeout --max-output --help --" -- "$cur") )
   elif [[ $command == copilot && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "setup update login status logout restart remove" -- "$cur") )
+  elif [[ $command == chatgpt && $COMP_CWORD == 2 ]]; then
+    COMPREPLY=( $(compgen -W "login status refresh reauth logout" -- "$cur") )
   elif [[ $command == clip && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "--status --providers --use --provider" -- "$cur") )
   elif [[ $command == clip && $COMP_CWORD == 3 && ${prev} =~ ^(--use|--provider)$ ]]; then
@@ -42,8 +44,10 @@ __lmline_cli_complete() {
   elif [[ $command == endpoint && $sub == add && $COMP_CWORD -ge 5 ]]; then
     if [[ $prev == --tool-mode ]]; then
       COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
+    elif [[ $prev == --auth-mode ]]; then
+      COMPREPLY=( $(compgen -W "api-key chatgpt" -- "$cur") )
     else
-      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --auth-mode --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help" -- "$cur") )
     fi
   elif [[ $command == endpoint && $sub == remove && $COMP_CWORD -ge 4 ]]; then
     COMPREPLY=( $(compgen -W "--keep-secret --help" -- "$cur") )

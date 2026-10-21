@@ -14,6 +14,24 @@
 #   stdout (explain/clip): response text
 #   stderr: lmline-progress:, lmline-meta:, lmline-status: lines
 
+# Sibling modules used by the request and response paths below. They are
+# sourced here so this file keeps working when it is sourced on its own.
+__LMLINE_CHAT_DIR=${BASH_SOURCE[0]%/*}
+[[ $__LMLINE_CHAT_DIR == "${BASH_SOURCE[0]}" ]] && __LMLINE_CHAT_DIR=.
+__LMLINE_CHAT_DIR=$(cd -- "$__LMLINE_CHAT_DIR" && pwd -P)
+if ! declare -F __lmline_responses_fetch_stream >/dev/null 2>&1; then
+  # shellcheck source=lmline/responses.bash
+  source "$__LMLINE_CHAT_DIR/responses.bash"
+fi
+if ! declare -F __lmline_web_search_enabled >/dev/null 2>&1; then
+  # shellcheck source=lmline/websearch.bash
+  source "$__LMLINE_CHAT_DIR/websearch.bash"
+fi
+if ! declare -F __lmline_chatgpt_apply_payload >/dev/null 2>&1; then
+  # shellcheck source=lmline/chatgpt.bash
+  source "$__LMLINE_CHAT_DIR/chatgpt.bash"
+fi
+
 __lmline_trace_dir_ready() {
   # Traces contain prompts and provider responses; keep them user-only.
   [[ -n "$LMLINE_TRACE_DIR" ]] || return 1
@@ -51,6 +69,13 @@ __lmline_api_path() {
 
 __lmline_curl_chat() {
   local api_format=${__lmline_request_api_format:-${LMLINE_API_FORMAT:-chat}}
+  # A Responses request may answer with server-sent events (the ChatGPT plan
+  # route requires stream:true); the event stream is rebuilt into the response
+  # object the pipeline expects.
+  if [[ "$api_format" == responses ]]; then
+    __lmline_responses_fetch "$1" "$2"
+    return
+  fi
   # -q first: ignore implicit curlrc so only the configured provider is contacted.
   curl -q -sS --max-time "$LMLINE_ENGINE_TIMEOUT" \
     -o "$1" \
@@ -215,6 +240,9 @@ __lmline_emit_meta() {
     quality=" rejected=$(wc -l <"$rejected_file" | tr -d ' ')"
   fi
   [[ "${__lmline_retry_used:-0}" == 1 ]] && quality+=" retried=1"
+  if [[ "${__lmline_search_calls:-0}" =~ ^[0-9]+$ ]] && (( ${__lmline_search_calls:-0} > 0 )); then
+    quality+=" searches=${__lmline_search_calls:-0}"
+  fi
   if (( usage_total > 0 )); then
     printf 'lmline-meta: model=%s tokens=%s prompt=%s completion=%s tools=%s time=%ss%s\n' "$usage_model" "$usage_total" "$usage_prompt" "$usage_completion" "${tools:-none}" "$elapsed" "$quality" >&2
   else
@@ -316,6 +344,7 @@ __lmline_report_request_failure() {
 
 __lmline_accept_response() {
   local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status
+  __lmline_web_search_report "$response"
   __lmline_normalize_response "$api_format" "$response" || {
     printf 'lmline-engine: failed to normalize %s response\n' "$api_format" >&2
     return 1
@@ -350,7 +379,7 @@ __lmline_accept_response() {
 
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
-  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower responses_payload responses_store_value responses_detail responses_lower responses_meta responses_orig_code responses_orig_type
+  local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower responses_payload responses_store_value responses_detail responses_lower responses_meta responses_orig_code responses_orig_type repeat_allowed
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
       __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
       return 1
@@ -361,12 +390,18 @@ __lmline_post_chat() {
       __lmline_accept_response "$response" "$label" || return 1
       ;;
     *)
+      # A repeated request can trigger another billed provider search, so the
+      # automatic fallbacks below are skipped on that route.
+      repeat_allowed=1
+      __lmline_request_repeat_allowed || repeat_allowed=0
       # Provider compat (explicit opt-in): some OpenAI-compatible endpoints
       # reject the store field. When LMLINE_STORE_FALLBACK is enabled and the
       # 400 indicates the store field itself was rejected, retry once without
       # it. By default (0) the request fails closed so an explicit
       # store:false is never silently dropped to a retention-defaulting omit.
       if [[ "$http_code" == 400 ]] \
+        && (( repeat_allowed == 1 )) \
+        && [[ "${LMLINE_AUTH_MODE:-api-key}" != chatgpt ]] \
         && jq -e 'has("store")' "$payload" >/dev/null 2>&1; then
         store_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         store_lower=$(printf '%s' "$store_detail" | tr '[:upper:]' '[:lower:]')
@@ -396,6 +431,7 @@ __lmline_post_chat() {
       # On a chat/responses 400 naming those params, retry once without
       # temperature (and with the renamed token cap on chat).
       if [[ "$http_code" == 400 ]] \
+        && (( repeat_allowed == 1 )) \
         && case "${LMLINE_API_FORMAT:-chat}" in chat|responses) true ;; *) false ;; esac \
         && jq -e 'has("max_tokens") or has("max_output_tokens")' "$payload" >/dev/null 2>&1; then
         compat_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
@@ -429,7 +465,8 @@ __lmline_post_chat() {
       # already-built chat payload and retry once against /responses so
       # native tools keep working. The switch persists for this process so
       # later tool rounds build responses payloads directly.
-      if [[ "$http_code" == 400 && "${LMLINE_API_FORMAT:-chat}" == chat ]]; then
+      if [[ "$http_code" == 400 && "${LMLINE_API_FORMAT:-chat}" == chat ]] &&
+        (( repeat_allowed == 1 )); then
         responses_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         responses_lower=$(printf '%s' "$responses_detail" | tr '[:upper:]' '[:lower:]')
         case "$responses_lower" in
@@ -462,7 +499,8 @@ __lmline_post_chat() {
             ;;
         esac
       fi
-      if [[ "$LMLINE_TOOL_MODE" == auto ]] && jq -e 'has("tools")' "$payload" >/dev/null 2>&1; then
+      if [[ "$LMLINE_TOOL_MODE" == auto ]] && (( repeat_allowed == 1 )) &&
+        jq -e 'has("tools")' "$payload" >/dev/null 2>&1; then
         retry_payload=$work_dir/payload.auto-text.json
         jq 'del(.tools, .tool_choice)' "$payload" >"$retry_payload" || return 1
         __lmline_trace_file "${label%.json}.auto-text-request.json" "$retry_payload"
@@ -479,6 +517,9 @@ __lmline_post_chat() {
         esac
         http_code=$retry_code
         content_type=$retry_content_type
+      fi
+      if (( repeat_allowed == 0 )); then
+        __lmline_progress "provider rejected the request; not repeating it because a repeated request can trigger another billed search"
       fi
       __lmline_report_request_failure "$http_code" "$content_type" "$response"
       return 1
@@ -615,15 +656,15 @@ __lmline_payload_for_format() {
           temperature: .temperature,
           max_output_tokens: .max_tokens,
           stream: false
-        } + (if (.tools // [] | length) > 0 then
+        } + (if ((.tools // [] | length) > 0) or ((.provider_tools // [] | length) > 0) then
           {
-            tools: [.tools[]
+            tools: ((.provider_tools // []) + [.tools[]?
               | {
                 type: "function",
                 name: (.function.name // ""),
                 description: (.function.description // ""),
                 parameters: (.function.parameters // {type: "object", properties: {}})
-              }]
+              }])
           } + (if .tool_choice != null then {tool_choice: .tool_choice} else {} end)
         else {} end)
       ' "$source" >"$out"
@@ -693,6 +734,26 @@ __lmline_write_chat_payload() {
     printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
     exit 1
   }
+  # Provider-native tools (native web search) are separate from the local
+  # function tools: the provider runs them, and they never reach the local
+  # function executor.
+  if __lmline_web_search_enabled && [[ "$api_format" == responses ]]; then
+    jq '. + {provider_tools: [{"type": "web_search"}]}' "$out" >"$out.provider" || {
+      printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+      exit 1
+    }
+    mv "$out.provider" "$out"
+  fi
+  # The ChatGPT plan route accepts namespaced or additional_tools function
+  # tools only, so local tools use the text protocol there and the request
+  # carries no sampling parameters.
+  if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+    jq 'del(.tools, .tool_choice, .temperature, .max_tokens)' "$out" >"$out.chatgpt" || {
+      printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+      exit 1
+    }
+    mv "$out.chatgpt" "$out"
+  fi
   if [[ "$api_format" != chat ]]; then
     __lmline_payload_for_format "$api_format" "$out" "$out.format" || {
       printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
@@ -718,6 +779,14 @@ __lmline_write_chat_payload() {
       }
     fi
     mv "$out.store" "$out"
+  fi
+  # The ChatGPT plan route requires store:false and stream:true on every
+  # request and rejects the sampling parameters.
+  if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+    __lmline_chatgpt_apply_payload "$out" || {
+      printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+      exit 1
+    }
   fi
 }
 
@@ -1016,8 +1085,9 @@ __lmline_cache_key() {
     case "$mode" in
       generate|rewrite) printf 'command_cache_policy=terminal-status-v1\n' ;;
     esac
-    printf 'base=%s\nmodel=%s\napi_format=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
-      "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
+    printf 'base=%s\nmodel=%s\napi_format=%s\nauth_mode=%s\nweb_search=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
+      "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "${LMLINE_AUTH_MODE:-api-key}" \
+      "${LMLINE_WEB_SEARCH:-0}" "$n" "$LMLINE_MAX_CANDIDATE_BYTES" "$output_format"
     # The effective request payload is already built at lookup time, so hash
     # it: resolved prompts and sampling/output settings (language, detail,
     # temperature, tools, ...) become cache identity without new key fields.

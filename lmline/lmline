@@ -96,6 +96,8 @@ commands:
                           explicitly update the Language Server
   copilot login|status|logout|restart
                           manage Copilot authentication and daemon state
+  chatgpt login|status|refresh|reauth|logout
+                          manage ChatGPT subscription authentication
   config get              print persisted config with secrets redacted
   config defaults         print built-in setting catalog
   config effective        print effective setting values with secrets redacted
@@ -150,7 +152,7 @@ quote_bash() {
 __lmline_cli_commands() {
   printf '%s\n' \
     doctor context command-exists command-info commands payload sandbox clip \
-    config endpoint model copilot use current complete history risk help debug keys \
+    config endpoint model copilot chatgpt use current complete history risk help debug keys \
     explain enable disable
 }
 
@@ -162,6 +164,7 @@ __lmline_cli_subcommands() {
     endpoint) printf '%s\n' add list set-secret remove ;;
     model) printf '%s\n' add list refresh remove ;;
     copilot) printf '%s\n' setup update login status logout restart remove ;;
+    chatgpt) printf '%s\n' login status refresh reauth logout ;;
     complete) printf '%s\n' commands subcommands settings setting-values endpoints models clipboard-providers ;;
     history) printf '%s\n' show tendencies ;;
     debug) printf '%s\n' bindings on off trace ;;
@@ -188,6 +191,8 @@ LMLINE_MODELS_EXCLUDE	empty	drop discovered model candidates matching this exten
 LMLINE_API_KEY_FILE	empty	file containing the API key
 LMLINE_AUTH_HEADER	Authorization	authentication header name
 LMLINE_AUTH_SCHEME	Bearer	authentication scheme; empty means raw header value
+LMLINE_AUTH_MODE	api-key	authentication path: api-key or chatgpt (ChatGPT subscription)
+LMLINE_WEB_SEARCH	0	native provider web search (0 disables, 1 enables; responses format only)
 LMLINE_ENGINE_TIMEOUT	60	seconds per provider request
 LMLINE_HTTP_RETRIES	1	transient provider retries
 LMLINE_RETRY_DELAY	1	seconds between retries
@@ -321,13 +326,14 @@ __lmline_setting_value_candidates() {
     LMLINE_REWRITE_BACKEND|LMLINE_GENERATE_BACKEND|LMLINE_FIX_BACKEND) printf '%s\n' engine copilot ;;
     LMLINE_MICROSANDBOX_WORKSPACE_MODE) printf '%s\n' readonly writable none ;;
     LMLINE_API_FORMAT) printf '%s\n' chat responses messages ;;
+    LMLINE_AUTH_MODE) printf '%s\n' api-key chatgpt ;;
     LMLINE_TOOL_MODE) printf '%s\n' auto openai text none ;;
     LMLINE_TOOL_CHOICE) printf '%s\n' auto none ;;
     LMLINE_STATUS_MODE) printf '%s\n' inline transient log debug silent none ;;
     LMLINE_EXPLAIN_DETAIL) printf '%s\n' brief normal detailed ;;
     LMLINE_TOOL_COMMAND_RUN_MAX_RISK|LMLINE_RISK_PIPED_SHELL_LEVEL|LMLINE_RISK_HISTORY_EXPANSION_LEVEL|LMLINE_RISK_UNRESOLVED_VAR_LEVEL|LMLINE_RISK_BRACE_CAPPED_LEVEL) printf '%s\n' low medium high ;;
     LMLINE_CLIPBOARD_PROVIDER) source_support_files; printf 'auto\n'; __lmline_clipboard_provider_names ;;
-    LMLINE_BIND_KEYS|LMLINE_ASYNC|LMLINE_ASYNC_NOTIFY|LMLINE_STREAM|LMLINE_STORE|LMLINE_STORE_FALLBACK|LMLINE_TOOL_RESULT_SUMMARIZE|LMLINE_INCLUDE_SHELL_CONTEXT|LMLINE_INCLUDE_CWD_CONTEXT|LMLINE_INCLUDE_GIT_CONTEXT|LMLINE_INCLUDE_PROJECT_CONTEXT|LMLINE_INCLUDE_EDITOR_CONTEXT|LMLINE_INCLUDE_LOCALE_CONTEXT|LMLINE_INCLUDE_SUGGESTED_COMMANDS|LMLINE_TOOL_COMMAND_EXISTS|LMLINE_TOOL_COMMANDS|LMLINE_TOOL_COMMAND_INFO|LMLINE_TOOL_FILES|LMLINE_TOOL_GIT_STATUS|LMLINE_TOOL_FILE_EXCERPT|LMLINE_TOOL_COMMAND_RUN|LMLINE_SPINNER|LMLINE_PROGRESS|LMLINE_DEBUG|LMLINE_FIX_ALLOW_MEDIUM|LMLINE_NO_LOCK|LMLINE_PROJECT_CONFIG|LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION)
+    LMLINE_BIND_KEYS|LMLINE_ASYNC|LMLINE_ASYNC_NOTIFY|LMLINE_STREAM|LMLINE_STORE|LMLINE_STORE_FALLBACK|LMLINE_WEB_SEARCH|LMLINE_TOOL_RESULT_SUMMARIZE|LMLINE_INCLUDE_SHELL_CONTEXT|LMLINE_INCLUDE_CWD_CONTEXT|LMLINE_INCLUDE_GIT_CONTEXT|LMLINE_INCLUDE_PROJECT_CONTEXT|LMLINE_INCLUDE_EDITOR_CONTEXT|LMLINE_INCLUDE_LOCALE_CONTEXT|LMLINE_INCLUDE_SUGGESTED_COMMANDS|LMLINE_TOOL_COMMAND_EXISTS|LMLINE_TOOL_COMMANDS|LMLINE_TOOL_COMMAND_INFO|LMLINE_TOOL_FILES|LMLINE_TOOL_GIT_STATUS|LMLINE_TOOL_FILE_EXCERPT|LMLINE_TOOL_COMMAND_RUN|LMLINE_SPINNER|LMLINE_PROGRESS|LMLINE_DEBUG|LMLINE_FIX_ALLOW_MEDIUM|LMLINE_NO_LOCK|LMLINE_PROJECT_CONFIG|LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION)
       printf '%s\n' 0 1
       ;;
   esac
@@ -502,6 +508,25 @@ LMLINE_FIX_BACKEND set to copilot.
 EOF
       ;;
     copilot:setup|copilot:update|copilot:login|copilot:status|copilot:logout|copilot:restart|copilot:remove) print_cli_help copilot ;;
+    chatgpt:) cat <<'EOF'
+usage: lmline chatgpt login
+       lmline chatgpt status
+       lmline chatgpt refresh
+       lmline chatgpt reauth
+       lmline chatgpt logout [--purge]
+
+Sign in with a ChatGPT subscription (Sign in with ChatGPT) and manage the
+stored credential. The subscription token is sent to the OpenAI Responses API
+only; it never replaces or falls back to a metered API key.
+
+`login` registers the client and stores the credential with owner-only
+permissions. `status` reports the session without printing any token.
+`refresh` renews the access token. `reauth` signs in again for the registered
+account. `logout` revokes the session and clears the local tokens; `--purge`
+also removes the stored registration.
+EOF
+      ;;
+    chatgpt:login|chatgpt:status|chatgpt:refresh|chatgpt:reauth|chatgpt:logout) print_cli_help chatgpt ;;
     config:) cat <<'EOF'
 usage: lmline config get
        lmline config defaults
@@ -575,7 +600,7 @@ Remove a project-local setting from ./.lmline.bash.
 EOF
       ;;
     endpoint:) cat <<'EOF'
-usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
+usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--auth-mode api-key|chatgpt] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
        lmline endpoint list
        lmline endpoint set-secret NAME [VALUE]
        lmline endpoint remove NAME [--keep-secret]
@@ -584,10 +609,15 @@ Manage provider endpoint profiles.
 EOF
       ;;
     endpoint:add) cat <<'EOF'
-usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
+usage: lmline endpoint add NAME BASE_URL [--auth-header HEADER] [--auth-scheme SCHEME] [--auth-mode api-key|chatgpt] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
 
 Register or update a provider endpoint. Model catalog options are used by
 `model refresh` and engine auto-discovery.
+
+`--auth-mode` selects the authentication path of the endpoint: `api-key`
+(the default) reads the endpoint secret, `chatgpt` uses a ChatGPT
+subscription sign-in. The selected mode applies when the endpoint is used
+with `lmline use`.
 EOF
       ;;
     endpoint:list) cat <<'EOF'
@@ -1044,6 +1074,18 @@ copilot_install() {
   printf 'next=lmline copilot login\n'
 }
 
+chatgpt_client() {
+  command -v node >/dev/null 2>&1 || {
+    printf 'lmline: ChatGPT authentication requires Node.js\n' >&2
+    return 1
+  }
+  [[ -r "$script_dir/chatgpt-client.js" ]] || {
+    printf 'lmline: ChatGPT auth client is missing; reinstall lmline\n' >&2
+    return 1
+  }
+  node "$script_dir/chatgpt-client.js" "$@"
+}
+
 copilot_client() {
   copilot_require_node || return 1
   [[ -r "$script_dir/copilot-client.js" ]] || { printf 'lmline: Copilot client is missing; reinstall lmline\n' >&2; return 1; }
@@ -1113,6 +1155,15 @@ case "$cmd" in
     else
       printf 'package=not-installed\n  -> lmline copilot setup\n'
     fi
+    printf '\nchatgpt\n'
+    printf 'auth_mode=%s\n' "${LMLINE_AUTH_MODE:-api-key}"
+    chatgpt_client status 2>/dev/null || printf 'status=unavailable\n  -> lmline chatgpt login\n'
+    printf '\nweb_search\n'
+    printf 'enabled=%s\n' "${LMLINE_WEB_SEARCH:-0}"
+    case "${LMLINE_API_FORMAT:-chat}" in
+      responses) printf 'format=supported\n' ;;
+      *) printf 'format=unsupported (native web search needs LMLINE_API_FORMAT=responses)\n' ;;
+    esac
     printf '\nprofile_checks\n'
     profile_issues=0
     if [[ -f "$endpoints_file" ]]; then
@@ -1405,6 +1456,14 @@ case "$cmd" in
         rm -rf "$config_dir/copilot"
         printf 'copilot=removed\n'
         ;;
+      *) usage; exit 2 ;;
+    esac
+    ;;
+  chatgpt)
+    sub=${2-}; shift 2 || true
+    case "$sub" in -h|--help|'') print_cli_help chatgpt; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
+    case "$sub" in
+      login|status|refresh|reauth|logout) chatgpt_client "$sub" "$@" ;;
       *) usage; exit 2 ;;
     esac
     ;;

@@ -81,6 +81,31 @@ profile_require_api_format() {
   esac
 }
 
+# Keeps the first column of a value that may still carry the trailing
+# columns of an endpoint line written by an older version.
+profile_first_column() {
+  printf '%s' "${1%%$'\034'*}"
+}
+
+# The authentication mode of a stored endpoint; anything unknown means the
+# default API-key path.
+profile_stored_auth_mode() {
+  local value
+  value=$(profile_first_column "${1-}")
+  case "$value" in
+    api-key|chatgpt) printf '%s\n' "$value" ;;
+    *) printf '\n' ;;
+  esac
+}
+
+profile_require_auth_mode() {
+  local value=$1
+  case "$value" in
+    ''|api-key|chatgpt) ;;
+    *) printf 'lmline: invalid auth_mode: expected api-key or chatgpt\n' >&2; exit 2 ;;
+  esac
+}
+
 profile_require_regex() {
   local label=$1 value=$2 status
   profile_require_field "$label" "$value"
@@ -146,10 +171,10 @@ profile_upsert_line() {
 }
 
 profile_endpoint_add() {
-  local name=${1-} base_url=${2-} auth_header= auth_scheme= api_key_file= temperature= max_tokens= tool_mode=
+  local name=${1-} base_url=${2-} auth_header= auth_scheme= api_key_file= temperature= max_tokens= tool_mode= auth_mode=
   local models_url= models_jq= models_prefix= models_include= models_exclude=
-  local line old_header old_scheme old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude
-  local header_set=0 scheme_set=0 models_url_set=0 models_jq_set=0 models_prefix_set=0 models_include_set=0 models_exclude_set=0
+  local line old_header old_scheme old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode
+  local header_set=0 scheme_set=0 models_url_set=0 models_jq_set=0 models_prefix_set=0 models_include_set=0 models_exclude_set=0 auth_mode_set=0
   [[ -n "$name" && -n "$base_url" ]] || { usage; exit 2; }
   profile_require_name endpoint "$name"
   profile_require_url "$base_url"
@@ -161,6 +186,7 @@ profile_endpoint_add() {
       --temperature) temperature=${2-}; shift 2 ;;
       --max-tokens) max_tokens=${2-}; shift 2 ;;
       --tool-mode) tool_mode=${2-}; shift 2 ;;
+      --auth-mode) auth_mode=${2-}; auth_mode_set=1; shift 2 ;;
       --models-url) models_url=${2-}; models_url_set=1; shift 2 ;;
       --models-jq) models_jq=${2-}; models_jq_set=1; shift 2 ;;
       --models-prefix) models_prefix=${2-}; models_prefix_set=1; shift 2 ;;
@@ -170,7 +196,9 @@ profile_endpoint_add() {
     esac
   done
   if line=$(profile_find_line "$endpoints_file" "$name"); then
-    profile_split_tsv "$line" _ _ old_header old_scheme api_key_file old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude
+    profile_split_tsv "$line" _ _ old_header old_scheme api_key_file old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode
+    old_models_exclude=$(profile_first_column "$old_models_exclude")
+    old_auth_mode=$(profile_stored_auth_mode "$old_auth_mode")
     (( header_set == 0 )) && auth_header=$old_header
     (( scheme_set == 0 )) && auth_scheme=$old_scheme
     [[ -z "$temperature" ]] && temperature=$old_temp
@@ -181,6 +209,7 @@ profile_endpoint_add() {
     (( models_prefix_set == 0 )) && models_prefix=$old_models_prefix
     (( models_include_set == 0 )) && models_include=$old_models_include
     (( models_exclude_set == 0 )) && models_exclude=$old_models_exclude
+    (( auth_mode_set == 0 )) && auth_mode=$old_auth_mode
   else
     (( header_set == 0 )) && auth_header=Authorization
     (( scheme_set == 0 )) && auth_scheme=Bearer
@@ -190,25 +219,28 @@ profile_endpoint_add() {
   profile_require_decimal temperature "$temperature"
   profile_require_positive_int max_tokens "$max_tokens"
   profile_require_tool_mode "$tool_mode"
+  profile_require_auth_mode "$auth_mode"
   [[ -z "$models_url" ]] || profile_require_url "$models_url"
   profile_require_jq_expr models_jq "$models_jq"
   profile_require_field models_prefix "$models_prefix"
   profile_require_regex models_include "$models_include"
   profile_require_regex models_exclude "$models_exclude"
-  profile_upsert_line "$endpoints_file" 1 "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$base_url" "$auth_header" "$auth_scheme" "$api_key_file" "$temperature" "$max_tokens" "$tool_mode" "$models_url" "$models_jq" "$models_prefix" "$models_include" "$models_exclude")"
+  profile_upsert_line "$endpoints_file" 1 "$(printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s' "$name" "$base_url" "$auth_header" "$auth_scheme" "$api_key_file" "$temperature" "$max_tokens" "$tool_mode" "$models_url" "$models_jq" "$models_prefix" "$models_include" "$models_exclude" "$auth_mode")"
 }
 
 profile_endpoint_list() {
   [[ -f "$endpoints_file" ]] || return 0
-  awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8,$9,$10,$11,$12,$13 }' "$endpoints_file"
+  awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8,$9,$10,$11,$12,$13,($14 ? $14 : "api-key") }' "$endpoints_file"
 }
 
 profile_endpoint_set_secret() {
-  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude secret_file safe_name
+  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name
   [[ -n "$name" ]] || { usage; exit 2; }
   profile_require_name endpoint "$name"
   line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$name" >&2; exit 2; }
-  profile_split_tsv "$line" _ base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude
+  profile_split_tsv "$line" _ base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode
+  old_models_exclude=$(profile_first_column "$old_models_exclude")
+  old_auth_mode=$(profile_stored_auth_mode "$old_auth_mode")
   if [[ -n "$value" ]]; then
     printf 'lmline: warning: secrets passed as command arguments can leak via shell history and ps; prefer the prompt: lmline endpoint set-secret %s\n' "$name" >&2
   fi
@@ -230,7 +262,7 @@ profile_endpoint_set_secret() {
   umask 077
   printf '%s' "$value" >"$secret_file"
   chmod 600 "$secret_file"
-  profile_upsert_line "$endpoints_file" 1 "$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$base" "$auth_header" "$auth_scheme" "$secret_file" "$old_temp" "$old_tokens" "$old_tool" "$old_models_url" "$old_models_jq" "$old_models_prefix" "$old_models_include" "$old_models_exclude")"
+  profile_upsert_line "$endpoints_file" 1 "$(printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s' "$name" "$base" "$auth_header" "$auth_scheme" "$secret_file" "$old_temp" "$old_tokens" "$old_tool" "$old_models_url" "$old_models_jq" "$old_models_prefix" "$old_models_include" "$old_models_exclude" "$old_auth_mode")"
 }
 
 profile_endpoint_remove() {
@@ -542,7 +574,7 @@ profile_model_refresh_warn_removed() {
 }
 
 profile_use() {
-  local endpoint=${1-} model=${2-} endpoint_line model_line _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude m_temp m_tokens m_tool m_api_format
+  local endpoint=${1-} model=${2-} endpoint_line model_line _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude e_auth_mode m_temp m_tokens m_tool m_api_format
   local -a available
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   endpoint_line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
@@ -564,7 +596,9 @@ profile_use() {
     model=${available[0]}
   fi
   model_line=$(profile_find_line "$models_file" "$endpoint" "$model") || { printf 'lmline: unknown model for %s: %s\n' "$endpoint" "$model" >&2; exit 2; }
-  profile_split_tsv "$endpoint_line" _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude
+  profile_split_tsv "$endpoint_line" _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude e_auth_mode
+  e_models_exclude=$(profile_first_column "$e_models_exclude")
+  e_auth_mode=$(profile_stored_auth_mode "$e_auth_mode")
   profile_split_tsv "$model_line" _ _ m_temp m_tokens m_tool m_api_format
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
   write_config_value LMLINE_BASE_URL "$base"
@@ -581,12 +615,14 @@ profile_use() {
   [[ -n "$e_models_prefix" ]] && write_config_value LMLINE_MODELS_PREFIX "$e_models_prefix" || unset_config_value LMLINE_MODELS_PREFIX
   [[ -n "$e_models_include" ]] && write_config_value LMLINE_MODELS_INCLUDE "$e_models_include" || unset_config_value LMLINE_MODELS_INCLUDE
   [[ -n "$e_models_exclude" ]] && write_config_value LMLINE_MODELS_EXCLUDE "$e_models_exclude" || unset_config_value LMLINE_MODELS_EXCLUDE
+  [[ -n "$e_auth_mode" ]] && write_config_value LMLINE_AUTH_MODE "$e_auth_mode" || unset_config_value LMLINE_AUTH_MODE
   write_config_value LMLINE_ACTIVE_ENDPOINT "$endpoint"
 }
 
 profile_current() {
   local line endpoint model status=unmatched base model_line e
-  printf 'base_url=%s\nmodel=%s\n' "${LMLINE_BASE_URL:-}" "${LMLINE_MODEL:-}"
+  printf 'base_url=%s\nmodel=%s\nauth_mode=%s\n' \
+    "${LMLINE_BASE_URL:-}" "${LMLINE_MODEL:-}" "${LMLINE_AUTH_MODE:-api-key}"
   if [[ -n "${LMLINE_ACTIVE_ENDPOINT:-}" && -n "${LMLINE_MODEL:-}" ]] &&
     profile_find_line "$models_file" "$LMLINE_ACTIVE_ENDPOINT" "$LMLINE_MODEL" >/dev/null 2>&1; then
     printf 'endpoint=%s\nprofile_status=matched\n' "$LMLINE_ACTIVE_ENDPOINT"

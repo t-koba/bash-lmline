@@ -30,6 +30,9 @@ bash -n \
   lmline/http.bash \
   lmline/profiles.bash \
   lmline/chat.bash \
+  lmline/responses.bash \
+  lmline/websearch.bash \
+  lmline/chatgpt.bash \
   tests/*.sh
 
 if command -v zsh >/dev/null 2>&1; then
@@ -38,6 +41,7 @@ fi
 
 if command -v node >/dev/null 2>&1; then
   node --check lmline/copilot-client.js
+  node --check lmline/chatgpt-client.js
 fi
 
 if ! command -v rg >/dev/null 2>&1; then
@@ -82,7 +86,7 @@ tmp_bin=$work_dir/bin
 LMLINE_CONFIG_DIR="$tmp_config" LMLINE_BIN_DIR="$tmp_bin" ./install.sh >/dev/null
 LMLINE_CONFIG_DIR="$tmp_config" "$tmp_bin/lmline" doctor >/dev/null
 
-for required in README.md SECURITY.md LICENSE install.sh lmline/engine lmline/lmline lmline/copilot-client.js; do
+for required in README.md SECURITY.md LICENSE install.sh lmline/engine lmline/lmline lmline/copilot-client.js lmline/chatgpt-client.js; do
   [[ -r "$required" ]] || {
     printf 'publish-check: missing required file: %s\n' "$required" >&2
     exit 1
