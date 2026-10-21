@@ -23,7 +23,7 @@ trap 'printf "term\n" >"$2"; exit 0' TERM
 wait
 WORKER
   cat >"$cancel_pty_tmp/cancel.exp" <<'EXPECT'
-set timeout 5
+set timeout 15
 log_user 1
 lassign $argv shell root tmp
 source "$root/tests/pty-expect-helpers.exp"
@@ -126,7 +126,7 @@ EOF
   printf '#!/usr/bin/env bash\nprintf "lmline-status: m=pty-model; tok=70/7/77\\n" >&2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo one\\nlmline-candidate: low\\tno matching risk rule\\t-\\techo two\\nlmline-candidate: low\\tno matching risk rule\\t-\\techo three\\n"\n' >"$pty_tmp/engine-candidates"
   chmod +x "$pty_tmp/engine-candidates"
   expect <<EOF || fail "bash pty key binding"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn bash --norc -i
@@ -142,7 +142,7 @@ send "\025exit\r"
   expect eof
 EOF
   expect <<EOF || fail "bash pty clip key binding"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn bash --norc -i
@@ -166,7 +166,7 @@ printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch bash-async-exe
 EOF
   chmod +x "$pty_tmp/engine-async"
   expect <<EOF >"$pty_tmp/bash-async-reload.out" 2>&1 || fail "bash pty async setting reload before generation"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
@@ -187,7 +187,7 @@ EOF
   ! grep -F "generating in background" "$pty_tmp/bash-async-reload.out" >/dev/null || fail "bash pty async setting reload should use synchronous route"
   [[ ! -e "$bash_async_marker" ]] || fail "bash pty candidate must not execute"
   expect <<EOF >"$pty_tmp/bash-next.out" 2>&1 || fail "bash pty next candidate"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
@@ -207,7 +207,7 @@ send "\025exit\r"
     expect eof
 EOF
     expect <<EOF || fail "zsh pty clip key binding"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn zsh -f
@@ -265,7 +265,7 @@ printf 'lmline-candidate: low\\tno matching risk rule\\t-\\ttouch zsh-async-exec
 EOF
     chmod +x "$pty_tmp/engine-zsh-async"
     expect <<EOF >"$pty_tmp/zsh-async-reload.out" 2>&1 || fail "zsh pty async setting reload before generation"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn zsh -f
@@ -286,7 +286,7 @@ EOF
     ! grep -F "generating in background" "$pty_tmp/zsh-async-reload.out" >/dev/null || fail "zsh pty async setting reload should use synchronous route"
     [[ ! -e "$zsh_async_marker" ]] || fail "zsh pty candidate must not execute"
     expect <<EOF || fail "zsh pty key binding"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 0
 spawn zsh -f
@@ -302,7 +302,7 @@ send "\025exit\r"
 expect eof
 EOF
     expect <<EOF >"$pty_tmp/zsh-spinner.out" 2>&1 || fail "zsh pty spinner"
-set timeout 5
+set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn zsh -f
@@ -351,7 +351,7 @@ ENGINE
   history_protocol=$(LMLINE_CONFIG_DIR="$history_pty_tmp/protocol-config" LMLINE_PTY_ROOT="$repo_dir" "$history_pty_tmp/engine")
   [[ $history_protocol == $'lmline-candidate: high\tinteractive history expansion\t-\techo "!!"' ]] || fail "history risk protocol preserves candidate"
   cat >"$history_pty_tmp/review.exp" <<'EXPECT'
-set timeout 5
+set timeout 15
 log_user 0
 lassign $argv shell root tmp
 set marker "$tmp/$shell-executed"

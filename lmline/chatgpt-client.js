@@ -239,7 +239,7 @@ const LOCK_WAIT_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000
 const LOCK_STALE_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_STALE_MS, 300000);
 // The heartbeat keeps a live lock fresh; it must be well inside the stale
 // threshold, so a slow holder is never mistaken for a dead one.
-const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(200, Math.floor(LOCK_STALE_MS / 3)));
+const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(100, Math.floor(LOCK_STALE_MS / 10)));
 
 function credentialLockPath() {
   return path.join(path.dirname(credentialsFile), 'credentials.lock');
