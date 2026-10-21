@@ -131,7 +131,10 @@ case "$status" in
     ;;
 esac
 
-secret_files=$(find "$dir" -maxdepth 3 \( -path '*/.git' -o -name '.git' \) -prune -o \
+# The whole tree is searched for secret-like file names: the name of a
+# file is private data wherever it lies, so the search has no depth limit.
+# The git directory stays pruned at every depth.
+secret_files=$(find "$dir" \( -path '*/.git' -o -name '.git' \) -prune -o \
   -type f \( -name '.DS_Store' -o -name '*secret*' -o -name '*.key' -o -name '*.pem' \
   -o -name '.env*' -o -name '*token*' \) -print)
 if [[ -n "$secret_files" ]]; then

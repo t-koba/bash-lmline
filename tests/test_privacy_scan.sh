@@ -92,6 +92,17 @@ fi
 grep -q 'secret-like file name' "$work/secretfile.err" \
   || fail "the scan did not report the secret-like file name"
 
+# A secret-like file name is found wherever it lies in the tree, not
+# only near the top of it.
+deep_dir=$work/deepsecret
+mkdir -p "$deep_dir/a/b/c"
+printf 'nothing here\n' >"$deep_dir/a/b/c/notes.key"
+if bash "$scanner" "$deep_dir" >"$work/deepsecret.out" 2>"$work/deepsecret.err"; then
+  fail "the scan accepted a tree that holds a secret-like file name below the top of the tree"
+fi
+grep -q 'secret-like file name' "$work/deepsecret.err" \
+  || fail "the scan did not report the secret-like file name below the top of the tree"
+
 # Without ripgrep the scan fails closed instead of calling the tree clean.
 no_rg_bin="$work/norg"
 mkdir -p "$no_rg_bin"
