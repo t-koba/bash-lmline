@@ -56,8 +56,9 @@ fi
 dir=$scan_root
 cd -- "$dir"
 
-# A local path or a user name of the machine that wrote the file.
-path_pattern='(/Users/|/home/[^[:space:]/]+|/private/var/|[A-Za-z0-9._-]+\.local)'
+# A local path or a user name of the machine that wrote the file. The home
+# directory of the root account is a local path as well.
+path_pattern='(/Users/|/home/[^[:space:]/]+|/root/|/private/var/|[A-Za-z0-9._-]+\.local)'
 # A host that only the writer's network reaches: a private network address
 # or a name under an internal top-level domain. The link-local range is
 # fe80::/10 and the unique-local range is fc00::/7.

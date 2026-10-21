@@ -17,6 +17,7 @@ trap 'rm -rf "$work"' EXIT
 # The private strings are assembled at run time, so that this file does not
 # hold the very strings the scan looks for.
 home_root='/ho''me'
+root_home='/ro''ot'
 private_address="192.168.""0"".""5"
 internal_host='build-box.'"inter""nal"
 personal_address='writer@'"personalmail.net"
@@ -80,6 +81,7 @@ finding_case personaladdress 'personal address' "mail $personal_address"
 finding_case personaladdressupper 'personal address' "mail $personal_address_upper"
 finding_case credential 'credential-looking value' "token $token_value"
 finding_case homepath 'local path' "cd $home_root/alice"
+finding_case rootpath 'local path' "cd $root_home/.ssh"
 finding_case linklocal 'private host name' "host $link_local"
 finding_case linklocalupper 'private host name' "host $link_local_upper"
 finding_case mixedaddress 'personal address' "mail $personal_address and writer@example.com"
