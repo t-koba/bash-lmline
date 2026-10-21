@@ -154,6 +154,11 @@ Responses format, `store: false`, `stream: true`, the instructions as
 `instructions`, and no sampling or account fields. The engine does not repeat
 the request on its own, because a repeated request can spend the plan.
 
+The subscription token is sent only to the OpenAI API. A loopback proxy
+(`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, or
+`http://[::1]:PORT/v1`) is accepted; any other host, and any base URL that
+embeds credentials, is refused before a request is sent.
+
 ## Native web search
 
 Native web search is a provider-side capability: the model asks the provider
@@ -171,7 +176,9 @@ lmline config set LMLINE_WEB_SEARCH 1
 The search events and the cited URLs are reported on the stderr side channel
 as `lmline-search:` and `lmline-citation:` lines, never inside the candidate
 text. The provider bills the search calls, so a rejected request is reported
-with the provider's reason instead of being repeated.
+with the provider's reason instead of being repeated, and the provider is
+asked for at most one new search per exchange: a later tool round reuses the
+earlier results.
 
 [docs/capabilities.md](docs/capabilities.md) lists every supported,
 unsupported, and allowed-but-unverified combination of authentication mode,

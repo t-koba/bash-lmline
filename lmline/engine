@@ -242,7 +242,11 @@ if [[ "$LMLINE_AUTH_MODE" == api-key ]] &&
   exit 1
 fi
 if [[ "$LMLINE_AUTH_MODE" == chatgpt ]] && ! __lmline_chatgpt_base_allowed "$base"; then
-  printf 'lmline-engine: the ChatGPT subscription token is only sent to the OpenAI API; %s is not allowed\n' "$base" >&2
+  if [[ "$base" == *@* ]]; then
+    printf 'lmline-engine: the ChatGPT subscription token is only sent to the OpenAI API; a base URL with embedded credentials is not allowed: %s\n' "$base" >&2
+  else
+    printf 'lmline-engine: the ChatGPT subscription token is only sent to the OpenAI API; %s is not allowed\n' "$base" >&2
+  fi
   exit 2
 fi
 

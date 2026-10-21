@@ -45,6 +45,38 @@ SSE
     printf '{"error":{"message":"Unsupported parameter: max_output_tokens is not supported with this model"}}\n' >"$out"
     printf '400\tapplication/json'
     ;;
+  toolround)
+    if (( count <= 1 )); then
+      cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[
+  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to list files"}},
+  {"type":"function_call","call_id":"fc_1","name":"command_exists","arguments":"{\"command\":\"ls\"}"}
+ ],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+    else
+      cat >"$out" <<'JSON'
+{"id":"resp_2","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_2","role":"assistant",
+  "content":[{"type":"output_text","text":"echo hello"}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+    fi
+    printf '200\tapplication/json'
+    ;;
+  control)
+    cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[
+  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to \u001b[31m list files"}},
+  {"type":"message","id":"msg_1","role":"assistant",
+   "content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example \u001b[0m Page"}]}]}
+ ],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+    printf '200\tapplication/json'
+    ;;
   *)
     cat >"$out" <<'JSON'
 {"id":"resp_1","object":"response","model":"test-model","status":"completed",
@@ -200,5 +232,46 @@ fi
 grep -q 'not repeating it because a repeated request can trigger another billed search' \
   "$ws_tmp/t8.err" || fail "paid route repeat notice"
 ok "web search does not repeat a rejected request"
+
+# 9. The provider is asked for one search per exchange: a later tool round
+# keeps the earlier search results and does not ask for another search.
+reset_fake
+if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 LMLINE_FAKE_CURL_MODE=toolround \
+    >"$ws_tmp/t9.out" 2>"$ws_tmp/t9.err"; then
+  fail "tool-round web-search request failed: $(sed -n '1p' "$ws_tmp/t9.err")"
+fi
+[[ "$(cat "$count_file")" == 2 ]] || fail "tool-round provider call count"
+jq -e '[.tools[]? | select(.type == "web_search")] | length == 1' \
+  "$bodies_dir/body-1.json" >/dev/null || fail "the first round misses the web_search tool"
+jq -e '[.tools[]? | select(.type == "web_search")] | length == 0' \
+  "$bodies_dir/body-2.json" >/dev/null || fail "the second round asks for another search"
+jq -e '[.input[]? | select(.type == "web_search_call")] | length == 1' \
+  "$bodies_dir/body-2.json" >/dev/null || fail "the second round drops the earlier search results"
+grep -q 'limited to one provider request' "$ws_tmp/t9.err" || fail "the search limit is not reported"
+ok "web search asks the provider once per exchange"
+
+# 10. The provider controls the search query and the page title, so control
+# characters never reach the terminal.
+reset_fake
+if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 LMLINE_FAKE_CURL_MODE=control \
+    >"$ws_tmp/t10.out" 2>"$ws_tmp/t10.err"; then
+  fail "control-character web-search request failed: $(sed -n '1p' "$ws_tmp/t10.err")"
+fi
+grep -q '^lmline-search: ' "$ws_tmp/t10.err" || fail "the search line is missing"
+grep -q '^lmline-citation: ' "$ws_tmp/t10.err" || fail "the citation line is missing"
+! grep -q $'\033' "$ws_tmp/t10.err" || fail "the search line carries an escape character"
+ok "web search events and citations drop control characters"
+
+# 11. The protocol documents the two lines, and the shell frontends strip
+# them like the other informational lines.
+grep -q '^lmline-search: ' "$repo_dir/docs/engine-protocol.md" \
+  || fail "the protocol does not document the search line"
+grep -q '^lmline-citation: ' "$repo_dir/docs/engine-protocol.md" \
+  || fail "the protocol does not document the citation line"
+for frontend in "$repo_dir/lmline/init.bash" "$repo_dir/lmline/init.zsh" "$repo_dir/lmline/actions.bash"; do
+  grep -q '/\^lmline-search: /d' "$frontend" || fail "the frontend keeps the search line: $frontend"
+  grep -q '/\^lmline-citation: /d' "$frontend" || fail "the frontend keeps the citation line: $frontend"
+done
+ok "the protocol documents the search lines and the frontends strip them"
 
 ok "web search"

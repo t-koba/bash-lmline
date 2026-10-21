@@ -19,12 +19,22 @@ __lmline_chatgpt_enabled() {
 
 # The subscription token spends the user's ChatGPT plan. It must never
 # travel to a third-party endpoint, so only the OpenAI API host and loopback
-# proxies are accepted.
+# proxies are accepted. The decision is made on the host of the URL: a base
+# with embedded credentials is refused, because the credentials would go to
+# a host that the text does not name.
 __lmline_chatgpt_base_allowed() {
-  local host
-  host=${1#*://}
+  local base=$1 host
+  [[ "$base" == *://* ]] || return 1
+  host=${base#*://}
   host=${host%%/*}
-  host=${host%%:*}
+  [[ "$host" == *@* ]] && return 1
+  if [[ "$host" == \[*\]* ]]; then
+    # A bracketed IPv6 literal, with an optional port.
+    host=${host#\[}
+    host=${host%%\]*}
+  else
+    host=${host%%:*}
+  fi
   case "$host" in
     api.openai.com|127.0.0.1|localhost|::1) return 0 ;;
   esac

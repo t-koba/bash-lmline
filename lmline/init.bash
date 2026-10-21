@@ -134,7 +134,7 @@ __lmline_progress_label() {
 }
 
 __lmline_strip_progress_lines() {
-  sed '/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d'
+  sed '/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d; /^lmline-search: /d; /^lmline-citation: /d'
 }
 
 # The engine emits one preformatted "lmline-status:" line; display it verbatim.

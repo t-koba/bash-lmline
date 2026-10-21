@@ -56,4 +56,16 @@ Do not put raw API keys in `settings.bash`, project config, shell history, or tr
 
 API keys are passed to `curl` through `-H @file` header files created with user-only permissions, not on the `curl` command line, so credentials do not appear in process listings (`ps`). Trace directories and the secrets directory are created with mode `0700`.
 
+A ChatGPT subscription sign-in stores a different kind of credential: an OAuth refresh token that grants access to the ChatGPT plan.
+
+```bash
+lmline chatgpt login
+```
+
+The credential lives in `~/.config/lmline/chatgpt/credentials.json` (file mode `0600`, directory mode `0700`) next to a stable host identifier in `~/.config/lmline/chatgpt/host-id`. The file holds the access token, the refresh token, and the ID token. The client refuses to use a credential file that other users can read and says how to fix it, and `lmline chatgpt status` never prints a token.
+
+The subscription token is sent only to the OpenAI API. A loopback proxy is accepted, and it forwards the token to whoever runs it. The token is never written to a trace file, a log, or a prompt, and it never appears in a process listing.
+
+`lmline chatgpt logout` revokes the refresh token at the provider and then clears the local tokens. When the revocation cannot be confirmed, the local tokens are still cleared and the command says so. If the machine is compromised, run `lmline chatgpt logout`, revoke the session in the ChatGPT account, and delete `~/.config/lmline/chatgpt/`.
+
 Please report vulnerabilities privately through the repository's security advisory mechanism if available.

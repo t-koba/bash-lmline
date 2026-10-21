@@ -38,6 +38,18 @@ count=$((count + 1)); printf '%s\n' "$count" >"$state"
 cp "$data" "$bodies/body-$count.json"
 printf '%s\n' "$url" >"$bodies/url-$count.txt"
 [[ -n "$header" && -r "$header" ]] && cp "$header" "$bodies/header-$count.txt" || : >"$bodies/header-$count.txt"
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == invalid ]]; then
+  # A candidate with broken shell syntax: the engine rejects it locally and
+  # would ask the provider for a second answer.
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant",
+  "content":[{"type":"output_text","text":"echo \"unclosed"}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
 cat >"$out" <<'JSON'
 {"id":"resp_1","object":"response","model":"test-model","status":"completed",
  "output":[{"type":"message","id":"msg_1","role":"assistant",
@@ -142,5 +154,54 @@ fi
 grep -q 'ChatGPT subscription auth failed' "$route_tmp/auth.err" || fail "subscription route auth message"
 ! grep -q 'metered-api-key-sentinel' "$route_tmp/auth.err" || fail "subscription route leaked the API key"
 ok "subscription route fails closed without a session"
+
+# The fake subscription client is installed again: the case above replaced it
+# with a failing stub.
+cat >"$fake_bin/node" <<'NODE'
+#!/usr/bin/env bash
+if [[ "${2-}" == token ]]; then
+  printf 'test-subscription-token\n'
+  exit 0
+fi
+exit 1
+NODE
+chmod +x "$fake_bin/node"
+
+# A base URL with embedded credentials would send the plan token to a host
+# the text does not name, so the route refuses it before any request.
+reset_fake
+if run_engine LMLINE_BASE_URL="https://api.openai.com:x@other.example.invalid/v1" \
+    >"$route_tmp/creds.out" 2>"$route_tmp/creds.err"; then
+  fail "subscription route accepted a base URL with embedded credentials"
+fi
+[[ "$(cat "$count_file")" == 0 ]] || fail "subscription route contacted a host with embedded credentials"
+grep -q 'embedded credentials' "$route_tmp/creds.err" || fail "subscription route credentials message"
+ok "subscription route refuses a base URL with embedded credentials"
+
+# A loopback proxy and a port on the OpenAI host stay on the allowed list.
+reset_fake
+if ! run_engine LMLINE_BASE_URL="http://[::1]:8731/v1" \
+    >"$route_tmp/ipv6.out" 2>"$route_tmp/ipv6.err"; then
+  fail "subscription route refused a bracketed IPv6 loopback base: $(sed -n '1p' "$route_tmp/ipv6.err")"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "subscription route request count for the IPv6 loopback base"
+[[ "$(cat "$bodies_dir/url-1.txt")" == "http://[::1]:8731/v1/responses" ]] || fail "subscription route IPv6 request path"
+reset_fake
+if ! run_engine LMLINE_BASE_URL="https://api.openai.com:8443/v1" \
+    >"$route_tmp/port.out" 2>"$route_tmp/port.err"; then
+  fail "subscription route refused a port on the OpenAI host: $(sed -n '1p' "$route_tmp/port.err")"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "subscription route request count for the OpenAI host with a port"
+ok "subscription route accepts a loopback proxy and a port on the OpenAI host"
+
+# A rejected answer would be asked again on an ordinary route, but a second
+# request would spend the plan, so the subscription route reports instead.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=invalid >"$route_tmp/retry.out" 2>"$route_tmp/retry.err"; then
+  fail "subscription route accepted a rejected answer"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "subscription route repeated a rejected answer"
+grep -q 'not repeated' "$route_tmp/retry.err" || fail "subscription route reports the refused repeat"
+ok "subscription route does not repeat a rejected answer"
 
 ok "chatgpt route"

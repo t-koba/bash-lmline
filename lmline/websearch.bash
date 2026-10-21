@@ -18,13 +18,30 @@ __lmline_web_search_enabled() {
   return 1
 }
 
-# A repeated request can trigger a second billed provider search, so the
-# engine skips its automatic fallbacks (a compatibility retry, a tool-mode
-# retry, a format retry) on a route with native web search. The provider
-# error is reported instead of repeating the request.
+# A repeated request can trigger a second billed provider search, and the
+# ChatGPT subscription route spends the user's plan, so the engine skips
+# every automatic repeat (an HTTP retry, a compatibility retry, a format
+# retry, a candidate-validation retry) on those routes. The provider error
+# is reported instead of repeating the request.
 __lmline_request_repeat_allowed() {
+  [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]] && return 1
   __lmline_web_search_enabled && return 1
   return 0
+}
+
+# At most one provider request per exchange may ask the provider to run a
+# new search, because every such request can bill another search. Later
+# tool rounds keep the earlier results in the replay and do not ask again.
+__lmline_web_search_request_allowed() {
+  __lmline_web_search_enabled || return 1
+  [[ "${__lmline_search_requested:-0}" == 1 ]] && return 1
+  return 0
+}
+
+# Marks the search allowance of this exchange as used. The engine calls this
+# when it sends a request that carries the provider-native search tool.
+__lmline_web_search_request_done() {
+  __lmline_search_requested=1
 }
 
 # The provider-native tool declaration. It never reaches the local function
@@ -48,7 +65,8 @@ __lmline_web_search_count() {
 
 # Emits the search events and the cited URLs of a response body on the stderr
 # side channel. Citations stay out of the candidate text and out of the
-# candidate JSON.
+# candidate JSON. The provider controls the query, the URL, and the page
+# title, so control characters are removed before they are printed.
 __lmline_web_search_report() {
   local body=$1 count
   [[ -s "$body" ]] || return 0
@@ -57,6 +75,7 @@ __lmline_web_search_report() {
     __lmline_search_calls=$(( ${__lmline_search_calls:-0} + count ))
   fi
   jq -r '
+    def clean: (tostring | gsub("[\u0000-\u001f\u007f]"; ""));
     def items:
       if (.output | type) == "array" then .output
       else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
@@ -67,11 +86,13 @@ __lmline_web_search_report() {
     | select(. != null)
     | (.query // .queries // .url // .type // "search")
     | if type == "array" then join(" ") else tostring end
+    | clean
   ' "$body" 2>/dev/null | while IFS= read -r detail; do
     [[ -n "$detail" ]] || continue
     printf 'lmline-search: %s\n' "$detail" >&2
   done
   jq -r '
+    def clean: (tostring | gsub("[\u0000-\u001f\u007f]"; ""));
     def items:
       if (.output | type) == "array" then .output
       else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
@@ -81,7 +102,7 @@ __lmline_web_search_report() {
     | (.content // [])[]?
     | (.annotations // [])[]?
     | select(.type == "url_citation")
-    | (.url // "") + "\t" + (.title // "")
+    | ((.url // "") | clean) + "\t" + ((.title // "") | clean)
   ' "$body" 2>/dev/null | while IFS=$'\t' read -r url title; do
     [[ -n "$url" ]] || continue
     printf 'lmline-citation: %s\t%s\n' "$url" "$title" >&2

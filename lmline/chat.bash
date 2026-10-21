@@ -380,6 +380,12 @@ __lmline_accept_response() {
 __lmline_post_chat() {
   local payload=$1 response=$2 label=${3:-response.json}
   local curl_meta http_code content_type retry_payload retry_meta retry_code retry_content_type compat_payload compat_meta compat_detail compat_lower store_payload store_meta store_detail store_lower responses_payload responses_store_value responses_detail responses_lower responses_meta responses_orig_code responses_orig_type repeat_allowed
+  if [[ "${__lmline_search_requested:-0}" != 1 ]] &&
+    jq -e '[((.tools // []) + (.provider_tools // []))[] | select(.type? == "web_search")] | length > 0' "$payload" >/dev/null 2>&1; then
+    # The provider can bill this request for a search, so the later requests
+    # of this exchange must not ask for another one.
+    __lmline_web_search_request_done
+  fi
   curl_meta=$(__lmline_curl_chat_with_retry "$response" "$payload") || {
       __lmline_engine_error_message 'lmline-engine: request failed: ' "$(sed -n '1p' "$err_file")" >&2
       return 1
@@ -401,7 +407,6 @@ __lmline_post_chat() {
       # store:false is never silently dropped to a retention-defaulting omit.
       if [[ "$http_code" == 400 ]] \
         && (( repeat_allowed == 1 )) \
-        && [[ "${LMLINE_AUTH_MODE:-api-key}" != chatgpt ]] \
         && jq -e 'has("store")' "$payload" >/dev/null 2>&1; then
         store_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         store_lower=$(printf '%s' "$store_detail" | tr '[:upper:]' '[:lower:]')
@@ -738,11 +743,17 @@ __lmline_write_chat_payload() {
   # function tools: the provider runs them, and they never reach the local
   # function executor.
   if __lmline_web_search_enabled && [[ "$api_format" == responses ]]; then
-    jq '. + {provider_tools: [{"type": "web_search"}]}' "$out" >"$out.provider" || {
-      printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
-      exit 1
-    }
-    mv "$out.provider" "$out"
+    if __lmline_web_search_request_allowed; then
+      jq '. + {provider_tools: [{"type": "web_search"}]}' "$out" >"$out.provider" || {
+        printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
+        exit 1
+      }
+      mv "$out.provider" "$out"
+    else
+      # The search allowance of this exchange is used up. The earlier results
+      # stay in the replay, so this request does not bill another search.
+      __lmline_progress "native web search is limited to one provider request per exchange; this request reuses the earlier results"
+    fi
   fi
   # The ChatGPT plan route accepts namespaced or additional_tools function
   # tools only, so local tools use the text protocol there and the request
@@ -1599,31 +1610,35 @@ __lmline_chat_run() {
   __lmline_emit_candidates "$text"
 
   if (( count == 0 )) && [[ -s "$rejected_file" ]] && __lmline_retry_worthy_rejections; then
-    __lmline_retry_used=1
-    rejected_summary=$(sed -n '1,20p' "$rejected_file")
-    jq -n \
-      --arg system "$system" \
-      --arg mode "$mode" \
-      --arg original "$original_line" \
-      --arg captured "$line" \
-      --arg context "$context" \
-      --arg rejected "$rejected_summary" \
-      --arg n "$n" \
-      '[
-          {role: "system", content: $system},
-          {role: "user", content: ("Mode: " + $mode + "\nThe previous answer was rejected by local validation.\n\nOriginal/input line:\n" + $original + "\n\nCaptured execution and user intent, if present:\n" + $captured + "\n\nRejected candidates and reasons:\n" + $rejected + "\n\nRelevant context:\n" + $context + "\n\nReturn up to " + $n + " different valid shell command candidates only. Do not repeat rejected candidates. URLs and placeholder values are allowed in command candidates. If there is an inline # comment, treat it as the user intent. No explanations, labels, Markdown, or captured execution text.")}
-        ]' >"$work_dir/retry-messages.json"
-    __lmline_write_chat_payload "$work_dir/retry-messages.json" "$payload_file" 0
-    __lmline_trace_file request.retry.json "$payload_file"
-    __lmline_post_chat "$payload_file" "$body_file" response.retry.json || exit 1
-    retry_text=$(__lmline_response_content "$body_file") || {
-      printf 'lmline-engine: invalid retry response JSON\n' >&2
-      exit 1
-    }
-    retry_text=$(printf '%s\n' "$retry_text" | __lmline_strip_thinking)
-    printf '%s\n' "$retry_text" >"$text_file.retry"
-    __lmline_trace_file text.retry.txt "$text_file.retry"
-    __lmline_emit_candidates "$retry_text"
+    if __lmline_request_repeat_allowed; then
+      __lmline_retry_used=1
+      rejected_summary=$(sed -n '1,20p' "$rejected_file")
+      jq -n \
+        --arg system "$system" \
+        --arg mode "$mode" \
+        --arg original "$original_line" \
+        --arg captured "$line" \
+        --arg context "$context" \
+        --arg rejected "$rejected_summary" \
+        --arg n "$n" \
+        '[
+            {role: "system", content: $system},
+            {role: "user", content: ("Mode: " + $mode + "\nThe previous answer was rejected by local validation.\n\nOriginal/input line:\n" + $original + "\n\nCaptured execution and user intent, if present:\n" + $captured + "\n\nRejected candidates and reasons:\n" + $rejected + "\n\nRelevant context:\n" + $context + "\n\nReturn up to " + $n + " different valid shell command candidates only. Do not repeat rejected candidates. URLs and placeholder values are allowed in command candidates. If there is an inline # comment, treat it as the user intent. No explanations, labels, Markdown, or captured execution text.")}
+          ]' >"$work_dir/retry-messages.json"
+      __lmline_write_chat_payload "$work_dir/retry-messages.json" "$payload_file" 0
+      __lmline_trace_file request.retry.json "$payload_file"
+      __lmline_post_chat "$payload_file" "$body_file" response.retry.json || exit 1
+      retry_text=$(__lmline_response_content "$body_file") || {
+        printf 'lmline-engine: invalid retry response JSON\n' >&2
+        exit 1
+      }
+      retry_text=$(printf '%s\n' "$retry_text" | __lmline_strip_thinking)
+      printf '%s\n' "$retry_text" >"$text_file.retry"
+      __lmline_trace_file text.retry.txt "$text_file.retry"
+      __lmline_emit_candidates "$retry_text"
+    else
+      __lmline_progress "every candidate was rejected by local validation; the request was not repeated because a repeated request can spend the plan or repeat a billed search"
+    fi
   fi
 
   __lmline_emit_meta

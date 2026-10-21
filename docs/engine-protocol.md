@@ -103,12 +103,20 @@ which could repeat side effects.
 lmline-progress: <label>      # live progress (tool calls, retries)
 lmline-meta: model=... tokens=... prompt=... completion=... tools=... time=...
 lmline-status: m=<model>; tok=<in>/<out>/<total>[; tools=...][; t=<N>s]
+lmline-search: <query>         # a web search the provider ran (native search)
+lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
 ```
 
 - `lmline-meta:` is machine-readable usage metadata.
 - `lmline-status:` is the single preformatted status line frontends display
   verbatim (formatting lives in the engine; frontends never rebuild it).
   Cache hits emit `lmline-status: m=<model>; cached`.
+- `lmline-search:` names a web search the provider ran for the answer, and
+  `lmline-citation:` names a cited URL as a tab-separated URL and title. Both
+  lines appear only when native web search is enabled. The provider controls
+  their text, so the engine removes control characters from the query, the
+  URL, and the title before printing them, and the frontends strip the lines
+  like the other informational lines.
 - Anything else on stderr is error text; on a non-zero exit the frontends map
   it to a short hint via `__lmline_engine_error_message`.
 

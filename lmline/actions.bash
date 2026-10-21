@@ -59,7 +59,7 @@ __lmline_action_meta_status() {
 }
 
 __lmline_action_strip_runtime_lines() {
-  sed '/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d'
+  sed '/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d; /^lmline-search: /d; /^lmline-citation: /d'
 }
 
 # Streaming display applies to explain/clip when LMLINE_STREAM is enabled.

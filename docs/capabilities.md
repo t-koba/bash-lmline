@@ -34,8 +34,9 @@ with an actionable message instead of billing an API key.
 | --- | --- | --- |
 | `api-key` | any OpenAI-compatible base URL | supported |
 | `chatgpt` | `https://api.openai.com/v1` | supported |
-| `chatgpt` | a loopback proxy (`127.0.0.1`, `localhost`, `::1`) | supported — the token stays on the machine, but the proxy forwards it, so the proxy owner receives it |
+| `chatgpt` | a loopback proxy (`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, `http://[::1]:PORT/v1`) | supported — the token stays on the machine, but the proxy forwards it, so the proxy owner receives it |
 | `chatgpt` | any other host | unsupported — the subscription token is only sent to the OpenAI API; the engine refuses the request before it is sent |
+| `chatgpt` | a base URL with embedded credentials (`https://user:pass@host/v1`) | unsupported — the credentials would go to a host the text does not name; the engine refuses the request before it is sent |
 
 ## Model
 
@@ -61,17 +62,23 @@ Selecting a model never enables search. The search setting is explicit
 
 ## Request budget on a paid route
 
-A repeated request can spend the user's plan or repeat a billed search, so:
+A repeated request can spend the user's plan or repeat a billed search, so
+every kind of repeat is listed here:
 
-| Route | Automatic retry | Compatibility retry | Format retry |
-| --- | --- | --- | --- |
-| `api-key` without search | yes (`LMLINE_HTTP_RETRIES`, default 1) | yes | yes |
-| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no |
-| native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no |
+| Route | Automatic HTTP retry | Compatibility or format retry | Candidate-validation retry | Local tool rounds |
+| --- | --- | --- | --- | --- |
+| `api-key` without search | yes (`LMLINE_HTTP_RETRIES`, default 1) | yes | yes | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
+| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | none: the route has no local function tools |
+| native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | later rounds do not ask for a new search |
 
 A rejected request on a paid route is reported with the provider's reason
 instead of being repeated. The request keeps the search tool across the
 attempt: it is never silently dropped.
+
+At most one provider request per exchange asks the provider to run a new
+search, because every such request can bill another search. Later tool rounds
+keep the earlier search results in the replay and do not ask again; the engine
+says so on the progress channel.
 
 ## Usage reporting
 
