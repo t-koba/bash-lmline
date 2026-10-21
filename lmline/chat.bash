@@ -272,9 +272,13 @@ __lmline_response_error_detail() {
   case "$content_type" in
     *json*)
       # Providers disagree on the error field; try the common shapes first.
+      # A field that is present but not a string must not lose the message:
+      # a numeric code is read as its text, and any other shape is ignored.
       if detail=$(jq -re '
-          (.error.code? // "") as $code
-          | (.error.param? // "") as $param
+          (.error.code? // "") as $code_raw
+          | (.error.param? // "") as $param_raw
+          | ($code_raw | if type == "string" then . elif type == "number" then tostring else "" end) as $code
+          | ($param_raw | if type == "string" then . elif type == "number" then tostring else "" end) as $param
           | ([.error.message?, (.error? | select(type == "string")), .message?, .detail?]
              | map(select(type == "string" and length > 0)) | first // "") as $message
           | if $code != "" then

@@ -69,6 +69,14 @@ JSON
   printf '429\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-numeric-code ]]; then
+  # A gateway answers with a numeric code.
+  cat >"$out" <<'JSON'
+{"error":{"code":401,"message":"the sign-in is not valid"}}
+JSON
+  printf '401\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-401 ]]; then
   # The provider's own shape has no param field.
   cat >"$out" <<'JSON'
@@ -373,6 +381,16 @@ grep -q 'the sign-in is not valid' "$route_tmp/plan-401.err" \
   || fail "the provider message is lost: $(sed -n '1p' "$route_tmp/plan-401.err")"
 ! grep -q '{"error"' "$route_tmp/plan-401.err" || fail "the raw provider body is shown instead of the message"
 ok "the plan route reports its own recovery"
+
+# A provider that answers with a numeric code keeps its message.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-numeric-code >"$route_tmp/plan-numeric.out" 2>"$route_tmp/plan-numeric.err"; then
+  fail "the paid route accepted a refused sign-in"
+fi
+grep -q 'the sign-in is not valid' "$route_tmp/plan-numeric.err" \
+  || fail "the provider message is lost for a numeric code: $(sed -n '1p' "$route_tmp/plan-numeric.err")"
+! grep -q '{"error"' "$route_tmp/plan-numeric.err" || fail "the raw provider body is shown instead of the message"
+ok "the plan route keeps the message of a numeric error code"
 
 # A request after a single-quoted string that ends in a backslash is a
 # request, because the backslash is a literal character there.
