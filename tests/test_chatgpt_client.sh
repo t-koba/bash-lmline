@@ -344,18 +344,27 @@ credentials_file="$chatgpt_tmp/credentials-signalled.json"
 start_mock "rotate_refresh" "$chatgpt_tmp/mock-signalled.log" 3000
 client login >/dev/null 2>&1 || fail "ChatGPT login before the signalled lock test"
 expire_credential "$credentials_file"
-env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
-  LMLINE_CHATGPT_AUTH_URL="$mock_base" \
-  LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
-  LMLINE_CHATGPT_HOST_ID_FILE="$host_id_file" \
-  LMLINE_CHATGPT_BROWSER_COMMAND="$browser_script" \
-  LMLINE_CHATGPT_TIMEOUT=20 \
-  node "$repo_dir/lmline/chatgpt-client.js" token >"$chatgpt_tmp/signalled.out" 2>"$chatgpt_tmp/signalled.err" &
-signalled_pid=$!
-sleep 0.5
-kill -INT "$signalled_pid" 2>/dev/null || true
-wait "$signalled_pid" 2>/dev/null || true
-[[ ! -e "$chatgpt_tmp/credentials.lock" ]] || fail "a signalled command left the credential lock behind"
+lock_file="$chatgpt_tmp/credentials.lock"
+for signal_case in "INT 130" "HUP 129"; do
+  signal_name=${signal_case%% *}
+  expected_status=${signal_case##* }
+  env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
+    LMLINE_CHATGPT_AUTH_URL="$mock_base" \
+    LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
+    LMLINE_CHATGPT_HOST_ID_FILE="$host_id_file" \
+    LMLINE_CHATGPT_BROWSER_COMMAND="$browser_script" \
+    LMLINE_CHATGPT_TIMEOUT=20 \
+    node "$repo_dir/lmline/chatgpt-client.js" token \
+    >"$chatgpt_tmp/signalled-$signal_name.out" 2>"$chatgpt_tmp/signalled-$signal_name.err" &
+  signalled_pid=$!
+  sleep 0.5
+  kill -"$signal_name" "$signalled_pid" 2>/dev/null || true
+  signalled_status=0
+  wait "$signalled_pid" 2>/dev/null || signalled_status=$?
+  [[ "$signalled_status" == "$expected_status" ]] \
+    || fail "a $signal_name signalled command reports the wrong exit status: $signalled_status"
+  [[ ! -e "$lock_file" ]] || fail "a signalled command left the credential lock behind"
+done
 client token >"$chatgpt_tmp/signalled-2.out" 2>"$chatgpt_tmp/signalled-2.err" \
   || fail "the command after a signalled one fails: $(sed -n '1p' "$chatgpt_tmp/signalled-2.err")"
 ok "ChatGPT releases the credential lock when the command is signalled"
