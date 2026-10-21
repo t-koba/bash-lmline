@@ -35,9 +35,23 @@ state=${LMLINE_FAKE_CURL_COUNT:?}
 bodies=${LMLINE_FAKE_CURL_BODIES:?}
 count=0; [[ -f "$state" ]] && read -r count <"$state"
 count=$((count + 1)); printf '%s\n' "$count" >"$state"
-cp "$data" "$bodies/body-$count.json"
+[[ -n "$data" ]] && cp "$data" "$bodies/body-$count.json" || : >"$bodies/body-$count.json"
 printf '%s\n' "$url" >"$bodies/url-$count.txt"
 [[ -n "$header" && -r "$header" ]] && cp "$header" "$bodies/header-$count.txt" || : >"$bodies/header-$count.txt"
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-catalog && "$count" == 1 ]]; then
+  # The account catalog of the plan route. The engine reads the catalog from
+  # the output of the command, so this request has no output file of its own
+  # and no status line. The answers that follow are the provider request.
+  if [[ -n "$out" ]]; then
+    cat >"$out" <<'JSON'
+{"data":[{"id":"gpt-plan-catalog"}]}
+JSON
+    printf '200\tapplication/json'
+  else
+    printf '%s\n' '{"data":[{"id":"gpt-plan-catalog"}]}'
+  fi
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-text ]]; then
   # A text tool request: on a paid route it would be another provider
   # request, and therefore another spend of the plan.
@@ -239,6 +253,20 @@ fi
 grep -q 'the ChatGPT subscription token is not sent to' "$route_tmp/catalog.err" \
   || fail "the refused catalog host has no reason: $(sed -n '1p' "$route_tmp/catalog.err")"
 ok "subscription route keeps the plan token on an allowed catalog host"
+
+# The account catalog of the plan route is read on a host the route allows,
+# with the plan token, and the run continues with the model it names.
+reset_fake
+out=$(run_engine LMLINE_MODEL= LMLINE_MODELS_URL=https://api.openai.com/v1/models \
+    LMLINE_FAKE_CURL_MODE=plan-catalog 2>"$route_tmp/discovery.err") \
+  || fail "the plan route did not read the account catalog: $(sed -n '1p' "$route_tmp/discovery.err")"
+[[ "$(cat "$count_file")" == 2 ]] || fail "the plan route request count: $(cat "$count_file")"
+[[ "$(cat "$bodies_dir/url-1.txt")" == "https://api.openai.com/v1/models" ]] \
+  || fail "the catalog request path: $(cat "$bodies_dir/url-1.txt")"
+[[ "$(cat "$bodies_dir/header-1.txt")" == "Authorization: Bearer test-subscription-token" ]] \
+  || fail "the catalog credential: $(cat "$bodies_dir/header-1.txt")"
+[[ "$(candidates_of <<<"$out")" == "echo hello" ]] || fail "the plan route candidate after the discovery"
+ok "the plan route reads the account catalog on an allowed host"
 
 # The route requires the Responses API format.
 reset_fake
