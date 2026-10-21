@@ -24,6 +24,10 @@ search works.
 | `chatgpt` | `responses` | allowed, unverified — the request shape is proven offline (`store: false`, `stream: true`, the instructions as `instructions`, and none of `temperature`, `max_output_tokens`, `top_p`, `user`, `metadata`, `background`, `conversation`, `previous_response_id`); that a real plan accepts the request, bills the plan, and answers needs a real ChatGPT account |
 | `chatgpt` | `messages` | unsupported — the subscription route requires `LMLINE_API_FORMAT=responses` |
 
+The client keeps a plan grant only when the provider states the granted
+scopes: a token answer without a scope leaves the grant unproven, so the
+session is refused with an actionable message until the user signs in again.
+
 The subscription route never falls back to a metered API key. When the
 subscription credential is missing or cannot be refreshed, the request fails
 with an actionable message instead of billing an API key.
@@ -33,8 +37,8 @@ with an actionable message instead of billing an API key.
 | Authentication mode | Endpoint | Result |
 | --- | --- | --- |
 | `api-key` | any OpenAI-compatible base URL | supported |
-| `chatgpt` | `https://api.openai.com/v1` (a port on that host is accepted) | supported |
-| `chatgpt` | a loopback proxy (`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, `http://[::1]:PORT/v1`) | supported — the token stays on the machine, but the proxy forwards it, so the proxy owner receives it |
+| `chatgpt` | `https://api.openai.com/v1` (a port on that host is accepted) | allowed, unverified — the request shape and the host rule are proven offline; that a real plan accepts the request and bills it needs a real ChatGPT account |
+| `chatgpt` | a loopback proxy (`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, `http://[::1]:PORT/v1`) | allowed, unverified — the base is accepted and the token stays on the machine, but the proxy forwards it to whoever runs it, and the plan access is not proven offline |
 | `chatgpt` | any other host | unsupported — the subscription token is only sent to the OpenAI API; the engine refuses the request before it is sent |
 | `chatgpt` | a base URL with embedded credentials (`https://user:pass@host/v1`) | unsupported — the credentials would go to a host the text does not name; the engine refuses the request before it is sent |
 | `chatgpt` | `http://api.openai.com/v1` | unsupported — the plan token is a bearer credential, so the OpenAI API needs `https`; the engine refuses the request before it is sent |
@@ -56,7 +60,7 @@ with an actionable message instead of billing an API key.
 | `api-key` | `responses` | on | supported for the request shape and the reporting — the search tool never reaches the local tool executor, and the search events and citations are reported; that the provider retrieves the pages and bills the search is provider behaviour no offline mock can prove |
 | `api-key` | `chat` or `messages` | on | unsupported — native web search requires the Responses API format; the engine refuses the request before it is sent |
 | `chatgpt` | `responses` | on | allowed, unverified — the subscription route states that web search remains subject to model and account/workspace policy, so it needs a real ChatGPT account |
-| `chatgpt` | `responses` | off (default) | supported |
+| `chatgpt` | `responses` | off (default) | allowed, unverified — the request shape is proven offline; that a real plan answers and bills it needs a real ChatGPT account |
 | `chatgpt` | `chat` or `messages` | any | unsupported — the subscription route requires the Responses API format |
 
 Selecting a model never enables search. The search setting is explicit
@@ -74,9 +78,10 @@ every kind of repeat is listed here:
 | native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | later rounds do not ask for a new search |
 
 A rejected request on a paid route is reported with the provider's reason
-instead of being repeated. The request keeps the search tool across the
-attempt: it is never silently dropped, and the one repeat that drops the
-local function tools keeps the provider-native search tool.
+instead of being repeated, and an empty answer on a paid route is reported
+the same way. A route that repeats drops the local function tools of that
+request; a route that carries a provider-native tool never repeats, so no
+request loses its search tool.
 
 The subscription route answers once per exchange: the route refuses native
 function tools, the local tools are off there, and a local tool round would be

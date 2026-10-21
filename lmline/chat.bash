@@ -756,8 +756,8 @@ __lmline_write_chat_payload() {
     fi
   fi
   # The ChatGPT plan route accepts namespaced or additional_tools function
-  # tools only, so local tools use the text protocol there and the request
-  # carries no sampling parameters.
+  # tools only, and the local tools are off on that route, so the request
+  # carries no sampling parameters and no tools.
   if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
     jq 'del(.tools, .tool_choice, .temperature, .max_tokens)' "$out" >"$out.chatgpt" || {
       printf 'lmline-engine: failed to build JSON payload with jq\n' >&2
@@ -1579,14 +1579,10 @@ __lmline_chat_run() {
     jq -e 'has("tools")' "$payload_file" >/dev/null 2>&1 &&
     __lmline_response_empty_retryable "$body_file"; then
     if __lmline_request_repeat_allowed; then
-      # The local function tools are dropped, but a provider-native tool stays
-      # in the request: a request that asked for a search must not lose it.
-      jq '((.tools // []) + (.provider_tools // [])) as $native
-          | del(.tools, .tool_choice, .provider_tools)
-          | (if ($native | map(select(.type == "web_search")) | length) > 0
-             then . + {tools: [$native[] | select(.type == "web_search")]}
-             else . end)' \
-        "$payload_file" >"$work_dir/payload.empty-content-auto-text.json" || exit 1
+      # The local function tools are dropped for the retry. A route that
+      # carries a provider-native tool never repeats here, so no request
+      # loses its search tool.
+      jq 'del(.tools, .tool_choice)' "$payload_file" >"$work_dir/payload.empty-content-auto-text.json" || exit 1
       __lmline_trace_file request.empty-content-auto-text.json "$work_dir/payload.empty-content-auto-text.json"
       __lmline_post_chat "$work_dir/payload.empty-content-auto-text.json" "$body_file" response.empty-content-auto-text.json || exit 1
     else

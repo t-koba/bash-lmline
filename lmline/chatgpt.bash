@@ -103,7 +103,7 @@ __lmline_chatgpt_access_token() {
 # Applies the request contract of the ChatGPT plan route to a Responses
 # payload: store:false and stream:true on every request, no sampling
 # parameters, and no plain function tools (the route accepts namespaced or
-# additional_tools shapes only, so local tools use the text protocol there).
+# additional_tools shapes only, and the local tools are off on that route).
 __lmline_chatgpt_apply_payload() {
   local payload=$1
   jq 'del(.temperature, .max_output_tokens, .max_tokens, .top_p, .user, .metadata, .tool_choice)

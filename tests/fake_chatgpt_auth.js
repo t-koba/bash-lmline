@@ -10,6 +10,7 @@ const crypto = require('crypto');
 
 const mode = process.env.LMLINE_FAKE_AUTH_MODE || '';
 const expiresIn = Number(process.env.LMLINE_FAKE_AUTH_EXPIRES_IN || 3600);
+const refreshDelayMs = Number(process.env.LMLINE_FAKE_AUTH_DELAY_MS || 400);
 const logFile = process.env.LMLINE_FAKE_CHATGPT_LOG || '';
 const issuedClientId = 'oaiapp_mock_client';
 const fullScope = 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
@@ -154,7 +155,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         // The slow answer makes the overlap of two refreshes real.
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await new Promise(resolve => setTimeout(resolve, refreshDelayMs));
       }
       const refreshed = tokenPayload(clientId || issuedClientId);
       if (mode === 'rotate_refresh') currentRefreshToken = refreshed.refresh_token;

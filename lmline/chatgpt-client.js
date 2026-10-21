@@ -235,8 +235,11 @@ function saveCredentials(credential) {
 // The refresh token rotates: the provider invalidates it after the first
 // use. Two processes must not use the same one, so a refresh runs under a
 // lock and re-reads the credential inside it.
-const LOCK_WAIT_MS = 15000;
-const LOCK_STALE_MS = 60000;
+const LOCK_WAIT_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000);
+const LOCK_STALE_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_STALE_MS, 300000);
+// The heartbeat keeps a live lock fresh; it must be well inside the stale
+// threshold, so a slow holder is never mistaken for a dead one.
+const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(200, Math.floor(LOCK_STALE_MS / 3)));
 
 function credentialLockPath() {
   return path.join(path.dirname(credentialsFile), 'credentials.lock');
@@ -259,12 +262,19 @@ async function withCredentialLock(action) {
         if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) fs.unlinkSync(file);
       } catch (_) { /* the lock is gone */ }
       if (Date.now() > deadline) {
-        fail('another lmline ChatGPT sign-in is in progress; try again in a moment');
+        fail('another lmline ChatGPT token command is in progress; try again in a moment');
       }
       await sleep(100);
     }
   }
+  // A live holder keeps the lock fresh, so a slow refresh is never mistaken
+  // for a lock left behind by a killed process.
+  const heartbeat = setInterval(() => {
+    try { fs.utimesSync(file, new Date(), new Date()); } catch (_) {}
+  }, LOCK_HEARTBEAT_MS);
+  if (typeof heartbeat.unref === 'function') heartbeat.unref();
   const release = () => {
+    clearInterval(heartbeat);
     try { fs.closeSync(handle); } catch (_) {}
     try { fs.unlinkSync(file); } catch (_) {}
   };
@@ -598,117 +608,112 @@ async function cmdStatus() {
   printCredentialState(credential, 'signed-in');
 }
 
-async function cmdRefresh() {
-  return withCredentialLock(async () => {
-  const credential = loadCredentials();
-  if (!credential || !credential.refresh_token) fail('there is no ChatGPT session; run: lmline chatgpt login');
-  const discovery = await loadDiscovery();
-  const payload = await refreshTokens(discovery, credential);
+// The plan grant must be provable: a token answer that states no scope
+// leaves the grant unproven, so it is dropped and the session is refused
+// until the user signs in again. One helper serves the refresh and the
+// token command, so the two cannot drift.
+function applyTokenPayload(credential, payload, claims) {
   const updated = { ...credential };
   updated.access_token = String(payload.access_token || '');
-  // Refresh tokens rotate: the replacement always replaces the stored one.
+  // The refresh token rotates: the answer replaces the stored one, and the
+  // stored one is never a token that was read before the lock.
   updated.refresh_token = String(payload.refresh_token || credential.refresh_token || '');
   updated.token_type = String(payload.token_type || credential.token_type || 'Bearer');
   updated.expires_at = Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600);
   updated.saved_at = new Date().toISOString();
-  if (payload.scope) {
-    updated.scopes = String(payload.scope).split(/\s+/).filter(Boolean);
-    updated.plan_usage = updated.scopes.includes(PLAN_SCOPE);
+  updated.scopes = payload.scope
+    ? String(payload.scope).split(/\s+/).filter(Boolean)
+    : [];
+  updated.plan_usage = updated.scopes.includes(PLAN_SCOPE);
+  if (claims) {
+    updated.id_token = String(payload.id_token || '');
+    updated.subject = String(claims.sub || updated.subject || '');
+    updated.email = String(claims.email || updated.email || '');
+    updated.account = String(claims.email || claims.sub || updated.account || '');
   }
+  return updated;
+}
+
+async function refreshedCredential(discovery, credential) {
+  const payload = await refreshTokens(discovery, credential);
+  let claims = null;
   if (payload.id_token) {
     try {
-      const claims = await validateIdToken(payload.id_token, {
+      claims = await validateIdToken(payload.id_token, {
         issuer: discovery.issuer,
         jwksUri: discovery.jwks_uri,
         clientId: issuedClientIdOf(credential)
       });
-      updated.id_token = String(payload.id_token);
-      updated.subject = String(claims.sub || updated.subject || '');
-      updated.email = String(claims.email || updated.email || '');
-      updated.account = String(claims.email || claims.sub || updated.account || '');
     } catch (error) {
       note(`the refreshed ID token was not accepted: ${error.message}`);
     }
   }
-  saveCredentials(updated);
-  requirePlanScope(updated);
-  printCredentialState(updated, 'refreshed');
+  return applyTokenPayload(credential, payload, claims);
+}
+
+async function cmdRefresh() {
+  return withCredentialLock(async () => {
+    const credential = loadCredentials();
+    if (!credential || !credential.refresh_token) fail('there is no ChatGPT session; run: lmline chatgpt login');
+    const discovery = await loadDiscovery();
+    const updated = await refreshedCredential(discovery, credential);
+    saveCredentials(updated);
+    requirePlanScope(updated);
+    printCredentialState(updated, 'refreshed');
   });
 }
 
 async function cmdLogout(purge) {
-  const credential = loadCredentials();
-  if (!credential) {
+  // The logout shares the lock with the refresh, so a refresh that overlaps
+  // it cannot write a signed-in session back after the local tokens were
+  // cleared.
+  return withCredentialLock(async () => {
+    const credential = loadCredentials();
+    if (!credential) {
+      out('status=logged-out');
+      out('revoked=yes');
+      return;
+    }
+    const discovery = await loadDiscovery();
+    const revoked = await revokeTokens(discovery, credential);
+    if (purge) {
+      purgeCredentials();
+    } else {
+      const cleared = { ...credential };
+      cleared.id_token = '';
+      cleared.access_token = '';
+      cleared.refresh_token = '';
+      cleared.expires_at = 0;
+      // The grant belonged to the revoked session: keeping it would let a
+      // report claim a plan usage that no longer exists.
+      cleared.scopes = [];
+      cleared.plan_usage = false;
+      cleared.saved_at = new Date().toISOString();
+      saveCredentials(cleared);
+    }
     out('status=logged-out');
-    out('revoked=yes');
-    return;
-  }
-  const discovery = await loadDiscovery();
-  const revoked = await revokeTokens(discovery, credential);
-  if (purge) {
-    purgeCredentials();
-  } else {
-    const cleared = { ...credential };
-    cleared.id_token = '';
-    cleared.access_token = '';
-    cleared.refresh_token = '';
-    cleared.expires_at = 0;
-    // The grant belonged to the revoked session: keeping it would let a
-    // report claim a plan usage that no longer exists.
-    cleared.scopes = [];
-    cleared.plan_usage = false;
-    cleared.saved_at = new Date().toISOString();
-    saveCredentials(cleared);
-  }
-  out('status=logged-out');
-  out(`revoked=${revoked ? 'yes' : 'no'}`);
-  if (!revoked) note('remote revocation was not confirmed; the local tokens were cleared anyway');
+    out(`revoked=${revoked ? 'yes' : 'no'}`);
+    if (!revoked) note('remote revocation was not confirmed; the local tokens were cleared anyway');
+  });
 }
 
 async function cmdToken() {
-  const credential = loadCredentials();
-  if (!credential || !credential.access_token) fail('there is no ChatGPT session; run: lmline chatgpt login');
   return withCredentialLock(async () => {
-  // Another process may have refreshed the session while this one waited for
-  // the lock, so the stored credential decides, not the one read before.
-  const current = loadCredentials() || credential;
-  if (!current.access_token) fail('there is no ChatGPT session; run: lmline chatgpt login');
-  const expiresAt = Number(current.expires_at) || 0;
-  if (expiresAt - REFRESH_MARGIN > Math.floor(Date.now() / 1000)) {
-    requirePlanScope(current);
-    out(String(current.access_token));
-    return;
-  }
-  const discovery = await loadDiscovery();
-  const payload = await refreshTokens(discovery, current);
-  const updated = { ...current };
-  updated.access_token = String(payload.access_token || '');
-  updated.refresh_token = String(payload.refresh_token || credential.refresh_token || '');
-  updated.token_type = String(payload.token_type || credential.token_type || 'Bearer');
-  updated.expires_at = Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600);
-  updated.saved_at = new Date().toISOString();
-  if (payload.scope) {
-    updated.scopes = String(payload.scope).split(/\s+/).filter(Boolean);
-    updated.plan_usage = updated.scopes.includes(PLAN_SCOPE);
-  }
-  if (payload.id_token) {
-    try {
-      const claims = await validateIdToken(payload.id_token, {
-        issuer: discovery.issuer,
-        jwksUri: discovery.jwks_uri,
-        clientId: issuedClientIdOf(credential)
-      });
-      updated.id_token = String(payload.id_token);
-      updated.subject = String(claims.sub || updated.subject || '');
-      updated.email = String(claims.email || updated.email || '');
-      updated.account = String(claims.email || claims.sub || updated.account || '');
-    } catch (error) {
-      note(`the refreshed ID token was not accepted: ${error.message}`);
+    // The credential read under the lock is the only source: another
+    // process may have refreshed the session while this one waited.
+    const current = loadCredentials();
+    if (!current || !current.access_token) fail('there is no ChatGPT session; run: lmline chatgpt login');
+    const expiresAt = Number(current.expires_at) || 0;
+    if (expiresAt - REFRESH_MARGIN > Math.floor(Date.now() / 1000)) {
+      requirePlanScope(current);
+      out(String(current.access_token));
+      return;
     }
-  }
-  saveCredentials(updated);
-  requirePlanScope(updated);
-  out(String(updated.access_token));
+    const discovery = await loadDiscovery();
+    const updated = await refreshedCredential(discovery, current);
+    saveCredentials(updated);
+    requirePlanScope(updated);
+    out(String(updated.access_token));
   });
 }
 

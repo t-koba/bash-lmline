@@ -50,11 +50,11 @@ stop_mock() {
 }
 
 start_mock() {
-  local mode=$1 log=$2
+  local mode=$1 log=$2 delay=${3-400}
   local out_file="$chatgpt_tmp/mock-server.out"
   stop_mock
   : >"$out_file"
-  LMLINE_FAKE_AUTH_MODE="$mode" LMLINE_FAKE_CHATGPT_LOG="$log" \
+  LMLINE_FAKE_AUTH_MODE="$mode" LMLINE_FAKE_CHATGPT_LOG="$log" LMLINE_FAKE_AUTH_DELAY_MS="$delay" \
     node "$repo_dir/tests/fake_chatgpt_auth.js" >"$out_file" 2>&1 &
   chatgpt_mock_pid=$!
   local i
@@ -282,3 +282,44 @@ concurrent_token_2=$(sed -n '1p' "$chatgpt_tmp/concurrent-2.out")
 [[ -n "$concurrent_token_1" && -n "$concurrent_token_2" ]] || fail "a concurrent token command printed no token"
 [[ "$concurrent_token_1" == "$concurrent_token_2" ]] || fail "the concurrent token commands disagree"
 ok "ChatGPT serializes concurrent token refreshes"
+
+# 15. A live lock is never treated as stale: the second token command waits
+# for the first one instead of refreshing the rotated token itself.
+credentials_file="$chatgpt_tmp/credentials-heartbeat.json"
+start_mock "rotate_refresh" "$chatgpt_tmp/mock-heartbeat.log" 2000
+client login >/dev/null 2>&1 || fail "ChatGPT login before the live lock test"
+expire_credential "$credentials_file"
+export LMLINE_CHATGPT_LOCK_STALE_MS=1000
+client token >"$chatgpt_tmp/heartbeat-1.out" 2>"$chatgpt_tmp/heartbeat-1.err" &
+heartbeat_pid_1=$!
+sleep 1.2
+client token >"$chatgpt_tmp/heartbeat-2.out" 2>"$chatgpt_tmp/heartbeat-2.err" &
+heartbeat_pid_2=$!
+heartbeat_rc_1=0
+heartbeat_rc_2=0
+wait "$heartbeat_pid_1" || heartbeat_rc_1=$?
+wait "$heartbeat_pid_2" || heartbeat_rc_2=$?
+unset LMLINE_CHATGPT_LOCK_STALE_MS
+[[ "$heartbeat_rc_1" == 0 ]] || fail "the first live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/heartbeat-1.err")"
+[[ "$heartbeat_rc_2" == 0 ]] || fail "the second live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/heartbeat-2.err")"
+[[ "$(sed -n '1p' "$chatgpt_tmp/heartbeat-1.out")" == "$(sed -n '1p' "$chatgpt_tmp/heartbeat-2.out")" ]] \
+  || fail "the live-lock token commands disagree"
+ok "ChatGPT keeps a live lock fresh"
+
+# 16. A logout that overlaps a refresh leaves the session signed out.
+credentials_file="$chatgpt_tmp/credentials-logout-race.json"
+start_mock "rotate_refresh" "$chatgpt_tmp/mock-logout-race.log" 2000
+client login >/dev/null 2>&1 || fail "ChatGPT login before the logout race"
+expire_credential "$credentials_file"
+client token >"$chatgpt_tmp/logout-race-token.out" 2>"$chatgpt_tmp/logout-race-token.err" &
+logout_race_pid=$!
+sleep 0.3
+client logout >"$chatgpt_tmp/logout-race.out" 2>"$chatgpt_tmp/logout-race.err" \
+  || fail "ChatGPT logout during a refresh"
+logout_race_rc=0
+wait "$logout_race_pid" || logout_race_rc=$?
+logout_race_status=$(client status) || fail "ChatGPT status after the logout race"
+grep -q '^status=signed-out$' <<<"$logout_race_status" || fail "the logout race left a signed-in session"
+grep -q '^plan_usage=disabled$' <<<"$logout_race_status" || fail "the logout race left a plan grant"
+grep -q '^scopes=$' <<<"$logout_race_status" || fail "the logout race left the revoked scopes"
+ok "ChatGPT logout wins over an overlapping refresh"
