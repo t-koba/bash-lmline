@@ -70,13 +70,17 @@ every kind of repeat is listed here:
 | Route | Automatic HTTP retry | Compatibility or format retry | Candidate-validation retry | Empty-answer auto-text retry | Local tool rounds |
 | --- | --- | --- | --- | --- | --- |
 | `api-key` without search | yes (`LMLINE_HTTP_RETRIES`, default 1) | yes | yes | yes | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
-| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | none: the route has no local function tools |
+| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | none: the route has no local function tools, and the local tools are off there, so the exchange is one request |
 | native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | later rounds do not ask for a new search |
 
 A rejected request on a paid route is reported with the provider's reason
 instead of being repeated. The request keeps the search tool across the
 attempt: it is never silently dropped, and the one repeat that drops the
 local function tools keeps the provider-native search tool.
+
+The subscription route answers once per exchange: the route refuses native
+function tools, the local tools are off there, and a local tool round would be
+another provider request that spends the plan.
 
 At most one provider request per exchange asks the provider to run a new
 search, because every such request can bill another search. Later tool rounds

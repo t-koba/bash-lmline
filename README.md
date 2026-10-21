@@ -152,7 +152,9 @@ and only the internal token command prints one, on stdout.
 On this route the request follows the contract of the subscription API: the
 Responses format, `store: false`, `stream: true`, the instructions as
 `instructions`, and no sampling or account fields. The engine does not repeat
-the request on its own, because a repeated request can spend the plan.
+the request on its own, because a repeated request can spend the plan: the
+route answers once per exchange, and the local tools are off there, because a
+tool round would be another request that spends the plan.
 
 The subscription token is sent only to the OpenAI API, and only over
 `https`. A loopback proxy (`http://127.0.0.1:PORT/v1`,

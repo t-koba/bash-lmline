@@ -35,6 +35,8 @@ __lmline_init_dirs "$script_dir"
 # difference to keep their defaults conservative.
 __lmline_api_format_explicit=0
 [[ -n "${LMLINE_API_FORMAT+x}" ]] && __lmline_api_format_explicit=1
+__lmline_tool_mode_explicit=0
+[[ -n "${LMLINE_TOOL_MODE+x}" ]] && __lmline_tool_mode_explicit=1
 __lmline_http_retries_explicit=0
 [[ -n "${LMLINE_HTTP_RETRIES+x}" ]] && __lmline_http_retries_explicit=1
 : "${LMLINE_BASE_URL:=}"
@@ -155,11 +157,19 @@ esac
 if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   case "$LMLINE_TOOL_MODE" in
     openai)
-      printf 'lmline-engine: native function tools are not supported on the ChatGPT subscription route; use LMLINE_TOOL_MODE=text or auto\n' >&2
+      printf 'lmline-engine: native function tools are not supported on the ChatGPT subscription route; the route makes one provider request per exchange\n' >&2
       exit 2
       ;;
-    auto) LMLINE_TOOL_MODE=text ;;
   esac
+  # Every provider request on this route spends the user's plan, and a local
+  # tool round is another provider request, so the route answers once per
+  # exchange and the local tools stay off.
+  if [[ "$LMLINE_TOOL_MODE" != none ]]; then
+    if (( __lmline_tool_mode_explicit == 1 )); then
+      printf 'lmline-engine: warning: the ChatGPT subscription route makes one provider request per exchange; the local tools are disabled (LMLINE_TOOL_MODE=%s)\n' "$LMLINE_TOOL_MODE" >&2
+    fi
+    LMLINE_TOOL_MODE=none
+  fi
 fi
 case "$LMLINE_API_FORMAT" in
   chat|responses|messages) ;;

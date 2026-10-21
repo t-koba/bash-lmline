@@ -38,6 +38,18 @@ count=$((count + 1)); printf '%s\n' "$count" >"$state"
 cp "$data" "$bodies/body-$count.json"
 printf '%s\n' "$url" >"$bodies/url-$count.txt"
 [[ -n "$header" && -r "$header" ]] && cp "$header" "$bodies/header-$count.txt" || : >"$bodies/header-$count.txt"
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-text ]]; then
+  # A text tool request: on a paid route it would be another provider
+  # request, and therefore another spend of the plan.
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant",
+  "content":[{"type":"output_text","text":"TOOL command_exists commands=ls"}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == invalid ]]; then
   # A candidate with broken shell syntax: the engine rejects it locally and
   # would ask the provider for a second answer.
@@ -223,5 +235,12 @@ fi
 [[ "$(cat "$count_file")" == 0 ]] || fail "subscription route sent a request without a scheme"
 grep -q 'without an explicit scheme' "$route_tmp/scheme.err" || fail "subscription route scheme message"
 ok "subscription route refuses a base without a scheme"
+
+# A text tool request would be another provider request, so the paid route
+# answers once and stops.
+reset_fake
+run_engine LMLINE_FAKE_CURL_MODE=tool-text >"$route_tmp/tool-text.out" 2>"$route_tmp/tool-text.err" || true
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated the request for a text tool request"
+ok "the subscription route makes one provider request per exchange"
 
 ok "chatgpt route"
