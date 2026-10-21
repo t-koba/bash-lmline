@@ -115,8 +115,9 @@ case "$status" in
       [[ -n "$hit" ]] || continue
       address=${hit##*:}
       domain=${address#*@}
-      # A domain is reserved only when it ends with a reserved domain.
-      if [[ ! "$domain" =~ $reserved_domain ]]; then
+      # A domain is reserved only when it ends with a reserved domain, and a
+      # domain is written in either case.
+      if [[ ! "${domain,,}" =~ $reserved_domain ]]; then
         personal+="${hit}"$'\n'
       fi
     done <<<"$out"

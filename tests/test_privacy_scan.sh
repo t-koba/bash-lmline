@@ -20,6 +20,8 @@ home_root='/ho''me'
 private_address="192.168.""0"".""5"
 internal_host='build-box.'"inter""nal"
 personal_address='writer@'"personalmail.net"
+personal_address_upper='WRITER@'"personalmail.net"
+documentation_address_upper='WRITER@'"EXAMPLE.COM"
 token_value='sk-'"abcdefghijklmnopqrstuvwxyz"
 link_local='fe9'"0::1"
 link_local_upper='FE9'"0::1"
@@ -28,8 +30,8 @@ lookalike_address="alice@example.""com.evil.net"
 # A tree that holds public content only stays clean.
 clean=$work/clean
 mkdir -p "$clean"
-printf 'base url https://api.openai.com\nloopback http://127.0.0.1:1234\naddress writer@example.com\n' \
-  >"$clean/notes.txt"
+printf 'base url https://api.openai.com\nloopback http://127.0.0.1:1234\naddress writer@example.com\naddress %s\n' \
+  "$documentation_address_upper" >"$clean/notes.txt"
 if ! bash "$scanner" "$clean" >"$work/clean.out" 2>"$work/clean.err"; then
   fail "the scan rejected a clean tree: $(cat "$work/clean.err")"
 fi
@@ -75,6 +77,7 @@ finding_case localpath 'local path' "file $home_root/alice/notes.txt"
 finding_case privateaddress 'private host name' "host $private_address"
 finding_case internalthost 'private host name' "host $internal_host"
 finding_case personaladdress 'personal address' "mail $personal_address"
+finding_case personaladdressupper 'personal address' "mail $personal_address_upper"
 finding_case credential 'credential-looking value' "token $token_value"
 finding_case homepath 'local path' "cd $home_root/alice"
 finding_case linklocal 'private host name' "host $link_local"
