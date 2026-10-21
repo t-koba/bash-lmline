@@ -50,6 +50,17 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-inline ]]; then
+  # The text protocol accepts a tool request appended to a sentence.
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant",
+  "content":[{"type":"output_text","text":"echo hi; TOOL command_exists commands=ls"}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == invalid ]]; then
   # A candidate with broken shell syntax: the engine rejects it locally and
   # would ask the provider for a second answer.
@@ -244,5 +255,14 @@ run_engine LMLINE_FAKE_CURL_MODE=tool-text >"$route_tmp/tool-text.out" 2>"$route
 grep -q 'does not run local tools' "$route_tmp/tool-text.err" \
   || fail "the paid route reports a tool request as a missing command: $(sed -n '1p' "$route_tmp/tool-text.err")"
 ok "the subscription route makes one provider request per exchange"
+
+# The tool request appended to a sentence is a tool request too, and it is
+# reported as one.
+reset_fake
+run_engine LMLINE_FAKE_CURL_MODE=tool-inline >"$route_tmp/tool-inline.out" 2>"$route_tmp/tool-inline.err" || true
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated the request for an inline tool request"
+grep -q 'does not run local tools' "$route_tmp/tool-inline.err" \
+  || fail "the paid route reports an inline tool request as a missing command: $(sed -n '1p' "$route_tmp/tool-inline.err")"
+ok "the subscription route reports an inline tool request as a tool request"
 
 ok "chatgpt route"

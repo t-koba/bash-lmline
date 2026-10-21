@@ -126,6 +126,9 @@ application once; later sign-ins reuse that registration.
 ```bash
 lmline chatgpt status    # account, plan usage, scopes, expiry; never a token
 lmline chatgpt refresh   # new access token; the refresh token rotates
+A refresh whose answer states no granted scope ends the session: the plan
+grant is then unproven, so the client refuses it and asks for a new sign-in.
+
 lmline chatgpt reauth    # new authorization for the same account
 lmline chatgpt logout    # revoke the refresh token, then clear the local tokens
 ```

@@ -991,11 +991,55 @@ __lmline_text_tool_requests() {
   __lmline_text_tool_requests_from_text "$text" "$out"
 }
 
-__lmline_text_tool_requests_from_text() {
-  local text=$1 out=$2 line request name name_raw rest value args_json count=0
+# The local tool names of the text protocol. The parser and the candidate
+# check share this list, so a tool that is added once is known everywhere.
+__lmline_is_local_tool_name() {
+  case "$1" in
+    command_exists|command_info|commands|files|git_status|file_excerpt|command_run) return 0 ;;
+  esac
+  return 1
+}
+
+# The text protocol accepts a tool request at the start of a line and after a
+# sentence ("cmd; TOOL name args"), so the normalization is shared as well.
+__lmline_normalize_tool_requests() {
+  local text=$1
   text=${text//; TOOL/$'\n'TOOL}
   text=${text//; tool/$'\n'TOOL}
   text=${text//; Tool/$'\n'TOOL}
+  printf '%s' "$text"
+}
+
+# The tool name of a request line, empty when the line names no local tool.
+__lmline_tool_request_name() {
+  local request=$1 name
+  case "$request" in
+    TOOL\ *) request=${request#TOOL } ;;
+    Tool\ *) request=${request#Tool } ;;
+    tool\ *) request=${request#tool } ;;
+  esac
+  name=${request%%[[:space:]]*}
+  name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+  __lmline_is_local_tool_name "$name" || return 1
+  printf '%s' "$name"
+}
+
+# True when the text names a local tool request anywhere in it.
+__lmline_contains_tool_request() {
+  local text line
+  text=$(__lmline_normalize_tool_requests "$1")
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [[ -n "$line" ]] || continue
+    __lmline_tool_request_name "$line" >/dev/null && return 0
+  done <<<"$text"
+  return 1
+}
+
+__lmline_text_tool_requests_from_text() {
+  local text=$1 out=$2 line request name name_raw rest value args_json count=0
+  text=$(__lmline_normalize_tool_requests "$text")
   : >"$out"
   while IFS= read -r line || [[ -n "$line" ]]; do
     line=${line#"${line%%[![:space:]]*}"}
@@ -1011,15 +1055,12 @@ __lmline_text_tool_requests_from_text() {
     name=$(printf '%s' "$name_raw" | tr '[:upper:]' '[:lower:]')
     rest=${request#"$name_raw"}
     rest=${rest#"${rest%%[![:space:]]*}"}
-    case "$name" in
-      command_exists|command_info|commands|files|git_status|file_excerpt|command_run) ;;
-      *)
-        if __lmline_trace_dir_ready; then
-          printf 'unknown tool name: %s\n' "$name" >>"$LMLINE_TRACE_DIR/$trace_id.text-tool-parse.log" 2>/dev/null || true
-        fi
-        return 1
-        ;;
-    esac
+    if ! __lmline_is_local_tool_name "$name"; then
+      if __lmline_trace_dir_ready; then
+        printf 'unknown tool name: %s\n' "$name" >>"$LMLINE_TRACE_DIR/$trace_id.text-tool-parse.log" 2>/dev/null || true
+      fi
+      return 1
+    fi
     __lmline_tool_enabled "$name" || return 1
     [[ -n "$rest" || "$name" == git_status ]] || return 1
     case "$name" in
@@ -1417,24 +1458,6 @@ __lmline_print_candidate() {
   printf 'lmline-candidate: %s\t%s\t%s\t%s\n' "$risk" "$reason" "$flags" "$candidate" >>"$emitted_file"
 }
 
-# A candidate that asks for a local tool is not a command. On a route where
-# the local tools are off, the model still asks sometimes, and the reason
-# must name that instead of a missing command.
-__lmline_looks_like_tool_request() {
-  local candidate=$1 name
-  case "$candidate" in
-    TOOL\ *|Tool\ *|tool\ *) ;;
-    *) return 1 ;;
-  esac
-  name=${candidate#* }
-  name=${name%%[[:space:]]*}
-  name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
-  case "$name" in
-    command_exists|command_info|commands|files|git_status|file_excerpt|command_run) return 0 ;;
-  esac
-  return 1
-}
-
 __lmline_emit_candidates() {
   local source_text=$1 candidate raw_candidate reason truncated
   while IFS= read -r candidate; do
@@ -1451,7 +1474,7 @@ __lmline_emit_candidates() {
       printf 'same-as-input\t%s\n' "$candidate" >>"$rejected_file"
       continue
     fi
-    if [[ "$LMLINE_TOOL_MODE" == none ]] && __lmline_looks_like_tool_request "$candidate"; then
+    if [[ "$LMLINE_TOOL_MODE" == none ]] && __lmline_contains_tool_request "$candidate"; then
       printf 'invalid:tool-request-unsupported\t%s\n' "$candidate" >>"$rejected_file"
       continue
     fi
