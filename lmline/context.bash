@@ -421,9 +421,17 @@ __lmline_local_commands_file() {
 }
 
 __lmline_local_command_allowed() {
-  local command_name=$1 file
+  local command_name=$1 file line
   file=$(__lmline_local_commands_file) || return 1
-  __lmline_read_list_file "$file" | grep -Fxq -- "$command_name"
+  # The answer is the content of the file. A reader that stops at the first
+  # match must not decide it: the writer of the list would fail on the
+  # closed pipe, and that failure would refuse an allowlisted command.
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "$command_name" ]]; then
+      return 0
+    fi
+  done < <(__lmline_read_list_file "$file")
+  return 1
 }
 
 __lmline_require_policy_support() {
