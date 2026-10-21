@@ -235,8 +235,13 @@ function saveCredentials(credential) {
 // The refresh token rotates: the provider invalidates it after the first
 // use. Two processes must not use the same one, so a refresh runs under a
 // lock and re-reads the credential inside it.
-const LOCK_WAIT_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000);
-const LOCK_STALE_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_STALE_MS, 300000);
+const LOCK_STALE_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_STALE_MS, 60000);
+// The wait budget must outlive the stale threshold, otherwise a waiter gives
+// up before it can reclaim a lock that its holder left behind.
+const LOCK_WAIT_MS = Math.max(
+  positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000),
+  LOCK_STALE_MS + 30000
+);
 // The heartbeat keeps a live lock fresh; it must be well inside the stale
 // threshold, so a slow holder is never mistaken for a dead one.
 const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(100, Math.floor(LOCK_STALE_MS / 10)));
@@ -273,11 +278,29 @@ async function withCredentialLock(action) {
     try { fs.utimesSync(file, new Date(), new Date()); } catch (_) {}
   }, LOCK_HEARTBEAT_MS);
   if (typeof heartbeat.unref === 'function') heartbeat.unref();
+  // A signal ends the process without running the exit handler, so the
+  // signals that end a command release the lock themselves.
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  const handlers = {};
+  let released = false;
   const release = () => {
+    if (released) return;
+    released = true;
     clearInterval(heartbeat);
     try { fs.closeSync(handle); } catch (_) {}
     try { fs.unlinkSync(file); } catch (_) {}
+    for (const signal of signals) {
+      try { process.removeListener(signal, handlers[signal]); } catch (_) {}
+    }
+    try { process.removeListener('exit', release); } catch (_) {}
   };
+  for (const signal of signals) {
+    handlers[signal] = () => {
+      release();
+      process.exit(signal === 'SIGINT' ? 130 : 143);
+    };
+    process.on(signal, handlers[signal]);
+  }
   // A process that exits inside the lock must not leave the lock behind.
   process.on('exit', release);
   try {
@@ -577,7 +600,11 @@ async function cmdLogin(options) {
     plan_usage: scopes.includes(PLAN_SCOPE),
     account: String(claims.email || claims.sub || '')
   };
-  saveCredentials(credential);
+  // The sign-in writes under the same lock as the refresh, so an overlapping
+  // refresh cannot overwrite a fresh sign-in.
+  await withCredentialLock(async () => {
+    saveCredentials(credential);
+  });
   printCredentialState(credential, 'ok');
   out(`registration=${pendingClientId ? 'reused' : 'created'}`);
 }

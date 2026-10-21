@@ -159,6 +159,8 @@ const server = http.createServer(async (request, response) => {
       }
       const refreshed = tokenPayload(clientId || issuedClientId);
       if (mode === 'rotate_refresh') currentRefreshToken = refreshed.refresh_token;
+      // A refresh answer that states no scope leaves the grant unproven.
+      if (mode === 'no_scope_refresh') delete refreshed.scope;
       sendJson(response, 200, refreshed);
       return;
     }

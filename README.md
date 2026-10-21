@@ -1147,6 +1147,8 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
+| `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock |
+| `LMLINE_CHATGPT_LOCK_STALE_MS` | `60000` | milliseconds before an abandoned ChatGPT credential lock is reclaimed; keep it below the wait budget, or a waiter gives up before it can reclaim the lock |
 | `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
 | `LMLINE_HTTP_RETRIES` | `1` | transient provider retries |

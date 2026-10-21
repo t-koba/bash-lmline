@@ -323,3 +323,39 @@ grep -q '^status=signed-out$' <<<"$logout_race_status" || fail "the logout race 
 grep -q '^plan_usage=disabled$' <<<"$logout_race_status" || fail "the logout race left a plan grant"
 grep -q '^scopes=$' <<<"$logout_race_status" || fail "the logout race left the revoked scopes"
 ok "ChatGPT logout wins over an overlapping refresh"
+
+# 17. A token answer that states no scope leaves the plan grant unproven.
+credentials_file="$chatgpt_tmp/credentials-no-scope-refresh.json"
+start_mock "no_scope_refresh" "$chatgpt_tmp/mock-no-scope-refresh.log"
+client login >/dev/null 2>&1 || fail "ChatGPT login before the scope-less refresh"
+expire_credential "$credentials_file"
+if client refresh >"$chatgpt_tmp/no-scope-refresh.out" 2>"$chatgpt_tmp/no-scope-refresh.err"; then
+  fail "ChatGPT keeps a plan grant the provider did not state"
+fi
+grep -q 'plan use was not granted' "$chatgpt_tmp/no-scope-refresh.err" \
+  || fail "ChatGPT reports the unproven plan grant"
+no_scope_status=$(client status) || fail "ChatGPT status after the scope-less refresh"
+grep -q '^plan_usage=disabled$' <<<"$no_scope_status" || fail "ChatGPT keeps the plan grant after a scope-less refresh"
+grep -q '^scopes=$' <<<"$no_scope_status" || fail "ChatGPT keeps the scopes after a scope-less refresh"
+ok "ChatGPT drops a plan grant the provider did not state"
+
+# 18. A signalled command releases the credential lock, so the next one runs.
+credentials_file="$chatgpt_tmp/credentials-signalled.json"
+start_mock "rotate_refresh" "$chatgpt_tmp/mock-signalled.log" 3000
+client login >/dev/null 2>&1 || fail "ChatGPT login before the signalled lock test"
+expire_credential "$credentials_file"
+env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
+  LMLINE_CHATGPT_AUTH_URL="$mock_base" \
+  LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
+  LMLINE_CHATGPT_HOST_ID_FILE="$host_id_file" \
+  LMLINE_CHATGPT_BROWSER_COMMAND="$browser_script" \
+  LMLINE_CHATGPT_TIMEOUT=20 \
+  node "$repo_dir/lmline/chatgpt-client.js" token >"$chatgpt_tmp/signalled.out" 2>"$chatgpt_tmp/signalled.err" &
+signalled_pid=$!
+sleep 0.5
+kill -INT "$signalled_pid" 2>/dev/null || true
+wait "$signalled_pid" 2>/dev/null || true
+[[ ! -e "$chatgpt_tmp/credentials.lock" ]] || fail "a signalled command left the credential lock behind"
+client token >"$chatgpt_tmp/signalled-2.out" 2>"$chatgpt_tmp/signalled-2.err" \
+  || fail "the command after a signalled one fails: $(sed -n '1p' "$chatgpt_tmp/signalled-2.err")"
+ok "ChatGPT releases the credential lock when the command is signalled"
