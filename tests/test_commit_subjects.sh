@@ -52,6 +52,7 @@ repo=$work/allowed
 charter_repo "$repo"
 commit_in "$repo" "keep the sign-in reason"
 commit_in "$repo" "Bump the pinned download date to 20261021"
+commit_in "$repo" "Update the widget: the frame too"
 if ! bash "$checker" "$repo" >"$work/allowed.out" 2>"$work/allowed.err"; then
   fail "the check rejected a subject the charter allows: $(cat "$work/allowed.err")"
 fi
@@ -79,7 +80,9 @@ violation_case() {
     || fail "the check did not report the reason for the subject: $subject"
 }
 
-violation_case prefix "fix: repair the widget" "conventional-commit prefix"
+violation_case prefix "fix: repair the widget" "label prefix"
+violation_case otherprefix "wip: repair the widget" "label prefix"
+violation_case scopedprefix "feat(engine): repair the widget" "label prefix"
 violation_case sentences "Keep the token fresh. Also renew it" "more than one sentence"
 violation_case hex "Wait for the answer deadbeef12" "hex identifier"
 violation_case hexliteral "Fix the 0xdeadbeef mask" "hex identifier"

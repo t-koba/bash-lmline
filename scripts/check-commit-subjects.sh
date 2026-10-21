@@ -75,8 +75,10 @@ subject_problem() {
   local subject=$1 token
   if [[ -z "$subject" ]]; then
     printf 'the subject is empty'
-  elif [[ "$subject" =~ ^(feat|fix|chore|docs|refactor|style|perf|test|tests|build|ci|release|revert)(\([[:alnum:]_/.-]+\))?!?: ]]; then
-    printf 'the subject starts with a conventional-commit prefix'
+  elif [[ "$subject" =~ ^[[:alnum:]][[:alnum:]_-]*(\([^()]*\))?!?: ]]; then
+    # A subject that starts with a label is not one plain sentence, whatever
+    # the label says.
+    printf 'the subject starts with a label prefix'
   elif [[ "$subject" == *". "* ]]; then
     printf 'the subject carries more than one sentence'
   elif [[ "$subject" =~ (^|[^[:alnum:]_])wi_[[:alnum:]]+([^[:alnum:]_]|$) ]]; then
