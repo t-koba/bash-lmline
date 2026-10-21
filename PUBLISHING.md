@@ -23,6 +23,8 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
    ```
 
    `scripts/publish-check.sh` runs the same check before it packages anything.
+   The check reads the history to find the commit that added the charter, so
+   it needs the whole history; a truncated clone is reported as an error.
 
 4. Check that the tree holds no private data: local paths and user names,
    private host names (private network addresses and internal host names),

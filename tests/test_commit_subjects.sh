@@ -46,6 +46,16 @@ if ! bash "$checker" "$repo" >"$work/compliant.out" 2>"$work/compliant.err"; the
 fi
 grep -q 'ok' "$work/compliant.out" || fail "the check did not report ok for a compliant history"
 
+# A subject that the charter allows is accepted: a lowercase imperative and
+# a plain date are not internal identifiers.
+repo=$work/allowed
+charter_repo "$repo"
+commit_in "$repo" "keep the sign-in reason"
+commit_in "$repo" "Bump the pinned download date to 20261021"
+if ! bash "$checker" "$repo" >"$work/allowed.out" 2>"$work/allowed.err"; then
+  fail "the check rejected a subject the charter allows: $(cat "$work/allowed.err")"
+fi
+
 # A commit that predates the charter keeps its own subject.
 repo=$work/legacy
 new_repo "$repo"
@@ -70,11 +80,33 @@ violation_case() {
 }
 
 violation_case prefix "fix: repair the widget" "conventional-commit prefix"
-violation_case lowercase "keep the sign-in reason" "capital letter"
 violation_case sentences "Keep the token fresh. Also renew it" "more than one sentence"
 violation_case hex "Wait for the answer deadbeef12" "hex identifier"
+violation_case hexliteral "Fix the 0xdeadbeef mask" "hex identifier"
 violation_case item "Close the item wi_1e2b2bb2a755d6a0" "internal identifier"
-violation_case harness "Record the mizu harness state" "internal identifier"
+
+# A truncated history is reported instead of a history the check cannot read.
+source_repo=$work/shallow-source
+charter_repo "$source_repo"
+commit_in "$source_repo" "Check the commit subjects against the charter"
+shallow=$work/shallow
+if ! git clone -q --depth 1 "file://$source_repo" "$shallow" 2>/dev/null; then
+  fail "could not clone a shallow copy of the temporary repository"
+fi
+if bash "$checker" "$shallow" >"$work/shallow.out" 2>"$work/shallow.err"; then
+  fail "the check passed a repository with a truncated history"
+fi
+grep -q 'truncated' "$work/shallow.err" \
+  || fail "the check did not report the truncated history: $(cat "$work/shallow.err")"
+
+# A history without a subject to check is not a success.
+repo=$work/empty
+charter_repo "$repo"
+if bash "$checker" "$repo" >"$work/empty.out" 2>"$work/empty.err"; then
+  fail "the check passed a history without a subject to check"
+fi
+grep -q 'no commit subject was checked' "$work/empty.err" \
+  || fail "the check did not report that no subject was checked: $(cat "$work/empty.err")"
 
 # A directory without a repository is skipped, not failed.
 plain=$work/plain
