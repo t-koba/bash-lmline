@@ -60,6 +60,7 @@ shellcheck -s bash \
   "$repo_dir/install.sh" \
   "$repo_dir/scripts/install-shellcheck.sh" \
   "$repo_dir/scripts/check-commit-subjects.sh" \
+  "$repo_dir/scripts/privacy-scan.sh" \
   "$repo_dir/scripts/publish-check.sh" \
   "$repo_dir"/tests/*.sh \
   || fail "shellcheck findings"

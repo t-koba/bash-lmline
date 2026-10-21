@@ -34,6 +34,7 @@ bash -n \
   lmline/websearch.bash \
   lmline/chatgpt.bash \
   scripts/check-commit-subjects.sh \
+  scripts/privacy-scan.sh \
   tests/*.sh
 
 if command -v zsh >/dev/null 2>&1; then
@@ -45,28 +46,8 @@ if command -v node >/dev/null 2>&1; then
   node --check lmline/chatgpt-client.js
 fi
 
-if ! command -v rg >/dev/null 2>&1; then
-  printf 'publish-check: rg is required for the privacy scan; install ripgrep (https://github.com/BurntSushi/ripgrep)\n' >&2
-  exit 1
-fi
-
-rg_status=0
-rg -n '(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' \
-  -uu --glob '!.git/**' --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' . || rg_status=$?
-case "$rg_status" in
-  0)
-    printf 'publish-check: local path or secret-looking value found\n' >&2
-    exit 1
-    ;;
-  1) ;;
-  *)
-    printf 'publish-check: privacy scan failed (rg exit %s)\n' "$rg_status" >&2
-    exit 1
-    ;;
-esac
-
-if find . -path './.git' -prune -o -maxdepth 3 -type f \( -name '.DS_Store' -o -name '*secret*' -o -name '*.key' -o -name '*.pem' -o -name '.env*' -o -name '*token*' \) -print | grep .; then
-  printf 'publish-check: secret-like file name found\n' >&2
+if ! bash "$repo_dir/scripts/privacy-scan.sh" >/dev/null; then
+  printf 'publish-check: the privacy scan failed\n' >&2
   exit 1
 fi
 

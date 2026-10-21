@@ -37,6 +37,6 @@ chmod +x "$fake_bin/rg"
 if PATH="$fake_bin:$PATH" bash "$repo_dir/scripts/publish-check.sh" >"$fake_bin/match.out" 2>"$fake_bin/match.err"; then
   fail "publish-check with matching scan passed open"
 fi
-grep -q 'secret-looking value found' "$fake_bin/match.err" || fail "publish-check match message"
+grep -q 'the privacy scan failed' "$fake_bin/match.err" || fail "publish-check match message"
 
 ok "publish privacy scan fails closed"

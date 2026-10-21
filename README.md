@@ -1330,3 +1330,8 @@ bash tests/test_features.sh
 Commit subjects follow the charter in `PROJECT.md`: one plain imperative
 sentence, no internal identifier. `bash scripts/check-commit-subjects.sh`
 checks them, and `./scripts/publish-check.sh` runs the same check.
+
+`bash scripts/privacy-scan.sh` keeps the private data of the machine that
+wrote the code out of the tree: local paths and user names, private host
+names, credentials, personal addresses and secret-like file names. The
+publish check runs the same scan.

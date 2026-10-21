@@ -3,7 +3,7 @@
 Before publishing:
 
 Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
-`./scripts/publish-check.sh`; the check fails closed when `rg` is missing.
+`./scripts/privacy-scan.sh`; the scan fails closed when `rg` is missing.
 
 1. Ensure `request.md` is not included in the repository or release artifact. It is ignored by `.gitignore` and marked `export-ignore` in `.gitattributes`; do not force-add it.
 2. Run:
@@ -24,11 +24,16 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
 
    `scripts/publish-check.sh` runs the same check before it packages anything.
 
-4. Check for local paths, private hostnames, secrets, and personal model names:
+4. Check that the tree holds no private data: local paths and user names,
+   private host names (private network addresses and internal host names),
+   credentials, personal addresses and secret-like file names:
 
    ```bash
-   rg -n '(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' -uu --glob '!.git/**' --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' .
+   bash scripts/privacy-scan.sh
    ```
+
+   The patterns live in `scripts/privacy-scan.sh`, so this check and
+   `./scripts/publish-check.sh` always look for the same things.
 
 5. Confirm generated config/state is not staged:
 
