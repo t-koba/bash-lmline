@@ -50,6 +50,17 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-quoted ]]; then
+  # A command that mentions the protocol inside a string is a command.
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant",
+  "content":[{"type":"output_text","text":"echo \"see; TOOL files query=x\""}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-inline ]]; then
   # The text protocol accepts a tool request appended to a sentence.
   cat >"$out" <<'JSON'
@@ -264,5 +275,15 @@ run_engine LMLINE_FAKE_CURL_MODE=tool-inline >"$route_tmp/tool-inline.out" 2>"$r
 grep -q 'does not run local tools' "$route_tmp/tool-inline.err" \
   || fail "the paid route reports an inline tool request as a missing command: $(sed -n '1p' "$route_tmp/tool-inline.err")"
 ok "the subscription route reports an inline tool request as a tool request"
+
+# A command that mentions the protocol inside a string stays a command.
+reset_fake
+if ! run_engine LMLINE_FAKE_CURL_MODE=tool-quoted >"$route_tmp/tool-quoted.out" 2>"$route_tmp/tool-quoted.err"; then
+  fail "the paid route dropped a command that mentions the tool protocol: $(sed -n '1p' "$route_tmp/tool-quoted.err")"
+fi
+quoted_candidate=$(candidates_of <"$route_tmp/tool-quoted.out")
+[[ "$quoted_candidate" == 'echo "see; TOOL files query=x"' ]] \
+  || fail "the paid route dropped a command that mentions the tool protocol: $quoted_candidate"
+ok "the subscription route keeps a command that mentions the tool protocol"
 
 ok "chatgpt route"

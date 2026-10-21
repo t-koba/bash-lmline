@@ -126,12 +126,13 @@ application once; later sign-ins reuse that registration.
 ```bash
 lmline chatgpt status    # account, plan usage, scopes, expiry; never a token
 lmline chatgpt refresh   # new access token; the refresh token rotates
-A refresh whose answer states no granted scope ends the session: the plan
-grant is then unproven, so the client refuses it and asks for a new sign-in.
-
 lmline chatgpt reauth    # new authorization for the same account
 lmline chatgpt logout    # revoke the refresh token, then clear the local tokens
 ```
+
+A refresh whose answer states no granted scope drops the plan grant, because
+the grant is then unproven. The client keeps the session but refuses to hand
+out a token, so the sign-in has to be repeated.
 
 Register the endpoint with the subscription path and select it:
 

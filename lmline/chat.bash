@@ -1002,12 +1002,25 @@ __lmline_is_local_tool_name() {
 
 # The text protocol accepts a tool request at the start of a line and after a
 # sentence ("cmd; TOOL name args"), so the normalization is shared as well.
+# The separator counts only outside of shell quotes: a command that mentions
+# the protocol inside a string is a command, not a request.
 __lmline_normalize_tool_requests() {
-  local text=$1
-  text=${text//; TOOL/$'\n'TOOL}
-  text=${text//; tool/$'\n'TOOL}
-  text=${text//; Tool/$'\n'TOOL}
-  printf '%s' "$text"
+  printf '%s\n' "$1" | awk '
+    {
+      out = ""; in_s = 0; in_d = 0; i = 1; n = length($0)
+      while (i <= n) {
+        c = substr($0, i, 1)
+        if (c == "\047") { if (!in_d) { in_s = 1 - in_s } }
+        else if (c == "\"") { if (!in_s) { in_d = 1 - in_d } }
+        else if (!in_s && !in_d && c == ";") {
+          rest = substr($0, i + 1)
+          if (rest ~ /^ (TOOL|tool|Tool) /) { out = out "\n"; i++; continue }
+        }
+        out = out c
+        i++
+      }
+      print out
+    }'
 }
 
 # The tool name of a request line, empty when the line names no local tool.
