@@ -182,7 +182,7 @@ fix_out=$(env "${copilot_env[@]}" LMLINE_FIX_BACKEND=copilot bash -c '
   source "$1/context.bash"
   source "$1/policy.bash"
   source "$1/actions.bash"
-  __lmline_fix_run "false" bash 5 "$repo_dir/lmline/engine" 3 "" 2>/dev/null
+  __lmline_fix_run "false" bash 5 "$1/engine" 3 "" 2>/dev/null
 ' _ "$repo_dir/lmline" "$copilot_tmp/config") || fail "Copilot fix run"
 grep -q $'\ttrue$' <<<"$fix_out" || fail "Copilot fix candidate"
 grep -q '^didOpen-context=yes$' "$copilot_tmp/lsp.log" || fail "Copilot fix execution context"
