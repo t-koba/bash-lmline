@@ -377,7 +377,7 @@ profile_extract_model_candidates() {
       end;
     __lmline_items
     | if type == \"object\" then
-        [((.id // .model // .name // \"\") | tostring), __lmline_signal] | @tsv
+        [((.id // .model // .name // .slug // \"\") | tostring), __lmline_signal] | @tsv
       elif type == \"string\" then
         [., .] | @tsv
       else

@@ -50,6 +50,20 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-429 ]]; then
+  cat >"$out" <<'JSON'
+{"error":{"code":"subscription_sharing_usage_limit_exceeded","param":"","message":"usage limit reached"}}
+JSON
+  printf '429\tapplication/json'
+  exit 0
+fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-401 ]]; then
+  cat >"$out" <<'JSON'
+{"error":{"code":"subscription_sharing_invalid_user","param":"","message":"the sign-in is not valid"}}
+JSON
+  printf '401\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-escaped ]]; then
   # A command whose quoted string holds an escaped quote stays a command.
   cat >"$out" <<'JSON'
@@ -306,5 +320,26 @@ escaped_candidate=$(candidates_of <"$route_tmp/tool-escaped.out")
 [[ "$escaped_candidate" == 'echo "a\"; TOOL files query=x"' ]] \
   || fail "the paid route dropped a command with an escaped quote: $escaped_candidate"
 ok "the subscription route keeps a command with an escaped quote"
+
+# A plan refusal is reported with the plan recovery, not with the API-key
+# advice, and the provider code stays visible.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-429 >"$route_tmp/plan-429.out" 2>"$route_tmp/plan-429.err"; then
+  fail "the paid route accepted a plan refusal"
+fi
+grep -q 'subscription_sharing_usage_limit_exceeded' "$route_tmp/plan-429.err" \
+  || fail "the plan error code is lost: $(sed -n '1p' "$route_tmp/plan-429.err")"
+grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-429.err" \
+  || fail "the plan usage limit has no recovery: $(sed -n '1p' "$route_tmp/plan-429.err")"
+! grep -q 'set-secret' "$route_tmp/plan-429.err" || fail "the plan route gives API-key advice"
+! grep -q 'LMLINE_HTTP_RETRIES' "$route_tmp/plan-429.err" || fail "the plan route advises raising the retries"
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-401 >"$route_tmp/plan-401.out" 2>"$route_tmp/plan-401.err"; then
+  fail "the paid route accepted a refused sign-in"
+fi
+grep -q 'lmline chatgpt login' "$route_tmp/plan-401.err" \
+  || fail "the refused plan sign-in has no recovery: $(sed -n '1p' "$route_tmp/plan-401.err")"
+! grep -q 'set-secret' "$route_tmp/plan-401.err" || fail "the plan route gives API-key advice"
+ok "the plan route reports its own recovery"
 
 ok "chatgpt route"

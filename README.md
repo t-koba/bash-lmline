@@ -138,9 +138,22 @@ Register the endpoint with the subscription path and select it:
 
 ```bash
 lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode chatgpt
-lmline model add openai-plan gpt-5
-lmline use openai-plan gpt-5
+lmline model add openai-plan MODEL
+lmline use openai-plan MODEL
 ```
+
+The plan route is account scoped: only the models the signed-in account can
+use are accepted. OpenAI serves the account's own catalog with the plan
+token, so lmline reads it when no model is selected; its entries carry the
+plan slug as the model id. A model can also be registered by hand, and the
+plan route needs the Responses format:
+
+```bash
+lmline model add openai-plan MODEL --api-format responses
+```
+
+The model must exist on the signed-in account; a model id that the account
+does not carry is refused by the provider.
 
 `lmline current` and `lmline doctor` show the active authentication mode.
 To go back to API-key billing, set the endpoint's mode back with

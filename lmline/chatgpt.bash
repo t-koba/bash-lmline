@@ -89,7 +89,16 @@ __lmline_chatgpt_access_token() {
     printf 'lmline-engine: the ChatGPT auth client is missing; reinstall lmline\n' >&2
     return 1
   fi
-  if ! node "$client" token >"$out" 2>"$err_file"; then
+  local status=0
+  node "$client" token >"$out" 2>"$err_file" || status=$?
+  if (( status != 0 )); then
+    case "$status" in
+      129|130|143)
+        # The command was interrupted. The status says so, and the caller
+        # passes it on, so an interrupt is not reported as a broken login.
+        return "$status"
+        ;;
+    esac
     printf 'lmline-engine: ChatGPT subscription auth failed: %s\n' "$(sed -n '1p' "$err_file")" >&2
     return 1
   fi

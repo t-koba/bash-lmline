@@ -273,8 +273,15 @@ __lmline_response_error_detail() {
     *json*)
       # Providers disagree on the error field; try the common shapes first.
       if detail=$(jq -re '
-          [.error.message?, (.error? | select(type == "string")), .message?, .detail?]
-          | map(select(type == "string" and length > 0)) | first // empty
+          (.error.code? // empty) as $code
+          | (.error.param? // empty) as $param
+          | ([.error.message?, (.error? | select(type == "string")), .message?, .detail?]
+             | map(select(type == "string" and length > 0)) | first // empty) as $message
+          | if $code != "" then
+              (if $param != "" then $code + " (param=" + $param + ")" else $code end)
+                + (if $message != "" then ": " + $message else "" end)
+            elif $message != "" then $message
+            else empty end
         ' "$response" 2>/dev/null) && [[ -n "$detail" ]]; then
         :
       elif jq -e '.' "$response" >/dev/null 2>&1; then
@@ -311,9 +318,36 @@ __lmline_store_field_rejected() {
   return 1
 }
 
+# The plan route has no API key and never repeats a request on its own, so
+# the generic advice does not apply there: the documented plan codes get
+# their own recovery.
+__lmline_chatgpt_failure_hint() {
+  local http_code=$1 detail=$2
+  case "$http_code" in
+    401) printf '; the ChatGPT plan sign-in was refused; sign in again with: lmline chatgpt login' ;;
+    403) printf '; the ChatGPT plan does not allow this request; do not repeat it' ;;
+    429) printf '; the ChatGPT plan usage limit is reached; see https://chatgpt.com/settings/usage' ;;
+    400)
+      case "$detail" in
+        *subscription_sharing_unsupported_capability*)
+          printf '; the plan does not support this request; remove it and do not repeat it' ;;
+        *web_search*)
+          printf '; native web search is not available for this model or account' ;;
+        *) printf '; the provider rejected the request; do not repeat it' ;;
+      esac
+      ;;
+    503) printf '; the ChatGPT plan usage is temporarily unavailable; retry later' ;;
+    5??) printf '; provider-side error; retry later' ;;
+    *) printf '' ;;
+  esac
+}
+
 __lmline_report_request_failure() {
   local http_code=$1 content_type=${2-} response=$3 detail hint= detail_lower=
   detail=$(__lmline_response_error_detail "$response" "$content_type")
+  if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+    hint=$(__lmline_chatgpt_failure_hint "$http_code" "$detail")
+  else
   case "$http_code" in
     401|403) hint='; try: lmline endpoint set-secret ENDPOINT' ;;
     404) hint='; check base_url and model: lmline current' ;;
@@ -334,6 +368,7 @@ __lmline_report_request_failure() {
       fi
       ;;
   esac
+  fi
   [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
   if [[ -n "$detail" ]]; then
     printf 'lmline-engine: request failed: HTTP %s: %s%s\n' "$http_code" "$detail" "$hint" >&2

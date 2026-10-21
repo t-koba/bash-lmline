@@ -41,10 +41,18 @@ __lmline_engine_error_message() {
       printf '%s%s\n' "$prefix" "${error#lmline-engine: }"
       ;;
     *401*|*Unauthorized*|*invalid*api*key*|*authentication*)
-      printf '%sauth failed; try: lmline endpoint set-secret ENDPOINT (check: lmline config get)\n' "$prefix"
+      if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+        printf '%sthe ChatGPT plan sign-in was refused; sign in again with: lmline chatgpt login\n' "$prefix"
+      else
+        printf '%sauth failed; try: lmline endpoint set-secret ENDPOINT (check: lmline config get)\n' "$prefix"
+      fi
       ;;
     *429*|*rate\ limit*|*Too\ Many\ Requests*)
-      printf '%sprovider rate-limited; wait and retry, or raise LMLINE_HTTP_RETRIES\n' "$prefix"
+      if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+        printf '%sthe ChatGPT plan usage limit is reached; see https://chatgpt.com/settings/usage\n' "$prefix"
+      else
+        printf '%sprovider rate-limited; wait and retry, or raise LMLINE_HTTP_RETRIES\n' "$prefix"
+      fi
       ;;
     *connection*refused*|*Could\ not\ resolve*|*"status 000"*|*"Failed to connect"*)
       printf '%sconnection failed; try: lmline doctor --check-api\n' "$prefix"
