@@ -1326,3 +1326,7 @@ bash tests/test_features.sh
 ```
 
 `./tests/run.sh` runs every `tests/test_*.sh` file and reports all failures.
+
+Commit subjects follow the charter in `PROJECT.md`: one plain imperative
+sentence, no internal identifier. `bash scripts/check-commit-subjects.sh`
+checks them, and `./scripts/publish-check.sh` runs the same check.

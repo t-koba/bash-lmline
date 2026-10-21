@@ -33,6 +33,7 @@ bash -n \
   lmline/responses.bash \
   lmline/websearch.bash \
   lmline/chatgpt.bash \
+  scripts/check-commit-subjects.sh \
   tests/*.sh
 
 if command -v zsh >/dev/null 2>&1; then
@@ -71,6 +72,11 @@ fi
 
 if [[ ! -f .gitattributes ]] || ! grep -q '^\.DS_Store[[:space:]].*export-ignore' .gitattributes; then
   printf 'publish-check: .gitattributes must export-ignore .DS_Store\n' >&2
+  exit 1
+fi
+
+if ! bash scripts/check-commit-subjects.sh; then
+  printf 'publish-check: a commit subject does not follow the charter\n' >&2
   exit 1
 fi
 

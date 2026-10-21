@@ -19,6 +19,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The charter commit-subject check reads the history to find the
+          # commit that added the charter, so the whole history is needed.
+          fetch-depth: 0
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y jq zsh expect xz-utils

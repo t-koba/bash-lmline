@@ -15,19 +15,28 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
 
    The bundled engine and Bash integration require bash 4.2 or newer.
 
-3. Check for local paths, private hostnames, secrets, and personal model names:
+3. Confirm the commit subjects that follow the charter are one plain imperative
+   sentence with no internal identifier:
+
+   ```bash
+   bash scripts/check-commit-subjects.sh
+   ```
+
+   `scripts/publish-check.sh` runs the same check before it packages anything.
+
+4. Check for local paths, private hostnames, secrets, and personal model names:
 
    ```bash
    rg -n '(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local|BEGIN .*PRIVATE|sk-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})' -uu --glob '!.git/**' --glob '!PUBLISHING.md' --glob '!scripts/publish-check.sh' --glob '!request.md' .
    ```
 
-4. Confirm generated config/state is not staged:
+5. Confirm generated config/state is not staged:
 
    ```bash
    git status --short
    ```
 
-5. Verify install into a temporary directory:
+6. Verify install into a temporary directory:
 
    ```bash
    tmp=$(mktemp -d)
@@ -35,6 +44,6 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
    LMLINE_CONFIG_DIR="$tmp/config" "$tmp/bin/lmline" doctor
    ```
 
-6. Confirm `README.md`, `SECURITY.md`, and `LICENSE` are present.
+7. Confirm `README.md`, `SECURITY.md`, and `LICENSE` are present.
 
-7. If publishing a GitHub source archive, confirm `.gitattributes` is present so local-only files marked `export-ignore` are excluded from generated archives.
+8. If publishing a GitHub source archive, confirm `.gitattributes` is present so local-only files marked `export-ignore` are excluded from generated archives.
