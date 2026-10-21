@@ -104,6 +104,79 @@ API base paths. The engine uses the model profile's API format:
 `chat`, `responses`, or `messages`. Model discovery uses the endpoint's model
 catalog.
 
+## ChatGPT subscription authentication
+
+lmline can spend a ChatGPT Plus or Pro subscription instead of a metered API
+key, using OpenAI's documented "Sign in with ChatGPT" token sharing flow for
+open-source and locally hosted apps. The subscription path is a separate
+authentication mode: it never falls back to an API key, and it never sends
+the subscription token to a host other than the OpenAI API.
+
+The sign-in needs Node.js (the client is a Node script without npm
+dependencies) and a browser:
+
+```bash
+lmline chatgpt login
+```
+
+The client prints an `authorize_url` line before it waits for the callback, so
+a headless machine can open it by hand. The sign-in registers the
+application once; later sign-ins reuse that registration.
+
+```bash
+lmline chatgpt status    # account, plan usage, scopes, expiry; never a token
+lmline chatgpt refresh   # new access token; the refresh token rotates
+lmline chatgpt reauth    # new authorization for the same account
+lmline chatgpt logout    # revoke the refresh token, then clear the local tokens
+```
+
+Register the endpoint with the subscription path and select it:
+
+```bash
+lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode chatgpt
+lmline model add openai-plan gpt-5
+lmline use openai-plan gpt-5
+```
+
+`lmline current` and `lmline doctor` show the active authentication mode.
+To go back to API-key billing, set the endpoint's mode back with
+`lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode api-key`
+and select it again.
+
+The credentials live in `$LMLINE_CONFIG_DIR/chatgpt/credentials.json`, mode
+`0600` inside an owner-only directory, and the stable host identifier in
+`$LMLINE_CONFIG_DIR/chatgpt/host-id`. The client refuses a credential file
+that other users can read and says how to fix it. `status` prints no token,
+and only the internal token command prints one, on stdout.
+
+On this route the request follows the contract of the subscription API: the
+Responses format, `store: false`, `stream: true`, the instructions as
+`instructions`, and no sampling or account fields. The engine does not repeat
+the request on its own, because a repeated request can spend the plan.
+
+## Native web search
+
+Native web search is a provider-side capability: the model asks the provider
+to retrieve pages, the provider performs the network access, and the answer
+comes back with the search events and the cited URLs. lmline never fetches
+those pages itself.
+
+It is off by default and needs the Responses API format:
+
+```bash
+lmline config set LMLINE_API_FORMAT responses
+lmline config set LMLINE_WEB_SEARCH 1
+```
+
+The search events and the cited URLs are reported on the stderr side channel
+as `lmline-search:` and `lmline-citation:` lines, never inside the candidate
+text. The provider bills the search calls, so a rejected request is reported
+with the provider's reason instead of being repeated.
+
+[docs/capabilities.md](docs/capabilities.md) lists every supported,
+unsupported, and allowed-but-unverified combination of authentication mode,
+endpoint, API format, model, and search.
+
 ## GitHub Copilot line editing
 
 The rewrite key (`Ctrl-x Ctrl-r`), generate (`Ctrl-x Ctrl-g`), and fix
@@ -588,6 +661,7 @@ lmline endpoint add|list|set-secret|remove
 lmline model add|list|refresh|remove
 lmline use ENDPOINT [MODEL]
 lmline current
+lmline chatgpt login|status|refresh|reauth|logout
 lmline complete commands|subcommands COMMAND|settings|setting-values KEY
 lmline complete endpoints|models [ENDPOINT]|clipboard-providers
 lmline history show
@@ -804,6 +878,12 @@ to enable; unset, empty, and any other value leave them disabled.
 `Ctrl-x Ctrl-v` sends redacted clipboard text because that action is
 explicitly about the clipboard. `Ctrl-x Ctrl-f` sends the captured stdout,
 stderr, exit status, and execution backend from the command it runs.
+
+Native web search is provider-side: the provider retrieves the pages, and
+the retrieved content is untrusted data that the request marks as such. The
+provider bills those search calls. A ChatGPT subscription sign-in keeps its
+credential in an owner-only file and sends it only to the OpenAI API; it
+never mixes with the API-key path.
 
 <details>
 <summary>Accuracy-oriented setup</summary>
@@ -1055,6 +1135,8 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_API_KEY_FILE` | empty | file containing the API key |
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
+| `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
+| `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
 | `LMLINE_HTTP_RETRIES` | `1` | transient provider retries |
 | `LMLINE_RETRY_DELAY` | `1` | seconds between retries |
