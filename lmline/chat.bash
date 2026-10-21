@@ -1048,7 +1048,8 @@ __lmline_normalize_tool_requests() {
         # A backslash consumes the next character: it never ends a quoted
         # string and never acts as the request separator.
         if (esc) { esc = 0; out = out c; i++; continue }
-        if (c == "\\") { esc = 1; out = out c; i++; continue }
+        # A backslash is a literal character inside a single-quoted string.
+        if (!in_s && c == "\\") { esc = 1; out = out c; i++; continue }
         if (c == "\047") { if (!in_d) { in_s = 1 - in_s } }
         else if (c == "\"") { if (!in_s) { in_d = 1 - in_d } }
         else if (!in_s && !in_d && c == ";") {

@@ -50,6 +50,18 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == tool-single-quote ]]; then
+  # A backslash is a literal character inside a single-quoted string, so the
+  # request after it is a request.
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant",
+  "content":[{"type":"output_text","text":"echo 'a\\'; TOOL files query=x"}]}],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-429 ]]; then
   cat >"$out" <<'JSON'
 {"error":{"code":"subscription_sharing_usage_limit_exceeded","param":"","message":"usage limit reached"}}
@@ -341,5 +353,13 @@ grep -q 'lmline chatgpt login' "$route_tmp/plan-401.err" \
   || fail "the refused plan sign-in has no recovery: $(sed -n '1p' "$route_tmp/plan-401.err")"
 ! grep -q 'set-secret' "$route_tmp/plan-401.err" || fail "the plan route gives API-key advice"
 ok "the plan route reports its own recovery"
+
+# A request after a single-quoted string that ends in a backslash is a
+# request, because the backslash is a literal character there.
+reset_fake
+run_engine LMLINE_FAKE_CURL_MODE=tool-single-quote >"$route_tmp/tool-single-quote.out" 2>"$route_tmp/tool-single-quote.err" || true
+grep -q 'does not run local tools' "$route_tmp/tool-single-quote.err" \
+  || fail "a request after a single-quoted string is not recognized: $(sed -n '1p' "$route_tmp/tool-single-quote.err")"
+ok "the subscription route recognizes a request after a single-quoted string"
 
 ok "chatgpt route"

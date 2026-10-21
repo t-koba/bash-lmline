@@ -849,10 +849,13 @@ __lmline_condense_text() {
 # survives alongside the tail.
 __lmline_condense_file() {
   local file=$1 max=${2:-12000} size patterns_file
+  # The configuration is resolved first: a broken patterns file is a broken
+  # configuration, and it must fail the caller even when there is nothing to
+  # condense.
+  patterns_file=$(__lmline_condense_patterns_file) || return 1
   [[ -f "$file" ]] || return 0
   size=$(wc -c <"$file")
   (( size > max )) || return 0
-  patterns_file=$(__lmline_condense_patterns_file) || return 1
   if ! __lmline_condense_text "$max" "$patterns_file" <"$file" >"$file.condensed"; then
     rm -f "$file.condensed"
     return 1
