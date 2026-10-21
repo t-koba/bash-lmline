@@ -142,8 +142,8 @@ lmline model add openai-plan MODEL
 lmline use openai-plan MODEL
 ```
 
-The plan route is account scoped: only the models the signed-in account can
-use are accepted. lmline reads the endpoint's model catalog
+The plan route is account scoped: the provider accepts only the models the
+signed-in account can use. lmline reads the endpoint's model catalog
 (`$LMLINE_BASE_URL/models` by default) with the plan token when no model is
 selected, and uses the model id each entry carries. That a real plan serves
 the account's own models at that URL is not proven offline, like the rest of
@@ -155,7 +155,8 @@ lmline model add openai-plan MODEL --api-format responses
 ```
 
 The model must exist on the signed-in account; a model id that the account
-does not carry is refused by the provider.
+does not carry is refused by the provider, and that refusal is not proven
+offline.
 
 `lmline current` and `lmline doctor` show the active authentication mode.
 To go back to API-key billing, set the endpoint's mode back with
