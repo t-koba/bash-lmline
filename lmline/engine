@@ -10,6 +10,9 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) ))
   exit 2
 fi
 
+# The name of this program in the messages that the shared route prints.
+__lmline_program_name=lmline-engine
+
 config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 script_dir=${BASH_SOURCE[0]%/*}
 [[ $script_dir == "${BASH_SOURCE[0]}" ]] && script_dir=.
@@ -251,10 +254,8 @@ if [[ "$LMLINE_AUTH_MODE" == api-key ]] &&
   printf 'lmline-engine: could not read LMLINE_API_KEY_FILE: %s\n' "$LMLINE_API_KEY_FILE" >&2
   exit 1
 fi
-if [[ "$LMLINE_AUTH_MODE" == chatgpt ]] && ! __lmline_chatgpt_base_allowed "$base"; then
-  printf 'lmline-engine: the ChatGPT subscription token is not sent to %s: %s\n' \
-    "$base" "${__lmline_chatgpt_base_reason:-the host is not allowed}" >&2
-  exit 2
+if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
+  __lmline_chatgpt_require_allowed_url "$base" || exit $?
 fi
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-call.XXXXXX") || exit 1
@@ -266,7 +267,7 @@ if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   # The ChatGPT plan token is a subscription credential. It replaces the API
   # key on this route: the engine never falls back to a metered API key.
   chatgpt_token_file=$work_dir/chatgpt-token
-  __lmline_chatgpt_access_token "$chatgpt_token_file" "$script_dir/chatgpt-client.js" || exit $?
+  __lmline_chatgpt_access_token "$chatgpt_token_file" || exit $?
   __lmline_http_build_headers "$chatgpt_token_file" "Authorization" "Bearer" "$work_dir/auth-header"
 else
   __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLINE_AUTH_SCHEME" "$work_dir/auth-header"

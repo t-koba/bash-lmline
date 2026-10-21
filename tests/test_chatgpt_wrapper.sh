@@ -20,8 +20,11 @@ mkdir -p "$work_dir"
 # shellcheck source=lmline/chatgpt.bash
 source "$repo_dir/lmline/chatgpt.bash"
 
+# The route resolves the client, so the override names the client of this
+# case.
+export LMLINE_CHATGPT_CLIENT="$wrapper_tmp/client.js"
 wrapper_status=0
-__lmline_chatgpt_access_token "$wrapper_tmp/token" "$wrapper_tmp/client.js" \
+__lmline_chatgpt_access_token "$wrapper_tmp/token" \
   >"$wrapper_tmp/out" 2>"$wrapper_tmp/err" || wrapper_status=$?
 [[ "$wrapper_status" == 130 ]] || fail "the wrapper reports $wrapper_status for an interrupted client"
 ! grep -q 'auth failed' "$wrapper_tmp/err" || fail "the wrapper reports an interrupt as a failed sign-in"

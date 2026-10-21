@@ -137,7 +137,10 @@ chmod +x "$fake_bin/curl"
 cat >"$fake_bin/node" <<'NODE'
 #!/usr/bin/env bash
 if [[ "${2-}" == token ]]; then
-  printf 'test-subscription-token\n'
+  case "$1" in
+    *override-client.js) printf 'override-subscription-token\n' ;;
+    *) printf 'test-subscription-token\n' ;;
+  esac
   exit 0
 fi
 exit 1
@@ -181,6 +184,19 @@ header=$(cat "$bodies_dir/header-1.txt")
 [[ "$header" == "Authorization: Bearer test-subscription-token" ]] || fail "subscription route credential: $header"
 ! grep -q 'metered-api-key-sentinel' "$bodies_dir/header-1.txt" || fail "subscription route sent the API key"
 ok "subscription route sends the plan token to the Responses API"
+
+# The client override reaches the engine as well: the token comes from the
+# client that the route resolves.
+reset_fake
+printf '// the client of the override\n' >"$route_tmp/override-client.js"
+if ! run_engine LMLINE_CHATGPT_CLIENT="$route_tmp/override-client.js" \
+    >"$route_tmp/override.out" 2>"$route_tmp/override.err"; then
+  fail "the subscription route refused the client override: $(sed -n '1p' "$route_tmp/override.err")"
+fi
+override_header=$(cat "$bodies_dir/header-1.txt")
+[[ "$override_header" == "Authorization: Bearer override-subscription-token" ]] \
+  || fail "the engine ignores the client override: $override_header"
+ok "the subscription route uses the client override"
 
 # The request follows the documented contract of the plan route.
 payload=$(cat "$bodies_dir/body-1.json")

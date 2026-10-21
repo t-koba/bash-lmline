@@ -160,6 +160,11 @@ To go back to API-key billing, set the endpoint's mode back with
 `lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode api-key`
 and select it again.
 
+The account catalog is read with the plan token, so it travels under the
+same host rule as a request: a plan endpoint on a host the route does not
+allow, or with a catalog URL on such a host, is refused before the token is
+fetched and before any request is made.
+
 The credentials live in `$LMLINE_CONFIG_DIR/chatgpt/credentials.json`, mode
 `0600` inside an owner-only directory, and the stable host identifier in
 `$LMLINE_CONFIG_DIR/chatgpt/host-id`. The client refuses a credential file
@@ -1164,6 +1169,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
+| `LMLINE_CHATGPT_CLIENT` | the installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
 | `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger, so a waiter can always reclaim an abandoned lock |
 | `LMLINE_CHATGPT_LOCK_STALE_MS` | `60000` | milliseconds before an abandoned ChatGPT credential lock is reclaimed; the wait budget is raised to at least this value plus 30 s, so a waiter can always reclaim it |
 | `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# ChatGPT subscription authentication for the lmline engine. This file is
-# meant to be sourced by the engine entry script after config.bash, http.bash,
-# and profiles.bash.
+# ChatGPT subscription authentication for the lmline engine and the lmline
+# CLI. This file is meant to be sourced by both entry scripts after
+# config.bash and http.bash.
 #
 # The route is OpenAI's documented "Sign in with ChatGPT" token sharing flow
 # for open-source and locally hosted apps:
@@ -11,10 +11,22 @@
 # Responses API. Subscription authentication and API-key authentication are
 # separate billing paths: the engine never exchanges one for the other and
 # never falls back from one to the other.
+#
+# The route owns three things, so that every caller of the route answers the
+# same way: the client that holds the session, the host policy that keeps
+# the plan token on an allowed host, and the token itself.
 
 # True when the ChatGPT subscription path is selected.
 __lmline_chatgpt_enabled() {
   [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]
+}
+
+# The ChatGPT client executable. Every path of the route resolves the client
+# here, so an override means the same thing in the CLI and in the engine.
+__lmline_chatgpt_client_path() {
+  local client=${LMLINE_CHATGPT_CLIENT:-}
+  [[ -n "$client" ]] || client=${script_dir:-.}/chatgpt-client.js
+  printf '%s\n' "$client"
 }
 
 # The subscription token spends the user's ChatGPT plan. It must never
@@ -75,38 +87,64 @@ __lmline_chatgpt_base_allowed() {
   esac
 }
 
+# Fails closed when the URL may not receive the ChatGPT subscription token.
+# The policy belongs to the route, so every caller of the route gets the same
+# answer and the same message.
+__lmline_chatgpt_require_allowed_url() {
+  local url=$1
+  if __lmline_chatgpt_base_allowed "$url"; then
+    return 0
+  fi
+  printf '%s: the ChatGPT subscription token is not sent to %s: %s\n' \
+    "${__lmline_program_name:-lmline}" "$url" \
+    "${__lmline_chatgpt_base_reason:-the host is not allowed}" >&2
+  return 2
+}
+
 # Writes a fresh access token to $1 (mode 0600). Fails closed: a missing
 # session, a failed refresh, or a missing Node runtime never falls back to
-# an API key.
+# an API key. The engine and the CLI use this one function, so the reason a
+# sign-in failed is the same everywhere.
 __lmline_chatgpt_access_token() {
-  local out=$1 client=${2-} err_file=$work_dir/chatgpt-token.err
-  [[ -n "$client" ]] || client=${__lmline_chatgpt_client:-}
+  local out=$1 program=${__lmline_program_name:-lmline}
+  local client err_file err_tmp= status=0 result=0
+  client=$(__lmline_chatgpt_client_path)
   if ! command -v node >/dev/null 2>&1; then
-    printf 'lmline-engine: ChatGPT subscription auth requires Node.js; install Node.js or use API-key auth (LMLINE_AUTH_MODE=api-key)\n' >&2
+    printf '%s: ChatGPT subscription auth requires Node.js; install Node.js or use API-key auth (LMLINE_AUTH_MODE=api-key)\n' "$program" >&2
     return 1
   fi
   if [[ ! -r "$client" ]]; then
-    printf 'lmline-engine: the ChatGPT auth client is missing; reinstall lmline\n' >&2
+    printf '%s: the ChatGPT auth client is missing; reinstall lmline\n' "$program" >&2
     return 1
   fi
-  local status=0
+  # The client names the reason a sign-in failed in its own stderr. It stays
+  # in the work directory of the engine and in a temporary file elsewhere.
+  err_file=${work_dir:+$work_dir/chatgpt-token.err}
+  if [[ -z "$err_file" ]]; then
+    err_tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-chatgpt-token.XXXXXX") || return 1
+    err_file=$err_tmp
+  fi
   node "$client" token >"$out" 2>"$err_file" || status=$?
   if (( status != 0 )); then
     case "$status" in
       129|130|143)
         # The command was interrupted. The status says so, and the caller
         # passes it on, so an interrupt is not reported as a broken login.
-        return "$status"
+        result=$status
+        ;;
+      *)
+        printf '%s: ChatGPT subscription auth failed: %s\n' "$program" "$(sed -n '1p' "$err_file")" >&2
+        result=1
         ;;
     esac
-    printf 'lmline-engine: ChatGPT subscription auth failed: %s\n' "$(sed -n '1p' "$err_file")" >&2
-    return 1
+  elif [[ ! -s "$out" ]]; then
+    printf '%s: ChatGPT subscription auth returned no access token\n' "$program" >&2
+    result=1
+  else
+    chmod 600 "$out" 2>/dev/null || true
   fi
-  if [[ ! -s "$out" ]]; then
-    printf 'lmline-engine: ChatGPT subscription auth returned no access token\n' >&2
-    return 1
-  fi
-  chmod 600 "$out" 2>/dev/null || true
+  [[ -z "$err_tmp" ]] || rm -f "$err_tmp"
+  return "$result"
 }
 
 # Applies the request contract of the ChatGPT plan route to a Responses

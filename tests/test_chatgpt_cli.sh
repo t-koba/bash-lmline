@@ -90,6 +90,7 @@ for arg in "$@"; do
     @*) header=${arg#@} ;;
   esac
 done
+printf 'called\n' >>"${LMLINE_FAKE_CURL_LOG:?}"
 if [[ -n "$header" && -r "$header" ]] && grep -q 'Bearer plan-token' "$header"; then
   printf '%s\n' '{"models":[{"slug":"gpt-plan-one","display_name":"Plan One","visibility":"list"},{"slug":"gpt-plan-hidden","display_name":"Hidden","visibility":"hidden"}]}'
   exit 0
@@ -101,7 +102,7 @@ chmod +x "$plan_bin/curl"
 lmline endpoint add plan https://api.openai.com/v1 --auth-mode chatgpt \
   --models-jq '.models[] | select(.visibility == "list") | {id: .slug, name: .display_name}' >/dev/null \
   || fail "the plan endpoint registration"
-PATH="$plan_bin:$PATH" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
+PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
   lmline model refresh plan >"$cli_tmp/plan-refresh.out" 2>"$cli_tmp/plan-refresh.err" \
   || fail "the plan model refresh: $(sed -n '1p' "$cli_tmp/plan-refresh.err")"
 plan_models=$(lmline model list plan)
@@ -109,5 +110,41 @@ grep -q $'^plan\tgpt-plan-one\t' <<<"$plan_models" || fail "the plan model is mi
 grep -q $'\tresponses$' <<<"$plan_models" || fail "the plan model has no Responses format: $plan_models"
 ! grep -q 'gpt-plan-hidden' <<<"$plan_models" || fail "a model the account does not list is stored"
 ok "the plan endpoint reads its account model catalog"
+
+# The plan token spends the user's ChatGPT plan, so it must not travel to a
+# host the ChatGPT route does not allow. A foreign host is refused before
+# the token is fetched, and no request is made.
+lmline endpoint add foreign http://foreign.example.invalid/v1 --auth-mode chatgpt >/dev/null \
+  || fail "the foreign endpoint registration"
+: >"$cli_tmp/curl.log"
+if PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
+    lmline model refresh foreign >"$cli_tmp/foreign.out" 2>"$cli_tmp/foreign.err"; then
+  fail "the plan model refresh accepted a foreign host"
+fi
+grep -q 'the ChatGPT subscription token is not sent to' "$cli_tmp/foreign.err" \
+  || fail "the refused host has no reason: $(sed -n '1p' "$cli_tmp/foreign.err")"
+[[ ! -s "$cli_tmp/curl.log" ]] || fail "the plan token was sent to a foreign host"
+ok "the plan model refresh keeps the token on an allowed host"
+
+# A catalog URL on a foreign host is refused as well.
+lmline endpoint add foreign-catalog https://api.openai.com/v1 --auth-mode chatgpt \
+  --models-url https://foreign.example.invalid/models >/dev/null \
+  || fail "the foreign catalog registration"
+: >"$cli_tmp/curl.log"
+if PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
+    lmline model refresh foreign-catalog >"$cli_tmp/foreign-catalog.out" 2>"$cli_tmp/foreign-catalog.err"; then
+  fail "the plan model refresh accepted a foreign catalog host"
+fi
+grep -q 'the ChatGPT subscription token is not sent to' "$cli_tmp/foreign-catalog.err" \
+  || fail "the refused catalog host has no reason: $(sed -n '1p' "$cli_tmp/foreign-catalog.err")"
+[[ ! -s "$cli_tmp/curl.log" ]] || fail "the plan token was sent to a foreign catalog host"
+ok "the plan model refresh keeps the token on an allowed catalog host"
+
+# The client override reaches the commands of the route, so a catalog and a
+# sign-in belong to the same client.
+override_status=$(LMLINE_CHATGPT_CLIENT="$plan_bin/client" lmline chatgpt status 2>&1 || true)
+grep -q 'plan-token' <<<"$override_status" \
+  || fail "the chatgpt commands ignore the client override: $override_status"
+ok "the chatgpt commands use the client override"
 
 ok "chatgpt cli"

@@ -121,24 +121,6 @@ profile_require_regex() {
   }
 }
 
-# The plan token for the account catalog of a ChatGPT endpoint.
-__lmline_chatgpt_plan_token() {
-  local client=${LMLINE_CHATGPT_CLIENT:-} token
-  if [[ -z "$client" || ! -r "$client" ]]; then
-    printf 'lmline: the ChatGPT client is missing; reinstall lmline\n' >&2
-    return 1
-  fi
-  if ! command -v node >/dev/null 2>&1; then
-    printf 'lmline: the ChatGPT plan catalog needs Node.js\n' >&2
-    return 1
-  fi
-  if ! token=$(node "$client" token 2>/dev/null) || [[ -z "$token" ]]; then
-    printf 'lmline: the ChatGPT plan sign-in is not usable; run: lmline chatgpt login\n' >&2
-    return 1
-  fi
-  printf '%s' "$token"
-}
-
 profile_require_jq_expr() {
   local label=$1 value=$2
   profile_require_field "$label" "$value"
@@ -444,10 +426,14 @@ profile_model_refresh() {
   __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
   if [[ "$auth_mode" == chatgpt ]]; then
     # A plan endpoint has no endpoint secret: the account catalog is served
-    # with the plan token.
-    plan_token=$(__lmline_chatgpt_plan_token) || exit 1
-    (umask 077; printf 'Authorization: Bearer %s\n' "$plan_token" >"$header_tmp")
-    __LMLINE_HTTP_HEADERS=(-H 'Content-Type: application/json' -H "@$header_tmp")
+    # with the plan token. The token spends the user's ChatGPT plan, so the
+    # route keeps it on a host it allows, and the token is fetched only
+    # after that decision.
+    __lmline_chatgpt_require_allowed_url "$base" || exit $?
+    __lmline_chatgpt_require_allowed_url "$catalog_url" || exit $?
+    __lmline_mktemp token_file "${TMPDIR:-/tmp}/lmline-chatgpt-token.XXXXXX"
+    __lmline_chatgpt_access_token "$token_file" || exit 1
+    __lmline_http_build_headers "$token_file" "Authorization" "Bearer" "$header_tmp"
   else
     __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp"
   fi

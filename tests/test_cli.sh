@@ -583,7 +583,7 @@ LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint remove "a_b
 install_like_dir="$cfg_tmp/install-like"
 install_like_bin="$cfg_tmp/bin"
 mkdir -p "$install_like_dir" "$install_like_bin"
-cp "$repo_dir/lmline/"{lmline,config.bash,context.bash,policy.bash,sandbox.bash,actions.bash,http.bash,profiles.bash,chat.bash,engine} "$install_like_dir/"
+cp "$repo_dir/lmline/"{lmline,config.bash,context.bash,policy.bash,sandbox.bash,actions.bash,http.bash,profiles.bash,chat.bash,chatgpt.bash,engine} "$install_like_dir/"
 cp -R "$repo_dir/lmline/defaults" "$install_like_dir/defaults"
 mkdir -p "$install_like_dir/prompts"
 cp "$repo_dir/lmline/prompts/"*.txt "$install_like_dir/prompts/"

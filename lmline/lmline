@@ -61,9 +61,12 @@ source "$script_dir/config.bash"
 __lmline_load_all_config
 # shellcheck source=lmline/http.bash
 source "$script_dir/http.bash"
-# The ChatGPT client is installed next to the CLI; a test or an unusual
-# install can point somewhere else.
-LMLINE_CHATGPT_CLIENT=${LMLINE_CHATGPT_CLIENT:-$script_dir/chatgpt-client.js}
+# shellcheck source=lmline/chatgpt.bash
+source "$script_dir/chatgpt.bash"
+# The ChatGPT client is resolved by the route, so the CLI and the engine use
+# the same client. The resolved path is exported for the child processes
+# that talk to the route.
+LMLINE_CHATGPT_CLIENT=$(__lmline_chatgpt_client_path)
 export LMLINE_CHATGPT_CLIENT
 # shellcheck source=lmline/profiles.bash
 source "$script_dir/profiles.bash"
@@ -1082,15 +1085,17 @@ copilot_install() {
 }
 
 chatgpt_client() {
+  local client
   command -v node >/dev/null 2>&1 || {
     printf 'lmline: ChatGPT authentication requires Node.js\n' >&2
     return 1
   }
-  [[ -r "$script_dir/chatgpt-client.js" ]] || {
+  client=$(__lmline_chatgpt_client_path)
+  [[ -r "$client" ]] || {
     printf 'lmline: ChatGPT auth client is missing; reinstall lmline\n' >&2
     return 1
   }
-  node "$script_dir/chatgpt-client.js" "$@"
+  node "$client" "$@"
 }
 
 copilot_client() {

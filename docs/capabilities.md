@@ -39,10 +39,10 @@ with an actionable message instead of billing an API key.
 | `api-key` | any OpenAI-compatible base URL | supported |
 | `chatgpt` | `https://api.openai.com/v1` (a port on that host is accepted) | allowed, unverified — the request shape and the host rule are proven offline; that a real plan accepts the request and bills it needs a real ChatGPT account |
 | `chatgpt` | a loopback proxy (`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, `http://[::1]:PORT/v1`) | allowed, unverified — the base is accepted and the token stays on the machine, but the proxy forwards it to whoever runs it, and the plan access is not proven offline |
-| `chatgpt` | any other host | unsupported — the subscription token is only sent to the OpenAI API; the engine refuses the request before it is sent |
-| `chatgpt` | a base URL with embedded credentials (`https://user:pass@host/v1`) | unsupported — the credentials would go to a host the text does not name; the engine refuses the request before it is sent |
-| `chatgpt` | `http://api.openai.com/v1` | unsupported — the plan token is a bearer credential, so the OpenAI API needs `https`; the engine refuses the request before it is sent |
-| `chatgpt` | a base URL without an explicit scheme (`api.openai.com/v1`) | unsupported — the transport would be guessed; the engine refuses the request before it is sent |
+| `chatgpt` | any other host | unsupported — the subscription token is only sent to the OpenAI API; the engine and the account catalog refresh refuse the request before it is sent |
+| `chatgpt` | a base URL with embedded credentials (`https://user:pass@host/v1`) | unsupported — the credentials would go to a host the text does not name; the engine and the account catalog refresh refuse the request before it is sent |
+| `chatgpt` | `http://api.openai.com/v1` | unsupported — the plan token is a bearer credential, so the OpenAI API needs `https`; the engine and the account catalog refresh refuse the request before it is sent |
+| `chatgpt` | a base URL without an explicit scheme (`api.openai.com/v1`) | unsupported — the transport would be guessed; the engine and the account catalog refresh refuse the request before it is sent |
 
 ## Model
 
