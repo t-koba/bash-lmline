@@ -1333,5 +1333,6 @@ checks them, and `./scripts/publish-check.sh` runs the same check.
 
 `bash scripts/privacy-scan.sh` keeps the private data of the machine that
 wrote the code out of the tree: local paths and user names, private host
-names, credentials, personal addresses and secret-like file names. The
-publish check runs the same scan.
+names, credentials, personal addresses and secret-like file names. It reads
+the tree it is given, so it answers the same wherever it is run. The publish
+check runs the same scan.

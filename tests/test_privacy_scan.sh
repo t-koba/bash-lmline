@@ -32,6 +32,28 @@ if ! bash "$scanner" "$clean" >"$work/clean.out" 2>"$work/clean.err"; then
 fi
 grep -q 'ok' "$work/clean.out" || fail "the scan did not report ok for a clean tree"
 
+# The scan reads the tree it was given and not the directory the
+# caller happens to be in.
+elsewhere=$work/elsewhere
+mkdir -p "$elsewhere"
+if ! (cd "$elsewhere" && bash "$scanner" "$clean" >"$work/elsewhere.out" 2>"$work/elsewhere.err"); then
+  fail "the scan rejected a clean tree when it ran from another directory: $(cat "$work/elsewhere.err")"
+fi
+if ! (cd "$elsewhere" && bash "$scanner" >"$work/elsewhere-repo.out" 2>"$work/elsewhere-repo.err"); then
+  fail "the scan rejected this repository when it ran from another directory: $(cat "$work/elsewhere-repo.err")"
+fi
+
+# The exclusions belong to the scanned tree: the patterns the scanner
+# holds and the git directory are not part of the published tree.
+copy_tree=$work/copy
+mkdir -p "$copy_tree/scripts" "$copy_tree/.git"
+cp "$scanner" "$copy_tree/scripts/privacy-scan.sh"
+printf 'base url https://api.openai.com\n' >"$copy_tree/notes.txt"
+printf 'file %s/alice/notes.txt\n' "$home_root" >"$copy_tree/.git/FETCH_HEAD"
+if ! bash "$scanner" "$copy_tree" >"$work/copy.out" 2>"$work/copy.err"; then
+  fail "the scan reported what the scanned tree excludes: $(cat "$work/copy.err")"
+fi
+
 # A tree that holds one private thing is reported with the kind of thing.
 finding_case() {
   local label=$1 reason=$2

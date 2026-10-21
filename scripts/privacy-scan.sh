@@ -46,6 +46,16 @@ if ! command -v rg >/dev/null 2>&1; then
   exit 2
 fi
 
+# The scan reads the tree it was given and not the directory the caller
+# happens to be in: ripgrep matches its globs against the path relative
+# to the working directory, so the scan runs from inside the tree.
+if ! scan_root=$(cd -- "$dir" && pwd); then
+  printf 'privacy-scan: %s cannot be read\n' "$dir" >&2
+  exit 2
+fi
+dir=$scan_root
+cd -- "$dir"
+
 # A local path or a user name of the machine that wrote the file.
 path_pattern='(/Users/|/home/[^[:space:]/]+/|/private/var/|[A-Za-z0-9._-]+\.local)'
 # A host that only the writer's network reaches: a private network address
@@ -73,10 +83,10 @@ report() {
 # returns 2 when the scanner itself failed.
 run_pattern() {
   local label=$1 pattern=$2 status=0 out
-  out=$(rg -n --no-heading "$pattern" "${scan_globs[@]}" "$dir" 2>&1) || status=$?
+  out=$(rg -n --no-heading "$pattern" "${scan_globs[@]}" . 2>&1) || status=$?
   case "$status" in
     0)
-      report "$label" "$out"
+      report "$label" "$(printf '%s\n' "$out" | sed 's|^\./||')"
       ;;
     1) ;;
     *)
@@ -93,10 +103,10 @@ run_pattern 'a credential-looking value found' "$credential_pattern"
 # The addresses the reserved documentation domains carry are placeholders,
 # so only the other ones count as user data.
 status=0
-out=$(rg -n --no-heading "$address_pattern" "${scan_globs[@]}" "$dir" 2>&1) || status=$?
+out=$(rg -n --no-heading "$address_pattern" "${scan_globs[@]}" . 2>&1) || status=$?
 case "$status" in
   0)
-    personal=$(printf '%s\n' "$out" | grep -v -E "$reserved_address" || true)
+    personal=$(printf '%s\n' "$out" | sed 's|^\./||' | grep -v -E "$reserved_address" || true)
     if [[ -n "$personal" ]]; then
       report 'a personal address found' "$personal"
     fi

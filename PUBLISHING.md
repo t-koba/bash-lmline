@@ -33,7 +33,9 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
    ```
 
    The patterns live in `scripts/privacy-scan.sh`, so this check and
-   `./scripts/publish-check.sh` always look for the same things.
+   `./scripts/publish-check.sh` always look for the same things. The scan
+   reads the tree it is given, so it may be run from any directory; give it
+   a directory to scan another tree.
 
 5. Confirm generated config/state is not staged:
 
