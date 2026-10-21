@@ -134,10 +134,15 @@ esac
 
 # The whole tree is searched for secret-like file names: the name of a
 # file is private data wherever it lies, so the search has no depth limit.
-# The git directory stays pruned at every depth.
+# The git directory stays pruned at every depth. The well-known names that
+# hold credentials are reported as well, and a link carries the name it
+# was given, so a link with a secret-like name is reported too.
 secret_files=$(find "$dir" \( -path '*/.git' -o -name '.git' \) -prune -o \
-  -type f \( -name '.DS_Store' -o -name '*secret*' -o -name '*.key' -o -name '*.pem' \
-  -o -name '.env*' -o -name '*token*' \) -print)
+  \( -type f -o -type l \) \( -name '.DS_Store' -o -name '*secret*' -o -name '*.key' -o -name '*.pem' \
+  -o -name '.env*' -o -name '*token*' -o -name 'id_rsa' -o -name 'id_dsa' -o -name 'id_ecdsa' \
+  -o -name 'id_ed25519' -o -name '.netrc' -o -name '_netrc' -o -name '.pgpass' -o -name '.htpasswd' \
+  -o -name '.pypirc' -o -name '*.p12' -o -name '*.pfx' -o -name '*.jks' -o -name '*.keystore' \
+  -o -name '*.ppk' -o -path '*/.aws/credentials' \) -print)
 if [[ -n "$secret_files" ]]; then
   report 'a secret-like file name found' "$secret_files"
 fi

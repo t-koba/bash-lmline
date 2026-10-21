@@ -106,6 +106,32 @@ fi
 grep -q 'secret-like file name' "$work/deepsecret.err" \
   || fail "the scan did not report the secret-like file name below the top of the tree"
 
+# A file whose name is one of the well-known names that hold credentials is
+# reported as well, wherever it lies in the tree.
+ssh_key_name='id_'"rsa"
+netrc_name='.net'"rc"
+credential_dir=$work/credentialfile
+mkdir -p "$credential_dir/private"
+printf 'nothing here\n' >"$credential_dir/private/$ssh_key_name"
+printf 'nothing here\n' >"$credential_dir/$netrc_name"
+if bash "$scanner" "$credential_dir" >"$work/credentialfile.out" 2>"$work/credentialfile.err"; then
+  fail "the scan accepted a tree that holds a credential file name"
+fi
+grep -q 'secret-like file name' "$work/credentialfile.err" \
+  || fail "the scan did not report the credential file name"
+
+# A link carries the name it was given, so a link with a secret-like name
+# is reported as well.
+link_dir=$work/secretlink
+mkdir -p "$link_dir"
+printf 'nothing here\n' >"$link_dir/notes.txt"
+ln -s notes.txt "$link_dir/linked.key"
+if bash "$scanner" "$link_dir" >"$work/secretlink.out" 2>"$work/secretlink.err"; then
+  fail "the scan accepted a tree that holds a link with a secret-like name"
+fi
+grep -q 'secret-like file name' "$work/secretlink.err" \
+  || fail "the scan did not report the secret-like name of the link"
+
 # Without ripgrep the scan fails closed instead of calling the tree clean.
 no_rg_bin="$work/norg"
 mkdir -p "$no_rg_bin"
