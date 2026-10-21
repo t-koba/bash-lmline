@@ -128,7 +128,7 @@ if run_engine LMLINE_BASE_URL=https://api.example.invalid/v1 >"$route_tmp/host.o
   fail "subscription route accepted a non-OpenAI host"
 fi
 [[ "$(cat "$count_file")" == 0 ]] || fail "subscription route contacted a non-OpenAI host"
-grep -q 'only sent to the OpenAI API' "$route_tmp/host.err" || fail "subscription route host rejection message"
+grep -q 'only the OpenAI API and a loopback proxy are allowed' "$route_tmp/host.err" || fail "subscription route host rejection message"
 ok "subscription route keeps the plan token on the OpenAI host"
 
 # The route requires the Responses API format.
@@ -203,5 +203,25 @@ fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "subscription route repeated a rejected answer"
 grep -q 'not repeated' "$route_tmp/retry.err" || fail "subscription route reports the refused repeat"
 ok "subscription route does not repeat a rejected answer"
+
+# A cleartext base to the OpenAI host would send the plan token unprotected.
+reset_fake
+if run_engine LMLINE_BASE_URL="http://api.openai.com/v1" \
+    >"$route_tmp/cleartext.out" 2>"$route_tmp/cleartext.err"; then
+  fail "subscription route accepted a cleartext base"
+fi
+[[ "$(cat "$count_file")" == 0 ]] || fail "subscription route sent a cleartext request"
+grep -q 'needs https' "$route_tmp/cleartext.err" || fail "subscription route cleartext message"
+ok "subscription route refuses a cleartext base"
+
+# A base without an explicit scheme would let the transport be guessed.
+reset_fake
+if run_engine LMLINE_BASE_URL="api.openai.com/v1" \
+    >"$route_tmp/scheme.out" 2>"$route_tmp/scheme.err"; then
+  fail "subscription route accepted a base without a scheme"
+fi
+[[ "$(cat "$count_file")" == 0 ]] || fail "subscription route sent a request without a scheme"
+grep -q 'without an explicit scheme' "$route_tmp/scheme.err" || fail "subscription route scheme message"
+ok "subscription route refuses a base without a scheme"
 
 ok "chatgpt route"

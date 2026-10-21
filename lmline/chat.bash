@@ -1578,9 +1578,20 @@ __lmline_chat_run() {
     [[ "$LMLINE_TOOL_MODE" == auto ]] &&
     jq -e 'has("tools")' "$payload_file" >/dev/null 2>&1 &&
     __lmline_response_empty_retryable "$body_file"; then
-    jq 'del(.tools, .tool_choice)' "$payload_file" >"$work_dir/payload.empty-content-auto-text.json" || exit 1
-    __lmline_trace_file request.empty-content-auto-text.json "$work_dir/payload.empty-content-auto-text.json"
-    __lmline_post_chat "$work_dir/payload.empty-content-auto-text.json" "$body_file" response.empty-content-auto-text.json || exit 1
+    if __lmline_request_repeat_allowed; then
+      # The local function tools are dropped, but a provider-native tool stays
+      # in the request: a request that asked for a search must not lose it.
+      jq '((.tools // []) + (.provider_tools // [])) as $native
+          | del(.tools, .tool_choice, .provider_tools)
+          | (if ($native | map(select(.type == "web_search")) | length) > 0
+             then . + {tools: [$native[] | select(.type == "web_search")]}
+             else . end)' \
+        "$payload_file" >"$work_dir/payload.empty-content-auto-text.json" || exit 1
+      __lmline_trace_file request.empty-content-auto-text.json "$work_dir/payload.empty-content-auto-text.json"
+      __lmline_post_chat "$work_dir/payload.empty-content-auto-text.json" "$body_file" response.empty-content-auto-text.json || exit 1
+    else
+      __lmline_progress "the provider returned an empty answer; the request was not repeated because a repeated request can spend the plan or repeat a billed search"
+    fi
   fi
 
   text=$(__lmline_response_content "$body_file") || {

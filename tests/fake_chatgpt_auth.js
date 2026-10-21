@@ -21,6 +21,7 @@ const keyId = 'mock-key-1';
 
 let counter = 0;
 let lastNonce = '';
+let currentRefreshToken = '';
 
 function base64url(value) {
   return Buffer.from(value).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -144,7 +145,20 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 400, { error: 'invalid_grant', error_description: 'the refresh token is not valid' });
         return;
       }
-      sendJson(response, 200, tokenPayload(clientId || issuedClientId));
+      if (mode === 'rotate_refresh') {
+        // The documented rotation: a refresh token is invalid after its
+        // first use, so a second use of the same token fails.
+        const presented = params.get('refresh_token') || '';
+        if (!currentRefreshToken || presented !== currentRefreshToken) {
+          sendJson(response, 400, { error: 'invalid_grant', error_description: 'the refresh token was already used' });
+          return;
+        }
+        // The slow answer makes the overlap of two refreshes real.
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
+      const refreshed = tokenPayload(clientId || issuedClientId);
+      if (mode === 'rotate_refresh') currentRefreshToken = refreshed.refresh_token;
+      sendJson(response, 200, refreshed);
       return;
     }
     if (grantType === 'authorization_code') {
@@ -152,7 +166,9 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 400, { error: 'invalid_request' });
         return;
       }
-      sendJson(response, 200, tokenPayload(clientId || issuedClientId));
+      const issued = tokenPayload(clientId || issuedClientId);
+      if (mode === 'rotate_refresh') currentRefreshToken = issued.refresh_token;
+      sendJson(response, 200, issued);
       return;
     }
     sendJson(response, 400, { error: 'unsupported_grant_type' });

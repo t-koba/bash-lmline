@@ -18,16 +18,26 @@ __lmline_chatgpt_enabled() {
 }
 
 # The subscription token spends the user's ChatGPT plan. It must never
-# travel to a third-party endpoint, so only the OpenAI API host and loopback
-# proxies are accepted. The decision is made on the host of the URL: a base
+# travel to a third-party endpoint, and it must never travel in cleartext.
+# The decision is made on the scheme and on the host of the URL: a base
 # with embedded credentials is refused, because the credentials would go to
-# a host that the text does not name.
+# a host that the text does not name, and only a loopback proxy may use
+# cleartext, because its traffic stays on the machine. The reason is kept
+# in __lmline_chatgpt_base_reason so the user can act on it.
 __lmline_chatgpt_base_allowed() {
-  local base=$1 host
-  [[ "$base" == *://* ]] || return 1
+  local base=$1 scheme host
+  __lmline_chatgpt_base_reason=
+  [[ "$base" == *://* ]] || {
+    __lmline_chatgpt_base_reason="a base URL without an explicit scheme is not allowed"
+    return 1
+  }
+  scheme=${base%%://*}
   host=${base#*://}
   host=${host%%/*}
-  [[ "$host" == *@* ]] && return 1
+  [[ "$host" == *@* ]] && {
+    __lmline_chatgpt_base_reason="a base URL with embedded credentials is not allowed"
+    return 1
+  }
   if [[ "$host" == \[*\]* ]]; then
     # A bracketed IPv6 literal, with an optional port.
     host=${host#\[}
@@ -36,9 +46,33 @@ __lmline_chatgpt_base_allowed() {
     host=${host%%:*}
   fi
   case "$host" in
-    api.openai.com|127.0.0.1|localhost|::1) return 0 ;;
+    api.openai.com)
+      case "$scheme" in
+        https) return 0 ;;
+        http)
+          __lmline_chatgpt_base_reason="the OpenAI API needs https, because the plan token is a bearer credential"
+          return 1
+          ;;
+        *)
+          __lmline_chatgpt_base_reason="the scheme must be https or http"
+          return 1
+          ;;
+      esac
+      ;;
+    127.0.0.1|localhost|::1)
+      case "$scheme" in
+        https|http) return 0 ;;
+        *)
+          __lmline_chatgpt_base_reason="the scheme must be https or http"
+          return 1
+          ;;
+      esac
+      ;;
+    *)
+      __lmline_chatgpt_base_reason="only the OpenAI API and a loopback proxy are allowed"
+      return 1
+      ;;
   esac
-  return 1
 }
 
 # Writes a fresh access token to $1 (mode 0600). Fails closed: a missing

@@ -239,3 +239,46 @@ chmod 600 "$credentials_file"
 status_out=$(client status) || fail "ChatGPT status after the permission fix"
 grep -q '^status=signed-in$' <<<"$status_out" || fail "ChatGPT status after the permission fix"
 ok "ChatGPT refuses a world readable credential file"
+
+# 12. A session without the plan scope cannot be used for a paid request.
+credentials_file="$chatgpt_tmp/credentials-no-plan-token.json"
+start_mock "no_plan_scope" "$chatgpt_tmp/mock-no-plan-token.log"
+client login >/dev/null 2>&1 || fail "ChatGPT login without the plan scope"
+if client token >"$chatgpt_tmp/no-plan-token.out" 2>"$chatgpt_tmp/no-plan-token.err"; then
+  fail "ChatGPT hands out a token without the plan scope"
+fi
+grep -q 'plan use was not granted' "$chatgpt_tmp/no-plan-token.err" || fail "ChatGPT reports the missing plan scope"
+[[ ! -s "$chatgpt_tmp/no-plan-token.out" ]] || fail "ChatGPT prints a token without the plan scope"
+ok "ChatGPT refuses a token without the plan scope"
+
+# 13. A logout clears the plan grant of the revoked session.
+credentials_file="$chatgpt_tmp/credentials-logout-scope.json"
+start_mock "" "$chatgpt_tmp/mock-logout-scope.log"
+client login >/dev/null 2>&1 || fail "ChatGPT login before the logout"
+client logout >/dev/null 2>&1 || fail "ChatGPT logout"
+logout_status=$(client status) || fail "ChatGPT status after the logout"
+grep -q '^plan_usage=disabled$' <<<"$logout_status" || fail "ChatGPT status after the logout still claims plan usage"
+grep -q '^scopes=$' <<<"$logout_status" || fail "ChatGPT status after the logout still lists the revoked scopes"
+ok "ChatGPT logout clears the plan grant"
+
+# 14. Two concurrent refreshes do not race the rotating refresh token: the
+# second one waits for the lock and reuses the token the first one stored.
+credentials_file="$chatgpt_tmp/credentials-concurrent.json"
+start_mock "rotate_refresh" "$chatgpt_tmp/mock-concurrent.log"
+client login >/dev/null 2>&1 || fail "ChatGPT login before the concurrent refresh"
+expire_credential "$credentials_file"
+client token >"$chatgpt_tmp/concurrent-1.out" 2>"$chatgpt_tmp/concurrent-1.err" &
+concurrent_pid_1=$!
+client token >"$chatgpt_tmp/concurrent-2.out" 2>"$chatgpt_tmp/concurrent-2.err" &
+concurrent_pid_2=$!
+concurrent_rc_1=0
+concurrent_rc_2=0
+wait "$concurrent_pid_1" || concurrent_rc_1=$?
+wait "$concurrent_pid_2" || concurrent_rc_2=$?
+[[ "$concurrent_rc_1" == 0 ]] || fail "the first concurrent token command failed: $(sed -n '1p' "$chatgpt_tmp/concurrent-1.err")"
+[[ "$concurrent_rc_2" == 0 ]] || fail "the second concurrent token command failed: $(sed -n '1p' "$chatgpt_tmp/concurrent-2.err")"
+concurrent_token_1=$(sed -n '1p' "$chatgpt_tmp/concurrent-1.out")
+concurrent_token_2=$(sed -n '1p' "$chatgpt_tmp/concurrent-2.out")
+[[ -n "$concurrent_token_1" && -n "$concurrent_token_2" ]] || fail "a concurrent token command printed no token"
+[[ "$concurrent_token_1" == "$concurrent_token_2" ]] || fail "the concurrent token commands disagree"
+ok "ChatGPT serializes concurrent token refreshes"

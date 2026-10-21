@@ -65,6 +65,14 @@ JSON
     fi
     printf '200\tapplication/json'
     ;;
+  empty)
+    cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_1","role":"assistant","content":[]}],
+ "usage":{"input_tokens":3,"output_tokens":0,"total_tokens":3}}
+JSON
+    printf '200\tapplication/json'
+    ;;
   control)
     cat >"$out" <<'JSON'
 {"id":"resp_1","object":"response","model":"test-model","status":"completed",
@@ -273,5 +281,16 @@ for frontend in "$repo_dir/lmline/init.bash" "$repo_dir/lmline/init.zsh" "$repo_
   grep -q '/\^lmline-citation: /d' "$frontend" || fail "the frontend keeps the citation line: $frontend"
 done
 ok "the protocol documents the search lines and the frontends strip them"
+
+# 12. An empty answer is not asked again on a search-enabled route: the
+# repeat would bill another search.
+reset_fake
+if run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 LMLINE_FAKE_CURL_MODE=empty \
+    >"$ws_tmp/t12.out" 2>"$ws_tmp/t12.err"; then
+  fail "the engine accepted an empty answer"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the empty answer was asked again on a paid route"
+grep -q 'not repeated' "$ws_tmp/t12.err" || fail "the refused repeat is not reported"
+ok "web search does not repeat an empty answer"
 
 ok "web search"

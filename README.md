@@ -154,10 +154,12 @@ Responses format, `store: false`, `stream: true`, the instructions as
 `instructions`, and no sampling or account fields. The engine does not repeat
 the request on its own, because a repeated request can spend the plan.
 
-The subscription token is sent only to the OpenAI API. A loopback proxy
-(`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, or
-`http://[::1]:PORT/v1`) is accepted; any other host, and any base URL that
-embeds credentials, is refused before a request is sent.
+The subscription token is sent only to the OpenAI API, and only over
+`https`. A loopback proxy (`http://127.0.0.1:PORT/v1`,
+`http://localhost:PORT/v1`, or `http://[::1]:PORT/v1`) is accepted, because
+its traffic stays on the machine; any other host, a cleartext base to the
+OpenAI API, a base URL without an explicit scheme, and a base URL that embeds
+credentials are refused before a request is sent.
 
 ## Native web search
 

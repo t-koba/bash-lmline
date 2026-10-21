@@ -21,7 +21,7 @@ search works.
 | `api-key` | `responses` | supported |
 | `api-key` | `messages` | supported |
 | `chatgpt` | `chat` | unsupported — the subscription route requires `LMLINE_API_FORMAT=responses`; the engine refuses the request before it is sent |
-| `chatgpt` | `responses` | supported — the request carries `store: false` and `stream: true`, sends the instructions as `instructions`, and omits `temperature`, `max_output_tokens`, `top_p`, `user`, `metadata`, `background`, `conversation`, and `previous_response_id` |
+| `chatgpt` | `responses` | allowed, unverified — the request shape is proven offline (`store: false`, `stream: true`, the instructions as `instructions`, and none of `temperature`, `max_output_tokens`, `top_p`, `user`, `metadata`, `background`, `conversation`, `previous_response_id`); that a real plan accepts the request, bills the plan, and answers needs a real ChatGPT account |
 | `chatgpt` | `messages` | unsupported — the subscription route requires `LMLINE_API_FORMAT=responses` |
 
 The subscription route never falls back to a metered API key. When the
@@ -33,10 +33,12 @@ with an actionable message instead of billing an API key.
 | Authentication mode | Endpoint | Result |
 | --- | --- | --- |
 | `api-key` | any OpenAI-compatible base URL | supported |
-| `chatgpt` | `https://api.openai.com/v1` | supported |
+| `chatgpt` | `https://api.openai.com/v1` (a port on that host is accepted) | supported |
 | `chatgpt` | a loopback proxy (`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, `http://[::1]:PORT/v1`) | supported — the token stays on the machine, but the proxy forwards it, so the proxy owner receives it |
 | `chatgpt` | any other host | unsupported — the subscription token is only sent to the OpenAI API; the engine refuses the request before it is sent |
 | `chatgpt` | a base URL with embedded credentials (`https://user:pass@host/v1`) | unsupported — the credentials would go to a host the text does not name; the engine refuses the request before it is sent |
+| `chatgpt` | `http://api.openai.com/v1` | unsupported — the plan token is a bearer credential, so the OpenAI API needs `https`; the engine refuses the request before it is sent |
+| `chatgpt` | a base URL without an explicit scheme (`api.openai.com/v1`) | unsupported — the transport would be guessed; the engine refuses the request before it is sent |
 
 ## Model
 
@@ -51,7 +53,7 @@ with an actionable message instead of billing an API key.
 | Authentication mode | API format | Search | Result |
 | --- | --- | --- | --- |
 | `api-key` | any | off (default) | supported |
-| `api-key` | `responses` | on | supported — the provider runs the search and bills it; the search tool never reaches the local tool executor |
+| `api-key` | `responses` | on | supported for the request shape and the reporting — the search tool never reaches the local tool executor, and the search events and citations are reported; that the provider retrieves the pages and bills the search is provider behaviour no offline mock can prove |
 | `api-key` | `chat` or `messages` | on | unsupported — native web search requires the Responses API format; the engine refuses the request before it is sent |
 | `chatgpt` | `responses` | on | allowed, unverified — the subscription route states that web search remains subject to model and account/workspace policy, so it needs a real ChatGPT account |
 | `chatgpt` | `responses` | off (default) | supported |
@@ -65,15 +67,16 @@ Selecting a model never enables search. The search setting is explicit
 A repeated request can spend the user's plan or repeat a billed search, so
 every kind of repeat is listed here:
 
-| Route | Automatic HTTP retry | Compatibility or format retry | Candidate-validation retry | Local tool rounds |
-| --- | --- | --- | --- | --- |
-| `api-key` without search | yes (`LMLINE_HTTP_RETRIES`, default 1) | yes | yes | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
-| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | none: the route has no local function tools |
-| native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | later rounds do not ask for a new search |
+| Route | Automatic HTTP retry | Compatibility or format retry | Candidate-validation retry | Empty-answer auto-text retry | Local tool rounds |
+| --- | --- | --- | --- | --- | --- |
+| `api-key` without search | yes (`LMLINE_HTTP_RETRIES`, default 1) | yes | yes | yes | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
+| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | none: the route has no local function tools |
+| native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | later rounds do not ask for a new search |
 
 A rejected request on a paid route is reported with the provider's reason
 instead of being repeated. The request keeps the search tool across the
-attempt: it is never silently dropped.
+attempt: it is never silently dropped, and the one repeat that drops the
+local function tools keeps the provider-native search tool.
 
 At most one provider request per exchange asks the provider to run a new
 search, because every such request can bill another search. Later tool rounds
