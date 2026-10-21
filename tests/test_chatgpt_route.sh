@@ -265,6 +265,8 @@ out=$(run_engine LMLINE_MODEL= LMLINE_MODELS_URL=https://api.openai.com/v1/model
   || fail "the catalog request path: $(cat "$bodies_dir/url-1.txt")"
 [[ "$(cat "$bodies_dir/header-1.txt")" == "Authorization: Bearer test-subscription-token" ]] \
   || fail "the catalog credential: $(cat "$bodies_dir/header-1.txt")"
+[[ "$(jq -r .model "$bodies_dir/body-2.json")" == gpt-plan-catalog ]] \
+  || fail "the plan route model after the discovery: $(jq -r .model "$bodies_dir/body-2.json" 2>/dev/null)"
 [[ "$(candidates_of <<<"$out")" == "echo hello" ]] || fail "the plan route candidate after the discovery"
 ok "the plan route reads the account catalog on an allowed host"
 
