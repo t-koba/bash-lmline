@@ -17,9 +17,13 @@ copilot_wait_log() {
 }
 
 copilot_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-copilot-test.XXXXXX")
-copilot_runtime="$repo_dir/.copilot-test-run.$$"
+# The daemon's socket path is short by design, so the runtime lives in a
+# short directory of its own rather than under the long temporary directory
+# or the source tree, which a read-only checkout does not allow.
+copilot_run_root="${TMPDIR:-/tmp}/lmlc.$$"
+copilot_runtime="$copilot_run_root/run"
 mkdir -p "$copilot_runtime"
-trap 'LMLINE_CONFIG_DIR="$copilot_tmp/config" LMLINE_COPILOT_RUNTIME_DIR="$copilot_runtime" node "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true; rm -rf "$copilot_tmp" "$copilot_runtime"' EXIT
+trap 'LMLINE_CONFIG_DIR="$copilot_tmp/config" LMLINE_COPILOT_RUNTIME_DIR="$copilot_runtime" node "$repo_dir/lmline/copilot-client.js" restart >/dev/null 2>&1 || true; rm -rf "$copilot_tmp" "$copilot_run_root"' EXIT
 mkdir -p "$copilot_tmp/config"
 
 copilot_env=(
@@ -58,7 +62,7 @@ env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" logout >/dev/n
 # No launcher is available to this daemon. Node and the fake LSP still run via
 # Node's absolute path, independent of the deliberately empty PATH.
 for browser_error in 0 1; do (
-  no_browser_runtime="$repo_dir/.copilot-no-browser-test.$browser_error.$$"
+  no_browser_runtime="$copilot_run_root/nb$browser_error"
   node_path=$(command -v node)
   mkdir -p "$copilot_tmp/no-browser-bin"
   no_browser_env=(
@@ -117,7 +121,7 @@ grep -q '^didFocus-uri=yes$' "$copilot_tmp/lsp.log" || fail "Copilot didFocus ca
 
 # A killed LSP must be replaced in the existing daemon, not take it down.
 (
-  recovery_runtime="$repo_dir/.copilot-recovery-test.$$"
+  recovery_runtime="$copilot_run_root/rec"
   recovery_env=(
     "${copilot_env[@]}"
     LMLINE_COPILOT_RUNTIME_DIR="$recovery_runtime"
