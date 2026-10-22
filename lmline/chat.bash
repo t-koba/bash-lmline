@@ -1260,11 +1260,27 @@ __lmline_cache_lookup() {
 # candidate remains valid under the current policy, so the caller refetches.
 __lmline_cache_emit() {
   local cached_line body risk_old reason_old flags candidate rejection risk_match risk reason
-  local valid_count=0 valid_output= line
+  local valid_count=0 valid_output= line plain_output=
   if [[ "$output_format" != annotated ]]; then
+    if [[ "$mode" != explain && "$mode" != clip ]]; then
+      # The plain format of a command mode stores the candidate text alone,
+      # so the same validation the annotated format re-applies runs here
+      # too: a candidate the engine would now refuse is not served and
+      # inserted.
+      while IFS= read -r candidate || [[ -n "$candidate" ]]; do
+        [[ -n "$candidate" ]] || continue
+        rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "${shell_name:-bash}")
+        [[ "$rejection" == ok ]] || continue
+        plain_output+="$candidate"$'\n'
+        valid_count=$((valid_count + 1))
+      done <"$cache_file"
+      (( valid_count > 0 )) || return 1
+    else
+      plain_output=$(cat "$cache_file")
+    fi
     printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
     printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
-    cat "$cache_file"
+    printf '%s' "$plain_output"
     return 0
   fi
   while IFS= read -r cached_line || [[ -n "$cached_line" ]]; do

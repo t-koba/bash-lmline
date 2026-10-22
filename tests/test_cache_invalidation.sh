@@ -24,6 +24,7 @@ for arg in "$@"; do
   prev=$arg
 done
 if grep -q "Japanese" "$payload" 2>/dev/null; then marker="mock explanation in Japanese"; else marker="mock explanation in English"; fi
+if [[ -n "${LMLINE_FAKE_CURL_CONTENT:-}" ]]; then marker=$LMLINE_FAKE_CURL_CONTENT; fi
 out=
 prev=
 for arg in "$@"; do
@@ -57,5 +58,37 @@ grep -q "tokens=cached" "$cfg_tmp/err.txt" || fail "repeat cache hit"
 [[ $(run_explain ja 60) == "mock explanation in Japanese" ]] || fail "repeated japanese answer"
 grep -q "tokens=cached" "$cfg_tmp/err.txt" || fail "japanese repeat cache hit"
 [[ $(grep -c called "$cfg_tmp/calls.log") == 2 ]] || fail "japanese repeat transport call"
+
+# A cached candidate the engine would now refuse is served by neither
+# format: the plain format re-applies the same validation the annotated
+# one does, so the entry is dropped and the request refetched.
+cache_dir="$cfg_tmp/config/cache"
+mkdir -p "$cache_dir"
+# The cache key covers the mode, so the entry is written by a first generate
+# request and then replaced with a candidate the engine would refuse.
+: >"$cfg_tmp/calls.log"
+LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
+  LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --format plain \
+  --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
+  >"$cfg_tmp/first.out" 2>"$cfg_tmp/first.err" || fail "the first generate request failed"
+grep -q 'echo cached' "$cfg_tmp/first.out" || fail "the first generate request served no candidate"
+for entry in "$cache_dir"/*; do
+  [[ -f "$entry" ]] || continue
+  printf 'lmline-nonexistent-command-xyz --flag\n' >"$entry"
+done
+: >"$cfg_tmp/calls.log"
+plain_out=$(LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
+  LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --format plain \
+  --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
+  >"$cfg_tmp/plain.out" 2>"$cfg_tmp/plain.err")
+! grep -q 'lmline-nonexistent-command-xyz' "$cfg_tmp/plain.out" || fail "the plain format served a refused cached candidate"
+[[ $(grep -c called "$cfg_tmp/calls.log") -ge 1 ]] || fail "the plain format did not refetch a refused cached candidate"
+grep -q 'echo cached' "$cfg_tmp/plain.out" || fail "the plain format did not serve the refetched candidate"
+: >"$cfg_tmp/calls.log"
+annotated_out=$(LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
+  LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --format annotated \
+  --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
+  >"$cfg_tmp/annotated.out" 2>"$cfg_tmp/annotated.err")
+! grep -q 'lmline-nonexistent-command-xyz' "$cfg_tmp/annotated.out" || fail "the annotated format served a refused cached candidate"
 
 ok "cache invalidates on effective request change"
