@@ -281,6 +281,22 @@ bash -c '
   rm -rf "$marker_tmp"
   rm -rf "$project_tmp"
 ' _ "$repo_dir" || fail "policy/context"
+# The macOS probe exemption is a fixed list, and the security document
+# names it: a program on that list is not probed, and a program that is
+# not on it is still probed with the same flag.
+probe_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-probe-test.XXXXXX")
+trap 'rm -rf "$probe_tmp"' EXIT
+for prog_name in sed prog; do
+  printf '#!/usr/bin/env bash\nprintf "probe ran\\n"\n' >"$probe_tmp/$prog_name"
+  chmod +x "$probe_tmp/$prog_name"
+done
+bash -c '
+  set -euo pipefail
+  source "$1/lmline/context.bash"
+  PATH="$2:$PATH" OSTYPE=darwin23 __lmline_tool_command_info "sed prog" >"$3" 2>&1
+' _ "$repo_dir" "$probe_tmp" "$probe_tmp/out.txt"
+! grep -q 'probe ran' <(sed -n '/^### sed$/,/^### prog$/p' "$probe_tmp/out.txt") || fail "a program on the macOS exemption list is probed"
+grep -q 'probe ran' <(sed -n '/^### prog$/,$p' "$probe_tmp/out.txt") || fail "a program outside the macOS list is not probed"
 ok "policy and context"
 
 bash -c '
