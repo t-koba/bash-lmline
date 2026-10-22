@@ -216,7 +216,9 @@ function loadCredentials() {
   }
   let parsed;
   try { parsed = JSON.parse(fs.readFileSync(credentialsFile, 'utf8')); }
-  catch (error) { fail(`the credential file ${credentialsFile} is not valid JSON: ${error.message}`); }
+  // The parser's message quotes the input, so it is not printed: the file
+  // holds the credentials.
+  catch (error) { fail(`the credential file ${credentialsFile} is not valid JSON`); }
   if (!parsed || typeof parsed !== 'object') fail(`the credential file ${credentialsFile} is not valid JSON`);
   return parsed;
 }

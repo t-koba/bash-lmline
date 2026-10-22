@@ -403,3 +403,21 @@ stored_token=$(json_field "$credentials_file" access_token)
 [[ "$stored_token" == "$login_token" ]] \
   || fail "the refresh overwrote the fresh sign-in: $stored_token"
 ok "ChatGPT keeps a fresh sign-in over an overlapping refresh"
+
+# 21. A malformed credential file is reported without echoing its contents.
+malformed_marker="SYNTHETICLEAK"
+credentials_file="$chatgpt_tmp/credentials-malformed.json"
+printf '%s{"access_token": "x"' "$malformed_marker" >"$credentials_file"
+chmod 600 "$credentials_file"
+malformed_rc=0
+client status >"$chatgpt_tmp/malformed.out" 2>"$chatgpt_tmp/malformed.err" || malformed_rc=$?
+(( malformed_rc != 0 )) || fail "a malformed credential file was accepted"
+grep -q 'is not valid JSON' "$chatgpt_tmp/malformed.err" \
+  || fail "a malformed credential file is not reported as invalid JSON: $(sed -n '1p' "$chatgpt_tmp/malformed.err")"
+if grep -q "$malformed_marker" "$chatgpt_tmp/malformed.out"; then
+  fail "the malformed credential file leaked into stdout"
+fi
+if grep -q "$malformed_marker" "$chatgpt_tmp/malformed.err"; then
+  fail "the malformed credential file leaked into stderr"
+fi
+ok "ChatGPT reports a malformed credential file without echoing its contents"
