@@ -632,13 +632,19 @@ A recursive remove is recognised by the word in the position a command occupies
 and by the flags written with it, so the family reads the same way in every
 spelling: `rm -rf`, `rm -fr`, `rm --force --recursive`, a remove a program that
 runs another program carries (`env -i rm -fr build`, `timeout 5 rm -fr build`,
-`busybox rm -rf /`), and a remove written in a shell command string
-(`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one command. A word
-that merely carries the name of a remove is not the family: `ls rm -r` and
-`grep rm -rf file` are not removes. A program that removes files by a
-subcommand of its own is that program, so `git rm -r dir` is named by the
-pattern file. Only the remove family is read this way, so an ordinary
-recursive copy or search stays as the pattern file states it.
+`busybox rm -rf /`), a remove behind the operand a program names for itself
+(`su root rm -rf /`, `chroot /path rm -rf /`), and a remove written in a shell
+command string (`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one
+command. A word that merely carries the name of a remove is not the family:
+`ls rm -r` and `grep rm -rf file` are not removes. A program that removes files
+by a subcommand of its own is that program, so `git rm -r dir` is named by the
+pattern file. Only the remove family is read this way, so an ordinary recursive
+copy or search stays as the pattern file states it.
+
+The same rule decides whether a pipeline reaches a shell: the shell the piped
+input reaches is the command the segment runs, so `find . | xargs sh` is a piped
+shell execution while `find . | xargs grep sh` is not, because the command
+`xargs` runs is `grep`.
 
 History recognition checks the original candidate before quote stripping or
 ANSI-C decoding. It flags potentially active conventional `!` event references

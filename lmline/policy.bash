@@ -45,14 +45,21 @@ __lmline_word_is_shell() {
 }
 
 # Programs that run another program given to them, so the command they carry
-# is the command that runs. One owner for this vocabulary: the pipe-to-shell
-# gate and the removal family both ask it. The sh family runs a command
+# is the command that runs, and the operands of their own that stand between
+# the program and that command. One owner for this vocabulary: the removal
+# family and the pipe-to-shell gate both ask it. The sh family runs a command
 # string and is named in shell_words.txt.
-__lmline_word_is_command_runner() {
+__lmline_risk_runner_operands() {
   case "${1##*/}" in
-    '!'|busybox|builtin|chroot|command|doas|env|exec|flock|ionice|nice|nohup|screen|script|setsid|stdbuf|su|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) return 0 ;;
+    chroot|flock|su) printf '1\n' ;;
+    '!'|busybox|builtin|command|doas|env|exec|ionice|nice|nohup|screen|script|setsid|stdbuf|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) printf '0\n' ;;
   esac
-  return 1
+  return 0
+}
+
+# Whether a word names a program that runs another program.
+__lmline_risk_is_runner() {
+  [[ -n $(__lmline_risk_runner_operands "$1") ]]
 }
 
 __lmline_word_is_command_prefix() {
@@ -455,7 +462,7 @@ __lmline_expand_braces_for_risk() {
 # call whose option value is literally named sh (exec -a sh echo) scores high,
 # which is the fail-closed direction.
 __lmline_risk_piped_shell() {
-  local cmd=$1 stripped segment token word base first_base
+  local cmd=$1 stripped segment token word base first_base cmd_index
   local -a words subs
   stripped=$(__lmline_split_pipeline "$cmd" 1)
   local idx=0
@@ -477,13 +484,15 @@ __lmline_risk_piped_shell() {
       subs+=("$word")
     done
     ((${#subs[@]} > 0)) || continue
-    first_base=${subs[0]##*/}
-    if ! __lmline_word_is_command_runner "$first_base" && ! __lmline_word_is_shell "$first_base"; then
-      continue
+    # The shell the piped input reaches is the command the segment runs: a
+    # program that runs another program runs the command it is given, so the
+    # shell it runs is the shell the pipe reaches. A shell-named word that is
+    # only an argument of that command does not reach the pipe.
+    cmd_index=$(__lmline_risk_segment_command_index "${subs[@]}") || continue
+    word=${subs[cmd_index]}
+    if __lmline_risk_word_runs_shell "$word"; then
+      return 0
     fi
-    for word in "${subs[@]}"; do
-      __lmline_word_is_shell "${word##*/}" && return 0
-    done
   done <<<"$stripped"
   return 1
 }
@@ -631,6 +640,20 @@ __lmline_risk_remove_is_recursive() {
   return 1
 }
 
+# Whether a word runs a shell. The word is read as the words it runs, with
+# the quoting removed and the expansions spaced, so a spelling that hides the
+# command is read as the words it runs.
+__lmline_risk_word_runs_shell() {
+  local canonical base
+  local -a canon=()
+  canonical=$(__lmline_canonicalize_for_risk <<<"$1")
+  [[ -n $canonical ]] || return 1
+  read -r -a canon <<<"$canonical" || true
+  ((${#canon[@]} > 0)) || return 1
+  base=${canon[0]##*/}
+  __lmline_word_is_shell "$base"
+}
+
 # Whether a word stands for the remove command. The word is read as the
 # words it runs, with the quoting removed and the expansions spaced, so a
 # spelling that hides the command (rm${IFS}-rf, `echo rm`) is read as the
@@ -651,13 +674,15 @@ __lmline_risk_word_is_remove_command() {
 
 # The command a program that runs another program runs: the first word that
 # is not one of the program's own options, not the value one of those
-# options takes, and not a count, a duration or a level. A remove or a shell
-# in that position is the command the program runs, whatever the option
-# before it names.
+# options takes, and not an operand the program names for itself. A remove
+# or a shell in that position is the command the program runs, whatever the
+# option before it names.
 __lmline_risk_carried_command_index() {
   local -a words=("$@")
   local index word base expect_value=0
-  for (( index = 0; index < ${#words[@]}; index++ )); do
+  local operands_left
+  operands_left=$(__lmline_risk_runner_operands "${words[0]}")
+  for (( index = 1; index < ${#words[@]}; index++ )); do
     word=${words[index]}
     [[ "$word" == *=* ]] && continue
     if [[ "$word" == -* ]]; then
@@ -676,10 +701,56 @@ __lmline_risk_carried_command_index() {
     case "$word" in
       [0-9]*) continue ;;
     esac
+    if (( operands_left > 0 )); then
+      # An operand the program names for itself, such as the user su runs
+      # as, stands between the program and the command it runs.
+      operands_left=0
+      continue
+    fi
     printf '%s\n' "$index"
     return 0
   done
   return 1
+}
+
+# The command a segment runs, as the index of its word. A program that runs
+# another program hands the command it runs to the next program, so the chain
+# is followed to the command that runs.
+__lmline_risk_segment_command_index() {
+  local -a words=("$@")
+  local index=0 word base cmd_index
+  while :; do
+    # The command word of the simple command: the first word that is not an
+    # assignment and not an option. A word that can stand before the command
+    # name is stepped over, but a program that runs another program is the
+    # command itself.
+    while (( index < ${#words[@]} )); do
+      word=${words[index]}
+      if [[ "$word" == *=* || "$word" == -* ]]; then
+        index=$((index + 1))
+        continue
+      fi
+      if __lmline_word_is_command_prefix "$word" && ! __lmline_risk_is_runner "$word"; then
+        index=$((index + 1))
+        continue
+      fi
+      break
+    done
+    (( index < ${#words[@]} )) || return 1
+    word=${words[index]}
+    base=${word##*/}
+    if __lmline_word_is_shell "$base"; then
+      printf '%s\n' "$index"
+      return 0
+    fi
+    if __lmline_risk_is_runner "$base"; then
+      cmd_index=$(__lmline_risk_carried_command_index "${words[@]:index}") || return 1
+      index=$((index + cmd_index))
+      continue
+    fi
+    printf '%s\n' "$index"
+    return 0
+  done
 }
 
 # Whether a word stands for the remove command and the flags it carries.
@@ -775,7 +846,7 @@ __lmline_risk_shell_carries_remove() {
 # the remove it is.
 __lmline_risk_recursive_remove() {
   local cmd=$1 depth=${2:-0} segment word base
-  local index count first_index cmd_index
+  local count cmd_index
   local -a words
   (( depth < 4 )) || return 1
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -786,44 +857,19 @@ __lmline_risk_recursive_remove() {
       words+=("$word")
     done < <(__lmline_risk_split_words "$segment")
     count=${#words[@]}
-    # The command word of the simple command: the first word that is not an
-    # assignment and not an option. A word that can stand before the command
-    # name is stepped over, but a program that runs another program is the
-    # command itself.
-    first_index=-1
-    for (( index = 0; index < count; index++ )); do
-      word=${words[index]}
-      [[ "$word" == *=* ]] && continue
-      [[ "$word" == -* ]] && continue
-      if __lmline_word_is_command_prefix "$word" && ! __lmline_word_is_command_runner "$word"; then
-        continue
-      fi
-      first_index=$index
-      break
-    done
-    (( first_index >= 0 )) || continue
-
     # The command the segment runs. A program that runs another program hands
     # the command it runs to the next program, so the chain is followed to
     # the command that runs.
-    while :; do
-      base=${words[first_index]##*/}
-      if __lmline_word_is_shell "$base"; then
-        # A shell command word runs the command string it is given after -c.
-        (( first_index + 1 < count )) || break
-        __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:first_index+1}" && return 0
-        break
-      fi
-      if __lmline_word_is_command_runner "$base"; then
-        cmd_index=$(__lmline_risk_carried_command_index "${words[@]:first_index+1}") || break
-        first_index=$((first_index + 1 + cmd_index))
-        continue
-      fi
-      # The command the segment runs.
-      (( first_index + 1 < count )) || break
-      __lmline_risk_remove_word_is_recursive "${words[first_index]}" "${words[@]:first_index+1}" && return 0
-      break
-    done
+    cmd_index=$(__lmline_risk_segment_command_index "${words[@]}") || continue
+    word=${words[cmd_index]}
+    if __lmline_risk_word_runs_shell "$word"; then
+      # A shell command word runs the command string it is given after -c.
+      __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:cmd_index+1}" && return 0
+      continue
+    fi
+    # The command the segment runs. Its own flags follow it, so the words
+    # after it are read as the flags it writes.
+    __lmline_risk_remove_word_is_recursive "$word" "${words[@]:cmd_index+1}" && return 0
   done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
   return 1
 }

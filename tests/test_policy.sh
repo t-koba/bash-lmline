@@ -40,6 +40,11 @@ bash -c '
   # A shell option and its value stand between the shell and its command string.
   [[ $(__lmline_risk_level "bash -o pipefail -c \"rm -fr x\"") == high ]]
   [[ $(__lmline_risk_level "sh --rcfile /etc/x -c \"rm -fr x\"") == high ]]
+  # The pipe reaches a shell only when the command the segment runs is a
+  # shell, so a shell-named word that is only an argument does not reach it.
+  [[ $(__lmline_risk_level "find . -name '*.c' | xargs grep sh") == low ]]
+  [[ $(__lmline_risk_level "find . -name '*.c' | xargs sh") == high ]]
+  [[ $(__lmline_risk_level "cat f | xargs grep rm") == high ]]
   # A remove carried by a wrapper reads the same way.
   [[ $(__lmline_risk_level "env -i rm -fr build") == high ]]
   [[ $(__lmline_risk_level "nohup rm -fr build") == high ]]
@@ -68,6 +73,12 @@ bash -c '
   # The argument a wrapper carries is not the remove command either.
   [[ $(__lmline_risk_level "nice find . -name rm -print") == low ]]
   [[ $(__lmline_risk_level "nice ls rm -r") == low ]]
+  # A remove behind the operand a wrapper names for itself is the remove
+  # that runs.
+  [[ $(__lmline_risk_level "su root rm -rf /") == high ]]
+  [[ $(__lmline_risk_level "chroot /path rm -rf /") == high ]]
+  [[ $(__lmline_risk_level "flock file rm -rf /") == high ]]
+  [[ $(__lmline_risk_level "su -c '"'"'rm -rf /'"'"'") == high ]]
   # A multi-call binary runs the command it is given, so a remove it runs is
   # the remove that runs.
   [[ $(__lmline_risk_level "busybox rm -rf /") == high ]]
