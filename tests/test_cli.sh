@@ -47,6 +47,15 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_
 persisted_history_risk_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"') || fail "history risk persisted setting command"
 grep -q '^risk=medium$' <<<"$persisted_history_risk_out" || fail "history risk persisted setting"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config unset LMLINE_RISK_HISTORY_EXPANSION_LEVEL
+# A name the catalog does not know is refused when it is written, not
+# persisted and reported as unknown later.
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_CAHCE_TTL 100 >"$cfg_tmp/typo.out" 2>"$cfg_tmp/typo.err"; then
+  fail "config set accepted a setting the catalog does not know"
+fi
+grep -q 'unknown setting: LMLINE_CAHCE_TTL' "$cfg_tmp/typo.err" || fail "config set did not report the unknown setting"
+if grep -q 'LMLINE_CAHCE_TTL' "$cfg_tmp/config/settings.bash" 2>/dev/null; then
+  fail "config set persisted a setting the catalog does not know"
+fi
 effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
 grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
 grep -q $'^LMLINE_API_KEY_FILE\t\\*\\*\\*REDACTED\\*\\*\\*\t' <<<"$effective_out" || fail "config effective redacts secret file"

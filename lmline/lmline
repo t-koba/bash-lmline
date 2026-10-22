@@ -1404,6 +1404,12 @@ case "$cmd" in
           printf 'lmline: config set requires KEY like LMLINE_MODEL and VALUE\n' >&2
           exit 2
         }
+        # The catalog is the list of settings that exist, so a name outside it
+        # is refused here rather than persisted and later reported as unknown.
+        __lmline_setting_catalog_line "$key" >/dev/null || {
+          printf 'lmline: unknown setting: %s\n' "$key" >&2
+          exit 2
+        }
         with_config_lock write_config_value "$key" "$value"
         case "$key" in
           LMLINE_REWRITE_BACKEND|LMLINE_GENERATE_BACKEND|LMLINE_FIX_BACKEND)
@@ -1432,6 +1438,12 @@ case "$cmd" in
         key=${1-}; value=${2-}
         [[ "$key" =~ ^LMLINE_[A-Z0-9_]+$ && $# -ge 2 ]] || {
           printf 'lmline: config project-set requires KEY like LMLINE_MODEL and VALUE\n' >&2
+          exit 2
+        }
+        # The catalog is the list of settings that exist, so a name outside it
+        # is refused here rather than persisted and later reported as unknown.
+        __lmline_setting_catalog_line "$key" >/dev/null || {
+          printf 'lmline: unknown setting: %s\n' "$key" >&2
           exit 2
         }
         with_config_lock __lmline_config_file_op set "$PWD/.lmline.bash" "$key" "$value"
