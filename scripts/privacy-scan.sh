@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Scan a tree for the private data that the charter keeps out of public
-# files: local paths and user names, private host names, credential-looking
-# values, personal addresses and secret-like file names.
+# Scan a tree for the private data this project keeps out of public files:
+# local paths and user names, private host names, credential-looking values,
+# personal addresses and secret-like file names.
 #
 # The patterns live in this script so that the publishing checklist and the
 # publish check cannot drift apart. The script excludes itself, because it

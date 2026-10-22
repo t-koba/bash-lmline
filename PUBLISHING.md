@@ -15,16 +15,18 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
 
    The bundled engine and Bash integration require bash 4.2 or newer.
 
-3. Confirm the commit subjects that follow the charter are one plain imperative
-   sentence with no internal identifier:
+3. Confirm the commit subjects are one plain imperative sentence describing
+   the change, with no internal identifier:
 
    ```bash
    bash scripts/check-commit-subjects.sh
    ```
 
-   `scripts/publish-check.sh` runs the same check before it packages anything.
-   The check reads the history to find the commit that added the charter, so
-   it needs the whole history; a truncated clone is reported as an error.
+   The rule is stated at the top of `scripts/check-commit-subjects.sh`, which
+   is where it is enforced. `scripts/publish-check.sh` runs the same check
+   before it packages anything. The check reads the history to find the commit
+   that added it, so it needs the whole history; a truncated clone is reported
+   as an error.
 
 4. Check that the tree holds no private data: local paths and user names,
    private host names (private network addresses and internal host names),

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Check the commit subjects that follow the charter against the charter rule:
-# one plain imperative sentence describing the change, with no internal
-# identifier. The rule starts at the commit that added PROJECT.md, so the
-# commits before the charter keep the subjects they already have.
+# Check the commit subjects of this project against the rule the project
+# states here: one plain imperative sentence describing the change, with no
+# internal identifier. The rule starts at the commit that added this script,
+# so the commits before it keep the subjects they already have.
 #
 # The check reads the history to find that commit, so it needs the whole
 # history: a truncated clone is reported as an error, and a history that
@@ -52,24 +52,27 @@ if ! git -C "$repo_dir" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
   exit 0
 fi
 
-# A truncated history cannot show the commits that follow the charter, so
+# A truncated history cannot show the commits that follow the rule, so
 # the check reports it instead of passing a history it could not read.
 if [[ "$(git -C "$repo_dir" rev-parse --is-shallow-repository 2>/dev/null || true)" == 'true' ]]; then
   printf 'check-commit-subjects: the history of %s is truncated (a shallow clone); the whole history is needed\n' "$repo_dir" >&2
   exit 1
 fi
 
-charter=$(git -C "$repo_dir" log --diff-filter=A --format=%H -- PROJECT.md 2>/dev/null | tail -n 1) || charter=''
-if [[ -z "$charter" ]]; then
-  printf 'check-commit-subjects: no charter commit found; PROJECT.md was never added\n' >&2
+# The rule starts with the commit that added this script, so the history
+# that does not hold it is reported instead of checked against a rule it
+# never had.
+rule_start=$(git -C "$repo_dir" log --diff-filter=A --format=%H -- scripts/check-commit-subjects.sh 2>/dev/null | tail -n 1) || rule_start=''
+if [[ -z "$rule_start" ]]; then
+  printf 'check-commit-subjects: the commit that added the rule was not found; scripts/check-commit-subjects.sh was never added\n' >&2
   exit 1
 fi
-if ! git -C "$repo_dir" merge-base --is-ancestor "$charter" HEAD; then
-  printf 'check-commit-subjects: the charter commit %s is not an ancestor of HEAD\n' "${charter:0:12}" >&2
+if ! git -C "$repo_dir" merge-base --is-ancestor "$rule_start" HEAD; then
+  printf 'check-commit-subjects: the rule commit %s is not an ancestor of HEAD\n' "${rule_start:0:12}" >&2
   exit 1
 fi
 
-# Print the reason why a subject does not follow the charter, or nothing when
+# Print the reason why a subject does not follow the rule, or nothing when
 # it does.
 subject_problem() {
   local subject=$1 token
@@ -102,15 +105,15 @@ while IFS=$'\t' read -r commit subject; do
     printf 'check-commit-subjects: %s: %s\n' "${commit:0:12}" "$problem" >&2
     printf 'check-commit-subjects: subject: %s\n' "$subject" >&2
   fi
-done < <(git -C "$repo_dir" log --format='%H%x09%s' "$charter"..HEAD)
+done < <(git -C "$repo_dir" log --format='%H%x09%s' "$rule_start"..HEAD)
 
 if (( violations > 0 )); then
-  printf 'check-commit-subjects: %s of %s commit subjects do not follow the charter\n' "$violations" "$checked" >&2
+  printf 'check-commit-subjects: %s of %s commit subjects do not follow the rule\n' "$violations" "$checked" >&2
   exit 1
 fi
 
 if (( checked == 0 )); then
-  printf 'check-commit-subjects: no commit subject was checked; the charter rule could not be verified\n' >&2
+  printf 'check-commit-subjects: no commit subject was checked; the rule could not be verified\n' >&2
   exit 1
 fi
 

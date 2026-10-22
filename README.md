@@ -1351,9 +1351,10 @@ bash tests/test_features.sh
 
 `./tests/run.sh` runs every `tests/test_*.sh` file and reports all failures.
 
-Commit subjects follow the charter in `PROJECT.md`: one plain imperative
-sentence, no internal identifier. `bash scripts/check-commit-subjects.sh`
-checks them, and `./scripts/publish-check.sh` runs the same check.
+Commit subjects follow the rule the check states: one plain imperative
+sentence describing the change, with no internal identifier. The rule and the
+check live together in `scripts/check-commit-subjects.sh`, which checks the
+subjects, and `./scripts/publish-check.sh` runs the same check.
 
 `bash scripts/privacy-scan.sh` keeps the private data of the machine that
 wrote the code out of the tree: local paths and user names, private host

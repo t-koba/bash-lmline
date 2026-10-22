@@ -57,7 +57,7 @@ if [[ ! -f .gitattributes ]] || ! grep -q '^\.DS_Store[[:space:]].*export-ignore
 fi
 
 if ! bash scripts/check-commit-subjects.sh; then
-  printf 'publish-check: a commit subject does not follow the charter\n' >&2
+  printf 'publish-check: a commit subject does not follow the rule\n' >&2
   exit 1
 fi
 
