@@ -86,10 +86,14 @@ subject_problem() {
     printf 'the subject carries more than one sentence'
   elif [[ "$subject" =~ (^|[^[:alnum:]_])wi_[[:alnum:]]+([^[:alnum:]_]|$) ]]; then
     printf 'the subject carries an internal identifier'
-  elif [[ "$subject" =~ [0-9a-fA-F]{8,} ]]; then
-    # A run of digits alone is a number or a date, not an identifier.
+  elif [[ "$subject" =~ [0-9a-fA-F]{7,} ]]; then
+    # A run of digits alone is a number or a date, not an identifier, and a
+    # short run of letters alone is a word. A run that carries both a digit
+    # and a letter is the short form of a commit hash, so it is an identifier.
     token=${BASH_REMATCH[0]}
-    if [[ "$token" == *[a-fA-F]* ]]; then
+    if [[ "$token" == *[a-fA-F]* && "$token" == *[0-9]* ]]; then
+      printf 'the subject carries a hex identifier'
+    elif (( ${#token} >= 8 )) && [[ "$token" == *[a-fA-F]* ]]; then
       printf 'the subject carries a hex identifier'
     fi
   fi

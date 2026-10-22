@@ -89,6 +89,8 @@ violation_case hex "Wait for the answer deadbeef12" "hex identifier"
 violation_case hexliteral "Fix the 0xdeadbeef mask" "hex identifier"
 violation_case shorthash "Revert fee232d" "hex identifier"
 violation_case shorthash2 "Apply the fix from 42345d9" "hex identifier"
+violation_case shorthash "Revert fee232d" "hex identifier"
+violation_case shorthash2 "Apply the fix from 42345d9" "hex identifier"
 violation_case item "Close the item wi_1e2b2bb2a755d6a0" "internal identifier"
 
 # A truncated history is reported instead of a history the check cannot read.
