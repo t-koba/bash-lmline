@@ -222,6 +222,7 @@ LMLINE_FIX_BACKEND	engine	fix backend: engine or copilot
 LMLINE_COPILOT_TIMEOUT	15000	Copilot Language Server request timeout in milliseconds
 LMLINE_COPILOT_RUNTIME_DIR	$LMLINE_CONFIG_DIR/copilot/runtime	Copilot daemon socket, pid, and log directory
 LMLINE_COPILOT_COMMAND	empty	optional Copilot Language Server executable override
+LMLINE_COPILOT_OPEN_LOG	empty	file the Copilot client records the URIs it opens in
 LMLINE_CHATGPT_CLIENT	installed client	optional ChatGPT client executable override
 LMLINE_PROMPT_DIR	installed prompts	prompt override directory
 LMLINE_PROMPT_VERSION	3	prompt/context version marker used in request keys

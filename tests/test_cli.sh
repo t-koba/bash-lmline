@@ -56,6 +56,11 @@ grep -q 'unknown setting: LMLINE_CAHCE_TTL' "$cfg_tmp/typo.err" || fail "config 
 if grep -q 'LMLINE_CAHCE_TTL' "$cfg_tmp/config/settings.bash" 2>/dev/null; then
   fail "config set persisted a setting the catalog does not know"
 fi
+# A setting the shipped code reads is in the catalog, so the lookup does not
+# refuse it.
+describe_copilot_log=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_COPILOT_OPEN_LOG)
+grep -q '^setting=LMLINE_COPILOT_OPEN_LOG$' <<<"$describe_copilot_log" || fail "config describe copilot open log"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_COPILOT_OPEN_LOG /tmp/open.log
 effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
 grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
 grep -q $'^LMLINE_API_KEY_FILE\t\\*\\*\\*REDACTED\\*\\*\\*\t' <<<"$effective_out" || fail "config effective redacts secret file"
