@@ -631,6 +631,57 @@ __lmline_risk_remove_is_recursive() {
   return 1
 }
 
+# Whether a word stands for the remove command. The word is read as the
+# words it runs, with the quoting removed and the expansions spaced, so a
+# spelling that hides the command (rm${IFS}-rf, `echo rm`) is read as the
+# words it runs.
+__lmline_risk_word_is_remove_command() {
+  local canonical index
+  local -a canon=()
+  canonical=$(__lmline_canonicalize_for_risk <<<"$1")
+  [[ -n $canonical ]] || return 1
+  read -r -a canon <<<"$canonical" || true
+  for (( index = 0; index < ${#canon[@]}; index++ )); do
+    if [[ "${canon[index]##*/}" == rm ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The command a program that runs another program runs: the first word that
+# is not one of the program's own options, not the value one of those
+# options takes, and not a count, a duration or a level. A remove or a shell
+# in that position is the command the program runs, whatever the option
+# before it names.
+__lmline_risk_carried_command_index() {
+  local -a words=("$@")
+  local index word base expect_value=0
+  for (( index = 0; index < ${#words[@]}; index++ )); do
+    word=${words[index]}
+    [[ "$word" == *=* ]] && continue
+    if [[ "$word" == -* ]]; then
+      expect_value=1
+      continue
+    fi
+    base=${word##*/}
+    if __lmline_risk_word_is_remove_command "$word" || __lmline_word_is_shell "$base"; then
+      printf '%s\n' "$index"
+      return 0
+    fi
+    if (( expect_value )); then
+      expect_value=0
+      continue
+    fi
+    case "$word" in
+      [0-9]*) continue ;;
+    esac
+    printf '%s\n' "$index"
+    return 0
+  done
+  return 1
+}
+
 # Whether a word stands for the remove command and the flags it carries.
 # The word is read as the words it runs, with the quoting removed and the
 # expansions spaced, so a spelling that hides the command (rm${IFS}-rf,
@@ -724,7 +775,7 @@ __lmline_risk_shell_carries_remove() {
 # the remove it is.
 __lmline_risk_recursive_remove() {
   local cmd=$1 depth=${2:-0} segment word base
-  local index count first_index
+  local index count first_index cmd_index
   local -a words
   (( depth < 4 )) || return 1
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -753,34 +804,27 @@ __lmline_risk_recursive_remove() {
     (( first_index >= 0 )) || continue
     base=${words[first_index]##*/}
 
-    if __lmline_word_is_shell "$base"; then
-      # A shell command word runs the command string it is given after -c.
-      (( first_index + 1 < count )) || continue
-      __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:first_index+1}" && return 0
-      continue
-    fi
-
-    if __lmline_word_is_command_runner "$base"; then
-      # The program runs the command it is given, so the remove or the shell
-      # it carries is the one that runs.
-      for (( index = first_index + 1; index < count; index++ )); do
-        word=${words[index]}
-        [[ "$word" == -* || "$word" == *=* ]] && continue
-        base=${word##*/}
-        if __lmline_word_is_shell "$base"; then
-          (( index + 1 < count )) || continue
-          __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:index+1}" && return 0
-          continue
-        fi
-        (( index + 1 < count )) || continue
-        __lmline_risk_remove_word_is_recursive "$word" "${words[@]:index+1}" && return 0
-      done
-      continue
-    fi
-
-    # The command the segment runs.
-    (( first_index + 1 < count )) || continue
-    __lmline_risk_remove_word_is_recursive "${words[first_index]}" "${words[@]:first_index+1}" && return 0
+    # The command the segment runs. A program that runs another program hands
+    # the command it runs to the next program, so the chain is followed to
+    # the command that runs.
+    while :; do
+      base=${words[first_index]##*/}
+      if __lmline_word_is_shell "$base"; then
+        # A shell command word runs the command string it is given after -c.
+        (( first_index + 1 < count )) || break
+        __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:first_index+1}" && return 0
+        break
+      fi
+      if __lmline_word_is_command_runner "$base"; then
+        cmd_index=$(__lmline_risk_carried_command_index "${words[@]:first_index+1}") || break
+        first_index=$((first_index + 1 + cmd_index))
+        continue
+      fi
+      # The command the segment runs.
+      (( first_index + 1 < count )) || break
+      __lmline_risk_remove_word_is_recursive "${words[first_index]}" "${words[@]:first_index+1}" && return 0
+      break
+    done
   done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
   return 1
 }

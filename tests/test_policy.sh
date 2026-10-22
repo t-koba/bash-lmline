@@ -65,6 +65,9 @@ bash -c '
   [[ $(__lmline_risk_level "echo rm -rf /") == low ]]
   [[ $(__lmline_risk_level "grep rm -rf file") == low ]]
   [[ $(__lmline_risk_level "printf \"rm -rf /\"") == low ]]
+  # The argument a wrapper carries is not the remove command either.
+  [[ $(__lmline_risk_level "nice find . -name rm -print") == low ]]
+  [[ $(__lmline_risk_level "nice ls rm -r") == low ]]
   # A multi-call binary runs the command it is given, so a remove it runs is
   # the remove that runs.
   [[ $(__lmline_risk_level "busybox rm -rf /") == high ]]
