@@ -52,4 +52,17 @@ grep -q '^allowed=0$' <<<"$out" || fail "the tool path allows a command outside 
 grep -q '^reason=command_not_allowed$' <<<"$out" || fail "the tool path gives no reason for the refusal"
 ok "the tool path refuses a command outside the list"
 
+# A find action is refused in the spelling the shell passes to find, whether
+# the action word is quoted or not.
+for find_command in "find . -exec touch m1 +" "find . '-exec' touch m1 +" \
+  "find . -fprintf out1 %p" "find . '-fprintf' out1 '%p'"; do
+  args=$(jq -cn --arg command "$find_command" '{command:$command}')
+  out=$(LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \
+    __lmline_tool_output command_run "$args" 2>/dev/null || true)
+  grep -q '^allowed=0$' <<<"$out" || fail "the tool path allows a find action: $find_command"
+  grep -q '^reason=command_not_allowed$' <<<"$out" \
+    || fail "the tool path gives no reason for the refusal: $find_command"
+done
+ok "the tool path refuses a find action in either spelling"
+
 ok "local commands"

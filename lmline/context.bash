@@ -442,7 +442,7 @@ __lmline_require_policy_support() {
 }
 
 __lmline_local_segment_allowed() {
-  local segment=$1 cmd="" token
+  local segment=$1 cmd="" token plain=""
   for token in $segment; do
     [[ "$token" == *=* && "$token" != */* ]] && continue
     if __lmline_word_is_command_prefix "$token"; then
@@ -457,7 +457,10 @@ __lmline_local_segment_allowed() {
   __lmline_local_command_allowed "$cmd" || return 1
   case "$cmd" in
     find)
-      case " $segment " in
+      # The shell removes the quotes before find sees the action, so the
+      # action words are compared as the shell passes them.
+      plain=$(__lmline_canonicalize_for_risk <<<"$segment" | tr -s '[:space:]' ' ')
+      case " $plain " in
         *" -delete "*|*" -exec "*|*" -execdir "*|*" -ok "*|*" -okdir "*|*" -fls "*|*" -fprint "*|*" -fprint0 "*|*" -fprintf "*) return 1 ;;
       esac
       ;;
