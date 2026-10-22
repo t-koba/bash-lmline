@@ -137,6 +137,38 @@ if command -v zsh >/dev/null 2>&1; then
     [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-risk-test" ]]
     grep -q "high-risk; inserted as comment" /tmp/lmline-zsh-high.err
   ' _ "$repo_dir" || fail "zsh high risk hint"
+  zsh_fix_marker="$zsh_tmp/fix-disabled-marker"
+  zsh_fix_survived="$zsh_tmp/fix-disabled-survived"
+  env -u LMLINE_EXEC_BACKEND LMLINE_CONFIG_DIR="$zsh_tmp/config-fix-disabled" LMLINE_ENGINE="$zsh_tmp/engine" zsh -fic '
+    source "$1/lmline/init.zsh"
+    LMLINE_EXEC_BACKEND=off
+    [[ "${parameters[LMLINE_EXEC_BACKEND]}" == scalar ]]
+    bridge_status=0
+    __lmline_zsh_run_bridge "fix" fix fix "touch $2" 0 || bridge_status=$?
+    [[ "$bridge_status" == 3 ]]
+    [[ ! -e "$2" ]]
+    [[ "$__LMLINE_ZSH_BRIDGE_OUTPUT" == *"fix execution disabled by LMLINE_EXEC_BACKEND=off"* ]]
+    print -r -- survived >"$3"
+  ' _ "$repo_dir" "$zsh_fix_marker" "$zsh_fix_survived" || fail "zsh session execution setting reaches fix bridge"
+  [[ ! -e "$zsh_fix_marker" && -f "$zsh_fix_survived" ]] || fail "zsh fix kill switch leaves shell alive"
+  mkdir -p "$zsh_tmp/config-fix-session"
+  printf "export LMLINE_EXEC_BACKEND='local'\n" >"$zsh_tmp/config-fix-session/settings.bash"
+  zsh_fix_session_marker="$zsh_tmp/fix-session-disabled-marker"
+  zsh_fix_session_survived="$zsh_tmp/fix-session-disabled-survived"
+  env -u LMLINE_EXEC_BACKEND LMLINE_CONFIG_DIR="$zsh_tmp/config-fix-session" LMLINE_ENGINE="$zsh_tmp/engine" zsh -fic '
+    source "$1/lmline/init.zsh"
+    [[ "$LMLINE_EXEC_BACKEND" == local ]]
+    LMLINE_EXEC_BACKEND=off
+    typeset -g +x LMLINE_EXEC_BACKEND
+    [[ "${parameters[LMLINE_EXEC_BACKEND]}" == scalar ]]
+    bridge_status=0
+    __lmline_zsh_run_bridge "fix" fix fix "touch $2" 0 || bridge_status=$?
+    [[ "$bridge_status" == 3 ]]
+    [[ ! -e "$2" ]]
+    [[ "$__LMLINE_ZSH_BRIDGE_OUTPUT" == *"fix execution disabled by LMLINE_EXEC_BACKEND=off"* ]]
+    print -r -- survived >"$3"
+  ' _ "$repo_dir" "$zsh_fix_session_marker" "$zsh_fix_session_survived" || fail "zsh session setting keeps precedence over loaded settings"
+  [[ ! -e "$zsh_fix_session_marker" && -f "$zsh_fix_session_survived" ]] || fail "zsh session override survives child config reload"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-notify" LMLINE_ASYNC_NOTIFY=1 zsh -fic '
     source "$1/lmline/init.zsh"
     [[ " ${precmd_functions[@]} " == *"__lmline_zsh_async_prompt_check"* ]]

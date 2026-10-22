@@ -284,23 +284,25 @@ __lmline_zsh_run_bridge() {
 }
 
 __lmline_zsh_bridge() {
-  local action=$1 mode=${2-} line=${3-} point=${4-0}
-  LMLINE_DIR=$LMLINE_DIR \
-  LMLINE_ENGINE=$LMLINE_ENGINE \
-  LMLINE_HISTORY_DIR=$LMLINE_HISTORY_DIR \
-  LMLINE_CONFIG_DIR=$LMLINE_CONFIG_DIR \
-  LMLINE_CLIPBOARD_PROVIDER=${LMLINE_CLIPBOARD_PROVIDER:-auto} \
-  LMLINE_CLIPBOARD_PROVIDERS_FILE=${LMLINE_CLIPBOARD_PROVIDERS_FILE:-} \
-  LMLINE_CANDIDATE_COUNT=$LMLINE_CANDIDATE_COUNT \
-  LMLINE_REWRITE_BACKEND=$LMLINE_REWRITE_BACKEND \
-  LMLINE_GENERATE_BACKEND=$LMLINE_GENERATE_BACKEND \
-  LMLINE_FIX_BACKEND=$LMLINE_FIX_BACKEND \
-  LMLINE_COPILOT_TIMEOUT=${LMLINE_COPILOT_TIMEOUT:-15000} \
-  LMLINE_COPILOT_RUNTIME_DIR=${LMLINE_COPILOT_RUNTIME_DIR:-} \
-  LMLINE_COPILOT_COMMAND=${LMLINE_COPILOT_COMMAND:-} \
-  LMLINE_MAX_CANDIDATE_BYTES=${LMLINE_MAX_CANDIDATE_BYTES:-4096} \
-  LMLINE_PS0=$LMLINE_PS0 \
-    bash -c '
+  local action=$1 mode=${2-} line=${3-} point=${4-0} key declaration
+  local -a bridge_env bridge_env_unset bridge_env_set
+  # The bridge runs in Bash, but zsh session settings are often globals that
+  # were never exported. Pass those values for this invocation without
+  # exporting them permanently or carrying function-local bookkeeping into
+  # the child.
+  for key in ${(k)parameters}; do
+    [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
+    bridge_env_unset+=(-u "$key")
+    [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
+    declaration=$(typeset -p "$key" 2>/dev/null) || continue
+    [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
+    bridge_env_set+=("$key=${(P)key}")
+  done
+  # The parent zsh has already loaded the current config hierarchy. Seed the
+  # child's reload identity so it does not re-apply settings files over a
+  # session value that the user changed after that load.
+  bridge_env=("${bridge_env_unset[@]}" "${bridge_env_set[@]}" "__LMLINE_SETTINGS_CKSUM=$__LMLINE_ZSH_SETTINGS_CKSUM")
+  command env "${bridge_env[@]}" bash -c '
     set -u
     set -o pipefail
     source "$LMLINE_DIR/context.bash"
