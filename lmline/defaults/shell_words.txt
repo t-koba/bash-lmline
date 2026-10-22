@@ -1,0 +1,10 @@
+# Programs that run a command string given to them, so a command they carry
+# is the command that runs. A multi-call binary is not named here: the shell
+# it runs is named as a word of its own (busybox sh -c "...").
+sh
+bash
+dash
+ksh
+zsh
+fish
+ash

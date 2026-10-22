@@ -27,6 +27,23 @@ __lmline_word_is_policy_skip() {
   [[ $'\n'"$__LMLINE_SHELL_SYNTAX_WORDS_CACHE"$'\n' == *$'\n'"$word"$'\n'* ]]
 }
 
+# A program that runs a command string given to it: the command it carries
+# is the command that runs, so both the piped-shell check and the removal
+# family ask this one owner. The list is a shipped data file, so a user can
+# add a program the shipped list does not name.
+__lmline_word_is_shell() {
+  local word=$1 file
+  if [[ -z "${__LMLINE_SHELL_WORDS_CACHE_SET:-}" ]]; then
+    file=$(__lmline_resolve_data_file shell_words \
+      "${LMLINE_SHELL_WORDS_FILE:-}" \
+      "$LMLINE_USER_RULES_DIR/shell_words.txt" \
+      "$LMLINE_DEFAULTS_DIR/shell_words.txt") || return 1
+    __LMLINE_SHELL_WORDS_CACHE=$(__lmline_read_list_file "$file")
+    __LMLINE_SHELL_WORDS_CACHE_SET=1
+  fi
+  [[ $'\n'"$__LMLINE_SHELL_WORDS_CACHE"$'\n' == *$'\n'"$word"$'\n'* ]]
+}
+
 __lmline_word_is_command_prefix() {
   local word=$1 file
   if [[ -z "${__LMLINE_COMMAND_PREFIX_WORDS_CACHE_SET:-}" ]]; then
@@ -451,14 +468,11 @@ __lmline_risk_piped_shell() {
     ((${#subs[@]} > 0)) || continue
     first_base=${subs[0]##*/}
     case "$first_base" in
-      command|builtin|exec|env|time|sudo|nohup|nice|'!'|sh|bash|dash|ksh|zsh) ;;
-      *) continue ;;
+      command|builtin|exec|env|time|sudo|nohup|nice|'!') ;;
+      *) __lmline_word_is_shell "$first_base" || continue ;;
     esac
     for word in "${subs[@]}"; do
-      base=${word##*/}
-      case "$base" in
-        sh|bash|dash|ksh|zsh) return 0 ;;
-      esac
+      __lmline_word_is_shell "${word##*/}" && return 0
     done
   done <<<"$stripped"
   return 1
@@ -663,10 +677,11 @@ __lmline_risk_recursive_remove() {
       # An option word and an assignment are not the command word.
       [[ "$word" == -* || "$word" == *=* ]] && continue
       base=${word##*/}
-      case "$base" in
-        rm) removal=1 ;;
-        sh|bash|dash|ksh|zsh) shell=1 ;;
-      esac
+      if [[ "$base" == rm ]]; then
+        removal=1
+      elif __lmline_word_is_shell "$base"; then
+        shell=1
+      fi
     done
   done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
   return 1

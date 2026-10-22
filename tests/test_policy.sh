@@ -42,6 +42,11 @@ bash -c '
   [[ $(__lmline_risk_level "setsid rm -fr build") == high ]]
   [[ $(__lmline_risk_level "nice bash -c \"rm -fr build\"") == high ]]
   [[ $(__lmline_risk_reason "env -i rm -fr build") == "recursive remove" ]]
+  # A shell the shipped list does not name is still a shell, so a remove it
+  # carries is judged the same way.
+  [[ $(__lmline_risk_level "fish -c \"rm -fr /\"") == high ]]
+  [[ $(__lmline_risk_level "ash -c \"rm -fr /\"") == high ]]
+  [[ $(__lmline_risk_level "busybox sh -c \"rm -fr /\"") == high ]]
   # A wrapper that carries no recursive remove is not a destructive remove.
   [[ $(__lmline_risk_level "nice -n 5 rm build") == low ]]
   [[ $(__lmline_risk_level "timeout 5 rm build") == low ]]
@@ -297,6 +302,20 @@ bash -c '
 ' _ "$repo_dir" "$probe_tmp" "$probe_tmp/out.txt"
 ! grep -q 'probe ran' <(sed -n '/^### sed$/,/^### prog$/p' "$probe_tmp/out.txt") || fail "a program on the macOS exemption list is probed"
 grep -q 'probe ran' <(sed -n '/^### prog$/,$p' "$probe_tmp/out.txt") || fail "a program outside the macOS list is not probed"
+# The shell list has one owner, and a user can add a program to it.
+shell_words_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-shell-words.XXXXXX")
+printf 'myshell\n' >"$shell_words_tmp/shell_words.txt"
+cat >"$shell_words_tmp/check.sh" <<'SHELL_WORDS_CHECK'
+set -euo pipefail
+source "$1/lmline/context.bash"
+source "$1/lmline/actions.bash"
+source "$1/lmline/policy.bash"
+[[ $(__lmline_risk_level "myshell -c \"rm -fr /\"") == high ]]
+SHELL_WORDS_CHECK
+LMLINE_USER_RULES_DIR="$shell_words_tmp" LMLINE_DEFAULTS_DIR="$repo_dir/lmline/defaults" \
+  bash "$shell_words_tmp/check.sh" "$repo_dir" || fail "a user shell list is not honored"
+rm -rf "$shell_words_tmp"
+
 ok "policy and context"
 
 bash -c '

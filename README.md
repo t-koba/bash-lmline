@@ -826,6 +826,7 @@ suggested_commands.txt
 file_search_excludes.txt
 shell_syntax_words.txt
 command_prefix_words.txt
+shell_words.txt
 risk_patterns.tsv
 project_markers.tsv
 clipboard_providers.tsv
@@ -841,6 +842,7 @@ lmline config set LMLINE_SUGGESTED_COMMANDS_FILE /path/to/suggested_commands.txt
 lmline config set LMLINE_FILE_SEARCH_EXCLUDES_FILE /path/to/file_search_excludes.txt
 lmline config set LMLINE_SHELL_SYNTAX_WORDS_FILE /path/to/shell_syntax_words.txt
 lmline config set LMLINE_COMMAND_PREFIX_WORDS_FILE /path/to/command_prefix_words.txt
+lmline config set LMLINE_SHELL_WORDS_FILE /path/to/shell_words.txt
 lmline config set LMLINE_RISK_PATTERNS_FILE /path/to/risk_patterns.tsv
 lmline config set LMLINE_PROJECT_MARKERS_FILE /path/to/project_markers.tsv
 lmline config set LMLINE_CLIPBOARD_PROVIDERS_FILE /path/to/clipboard_providers.tsv
@@ -1328,6 +1330,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_FILE_SEARCH_EXCLUDES_FILE` | user override or installed default | `files` tool exclude list |
 | `LMLINE_SHELL_SYNTAX_WORDS_FILE` | user override or installed default | words ignored by command availability validation |
 | `LMLINE_COMMAND_PREFIX_WORDS_FILE` | user override or installed default | command prefixes ignored before command extraction |
+| `LMLINE_SHELL_WORDS_FILE` | user override or installed default | programs that run a command string given to them |
 | `LMLINE_RISK_PATTERNS_FILE` | user override or installed default | candidate risk rules |
 | `LMLINE_RISK_PIPED_SHELL_LEVEL` | `high` | level for pipe-to-shell structural risk |
 | `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` | `high` | level for default-character interactive history references (`low`, `medium`, `high`; invalid/empty uses `high`) |
