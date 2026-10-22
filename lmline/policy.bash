@@ -802,7 +802,6 @@ __lmline_risk_recursive_remove() {
       break
     done
     (( first_index >= 0 )) || continue
-    base=${words[first_index]##*/}
 
     # The command the segment runs. A program that runs another program hands
     # the command it runs to the next program, so the chain is followed to
