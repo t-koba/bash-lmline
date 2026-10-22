@@ -153,19 +153,28 @@ profile_find_line() {
 # Callers that run from the CLI dispatcher must already hold the config-dir
 # lock (with_config_lock); this function does not lock on its own.
 profile_upsert_line() {
-  local file=$1 key_fields=$2 line=$3 tmp
+  local file=$1 key_fields=$2 line=$3 tmp newfile
   mkdir -p "${file%/*}"
   touch "$file"
   __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
-  awk -F '\t' -v OFS='\t' -v key_fields="$key_fields" -v new_line="$line" '
-    BEGIN { n=split(new_line, nf, "\t") }
+  __lmline_mktemp newfile "${TMPDIR:-/tmp}/lmline-profile-row.XXXXXX"
+  # The row travels through a file, not through an awk assignment: an
+  # assignment decodes the escape sequences its value carries, and the row
+  # must be stored byte for byte.
+  printf '%s\n' "$line" >"$newfile"
+  awk -F '\t' -v key_fields="$key_fields" -v new_file="$newfile" '
+    BEGIN {
+      if ((getline new_line < new_file) > 0) { n=split(new_line, nf, "\t") }
+      close(new_file)
+    }
     {
       keep=0
       for (i=1; i<=key_fields; i++) if ($i != nf[i]) keep=1
       if (keep) print
     }
-    END { print new_line }
-  ' "$file" >"$tmp"
+  ' "$file" >"$tmp" || { rm -f "$tmp" "$newfile"; return 1; }
+  printf '%s\n' "$line" >>"$tmp"
+  rm -f "$newfile"
   mv "$tmp" "$file"
   chmod 600 "$file" 2>/dev/null || true
 }

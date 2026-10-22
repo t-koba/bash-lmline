@@ -13,6 +13,17 @@ grep -q "LMLINE_BASE_URL=.*https://api.openai.com/v1" <<<"$config_out" || fail "
 grep -q "LMLINE_MODEL=.*test-model" <<<"$config_out" || fail "endpoint use model"
 grep -q "LMLINE_API_KEY_FILE=" <<<"$config_out" || fail "secret file reference"
 ! grep -q "redaction-sentinel" <<<"$config_out" || fail "secret redaction"
+# A row is stored byte for byte: a value holding an escape stays one line
+# and keeps the escape the user gave.
+escape_endpoint_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-escape-endpoint.XXXXXX")
+escape_jq='.data[] | select(.id != "\n")'
+LMLINE_CONFIG_DIR="$escape_endpoint_tmp/config" "$repo_dir/lmline/lmline" endpoint add escapes https://example.invalid/v1 --models-jq "$escape_jq" >/dev/null
+escape_file="$escape_endpoint_tmp/config/endpoints.tsv"
+[[ -f "$escape_file" ]] || fail "endpoint row file"
+[[ $(wc -l <"$escape_file") == 1 ]] || fail "the endpoint row file holds one line per endpoint"
+escape_stored=$(cut -f10 <"$escape_file")
+[[ "$escape_stored" == "$escape_jq" ]] || fail "the stored jq field is not the argument byte for byte"
+rm -rf "$escape_endpoint_tmp"
 defaults_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config defaults)
 grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "config defaults microsandbox command"
 grep -q $'^LMLINE_MODELS_URL\t\\$LMLINE_BASE_URL/models\t' <<<"$defaults_out" || fail "config defaults models url"
