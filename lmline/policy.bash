@@ -539,19 +539,110 @@ __lmline_risk_level_rank() {
   esac
 }
 
+# Split a command into the words the policy judges: quotes group words and
+# are removed, and a backslash escapes the next character. The words are
+# data and are never executed.
+__lmline_risk_split_words() {
+  local str=$1 word="" ch quote="" i n
+  n=${#str}
+  for ((i = 0; i < n; i++)); do
+    ch=${str:i:1}
+    if [[ -n "$quote" ]]; then
+      if [[ "$quote" == '"' && "$ch" == '\\' ]]; then
+        i=$((i + 1))
+        word+=${str:i:1}
+        continue
+      fi
+      if [[ "$ch" == "$quote" ]]; then
+        quote=""
+        continue
+      fi
+      word+=$ch
+      continue
+    fi
+    case "$ch" in
+      "'"|'"'|'`')
+        quote=$ch
+        ;;
+      '\\')
+        i=$((i + 1))
+        word+=${str:i:1}
+        ;;
+      ' '|$'\t')
+        if [[ -n "$word" ]]; then
+          printf '%s\n' "$word"
+          word=""
+        fi
+        ;;
+      *) word+=$ch ;;
+    esac
+  done
+  if [[ -n "$word" ]]; then
+    printf '%s\n' "$word"
+  fi
+  return 0
+}
+
+# A recursive remove is the same destructive command however its flags are
+# written, so the removal family is recognised by its command word and the
+# flags written with it, not by the order of the text. Only the removal
+# family is watched: an ordinary recursive copy or search is not a
+# destructive remove.
+__lmline_risk_recursive_remove() {
+  local cmd=$1 segment word base cluster
+  local expect_command=1 removal=0
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    [[ -n "${segment//[[:space:]]/}" ]] || continue
+    [[ "$segment" == *rm* ]] || continue
+    expect_command=1
+    removal=0
+    while IFS= read -r word || [[ -n $word ]]; do
+      if (( expect_command )); then
+        [[ "$word" == *=* && "$word" != */* ]] && continue
+        if __lmline_word_is_command_prefix "$word"; then
+          continue
+        fi
+        base=${word##*/}
+        removal=0
+        [[ "$base" == rm ]] && removal=1
+        expect_command=0
+        continue
+      fi
+      (( removal )) || continue
+      # The end of the options: the words after it are file names.
+      [[ "$word" == "--" ]] && break
+      case "$word" in
+        --recursive) return 0 ;;
+        --*) ;;
+        -?*)
+          cluster=${word#-}
+          case "$cluster" in
+            *[!A-Za-z0-9]*) continue ;;
+          esac
+          case "$cluster" in *r*|*R*) return 0 ;; esac
+          ;;
+      esac
+    done < <(__lmline_risk_split_words "$segment")
+  done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
+  return 1
+}
+
 # Risk precedence: structural recognition (piped shell, interactive history,
-# unresolved variable command, capped brace expansion) is mechanism only; its
-# levels are configuration (LMLINE_RISK_*_LEVEL, defaults high/high/medium/medium;
-# unknown or empty falls back to the default). A replacement risk_patterns file
-# overrides shipped patterns and structural defaults: with a user or explicit
-# file, the first matching rule wins and structural fallbacks apply only when
-# no rule matched. With the shipped default file, shipped patterns and
-# structural fallbacks compete and the highest level wins, so a generic
-# medium rule never shadows a structural high. LMLINE_RISK_*_LEVEL tunes
-# structural fallbacks in both modes. Defaults stay protective.
+# unresolved variable command, capped brace expansion, recursive remove) is
+# mechanism only; its levels are configuration (LMLINE_RISK_*_LEVEL, defaults
+# high/high/medium/medium/high; unknown or empty falls back to the default). A
+# replacement risk_patterns file overrides shipped patterns and structural
+# defaults: with a user or explicit file, the first matching rule wins and
+# structural fallbacks apply only when no rule matched. With the shipped
+# default file, shipped patterns and structural fallbacks compete and the
+# highest level wins, so a generic medium rule never shadows a structural
+# high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
+# stay protective.
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
+  local removal_found=0 removal_reason="recursive remove" family_level=""
+  local shipped_defaults=0
   local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
   # History is judged on raw quoting/escaping, never decoded/canonical text.
   if __lmline_risk_history_expansion "$cmd"; then history_found=1; fi
@@ -568,6 +659,12 @@ __lmline_risk_match() {
     "${LMLINE_RISK_PATTERNS_FILE:-}" \
     "$LMLINE_USER_RULES_DIR/risk_patterns.tsv" \
     "$LMLINE_DEFAULTS_DIR/risk_patterns.tsv") || return 1
+  # Whether the shipped rules are in force, decided once: the scan below
+  # reads the file, so the file itself is not named inside the scan.
+  shipped_defaults=0
+  if [[ "$file" == "$LMLINE_DEFAULTS_DIR/risk_patterns.tsv" ]]; then
+    shipped_defaults=1
+  fi
   while IFS= read -r alt || [[ -n $alt ]]; do
     # Normalize: canonicalize quoting/IFS/braces, squeeze whitespace, and
     # wrap in single spaces so one pattern like "* dd *" matches at line
@@ -577,6 +674,11 @@ __lmline_risk_match() {
     # compete with it for the highest level.
     if __lmline_risk_piped_shell "$alt"; then
       piped_found=1
+    fi
+    family_level=""
+    if __lmline_risk_recursive_remove "$alt"; then
+      removal_found=1
+      family_level=$(__lmline_risk_structural_level "${LMLINE_RISK_RECURSIVE_REMOVE_LEVEL:-high}" high)
     fi
     canon=$(__lmline_canonicalize_for_risk <<<"$alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
@@ -588,6 +690,25 @@ __lmline_risk_match() {
       [[ -n "$level" && -n "$pattern" ]] || continue
       case "$level" in high|medium|low) ;; *) continue ;; esac
       if [[ "$canon" == $pattern ]]; then
+        if [[ -n $family_level && "$reason" == "$removal_reason" && "$shipped_defaults" == 1 ]]; then
+          # The mechanism owns the level of the removal family, so the same
+          # command reads the same way whatever order its flags are in. A
+          # stricter rule still wins, so the scan continues.
+          case "$family_level" in
+            high)
+              printf '%s\t%s\n' "$family_level" "$removal_reason"
+              return 0
+              ;;
+            medium)
+              [[ $best_level == medium ]] || { best_level=medium; best_reason=$removal_reason; }
+              continue
+              ;;
+            low)
+              [[ -n $best_level ]] || { best_level=low; best_reason=$removal_reason; }
+              continue
+              ;;
+          esac
+        fi
         case "$level" in
           high)
             printf '%s\t%s\n' "$level" "${reason:-matched policy rule}"
@@ -640,7 +761,16 @@ __lmline_risk_match() {
       struct_reason="unresolved brace expansion"
     fi
   fi
-  if [[ "$file" == "$LMLINE_DEFAULTS_DIR/risk_patterns.tsv" ]]; then
+  if (( removal_found )); then
+    candidate_level=$(__lmline_risk_structural_level "${LMLINE_RISK_RECURSIVE_REMOVE_LEVEL:-high}" high)
+    rank=$(__lmline_risk_level_rank "$candidate_level")
+    if (( rank > struct_rank )); then
+      struct_rank=$rank
+      struct_level=$candidate_level
+      struct_reason=$removal_reason
+    fi
+  fi
+  if [[ "$shipped_defaults" == 1 ]]; then
     # Shipped defaults compete: highest wins so a generic medium rule never
     # shadows a structural high (for example c{p,url} with *cp *).
     if [[ -n $best_level && -n $struct_level ]]; then

@@ -13,6 +13,20 @@ bash -c '
   [[ $(__lmline_risk_level "rm  -rf build") == high ]]
   [[ $(__lmline_risk_level "rm -R build") == high ]]
   [[ $(__lmline_risk_level "rm --recursive --force build") == high ]]
+  # A recursive remove reads the same way whatever order its flags are in.
+  [[ $(__lmline_risk_level "rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "rm --no-preserve-root -rf build") == high ]]
+  [[ $(__lmline_risk_level "rm -i -r build") == high ]]
+  [[ $(__lmline_risk_level "rm -r -f build") == high ]]
+  [[ $(__lmline_risk_level "rm --force --recursive build") == high ]]
+  [[ $(__lmline_risk_reason "rm -fr build") == "recursive remove" ]]
+  # An ordinary recursive copy or search is not a destructive remove.
+  [[ $(__lmline_risk_level "cp -r build copy") == medium ]]
+  [[ $(__lmline_risk_level "find . -type f") == low ]]
+  [[ $(__lmline_risk_level "rm build") == low ]]
+  [[ $(__lmline_risk_level "rm -v build") == low ]]
+  # The end of the options ends the flags.
+  [[ $(__lmline_risk_level "rm -- -r") == low ]]
   [[ $(__lmline_risk_level "find . -type f -exec unlink {} +") == high ]]
   [[ $(__lmline_risk_level "echo a | xargs -0 rm") == high ]]
   [[ $(__lmline_risk_level "git -C /tmp clean -fdx") == high ]]
@@ -263,6 +277,8 @@ bash -c '
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "echo hi | sh") == low ]]
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_reason "echo hi | sh") == "user override" ]]
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "rm -rf build") == low ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "rm -fr build") == low ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_level "rm -fr build") == high ]]
   # Explicit structural levels tune the fallbacks when the default file is kept.
   [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=medium __lmline_risk_level "echo hi | sh") == medium ]]
   [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=medium __lmline_risk_reason "echo hi | sh") == "piped shell execution" ]]
@@ -272,6 +288,14 @@ bash -c '
   # Unknown or empty levels fail closed to their protective defaults.
   [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL=bogus __lmline_risk_level "echo hi | sh") == high ]]
   [[ $(LMLINE_RISK_UNRESOLVED_VAR_LEVEL=bogus __lmline_risk_level "\$X -rf build") == medium ]]
+  # The removal level tunes the family, in every flag order.
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=medium __lmline_risk_level "rm -rf build") == medium ]]
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=medium __lmline_risk_level "rm -fr build") == medium ]]
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=low __lmline_risk_level "rm -fr build") == low ]]
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=bogus __lmline_risk_level "rm -fr build") == high ]]
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL= __lmline_risk_level "rm -fr build") == high ]]
+  # A stricter rule still wins over a lowered removal level.
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=low __lmline_risk_level "sudo rm -rf /") == high ]]
   [[ $(LMLINE_RISK_PIPED_SHELL_LEVEL= __lmline_risk_level "echo hi | sh") == high ]]
   # Highest applicable structural level wins.
   [[ $(__lmline_risk_level "\$X | sh") == high ]]

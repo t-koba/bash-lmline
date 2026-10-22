@@ -3,8 +3,9 @@
 # whole line wrapped in single spaces, so "* dd *" matches "dd if=...",
 # "x | dd of=...", and a bare "dd".
 # With these defaults the highest level across patterns and structural
-# fallbacks wins (pipe-to-shell/history expansion high, unresolved variable
-# and capped brace medium via LMLINE_RISK_*_LEVEL); a replacement file overrides.
+# fallbacks wins (pipe-to-shell/history expansion/recursive remove high,
+# unresolved variable and capped brace medium via LMLINE_RISK_*_LEVEL); a
+# replacement file overrides.
 high	*rm -r*	recursive remove
 high	*rm -R*	recursive remove
 high	*rm --recursive*	recursive remove

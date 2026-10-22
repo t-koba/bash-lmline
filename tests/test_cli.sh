@@ -63,6 +63,7 @@ grep -q '^LMLINE_API_FORMAT$' <<<"$complete_settings" || fail "complete settings
 grep -q '^LMLINE_MODELS_INCLUDE$' <<<"$complete_settings" || fail "complete settings models include"
 grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
 grep -q '^LMLINE_RISK_HISTORY_EXPANSION_LEVEL$' <<<"$complete_settings" || fail "history risk setting completion"
+grep -q '^LMLINE_RISK_RECURSIVE_REMOVE_LEVEL$' <<<"$complete_settings" || fail "recursive remove setting completion"
 complete_api_format_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_API_FORMAT)
 grep -q '^responses$' <<<"$complete_api_format_values" || fail "complete setting values api format"
 complete_backend_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_EXEC_BACKEND)

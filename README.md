@@ -614,13 +614,14 @@ The engine filters candidates before printing them:
 
 Each accepted candidate is classified with the configured `risk_patterns.tsv`
 and structural pipe-to-shell, interactive history expansion, unresolved
-variable, and capped brace recognition. High-risk candidates are inserted as comments prefixed with
+variable, capped brace, and recursive remove recognition. High-risk candidates are inserted as comments prefixed with
 `# REVIEW REQUIRED:`. Medium-risk candidates are inserted with a warning.
 Low-risk candidates are inserted directly. Structural levels are
 configuration (`LMLINE_RISK_PIPED_SHELL_LEVEL` default `high`,
 `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` default `high`,
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` default `medium`,
-`LMLINE_RISK_BRACE_CAPPED_LEVEL` default `medium`); the highest applicable
+`LMLINE_RISK_BRACE_CAPPED_LEVEL` default `medium`,
+`LMLINE_RISK_RECURSIVE_REMOVE_LEVEL` default `high`); the highest applicable
 structural level wins. With the shipped defaults the highest level across
 patterns and structural wins, so a generic medium rule never shadows a
 structural high. A replacement `risk_patterns.tsv` overrides shipped
@@ -853,8 +854,9 @@ rule wins after whitespace is squeezed and the command is wrapped with one
 leading and trailing space. Structural fallbacks use
 `LMLINE_RISK_PIPED_SHELL_LEVEL` (default `high`),
 `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` (default `high`),
-`LMLINE_RISK_UNRESOLVED_VAR_LEVEL` (default `medium`), and
-`LMLINE_RISK_BRACE_CAPPED_LEVEL` (default `medium`), highest wins; unknown
+`LMLINE_RISK_UNRESOLVED_VAR_LEVEL` (default `medium`),
+`LMLINE_RISK_BRACE_CAPPED_LEVEL` (default `medium`), and
+`LMLINE_RISK_RECURSIVE_REMOVE_LEVEL` (default `high`), highest wins; unknown
 or empty levels fall back to their defaults. With the shipped defaults the
 highest level across patterns and structural wins. A replacement file
 overrides shipped patterns and structural defaults: a matching rule wins
@@ -1314,6 +1316,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` | `high` | level for default-character interactive history references (`low`, `medium`, `high`; invalid/empty uses `high`) |
 | `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` | `medium` | level for unresolved variable command structural risk |
 | `LMLINE_RISK_BRACE_CAPPED_LEVEL` | `medium` | level for capped brace expansion structural risk |
+| `LMLINE_RISK_RECURSIVE_REMOVE_LEVEL` | `high` | level for a recursive remove in any flag order (`low`, `medium`, `high`; invalid/empty uses `high`) |
 | `LMLINE_PROJECT_CONFIG` | `0` | load project-local `.lmline.bash` files |
 | `LMLINE_PROJECT_MARKERS_FILE` | user override or installed default | project type markers |
 | `LMLINE_LOCAL_COMMANDS_FILE` | user override or installed default | local backend allowlist for `command_run` |
