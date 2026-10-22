@@ -24,6 +24,24 @@ escape_file="$escape_endpoint_tmp/config/endpoints.tsv"
 escape_stored=$(cut -f10 <"$escape_file")
 [[ "$escape_stored" == "$escape_jq" ]] || fail "the stored jq field is not the argument byte for byte"
 rm -rf "$escape_endpoint_tmp"
+# A name holding an escape is found again by the tools that look a row up:
+# the filters compare the key as it is stored.
+escape_name_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-escape-name.XXXXXX")
+escape_name='a\tb'
+LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" endpoint add "$escape_name" https://example.invalid/v1 >/dev/null
+LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" model add "$escape_name" m1 >/dev/null
+escape_models=$(LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" model list "$escape_name")
+[[ "$escape_models" == "$escape_name"$'\t''m1'$'\t\t\t\t' ]] || fail "the model list did not find the endpoint whose name holds an escape"
+LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" model remove "$escape_name" m1 >/dev/null
+[[ ! -s "$escape_name_tmp/config/models.tsv" ]] || fail "the model whose endpoint name holds an escape was not removed"
+LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" endpoint add other https://other.invalid/v1 >/dev/null
+LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" model add other m2 >/dev/null
+LMLINE_CONFIG_DIR="$escape_name_tmp/config" "$repo_dir/lmline/lmline" endpoint remove "$escape_name" >/dev/null
+! grep -q "$escape_name" "$escape_name_tmp/config/endpoints.tsv" || fail "the endpoint whose name holds an escape was not removed"
+! grep -q "$escape_name" "$escape_name_tmp/config/models.tsv" || fail "the models of the removed endpoint were not removed"
+grep -q '^other' "$escape_name_tmp/config/endpoints.tsv" || fail "the other endpoint was removed with it"
+grep -q '^other' "$escape_name_tmp/config/models.tsv" || fail "the other endpoint models were removed with it"
+rm -rf "$escape_name_tmp"
 defaults_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config defaults)
 grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "config defaults microsandbox command"
 grep -q $'^LMLINE_MODELS_URL\t\\$LMLINE_BASE_URL/models\t' <<<"$defaults_out" || fail "config defaults models url"

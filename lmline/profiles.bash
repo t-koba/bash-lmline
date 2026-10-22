@@ -138,6 +138,33 @@ profile_split_tsv() {
   IFS=$sep read -r "$@" <<<"$line"
 }
 
+# Print the rows of a stored file whose key fields do not match the given
+# ones. The keys travel through a file, not through an awk assignment: an
+# assignment decodes the escape sequences its value carries, and a key that
+# is stored byte for byte must be compared byte for byte.
+profile_filter_out_key() {
+  local file=$1 key_fields=$2 tmp
+  shift 2
+  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
+  # The keys travel through the environment, which keeps the bytes the user
+  # gave, where an awk assignment decodes the escape sequences they carry.
+  LM_PROFILE_KEY_1=${1-} LM_PROFILE_KEY_2=${2-} \
+    awk -F '\t' -v key_fields="$key_fields" '
+      BEGIN {
+        k1=ENVIRON["LM_PROFILE_KEY_1"]
+        k2=ENVIRON["LM_PROFILE_KEY_2"]
+      }
+      {
+        drop=1
+        for (i=1; i<=key_fields; i++) {
+          if (i == 1) { if ($i != k1) drop=0 } else { if ($i != k2) drop=0 }
+        }
+        if (!drop) print
+      }
+    ' "$file" >"$tmp" || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$file"
+}
+
 profile_find_line() {
   local file=$1 key1=$2 key2=${3-} line f1 f2
   [[ -f "$file" ]] || return 1
@@ -287,14 +314,10 @@ profile_endpoint_remove() {
   profile_require_name endpoint "$name"
   line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$name" >&2; exit 2; }
   profile_split_tsv "$line" _ _ _ _ api_key_file _
-  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
-  awk -F '\t' -v name="$name" '$1 != name' "$endpoints_file" >"$tmp"
-  mv "$tmp" "$endpoints_file"
+  profile_filter_out_key "$endpoints_file" 1 "$name"
   chmod 600 "$endpoints_file" 2>/dev/null || true
   if [[ -f "$models_file" ]]; then
-    __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
-    awk -F '\t' -v name="$name" '$1 != name' "$models_file" >"$tmp"
-    mv "$tmp" "$models_file"
+    profile_filter_out_key "$models_file" 1 "$name"
     chmod 600 "$models_file" 2>/dev/null || true
   fi
   if (( keep_secret == 0 )) && [[ -n "$api_key_file" ]]; then
@@ -314,9 +337,7 @@ profile_model_remove() {
   profile_require_name endpoint "$endpoint"
   profile_require_name model "$model"
   profile_find_line "$models_file" "$endpoint" "$model" >/dev/null || { printf 'lmline: unknown model for %s: %s\n' "$endpoint" "$model" >&2; exit 2; }
-  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
-  awk -F '\t' -v e="$endpoint" -v m="$model" '!($1 == e && $2 == m)' "$models_file" >"$tmp"
-  mv "$tmp" "$models_file"
+  profile_filter_out_key "$models_file" 2 "$endpoint" "$model"
   chmod 600 "$models_file" 2>/dev/null || true
 }
 
@@ -346,7 +367,18 @@ profile_model_add() {
 profile_model_list() {
   local endpoint=${1-}
   [[ -f "$models_file" ]] || return 0
-  awk -F '\t' -v endpoint="$endpoint" 'NF && $1 !~ /^#/ && (endpoint == "" || $1 == endpoint) { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }' "$models_file"
+  if [[ -z "$endpoint" ]]; then
+    awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }' "$models_file"
+    return 0
+  fi
+  # The endpoint name travels through the environment, which keeps the bytes
+  # the user gave, where an awk assignment decodes the escape sequences they
+  # carry, and a name stored byte for byte must be compared byte for byte.
+  LM_PROFILE_KEY_1="$endpoint" \
+    awk -F '\t' '
+      BEGIN { k1=ENVIRON["LM_PROFILE_KEY_1"] }
+      NF && $1 !~ /^#/ && $1 == k1 { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }
+    ' "$models_file"
 }
 
 profile_default_model_catalog_jq() {
