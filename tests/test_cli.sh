@@ -65,6 +65,24 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_
 persisted_history_risk_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"') || fail "history risk persisted setting command"
 grep -q '^risk=medium$' <<<"$persisted_history_risk_out" || fail "history risk persisted setting"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config unset LMLINE_RISK_HISTORY_EXPANSION_LEVEL
+# A value the one-assignment-per-line format cannot hold is refused, so one
+# value cannot plant another setting.
+newline_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-newline-value.XXXXXX")
+if LMLINE_CONFIG_DIR="$newline_tmp/config" "$repo_dir/lmline/lmline" config set \
+  LMLINE_MODELS_JQ $'x\nexport LMLINE_EXEC_BACKEND=off\ny' >"$newline_tmp/out" 2>"$newline_tmp/err"; then
+  fail "config set accepted a value carrying a newline"
+fi
+grep -q 'control characters are not allowed' "$newline_tmp/err" || fail "config set did not report the refused value"
+if [[ -f "$newline_tmp/config/settings.bash" ]] && grep -q 'LMLINE_EXEC_BACKEND' "$newline_tmp/config/settings.bash"; then
+  fail "config set wrote the planted setting"
+fi
+# A value that fits the format is written and read back as it was set.
+LMLINE_CONFIG_DIR="$newline_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_MODELS_JQ '.data[] | select(.id)'
+newline_read=$(LMLINE_CONFIG_DIR="$newline_tmp/config" bash -c \
+  'source "$1/lmline/config.bash"; __lmline_load_all_config; printf "%s" "${LMLINE_MODELS_JQ:-}"' _ "$repo_dir" \
+  2>/dev/null) || true
+[[ "$newline_read" == '.data[] | select(.id)' ]] || fail "the value read back is not the value that was set"
+rm -rf "$newline_tmp"
 # A name the catalog does not know is refused when it is written, not
 # persisted and reported as unknown later.
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_CAHCE_TTL 100 >"$cfg_tmp/typo.out" 2>"$cfg_tmp/typo.err"; then

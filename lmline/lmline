@@ -842,6 +842,13 @@ __lmline_config_file_op() {
   }
   case "$op" in
     set)
+      # The file holds one assignment per line, so a value carrying a control
+      # character cannot be written: the loader would read its lines as
+      # further settings, and the value set would not be the value in effect.
+      [[ "$value" != *[$'\001'-$'\037'$'\177']* ]] || {
+        printf 'lmline: invalid value for %s: control characters are not allowed\n' "$key" >&2
+        exit 2
+      }
       mkdir -p "${file%/*}"
       touch "$file"
       __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-cfg.XXXXXX"
