@@ -25,6 +25,28 @@ bash -c '
   [[ $(__lmline_risk_level "sh -c '"'"'rm -vr build'"'"'") == high ]]
   [[ $(__lmline_risk_level "zsh -c \"rm --force --recursive build\"") == high ]]
   [[ $(__lmline_risk_reason "bash -c \"rm -fr build\"") == "recursive remove" ]]
+  # The same string glued to the option reads the same way.
+  [[ $(__lmline_risk_level "sh -c\"rm -fr /\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c\"rm -fr /\"") == high ]]
+  [[ $(__lmline_risk_level "zsh -c\"rm --force --recursive /\"") == high ]]
+  [[ $(__lmline_risk_level "sh -xc\"rm -fr /\"") == high ]]
+  [[ $(__lmline_risk_level "sh -c\$'"'"'rm -fr /'"'"'") == high ]]
+  [[ $(__lmline_risk_reason "sh -c\"rm -fr /\"") == "recursive remove" ]]
+  # A remove carried by a wrapper reads the same way.
+  [[ $(__lmline_risk_level "env -i rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "nohup rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "nice -n 5 rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "watch rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "timeout 5 rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "stdbuf -o0 rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "setsid rm -fr build") == high ]]
+  [[ $(__lmline_risk_level "nice bash -c \"rm -fr build\"") == high ]]
+  [[ $(__lmline_risk_reason "env -i rm -fr build") == "recursive remove" ]]
+  # A wrapper that carries no recursive remove is not a destructive remove.
+  [[ $(__lmline_risk_level "nice -n 5 rm build") == low ]]
+  [[ $(__lmline_risk_level "timeout 5 rm build") == low ]]
+  # A word that is only an argument is not the remove command.
+  [[ $(__lmline_risk_level "find . -name rm -print") == low ]]
   # An ordinary recursive copy or search is not a destructive remove.
   [[ $(__lmline_risk_level "cp -r build copy") == medium ]]
   [[ $(__lmline_risk_level "find . -type f") == low ]]
@@ -298,6 +320,8 @@ bash -c '
   [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=medium __lmline_risk_level "rm -fr build") == medium ]]
   [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=low __lmline_risk_level "rm -fr build") == low ]]
   [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=bogus __lmline_risk_level "rm -fr build") == high ]]
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=medium __lmline_risk_level "env -i rm -fr build") == medium ]]
+  [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=low __lmline_risk_level "env -i rm -fr build") == low ]]
   [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL= __lmline_risk_level "rm -fr build") == high ]]
   # A stricter rule still wins over a lowered removal level.
   [[ $(LMLINE_RISK_RECURSIVE_REMOVE_LEVEL=low __lmline_risk_level "sudo rm -rf /") == high ]]

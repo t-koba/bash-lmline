@@ -628,6 +628,14 @@ structural high. A replacement `risk_patterns.tsv` overrides shipped
 patterns and structural defaults: a matching rule wins and structural
 fallbacks apply only when no rule matched.
 
+A recursive remove is recognised by its command word and the flags written with
+it, so the family reads the same way in every spelling: `rm -rf`, `rm -fr`,
+`rm --force --recursive`, a remove a wrapper carries (`env -i rm -fr build`,
+`timeout 5 rm -fr build`), and a remove written in a shell command string
+(`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one command. Only the remove family is read
+this way, so an ordinary recursive copy or search stays as the pattern file
+states it.
+
 History recognition checks the original candidate before quote stripping or
 ANSI-C decoding. It flags potentially active conventional `!` event references
 in unquoted and double-quoted text, such as `!!`, `!123`, `!-2`, `!echo`,

@@ -585,69 +585,89 @@ __lmline_risk_split_words() {
 
 # A recursive remove is the same destructive command however its flags are
 # written, so the removal family is recognised by its command word and the
-# flags written with it, not by the order of the text. Only the removal
+# flags written with it, not by the order of the text. The command word is
+# looked for wherever a wrapper carries it: a wrapper's own options and
+# option values stand between the wrapper and the command it runs, so the
+# family reads the words of the segment instead of guessing which one holds
+# the command, and it keeps no list of wrappers of its own. Only the removal
 # family is watched: an ordinary recursive copy or search is not a
-# destructive remove. A shell command word runs the command it is given
-# after -c, so a remove written there is judged as the remove it is.
+# destructive remove. A shell command word runs the command string it is
+# given after -c, so a remove written there is judged as the remove it is,
+# whether the string stands as a word of its own (sh -c "rm -fr /") or is
+# glued to the option (sh -c"rm -fr /").
 __lmline_risk_recursive_remove() {
-  local cmd=$1 depth=${2:-0} segment word base cluster
-  local expect_command=1 removal=0 shell=0 expect_carried=0
+  local cmd=$1 depth=${2:-0} segment word base cluster carried
+  local removal=0 shell=0 index count
+  local -a words
   (( depth < 4 )) || return 1
   while IFS= read -r segment || [[ -n $segment ]]; do
     [[ -n "${segment//[[:space:]]/}" ]] || continue
     [[ "$segment" == *rm* ]] || continue
-    expect_command=1
-    removal=0
-    shell=0
+    words=()
     while IFS= read -r word || [[ -n $word ]]; do
-      if (( expect_carried )); then
-        expect_carried=0
-        if __lmline_risk_recursive_remove "$word" $((depth + 1)); then
-          return 0
-        fi
-        continue
-      fi
-      if (( expect_command )); then
-        [[ "$word" == *=* && "$word" != */* ]] && continue
-        if __lmline_word_is_command_prefix "$word"; then
-          continue
-        fi
-        base=${word##*/}
-        removal=0
-        shell=0
-        case "$base" in
-          rm) removal=1 ;;
-          sh|bash|dash|ksh|zsh) shell=1 ;;
-        esac
-        expect_command=0
-        continue
-      fi
-      if (( shell )); then
-        # The command a shell command word runs is the word after its -c.
+      words+=("$word")
+    done < <(__lmline_risk_split_words "$segment")
+    count=${#words[@]}
+    for (( index = 0; index < count; index++ )); do
+      word=${words[index]}
+      if (( removal )); then
+        # The end of the options: the words after it are file names.
+        [[ "$word" == "--" ]] && break
         case "$word" in
+          --recursive) return 0 ;;
           --*) ;;
           -?*)
+            # Only rm's own short flags count, so a word that merely holds
+            # an r (find -print) is not read as a recursive remove.
             cluster=${word#-}
-            case "$cluster" in *c) expect_carried=1 ;; esac
+            case "$cluster" in
+              *[!fIdrRPv]*) ;;
+              *r*|*R*) return 0 ;;
+            esac
             ;;
         esac
         continue
       fi
-      (( removal )) || continue
-      # The end of the options: the words after it are file names.
-      [[ "$word" == "--" ]] && break
-      case "$word" in
-        --recursive) return 0 ;;
-        --*) ;;
-        -?*)
-          cluster=${word#-}
-          case "$cluster" in
-            *[!A-Za-z0-9]*) continue ;;
-          esac
-          case "$cluster" in *r*|*R*) return 0 ;; esac
-          ;;
+      if (( shell )); then
+        # The command a shell command word runs is the string it is given
+        # after -c. The string may stand as the next word or be glued to the
+        # option, so the option's own remainder is read as the string and
+        # the words after it continue it.
+        case "$word" in
+          --*) continue ;;
+          -?*)
+            cluster=${word#-}
+            case "$cluster" in
+              *c*)
+                carried=${cluster#*c}
+                if [[ -n $carried ]]; then
+                  while (( index + 1 < count )); do
+                    index=$((index + 1))
+                    carried+=" ${words[index]}"
+                  done
+                elif (( index + 1 < count )); then
+                  index=$((index + 1))
+                  carried=${words[index]}
+                fi
+                if [[ -n $carried ]] && __lmline_risk_recursive_remove "$carried" $((depth + 1)); then
+                  return 0
+                fi
+                break
+                ;;
+            esac
+            continue
+            ;;
+          *) break ;;
+        esac
+      fi
+      # An option word and an assignment are not the command word.
+      [[ "$word" == -* || "$word" == *=* ]] && continue
+      base=${word##*/}
+      case "$base" in
+        rm) removal=1 ;;
+        sh|bash|dash|ksh|zsh) shell=1 ;;
       esac
-    done < <(__lmline_risk_split_words "$segment")
+    done
   done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
   return 1
 }
