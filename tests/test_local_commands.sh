@@ -53,9 +53,17 @@ grep -q '^reason=command_not_allowed$' <<<"$out" || fail "the tool path gives no
 ok "the tool path refuses a command outside the list"
 
 # A find action is refused in the spelling the shell passes to find, whether
-# the action word is quoted or not.
-for find_command in "find . -exec touch m1 +" "find . '-exec' touch m1 +" \
+# the action word is quoted or not: the shell removes the quotes before find
+# sees the action.
+find_list="$list_tmp/local_commands_with_find.txt"
+printf 'find\nprintf\n' >"$find_list"
+export LMLINE_LOCAL_COMMANDS_FILE="$find_list"
+cd "$list_tmp" || fail "the temporary list directory is missing"
+for find_command in "find . -exec true +" "find . '-exec' true +" \
   "find . -fprintf out1 %p" "find . '-fprintf' out1 '%p'"; do
+  if __lmline_local_segment_allowed "$find_command"; then
+    fail "the local path allows a find action: $find_command"
+  fi
   args=$(jq -cn --arg command "$find_command" '{command:$command}')
   out=$(LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \
     __lmline_tool_output command_run "$args" 2>/dev/null || true)
@@ -63,6 +71,8 @@ for find_command in "find . -exec touch m1 +" "find . '-exec' touch m1 +" \
   grep -q '^reason=command_not_allowed$' <<<"$out" \
     || fail "the tool path gives no reason for the refusal: $find_command"
 done
-ok "the tool path refuses a find action in either spelling"
+cd "$repo_dir" || fail "the repository directory is missing"
+export LMLINE_LOCAL_COMMANDS_FILE="$list_file"
+ok "the local path refuses a find action in either spelling"
 
 ok "local commands"
