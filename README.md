@@ -1181,6 +1181,15 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CHATGPT_CLIENT` | the installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
 | `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger, so a waiter can always reclaim an abandoned lock |
 | `LMLINE_CHATGPT_LOCK_STALE_MS` | `60000` | milliseconds before an abandoned ChatGPT credential lock is reclaimed; the wait budget is raised to at least this value plus 30 s, so a waiter can always reclaim it |
+| `LMLINE_CHATGPT_CREDENTIALS_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/credentials.json` | credential file the ChatGPT client reads and writes |
+| `LMLINE_CHATGPT_HOST_ID_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/host-id` | host identifier file the ChatGPT client reads and writes |
+| `LMLINE_CHATGPT_AUTH_URL` | `https://auth.openai.com` | authorization endpoint of the ChatGPT sign-in |
+| `LMLINE_CHATGPT_API_URL` | `https://api.openai.com/v1` | API endpoint the ChatGPT client sends requests to |
+| `LMLINE_CHATGPT_AGENT_NAME` | `lmline` | client name the ChatGPT sign-in identifies itself with |
+| `LMLINE_CHATGPT_CALLBACK_PORT` | `1455` | local port the ChatGPT sign-in callback listens on |
+| `LMLINE_CHATGPT_TIMEOUT` | `300` | seconds a ChatGPT request may take |
+| `LMLINE_CHATGPT_BROWSER_COMMAND` | empty | command that opens the ChatGPT authorization page |
+| `LMLINE_CHATGPT_NO_BROWSER` | `0` | skip the browser during the ChatGPT sign-in (`0` opens it, `1` skips it) |
 | `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
 | `LMLINE_HTTP_RETRIES` | `1` | transient provider retries |

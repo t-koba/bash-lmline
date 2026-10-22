@@ -18,6 +18,13 @@ grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "confi
 grep -q $'^LMLINE_MODELS_URL\t\\$LMLINE_BASE_URL/models\t' <<<"$defaults_out" || fail "config defaults models url"
 grep -q $'^LMLINE_KEY_FIX\t' <<<"$defaults_out" || fail "config defaults key fix"
 grep -q $'^LMLINE_RISK_HISTORY_EXPANSION_LEVEL\thigh\t' <<<"$defaults_out" || fail "history risk catalog default"
+describe_chatgpt=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_CHATGPT_AUTH_URL)
+grep -q '^default=https://auth.openai.com$' <<<"$describe_chatgpt" || fail "chatgpt auth url describe default"
+grep -q '^value=https://auth.openai.com$' <<<"$describe_chatgpt" || fail "chatgpt auth url describe value"
+describe_chatgpt_no_browser=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_CHATGPT_NO_BROWSER)
+grep -q '^values=0 1$' <<<"$describe_chatgpt_no_browser" || fail "chatgpt no browser describe values"
+describe_chatgpt_credentials=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_CHATGPT_CREDENTIALS_FILE)
+grep -q '^value=.*chatgpt/credentials.json$' <<<"$describe_chatgpt_credentials" || fail "chatgpt credentials describe value"
 describe_history=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_RISK_HISTORY_EXPANSION_LEVEL)
 grep -q '^default=high$' <<<"$describe_history" || fail "history risk describe default"
 grep -q '^values=low medium high$' <<<"$describe_history" || fail "history risk describe values"
@@ -63,7 +70,11 @@ grep -q '^LMLINE_API_FORMAT$' <<<"$complete_settings" || fail "complete settings
 grep -q '^LMLINE_MODELS_INCLUDE$' <<<"$complete_settings" || fail "complete settings models include"
 grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
 grep -q '^LMLINE_RISK_HISTORY_EXPANSION_LEVEL$' <<<"$complete_settings" || fail "history risk setting completion"
+grep -q '^LMLINE_CHATGPT_AUTH_URL$' <<<"$complete_settings" || fail "chatgpt auth url setting completion"
+grep -q '^LMLINE_CHATGPT_CREDENTIALS_FILE$' <<<"$complete_settings" || fail "chatgpt credentials setting completion"
 grep -q '^LMLINE_RISK_RECURSIVE_REMOVE_LEVEL$' <<<"$complete_settings" || fail "recursive remove setting completion"
+complete_chatgpt_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_CHATGPT_NO_BROWSER)
+grep -q '^1$' <<<"$complete_chatgpt_values" || fail "complete setting values chatgpt no browser"
 complete_api_format_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_API_FORMAT)
 grep -q '^responses$' <<<"$complete_api_format_values" || fail "complete setting values api format"
 complete_backend_values=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete setting-values LMLINE_EXEC_BACKEND)
