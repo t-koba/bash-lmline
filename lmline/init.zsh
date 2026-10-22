@@ -528,7 +528,8 @@ __lmline_zsh_apply_index() {
   # The flags field holds comma-separated markers, so the copilot marker is
   # present only as a whole one.
   if [[ ",$flags," == *,copilot:* ]]; then
-    local token=${flags#*,copilot:}
+    local token=",$flags"
+    token=${token#*,copilot:}
     token=${token%%,*}
     [[ -n "$token" && "$token" != - ]] && { node "$LMLINE_DIR/copilot-client.js" accept "$token" >/dev/null 2>&1 &! }
   fi

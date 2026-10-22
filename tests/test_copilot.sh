@@ -294,4 +294,57 @@ PATH="$fake_bin:$PATH" LMLINE_FAKE_NPM_LOG="$copilot_tmp/npm.log" LMLINE_CONFIG_
   "$repo_dir/lmline/lmline" copilot update 1.499.0 >/dev/null || fail "Copilot explicit update"
 grep -q '@github/copilot-language-server@1.499.0' "$copilot_tmp/npm.log" || fail "Copilot update version"
 
+# The bundled producer emits a lone `copilot:<token>` flags field. The
+# shell-side accept handoff must forward the bare token, not the marker,
+# whether the marker stands first or follows another marker, while a token
+# that merely carries the word stays whole-marker negative.
+copilot_handoff_log="$copilot_tmp/accept-handoff.log"
+: > "$copilot_handoff_log"
+LMLINE_ACCEPT_LOG="$copilot_handoff_log" bash -c '
+  source "$1/lmline/config.bash"
+  LMLINE_CONFIG_DIR="$2"
+  __lmline_init_dirs "$1/lmline" >/dev/null 2>&1
+  source "$1/lmline/policy.bash"
+  source "$1/lmline/actions.bash"
+  node() { printf "%s\n" "$*" >>"$LMLINE_ACCEPT_LOG"; }
+  disown() { return 0; }
+  __lmline_copilot_accept "copilot:bare-token-1"
+  wait 2>/dev/null || true; sleep 0.3
+  __lmline_copilot_accept "other,copilot:bare-token-2"
+  wait 2>/dev/null || true; sleep 0.3
+  __lmline_copilot_accept "copilot:bare-token-3,other"
+  wait 2>/dev/null || true; sleep 0.3
+  __lmline_copilot_accept "xcopilot:fake"
+  wait 2>/dev/null || true; sleep 0.3
+' _ "$repo_dir" "$copilot_tmp/config" || fail "Copilot accept handoff runs"
+grep -q "accept bare-token-1$" "$copilot_handoff_log" || fail "Copilot first-marker token is bare"
+grep -q "accept bare-token-2$" "$copilot_handoff_log" || fail "Copilot later-marker token is bare"
+grep -q "accept bare-token-3$" "$copilot_handoff_log" || fail "Copilot leading-marker token is bare"
+! grep -q "accept copilot:" "$copilot_handoff_log" || fail "Copilot accept carries no marker"
+[[ $(wc -l <"$copilot_handoff_log" | tr -d " ") == 3 ]] || fail "Copilot whole-marker negative sends nothing"
+if command -v zsh >/dev/null 2>&1; then
+  copilot_zhandoff_log="$copilot_tmp/accept-zhandoff.log"
+  : > "$copilot_zhandoff_log"
+  mkdir -p "$copilot_tmp/zhandoff-history"
+  LMLINE_ACCEPT_LOG="$copilot_zhandoff_log" LMLINE_ZHISTORY="$copilot_tmp/zhandoff-history" env LMLINE_ACCEPT_LOG="$copilot_zhandoff_log" LMLINE_ZHISTORY="$copilot_tmp/zhandoff-history" zsh -f -i -c '
+    export LMLINE_ACCEPT_LOG
+    LMLINE_HISTORY_DIR="$LMLINE_ZHISTORY"
+    source "$1/lmline/init.zsh"
+    node() { printf "%s\n" "$*" >>"$LMLINE_ACCEPT_LOG"; }
+    __lmline_zsh_hint() { return 0; }
+    __lmline_zsh_clear_hint() { return 0; }
+    __lmline_zsh_record_suggestion() { return 0; }
+    __LMLINE_ZSH_CANDIDATES=("echo one")
+    __LMLINE_ZSH_RISKS=("low")
+    __LMLINE_ZSH_REASONS=("no matching risk rule")
+    __LMLINE_ZSH_FLAGS=("copilot:bare-ztoken-1")
+    __LMLINE_ZSH_LAST_MODE="generate"
+    __LMLINE_ZSH_LAST_ORIGINAL="# req"
+    __lmline_zsh_apply_index 1
+    sleep 0.5
+  ' _ "$repo_dir" || fail "Copilot zsh accept handoff runs"
+  grep -q "accept bare-ztoken-1$" "$copilot_zhandoff_log" || fail "Copilot zsh first-marker token is bare"
+  ! grep -q "accept copilot:" "$copilot_zhandoff_log" || fail "Copilot zsh accept carries no marker"
+fi
+
 ok "Copilot Language Server integration"

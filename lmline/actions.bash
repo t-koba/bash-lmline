@@ -47,7 +47,7 @@ __lmline_copilot_accept() {
   # The flags field holds comma-separated markers, so the copilot marker is
   # present only as a whole one.
   [[ ",$flags," == *,copilot:* ]] || return 0
-  token=${flags#*,copilot:}; token=${token%%,*}
+  token=",$flags"; token=${token#*,copilot:}; token=${token%%,*}
   [[ -n "$token" && "$token" != - ]] || return 0
   client=$(__lmline_copilot_client)
   { node "$client" accept "$token" >/dev/null 2>&1 & pid=$!; } 2>/dev/null
