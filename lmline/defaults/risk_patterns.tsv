@@ -6,13 +6,16 @@
 # fallbacks wins (pipe-to-shell/history expansion/recursive remove high,
 # unresolved variable and capped brace medium via LMLINE_RISK_*_LEVEL); a
 # replacement file overrides.
-high	*rm -r*	recursive remove
-high	*rm -R*	recursive remove
-high	*rm --recursive*	recursive remove
+# The recursive remove family is read by the mechanism, which recognises the
+# word in the position a command occupies and the flags written with it, so
+# this file names no removal spelling: a word that merely carries the name of
+# a remove is not a remove. A program that removes files by a subcommand of
+# its own is named here instead, because that program is the command.
 high	*find *-delete*	find delete action
 high	*find *-exec*rm*	find exec remove action
 high	*find *-exec*unlink*	find exec unlink action
 high	*git *clean -*f*	force git clean deletes untracked files
+high	*git rm -r*	recursive git remove of tracked files
 high	*xargs *rm*	bulk remove through xargs
 high	* dd *	raw disk/file overwrite command
 high	* mkfs*	filesystem formatting command

@@ -20,6 +20,11 @@ bash -c '
   [[ $(__lmline_risk_level "rm -r -f build") == high ]]
   [[ $(__lmline_risk_level "rm --force --recursive build") == high ]]
   [[ $(__lmline_risk_reason "rm -fr build") == "recursive remove" ]]
+  # A short-flag cluster rm owns counts whatever letters it carries.
+  [[ $(__lmline_risk_level "rm -ir build") == high ]]
+  [[ $(__lmline_risk_level "rm -nr build") == high ]]
+  [[ $(__lmline_risk_level "rm -nfr build") == high ]]
+  [[ $(__lmline_risk_level "rm -ifr build") == high ]]
   # A remove carried in a shell command string reads the same way.
   [[ $(__lmline_risk_level "bash -c \"rm -fr build\"") == high ]]
   [[ $(__lmline_risk_level "sh -c '"'"'rm -vr build'"'"'") == high ]]
@@ -32,6 +37,9 @@ bash -c '
   [[ $(__lmline_risk_level "sh -xc\"rm -fr /\"") == high ]]
   [[ $(__lmline_risk_level "sh -c\$'"'"'rm -fr /'"'"'") == high ]]
   [[ $(__lmline_risk_reason "sh -c\"rm -fr /\"") == "recursive remove" ]]
+  # A shell option and its value stand between the shell and its command string.
+  [[ $(__lmline_risk_level "bash -o pipefail -c \"rm -fr x\"") == high ]]
+  [[ $(__lmline_risk_level "sh --rcfile /etc/x -c \"rm -fr x\"") == high ]]
   # A remove carried by a wrapper reads the same way.
   [[ $(__lmline_risk_level "env -i rm -fr build") == high ]]
   [[ $(__lmline_risk_level "nohup rm -fr build") == high ]]
@@ -52,6 +60,19 @@ bash -c '
   [[ $(__lmline_risk_level "timeout 5 rm build") == low ]]
   # A word that is only an argument is not the remove command.
   [[ $(__lmline_risk_level "find . -name rm -print") == low ]]
+  # A word that merely carries the name of a remove is not the remove command.
+  [[ $(__lmline_risk_level "ls rm -r") == low ]]
+  [[ $(__lmline_risk_level "echo rm -rf /") == low ]]
+  [[ $(__lmline_risk_level "grep rm -rf file") == low ]]
+  [[ $(__lmline_risk_level "printf \"rm -rf /\"") == low ]]
+  # A multi-call binary runs the command it is given, so a remove it runs is
+  # the remove that runs.
+  [[ $(__lmline_risk_level "busybox rm -rf /") == high ]]
+  [[ $(__lmline_risk_level "toybox rm -rf /") == high ]]
+  # A program that removes files by a subcommand of its own is that program.
+  [[ $(__lmline_risk_level "git rm -r dir") == high ]]
+  [[ $(__lmline_risk_level "git rm file") == low ]]
+  [[ $(__lmline_risk_level "git status") == low ]]
   # An ordinary recursive copy or search is not a destructive remove.
   [[ $(__lmline_risk_level "cp -r build copy") == medium ]]
   [[ $(__lmline_risk_level "find . -type f") == low ]]
@@ -93,6 +114,9 @@ bash -c '
   [[ $(__lmline_risk_level "echo hi;{1..3}") == low ]]
   [[ $(__lmline_risk_level "mkdir -p project/{src,tests}") == low ]]
   [[ $(__lmline_risk_level "echo hi | sh") == high ]]
+  # Each segment of a pipeline is judged on its own.
+  [[ $(__lmline_risk_level "rm -f | ls -rf") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"rm\" | rm -fr /") == high ]]
   [[ $(__lmline_risk_level "cp /dev/zero /dev/sdb") == high ]]
   [[ $(__lmline_risk_level "tee /dev/sdb < /dev/zero") == high ]]
   [[ $(__lmline_risk_level "cp foo bar") == medium ]]

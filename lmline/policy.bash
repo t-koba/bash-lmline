@@ -44,6 +44,17 @@ __lmline_word_is_shell() {
   [[ $'\n'"$__LMLINE_SHELL_WORDS_CACHE"$'\n' == *$'\n'"$word"$'\n'* ]]
 }
 
+# Programs that run another program given to them, so the command they carry
+# is the command that runs. One owner for this vocabulary: the pipe-to-shell
+# gate and the removal family both ask it. The sh family runs a command
+# string and is named in shell_words.txt.
+__lmline_word_is_command_runner() {
+  case "${1##*/}" in
+    '!'|busybox|builtin|chroot|command|doas|env|exec|flock|ionice|nice|nohup|screen|script|setsid|stdbuf|su|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) return 0 ;;
+  esac
+  return 1
+}
+
 __lmline_word_is_command_prefix() {
   local word=$1 file
   if [[ -z "${__LMLINE_COMMAND_PREFIX_WORDS_CACHE_SET:-}" ]]; then
@@ -467,10 +478,9 @@ __lmline_risk_piped_shell() {
     done
     ((${#subs[@]} > 0)) || continue
     first_base=${subs[0]##*/}
-    case "$first_base" in
-      command|builtin|exec|env|time|sudo|nohup|nice|'!') ;;
-      *) __lmline_word_is_shell "$first_base" || continue ;;
-    esac
+    if ! __lmline_word_is_command_runner "$first_base" && ! __lmline_word_is_shell "$first_base"; then
+      continue
+    fi
     for word in "${subs[@]}"; do
       __lmline_word_is_shell "${word##*/}" && return 0
     done
@@ -597,21 +607,124 @@ __lmline_risk_split_words() {
   return 0
 }
 
+# The flags rm writes: a cluster it owns may carry the recursive flag in any
+# spelling, so the cluster is read as rm's own rather than filtered by a
+# letter list that rm itself does not keep. The end of the options ends the
+# scan; an operand does not, because rm reads its options after an operand
+# too.
+__lmline_risk_remove_is_recursive() {
+  local word cluster
+  for word in "$@"; do
+    case "$word" in
+      --) return 1 ;;
+      --recursive) return 0 ;;
+      --*) ;;
+      -?*)
+        cluster=${word#-}
+        case "$cluster" in
+          *[rR]*) return 0 ;;
+        esac
+        ;;
+      *) ;;
+    esac
+  done
+  return 1
+}
+
+# Whether a word stands for the remove command and the flags it carries.
+# The word is read as the words it runs, with the quoting removed and the
+# expansions spaced, so a spelling that hides the command (rm${IFS}-rf,
+# `echo rm`) is read as the words it runs; the flags are the words the
+# removal writes after its own name, and the words that follow it.
+__lmline_risk_remove_word_is_recursive() {
+  local word=$1
+  shift
+  local canonical index after
+  local -a canon=() flags=()
+  canonical=$(__lmline_canonicalize_for_risk <<<"$word")
+  if [[ -n $canonical ]]; then
+    read -r -a canon <<<"$canonical" || true
+  fi
+  for (( index = 0; index < ${#canon[@]}; index++ )); do
+    if [[ "${canon[index]##*/}" == rm ]]; then
+      # The words the removal writes after its own name, and the words that
+      # follow it in the segment.
+      for (( after = index + 1; after < ${#canon[@]}; after++ )); do
+        flags+=("${canon[after]}")
+      done
+      flags+=("$@")
+      (( ${#flags[@]} > 0 )) || return 1
+      __lmline_risk_remove_is_recursive "${flags[@]}" && return 0
+      return 1
+    fi
+  done
+  return 1
+}
+
+# Whether the command string a shell command word runs removes recursively.
+# The string is the word after the -c option, which may be glued to the
+# option. The shell's own options stand between the shell and that string,
+# so the search continues past them; the value of an option that takes one
+# belongs to the shell as well, and a word that is neither is the script the
+# shell runs, which ends the search.
+__lmline_risk_shell_carries_remove() {
+  local depth=$1
+  shift
+  local word cluster carried index count=$# expect_value=0
+  local -a shell_args=("$@")
+  for (( index = 0; index < count; index++ )); do
+    word=${shell_args[index]}
+    if [[ "$word" == -* ]]; then
+      if [[ "$word" == --* ]]; then
+        # A long option is never the -c option, and it takes a value.
+        expect_value=1
+        continue
+      fi
+      cluster=${word#-}
+      case "$cluster" in
+        *c*)
+          carried=${cluster#*c}
+          if [[ -n $carried ]]; then
+            # The string is written into the option itself, so the words that
+            # follow it belong to it.
+            while (( index + 1 < count )); do
+              index=$((index + 1))
+              carried+=" ${shell_args[index]}"
+            done
+          elif (( index + 1 < count )); then
+            index=$((index + 1))
+            carried=${shell_args[index]}
+          fi
+          [[ -n $carried ]] || return 1
+          __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
+          return 1
+          ;;
+      esac
+      # The option that names the shell's own settings takes a value.
+      expect_value=0
+      [[ "$word" == -o || "$word" == -O ]] && expect_value=1
+      continue
+    fi
+    # The value of the option before it belongs to the shell; any other word
+    # is the script the shell runs.
+    (( expect_value )) || return 1
+    expect_value=0
+  done
+  return 1
+}
+
 # A recursive remove is the same destructive command however its flags are
-# written, so the removal family is recognised by its command word and the
-# flags written with it, not by the order of the text. The command word is
-# looked for wherever a wrapper carries it: a wrapper's own options and
-# option values stand between the wrapper and the command it runs, so the
-# family reads the words of the segment instead of guessing which one holds
-# the command, and it keeps no list of wrappers of its own. Only the removal
-# family is watched: an ordinary recursive copy or search is not a
-# destructive remove. A shell command word runs the command string it is
-# given after -c, so a remove written there is judged as the remove it is,
-# whether the string stands as a word of its own (sh -c "rm -fr /") or is
-# glued to the option (sh -c"rm -fr /").
+# written, so the removal family is recognised by the word in the position a
+# command occupies and by the flags written with it, not by the order of the
+# text. That position is the command the shell runs: the command word of the
+# simple command, or the command a program that runs another program carries.
+# A word that merely carries the name of a remove is not the family, so the
+# family reads the same way in every spelling. A shell command word runs the
+# command string it is given after -c, so a remove written there is judged as
+# the remove it is.
 __lmline_risk_recursive_remove() {
-  local cmd=$1 depth=${2:-0} segment word base cluster carried
-  local removal=0 shell=0 index count
+  local cmd=$1 depth=${2:-0} segment word base
+  local index count first_index
   local -a words
   (( depth < 4 )) || return 1
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -622,67 +735,52 @@ __lmline_risk_recursive_remove() {
       words+=("$word")
     done < <(__lmline_risk_split_words "$segment")
     count=${#words[@]}
+    # The command word of the simple command: the first word that is not an
+    # assignment and not an option. A word that can stand before the command
+    # name is stepped over, but a program that runs another program is the
+    # command itself.
+    first_index=-1
     for (( index = 0; index < count; index++ )); do
       word=${words[index]}
-      if (( removal )); then
-        # The end of the options: the words after it are file names.
-        [[ "$word" == "--" ]] && break
-        case "$word" in
-          --recursive) return 0 ;;
-          --*) ;;
-          -?*)
-            # Only rm's own short flags count, so a word that merely holds
-            # an r (find -print) is not read as a recursive remove.
-            cluster=${word#-}
-            case "$cluster" in
-              *[!fIdrRPv]*) ;;
-              *r*|*R*) return 0 ;;
-            esac
-            ;;
-        esac
+      [[ "$word" == *=* ]] && continue
+      [[ "$word" == -* ]] && continue
+      if __lmline_word_is_command_prefix "$word" && ! __lmline_word_is_command_runner "$word"; then
         continue
       fi
-      if (( shell )); then
-        # The command a shell command word runs is the string it is given
-        # after -c. The string may stand as the next word or be glued to the
-        # option, so the option's own remainder is read as the string and
-        # the words after it continue it.
-        case "$word" in
-          --*) continue ;;
-          -?*)
-            cluster=${word#-}
-            case "$cluster" in
-              *c*)
-                carried=${cluster#*c}
-                if [[ -n $carried ]]; then
-                  while (( index + 1 < count )); do
-                    index=$((index + 1))
-                    carried+=" ${words[index]}"
-                  done
-                elif (( index + 1 < count )); then
-                  index=$((index + 1))
-                  carried=${words[index]}
-                fi
-                if [[ -n $carried ]] && __lmline_risk_recursive_remove "$carried" $((depth + 1)); then
-                  return 0
-                fi
-                break
-                ;;
-            esac
-            continue
-            ;;
-          *) break ;;
-        esac
-      fi
-      # An option word and an assignment are not the command word.
-      [[ "$word" == -* || "$word" == *=* ]] && continue
-      base=${word##*/}
-      if [[ "$base" == rm ]]; then
-        removal=1
-      elif __lmline_word_is_shell "$base"; then
-        shell=1
-      fi
+      first_index=$index
+      break
     done
+    (( first_index >= 0 )) || continue
+    base=${words[first_index]##*/}
+
+    if __lmline_word_is_shell "$base"; then
+      # A shell command word runs the command string it is given after -c.
+      (( first_index + 1 < count )) || continue
+      __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:first_index+1}" && return 0
+      continue
+    fi
+
+    if __lmline_word_is_command_runner "$base"; then
+      # The program runs the command it is given, so the remove or the shell
+      # it carries is the one that runs.
+      for (( index = first_index + 1; index < count; index++ )); do
+        word=${words[index]}
+        [[ "$word" == -* || "$word" == *=* ]] && continue
+        base=${word##*/}
+        if __lmline_word_is_shell "$base"; then
+          (( index + 1 < count )) || continue
+          __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:index+1}" && return 0
+          continue
+        fi
+        (( index + 1 < count )) || continue
+        __lmline_risk_remove_word_is_recursive "$word" "${words[@]:index+1}" && return 0
+      done
+      continue
+    fi
+
+    # The command the segment runs.
+    (( first_index + 1 < count )) || continue
+    __lmline_risk_remove_word_is_recursive "${words[first_index]}" "${words[@]:first_index+1}" && return 0
   done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
   return 1
 }
@@ -701,7 +799,7 @@ __lmline_risk_recursive_remove() {
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
-  local removal_found=0 removal_reason="recursive remove" family_level=""
+  local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
   local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
   # History is judged on raw quoting/escaping, never decoded/canonical text.
@@ -735,10 +833,8 @@ __lmline_risk_match() {
     if __lmline_risk_piped_shell "$alt"; then
       piped_found=1
     fi
-    family_level=""
     if __lmline_risk_recursive_remove "$alt"; then
       removal_found=1
-      family_level=$(__lmline_risk_structural_level "${LMLINE_RISK_RECURSIVE_REMOVE_LEVEL:-high}" high)
     fi
     canon=$(__lmline_canonicalize_for_risk <<<"$alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
@@ -750,25 +846,6 @@ __lmline_risk_match() {
       [[ -n "$level" && -n "$pattern" ]] || continue
       case "$level" in high|medium|low) ;; *) continue ;; esac
       if [[ "$canon" == $pattern ]]; then
-        if [[ -n $family_level && "$reason" == "$removal_reason" && "$shipped_defaults" == 1 ]]; then
-          # The mechanism owns the level of the removal family, so the same
-          # command reads the same way whatever order its flags are in. A
-          # stricter rule still wins, so the scan continues.
-          case "$family_level" in
-            high)
-              printf '%s\t%s\n' "$family_level" "$removal_reason"
-              return 0
-              ;;
-            medium)
-              [[ $best_level == medium ]] || { best_level=medium; best_reason=$removal_reason; }
-              continue
-              ;;
-            low)
-              [[ -n $best_level ]] || { best_level=low; best_reason=$removal_reason; }
-              continue
-              ;;
-          esac
-        fi
         case "$level" in
           high)
             printf '%s\t%s\n' "$level" "${reason:-matched policy rule}"
