@@ -11,7 +11,7 @@ cd "$reload_tmp" || fail "test working directory"
 # intentional environment values are never cleared.
 LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   set -euo pipefail
-  export LMLINE_RELOAD_BASELINE=env-value
+  export LMLINE_PROGRESS=env-value
   source "$1/lmline/config.bash"
   cfg=$2
   cli=$3
@@ -31,12 +31,12 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   R
   [[ -z "${LMLINE_ASYNC-}" ]] || exit 14
   # C: pre-file environment values are restored, not cleared.
-  "$cli" config set LMLINE_RELOAD_BASELINE file-value >/dev/null
+  "$cli" config set LMLINE_PROGRESS file-value >/dev/null
   R
-  [[ "${LMLINE_RELOAD_BASELINE:-}" == file-value ]] || exit 15
-  "$cli" config unset LMLINE_RELOAD_BASELINE >/dev/null
+  [[ "${LMLINE_PROGRESS:-}" == file-value ]] || exit 15
+  "$cli" config unset LMLINE_PROGRESS >/dev/null
   R
-  [[ "${LMLINE_RELOAD_BASELINE:-}" == env-value ]] || exit 16
+  [[ "${LMLINE_PROGRESS:-}" == env-value ]] || exit 16
   # D: user changes made mid-session are preserved.
   "$cli" config set LMLINE_DEBUG 1 >/dev/null
   R
@@ -75,7 +75,7 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
 if command -v zsh >/dev/null 2>&1; then
   # Same coverage through the zsh integration and its bridge loader.
   LMLINE_CONFIG_DIR="$reload_tmp/zsh-config" zsh -fic '
-    export LMLINE_RELOAD_BASELINE=env-value
+    export LMLINE_PROGRESS=env-value
     source "$1/lmline/init.zsh"
     cfg=$2
     cli=$3
@@ -92,12 +92,12 @@ if command -v zsh >/dev/null 2>&1; then
     rm "$cfg/settings.bash"
     R
     [[ -z "${LMLINE_ASYNC-}" ]] || exit 14
-    "$cli" config set LMLINE_RELOAD_BASELINE file-value >/dev/null
+    "$cli" config set LMLINE_PROGRESS file-value >/dev/null
     R
-    [[ "${LMLINE_RELOAD_BASELINE:-}" == file-value ]] || exit 15
-    "$cli" config unset LMLINE_RELOAD_BASELINE >/dev/null
+    [[ "${LMLINE_PROGRESS:-}" == file-value ]] || exit 15
+    "$cli" config unset LMLINE_PROGRESS >/dev/null
     R
-    [[ "${LMLINE_RELOAD_BASELINE:-}" == env-value ]] || exit 16
+    [[ "${LMLINE_PROGRESS:-}" == env-value ]] || exit 16
     "$cli" config set LMLINE_DEBUG 1 >/dev/null
     R
     export LMLINE_DEBUG=user-value

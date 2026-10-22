@@ -7,19 +7,24 @@ cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-lock-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT
 cfg="$cfg_tmp/config"
 
-# Concurrent config writers must not lose each other's updates.
-n=10
+# Concurrent config writers must not lose each other's updates. The names
+# are catalogued settings, because the setter refuses a name the catalog
+# does not know.
+names=(LMLINE_SPINNER LMLINE_PROGRESS LMLINE_STREAM LMLINE_STORE LMLINE_STORE_FALLBACK \
+  LMLINE_WEB_SEARCH LMLINE_ASYNC_NOTIFY LMLINE_INCLUDE_SHELL_CONTEXT LMLINE_INCLUDE_CWD_CONTEXT \
+  LMLINE_INCLUDE_GIT_CONTEXT)
+n=${#names[@]}
 pids=()
 for i in $(seq 1 "$n"); do
-  LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set "LMLINE_TEST_KEY_$i" "value$i" &
+  LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set "${names[$((i - 1))]}" "value$i" &
   pids+=($!)
 done
 for pid in "${pids[@]}"; do
   wait "$pid" || fail "parallel config set exited non-zero"
 done
 for i in $(seq 1 "$n"); do
-  grep -qxF "export LMLINE_TEST_KEY_$i='value$i'" "$cfg/settings.bash" \
-    || fail "parallel config set lost LMLINE_TEST_KEY_$i"
+  grep -qxF "export ${names[$((i - 1))]}='value$i'" "$cfg/settings.bash" \
+    || fail "parallel config set lost ${names[$((i - 1))]}"
 done
 
 # Concurrent model adds must not lose rows in models.tsv.
@@ -42,21 +47,21 @@ for owner in 999999999 ''; do
   printf '%s\n' "$owner" >"$cfg/.lmline.lock/pid"
   touch -t 200001010000 "$cfg/.lmline.lock"
   if LMLINE_CONFIG_DIR="$cfg" LMLINE_LOCK_TIMEOUT=1 "$repo_dir/lmline/lmline" \
-    config set LMLINE_TEST_STALE no 2>"$cfg_tmp/lock.err"; then
+    config set LMLINE_SPINNER no 2>"$cfg_tmp/lock.err"; then
     fail "stale lock was reclaimed automatically"
   fi
   [[ -d "$cfg/.lmline.lock" ]] || fail "stale lock was deleted"
   [[ "$(cat "$cfg/.lmline.lock/pid")" == "$owner" ]] || fail "owner changed"
   rm -rf "$cfg/.lmline.lock"
 done
-LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set LMLINE_TEST_STALE ok \
+LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set LMLINE_SPINNER ok \
   || fail "write after manual recovery failed"
 
 # A lock held by a live process must block the writer until timeout.
 mkdir -p "$cfg/.lmline.lock"
 printf '%s\n' "$$" >"$cfg/.lmline.lock/pid"
 if LMLINE_CONFIG_DIR="$cfg" LMLINE_LOCK_TIMEOUT=1 "$repo_dir/lmline/lmline" \
-  config set LMLINE_TEST_BLOCKED no 2>"$cfg_tmp/lock.err"; then
+  config set LMLINE_PROGRESS no 2>"$cfg_tmp/lock.err"; then
   fail "live lock was not respected"
 fi
 grep -q 'locked by another lmline process' "$cfg_tmp/lock.err" || fail "lock timeout message"
@@ -79,7 +84,7 @@ __lmline_lock_release "$steal_lock" || fail "owned release failed"
 # LMLINE_NO_LOCK=1 must bypass locking entirely.
 mkdir -p "$cfg/.lmline.lock"
 printf '%s\n' "$$" >"$cfg/.lmline.lock/pid"
-LMLINE_CONFIG_DIR="$cfg" LMLINE_NO_LOCK=1 "$repo_dir/lmline/lmline" config set LMLINE_TEST_NOLOCK ok \
+LMLINE_CONFIG_DIR="$cfg" LMLINE_NO_LOCK=1 "$repo_dir/lmline/lmline" config set LMLINE_PROGRESS ok \
   || fail "LMLINE_NO_LOCK did not bypass the lock"
 rm -rf "$cfg/.lmline.lock"
 

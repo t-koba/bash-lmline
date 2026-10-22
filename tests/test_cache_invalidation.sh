@@ -77,18 +77,18 @@ for entry in "$cache_dir"/*; do
   printf 'lmline-nonexistent-command-xyz --flag\n' >"$entry"
 done
 : >"$cfg_tmp/calls.log"
-plain_out=$(LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
+LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --format plain \
   --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
-  >"$cfg_tmp/plain.out" 2>"$cfg_tmp/plain.err")
+  >"$cfg_tmp/plain.out" 2>"$cfg_tmp/plain.err"
 ! grep -q 'lmline-nonexistent-command-xyz' "$cfg_tmp/plain.out" || fail "the plain format served a refused cached candidate"
 [[ $(grep -c called "$cfg_tmp/calls.log") -ge 1 ]] || fail "the plain format did not refetch a refused cached candidate"
 grep -q 'echo cached' "$cfg_tmp/plain.out" || fail "the plain format did not serve the refetched candidate"
 : >"$cfg_tmp/calls.log"
-annotated_out=$(LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
+LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TTL=60 PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_CALLS="$cfg_tmp/calls.log" \
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --format annotated \
   --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
-  >"$cfg_tmp/annotated.out" 2>"$cfg_tmp/annotated.err")
+  >"$cfg_tmp/annotated.out" 2>"$cfg_tmp/annotated.err"
 ! grep -q 'lmline-nonexistent-command-xyz' "$cfg_tmp/annotated.out" || fail "the annotated format served a refused cached candidate"
 
 ok "cache invalidates on effective request change"
