@@ -20,7 +20,7 @@ escape_jq='.data[] | select(.id != "\n")'
 LMLINE_CONFIG_DIR="$escape_endpoint_tmp/config" "$repo_dir/lmline/lmline" endpoint add escapes https://example.invalid/v1 --models-jq "$escape_jq" >/dev/null
 escape_file="$escape_endpoint_tmp/config/endpoints.tsv"
 [[ -f "$escape_file" ]] || fail "endpoint row file"
-[[ $(wc -l <"$escape_file") == 1 ]] || fail "the endpoint row file holds one line per endpoint"
+[[ $(wc -l <"$escape_file" | tr -d ' ') == 1 ]] || fail "the endpoint row file holds one line per endpoint"
 escape_stored=$(cut -f10 <"$escape_file")
 [[ "$escape_stored" == "$escape_jq" ]] || fail "the stored jq field is not the argument byte for byte"
 rm -rf "$escape_endpoint_tmp"
