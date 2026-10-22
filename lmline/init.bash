@@ -372,7 +372,9 @@ __lmline_load_candidates_from_file() {
 
 __lmline_record_suggestion() {
   local mode=$1 original=$2 candidate=$3
+  # The log holds the user's own command lines, so it stays user-only.
   mkdir -p "$LMLINE_HISTORY_DIR" 2>/dev/null || true
+  chmod 700 "$LMLINE_HISTORY_DIR" 2>/dev/null || true
   __LMLINE_LAST_SUGGESTION_ID=$(date +%Y%m%d%H%M%S)-$$
   {
     printf 'id=%q\n' "$__LMLINE_LAST_SUGGESTION_ID"
@@ -382,6 +384,7 @@ __lmline_record_suggestion() {
     printf 'original=%q\n' "$original"
     printf 'candidate=%q\n' "$candidate"
   } >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
+  chmod 600 "$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
 }
 
 # Applies the candidate at the given index using the engine's risk/flag

@@ -108,6 +108,14 @@ if command -v zsh >/dev/null 2>&1; then
     [[ "$BUFFER" == "echo zsh-two" ]]
     test -s "$LMLINE_HISTORY_DIR/suggestions.log"
   ' _ "$repo_dir" || fail "zsh rewrite candidate cycling"
+  # The suggestion log holds the user own command lines, so it stays user-only.
+  LMLINE_CONFIG_DIR="$zsh_tmp/config" LMLINE_ENGINE="$zsh_tmp/engine" LMLINE_HISTORY_DIR="$zsh_tmp/history-mode" zsh -fic '
+    source "$1/lmline/init.zsh"
+    __lmline_zsh_record_suggestion "generate" "# say one" "echo one"
+    [[ -f "$LMLINE_HISTORY_DIR/suggestions.log" ]]
+    [[ $(ls -ld "$LMLINE_HISTORY_DIR" | cut -c2-10) == rwx------ ]]
+    [[ $(ls -l "$LMLINE_HISTORY_DIR/suggestions.log" | cut -c2-10) == rw------- ]]
+  ' _ "$repo_dir" || fail "the zsh suggestion log stays user-only"
   printf '#!/usr/bin/env bash\nprintf "lmline-candidate: medium\\twrites to a file or descriptor\\t-\\techo hi > out.txt\\n"\n' >"$zsh_tmp/engine-medium"
   chmod +x "$zsh_tmp/engine-medium"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-medium" LMLINE_ENGINE="$zsh_tmp/engine-medium" LMLINE_HISTORY_DIR="$zsh_tmp/history-medium" zsh -fic '

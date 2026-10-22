@@ -23,6 +23,14 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
   [[ "$READLINE_LINE" == "echo one" ]]
   grep -q "2 candidates; m=widget-model; tok=100/23/123" /tmp/lmline-widget-sync.err
 ' _ "$repo_dir" || fail "sync widget"
+# The suggestion log holds the user own command lines, so it stays user-only.
+LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mode" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  __lmline_record_suggestion "generate" "# say one" "echo one"
+  [[ -f "$LMLINE_HISTORY_DIR/suggestions.log" ]]
+  [[ $(ls -ld "$LMLINE_HISTORY_DIR" | cut -c2-10) == rwx------ ]]
+  [[ $(ls -l "$LMLINE_HISTORY_DIR/suggestions.log" | cut -c2-10) == rw------- ]]
+' _ "$repo_dir" || fail "the suggestion log stays user-only"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: curl: (28) Operation timed out after 12003 milliseconds with 0 bytes received\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
 LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
