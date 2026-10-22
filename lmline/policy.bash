@@ -587,16 +587,26 @@ __lmline_risk_split_words() {
 # written, so the removal family is recognised by its command word and the
 # flags written with it, not by the order of the text. Only the removal
 # family is watched: an ordinary recursive copy or search is not a
-# destructive remove.
+# destructive remove. A shell command word runs the command it is given
+# after -c, so a remove written there is judged as the remove it is.
 __lmline_risk_recursive_remove() {
-  local cmd=$1 segment word base cluster
-  local expect_command=1 removal=0
+  local cmd=$1 depth=${2:-0} segment word base cluster
+  local expect_command=1 removal=0 shell=0 expect_carried=0
+  (( depth < 4 )) || return 1
   while IFS= read -r segment || [[ -n $segment ]]; do
     [[ -n "${segment//[[:space:]]/}" ]] || continue
     [[ "$segment" == *rm* ]] || continue
     expect_command=1
     removal=0
+    shell=0
     while IFS= read -r word || [[ -n $word ]]; do
+      if (( expect_carried )); then
+        expect_carried=0
+        if __lmline_risk_recursive_remove "$word" $((depth + 1)); then
+          return 0
+        fi
+        continue
+      fi
       if (( expect_command )); then
         [[ "$word" == *=* && "$word" != */* ]] && continue
         if __lmline_word_is_command_prefix "$word"; then
@@ -604,8 +614,23 @@ __lmline_risk_recursive_remove() {
         fi
         base=${word##*/}
         removal=0
-        [[ "$base" == rm ]] && removal=1
+        shell=0
+        case "$base" in
+          rm) removal=1 ;;
+          sh|bash|dash|ksh|zsh) shell=1 ;;
+        esac
         expect_command=0
+        continue
+      fi
+      if (( shell )); then
+        # The command a shell command word runs is the word after its -c.
+        case "$word" in
+          --*) ;;
+          -?*)
+            cluster=${word#-}
+            case "$cluster" in *c) expect_carried=1 ;; esac
+            ;;
+        esac
         continue
       fi
       (( removal )) || continue
@@ -627,17 +652,6 @@ __lmline_risk_recursive_remove() {
   return 1
 }
 
-# Risk precedence: structural recognition (piped shell, interactive history,
-# unresolved variable command, capped brace expansion, recursive remove) is
-# mechanism only; its levels are configuration (LMLINE_RISK_*_LEVEL, defaults
-# high/high/medium/medium/high; unknown or empty falls back to the default). A
-# replacement risk_patterns file overrides shipped patterns and structural
-# defaults: with a user or explicit file, the first matching rule wins and
-# structural fallbacks apply only when no rule matched. With the shipped
-# default file, shipped patterns and structural fallbacks compete and the
-# highest level wins, so a generic medium rule never shadows a structural
-# high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
-# stay protective.
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0

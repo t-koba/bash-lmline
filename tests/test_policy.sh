@@ -20,6 +20,11 @@ bash -c '
   [[ $(__lmline_risk_level "rm -r -f build") == high ]]
   [[ $(__lmline_risk_level "rm --force --recursive build") == high ]]
   [[ $(__lmline_risk_reason "rm -fr build") == "recursive remove" ]]
+  # A remove carried in a shell command string reads the same way.
+  [[ $(__lmline_risk_level "bash -c \"rm -fr build\"") == high ]]
+  [[ $(__lmline_risk_level "sh -c '"'"'rm -vr build'"'"'") == high ]]
+  [[ $(__lmline_risk_level "zsh -c \"rm --force --recursive build\"") == high ]]
+  [[ $(__lmline_risk_reason "bash -c \"rm -fr build\"") == "recursive remove" ]]
   # An ordinary recursive copy or search is not a destructive remove.
   [[ $(__lmline_risk_level "cp -r build copy") == medium ]]
   [[ $(__lmline_risk_level "find . -type f") == low ]]
