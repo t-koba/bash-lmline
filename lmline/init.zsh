@@ -480,7 +480,10 @@ __lmline_zsh_apply_index() {
   local n=${#__LMLINE_ZSH_CANDIDATES[@]} pos=$index truncated=0
   (( n > 0 )) || { n=1; pos=1; }
   [[ -n "$candidate" ]] || return 1
-  [[ "$flags" == *truncated* || "$candidate" == "# TRUNCATED: "* ]] && truncated=1
+  # The flags field holds comma-separated markers, so a marker is present
+  # only as a whole one: a token that merely carries the word does not
+  # mark the candidate.
+  [[ ",$flags," == *,truncated,* || "$candidate" == "# TRUNCATED: "* ]] && truncated=1
   if [[ "${__LMLINE_ZSH_LAST_MODE:-}" == rewrite && "$candidate" == "${__LMLINE_ZSH_LAST_ORIGINAL:-}" ]]; then
     BUFFER=$candidate
     CURSOR=${#BUFFER}
@@ -520,8 +523,10 @@ __lmline_zsh_apply_index() {
       ;;
   esac
   __LMLINE_ZSH_SHOW_CANDIDATE_COUNT=0
-  if [[ "$flags" == *copilot:* ]]; then
-    local token=${flags#*copilot:}
+  # The flags field holds comma-separated markers, so the copilot marker is
+  # present only as a whole one.
+  if [[ ",$flags," == *,copilot:* ]]; then
+    local token=${flags#*,copilot:}
     token=${token%%,*}
     [[ -n "$token" && "$token" != - ]] && { node "$LMLINE_DIR/copilot-client.js" accept "$token" >/dev/null 2>&1 &! }
   fi

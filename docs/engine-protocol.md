@@ -55,6 +55,10 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
   - `truncated` — the candidate was cut to `LMLINE_MAX_CANDIDATE_BYTES`
   - `original` — the user's original line appended as a cycling target
     (emitted by frontends/bridges, not the engine)
+  - `copilot:<token>` — the candidate came from the Copilot route; the
+    token names the edit the Language Server holds, and a frontend that
+    inserts the candidate tells the server the edit was accepted
+    (emitted by the bundled engine on the Copilot route)
 - `candidate`: the full command text (may itself contain tabs; it is always
   the fourth and final field).
 

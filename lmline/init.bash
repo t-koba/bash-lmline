@@ -396,7 +396,10 @@ __lmline_apply_candidate() {
   local reason=${__LMLINE_CANDIDATE_REASONS[$idx]:--}
   local flags=${__LMLINE_CANDIDATE_FLAGS[$idx]:--}
   local n=${#__LMLINE_CANDIDATES[@]} pos=$((idx + 1)) truncated=0
-  [[ "$flags" == *truncated* || "$cmd" == "# TRUNCATED: "* ]] && truncated=1
+  # The flags field holds comma-separated markers, so a marker is present
+  # only as a whole one: a token that merely carries the word does not
+  # mark the candidate.
+  [[ ",$flags," == *,truncated,* || "$cmd" == "# TRUNCATED: "* ]] && truncated=1
   if [[ "${__LMLINE_LAST_MODE:-}" == rewrite && "$cmd" == "${__LMLINE_LAST_ORIGINAL:-}" ]]; then
     __lmline_set_line "$cmd"
     if (( __LMLINE_SHOW_CANDIDATE_COUNT == 1 )); then

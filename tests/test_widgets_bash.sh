@@ -23,6 +23,17 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
   [[ "$READLINE_LINE" == "echo one" ]]
   grep -q "2 candidates; m=widget-model; tok=100/23/123" /tmp/lmline-widget-sync.err
 ' _ "$repo_dir" || fail "sync widget"
+# A flag marker is present only as a whole one: a token that merely carries
+# the word does not mark the candidate.
+printf '#!/usr/bin/env bash\nprintf "lmline-candidate: low\\tno matching risk rule\\tcopilot:truncated-token\\techo one\\n"\n' >"$widget_tmp/engine-copilot-token"
+chmod +x "$widget_tmp/engine-copilot-token"
+LMLINE_CONFIG_DIR="$widget_tmp/config-copilot-token" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-copilot-token" LMLINE_HISTORY_DIR="$widget_tmp/history-copilot-token" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# say one"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/tmp/lmline-widget-copilot-token.out 2>/tmp/lmline-widget-copilot-token.err
+  ! grep -q "candidate-truncated" /tmp/lmline-widget-copilot-token.err
+' _ "$repo_dir" || fail "a copilot token does not mark the candidate truncated"
 # The suggestion log holds the user own command lines, so it stays user-only.
 LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mode" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
