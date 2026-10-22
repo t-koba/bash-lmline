@@ -78,8 +78,8 @@ __lmline_stream_display_enabled() {
 __lmline_action_stream_engine() {
   local prefix=$1 stderr_file=$2 engine_status error meta_status
   shift 2
-  "$@" 2>"$stderr_file"
-  engine_status=$?
+  engine_status=0
+  "$@" 2>"$stderr_file" || engine_status=$?
   if (( engine_status != 0 )); then
     error=$(__lmline_action_strip_runtime_lines <"$stderr_file" 2>/dev/null | __lmline_display_error_line 300)
     __lmline_engine_error_message "$prefix" "${error:-engine exited with status $engine_status}"
@@ -446,6 +446,7 @@ __lmline_fix_run() {
   fi
 
   printf 'lmline-progress: asking model for a fix (exit status %s)\n' "$status"
+  engine_status=0
   if [[ "${LMLINE_FIX_BACKEND:-engine}" == copilot ]]; then
     context_text=$( {
       printf '## captured_execution\n'
@@ -458,14 +459,13 @@ __lmline_fix_run() {
         __lmline_tool_data_block "STDOUT" 10000 "${LMLINE_CONDENSE_LINE_BYTES:-2000}" <"$tmp/stdout"
       fi
     } )
-    __lmline_copilot_candidates "$line" "$point" "$shell_name" fix "$context_text" >"$tmp/engine" 2>&1
+    __lmline_copilot_candidates "$line" "$point" "$shell_name" fix "$context_text" >"$tmp/engine" 2>&1 || engine_status=$?
   else
     __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr" "$backend"
     __lmline_context_file "$tmp/context" "$line" fix
     "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
-      --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1
+      --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1 || engine_status=$?
   fi
-  engine_status=$?
   if (( engine_status != 0 )); then
     cat "$tmp/engine" >&2
     rm -rf "$tmp"

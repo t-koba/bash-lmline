@@ -232,11 +232,11 @@ __lmline_zsh_set_candidates() {
 }
 
 __lmline_zsh_wait_with_spinner() {
-  local pid=$1 label=$2 progress_file=${3:-} frame_index=1 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label
+  local pid=$1 label=$2 progress_file=${3:-} frame_index=1 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label wait_status=0
   local -a frames=('.  ' '.. ' '...')
   if ! __lmline_zsh_spinner_enabled; then
-    wait "$pid"
-    return $?
+    wait "$pid" || wait_status=$?
+    return "$wait_status"
   fi
   while kill -0 "$pid" 2>/dev/null; do
     current_label=$(__lmline_zsh_progress_label "$progress_file" "$label")
@@ -246,7 +246,8 @@ __lmline_zsh_wait_with_spinner() {
     tick=$((tick + 1))
     (( tick % 5 == 0 )) && elapsed=$((elapsed + 1))
   done
-  wait "$pid"
+  wait "$pid" || wait_status=$?
+  return "$wait_status"
 }
 
 __lmline_zsh_engine_hint() {
@@ -272,8 +273,8 @@ __lmline_zsh_run_bridge() {
     unsetopt monitor
   fi
   { __lmline_zsh_bridge "$action" "$mode" "$line" "$point" >"$output_file" 2>&1 & pid=$!; } 2>/dev/null
-  __lmline_zsh_wait_with_spinner "$pid" "$label" "$output_file"
-  __LMLINE_ZSH_BRIDGE_STATUS=$?
+  __LMLINE_ZSH_BRIDGE_STATUS=0
+  __lmline_zsh_wait_with_spinner "$pid" "$label" "$output_file" || __LMLINE_ZSH_BRIDGE_STATUS=$?
   __lmline_zsh_clear_hint
   __lmline_zsh_read_meta "$output_file"
   (( had_monitor == 1 )) && setopt monitor
@@ -313,15 +314,15 @@ __lmline_zsh_bridge() {
         tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX")
         trap "rm -rf \"$tmp\"" EXIT
         engine_file="$tmp/engine"
+        status=0
         if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
              [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
-          __lmline_copilot_candidates "$line" "$point" zsh "$mode" >"$engine_file"
+          __lmline_copilot_candidates "$line" "$point" zsh "$mode" >"$engine_file" || status=$?
         else
           printf "%s" "$line" >"$tmp/line"
           __lmline_context_file "$tmp/context" "$line" "$mode"
-          "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file"
+          "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
         fi
-        status=$?
         grep "^lmline-candidate: " "$engine_file" || true
         if [[ "$status" == 0 && "$mode" == rewrite ]]; then
           printf "lmline-candidate: low\t-\toriginal\t%s\n" "$line"
@@ -529,8 +530,8 @@ __lmline_zsh_apply_index() {
 __lmline_zsh_bridge_candidates() {
   local label=$1 action=$2 mode=$3 line=$4 point=$5 bridge_status output
   __lmline_zsh_reload_settings_if_changed
-  __lmline_zsh_run_bridge "$label" "$action" "$mode" "$line" "$point"
-  bridge_status=$?
+  bridge_status=0
+  __lmline_zsh_run_bridge "$label" "$action" "$mode" "$line" "$point" || bridge_status=$?
   output=$__LMLINE_ZSH_BRIDGE_OUTPUT
   if (( bridge_status != 0 )); then
     if (( bridge_status == 3 )); then

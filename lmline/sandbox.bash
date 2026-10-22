@@ -68,8 +68,9 @@ __lmline_timeout_run() {
   shift
   [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
   if command -v timeout >/dev/null 2>&1; then
-    timeout -k 1s "$timeout_s" "$@"
-    return $?
+    local status=0
+    timeout -k 1s "$timeout_s" "$@" || status=$?
+    return "$status"
   fi
   (
     local child i status=0 pending=

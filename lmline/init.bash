@@ -192,11 +192,11 @@ __lmline_append_original_candidate() {
 }
 
 __lmline_wait_with_spinner() {
-  local pid=$1 label=$2 progress_file=${3:-} frame_index=0 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label
+  local pid=$1 label=$2 progress_file=${3:-} frame_index=0 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label status=0
   local -a frames=('.  ' '.. ' '...')
   if ! __lmline_spinner_enabled; then
-    wait "$pid"
-    return $?
+    wait "$pid" || status=$?
+    return "$status"
   fi
   while kill -0 "$pid" 2>/dev/null; do
     current_label=$(__lmline_progress_label "$progress_file" "$label")
@@ -206,7 +206,8 @@ __lmline_wait_with_spinner() {
     tick=$((tick + 1))
     (( tick % 5 == 0 )) && elapsed=$((elapsed + 1))
   done
-  wait "$pid"
+  wait "$pid" || status=$?
+  return "$status"
 }
 
 __lmline_run_internal_job() {
@@ -216,8 +217,8 @@ __lmline_run_internal_job() {
     *m*) had_monitor=1; set +m ;;
   esac
   { "$@" >"$output_file" 2>&1 & pid=$!; } 2>/dev/null
-  __lmline_wait_with_spinner "$pid" "$label" "$output_file"
-  status=$?
+  status=0
+  __lmline_wait_with_spinner "$pid" "$label" "$output_file" || status=$?
   __lmline_hint clear
   (( had_monitor == 1 )) && set -m
   return "$status"
@@ -243,11 +244,12 @@ __lmline_call_engine_raw() {
   local line=$2
   local point=$3
   local tmp line_file context_file status
+  status=0
   __lmline_reload_settings_if_changed "$__LMLINE_CONFIG_DIR"
   if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
        [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
-    __lmline_copilot_candidates "$line" "$point" bash "$mode"
-    return $?
+    __lmline_copilot_candidates "$line" "$point" bash "$mode" || status=$?
+    return "$status"
   fi
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-gen.XXXXXX") || return 1
   line_file=$tmp/line
@@ -262,8 +264,7 @@ __lmline_call_engine_raw() {
     --point "$point" \
     --line-file "$line_file" \
     --context-file "$context_file" \
-    --n "$LMLINE_CANDIDATE_COUNT"
-  status=$?
+    --n "$LMLINE_CANDIDATE_COUNT" || status=$?
   rm -rf "$tmp"
   return "$status"
 }
@@ -280,8 +281,8 @@ __lmline_call_engine() {
   __LMLINE_ENGINE_STATUS_LINE=""
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-call.XXXXXX") || return 1
   output_file=$tmp/output
-  __lmline_run_internal_job "$label" "$output_file" __lmline_call_engine_raw "$mode" "$line" "$point"
-  status=$?
+  status=0
+  __lmline_run_internal_job "$label" "$output_file" __lmline_call_engine_raw "$mode" "$line" "$point" || status=$?
   __lmline_read_engine_meta "$output_file"
   output=$(__lmline_strip_progress_lines <"$output_file" 2>/dev/null || true)
   rm -rf "$tmp"
@@ -305,8 +306,8 @@ __lmline_run_explain_engine() {
   local tmp output_file status
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-expl.XXXXXX") || return 1
   output_file=$tmp/output
-  __lmline_run_internal_job "explaining" "$output_file" "$engine" --mode explain --shell "$shell_name" --cwd "$PWD" --point "$point" --line-file "$line_file" --context-file "$context_file" --n 1
-  status=$?
+  status=0
+  __lmline_run_internal_job "explaining" "$output_file" "$engine" --mode explain --shell "$shell_name" --cwd "$PWD" --point "$point" --line-file "$line_file" --context-file "$context_file" --n 1 || status=$?
   cat "$output_file" 2>/dev/null || true
   rm -rf "$tmp"
   return "$status"
@@ -458,8 +459,8 @@ __lmline_select_candidate() {
 __lmline_load_candidates() {
   local mode=$1 original=$2 point=$3 label=${4:-generating} engine_status
   __LMLINE_CANDIDATES=()
-  __lmline_call_engine "$mode" "$original" "$point" "$label" >/dev/null
-  engine_status=$?
+  engine_status=0
+  __lmline_call_engine "$mode" "$original" "$point" "$label" >/dev/null || engine_status=$?
   if (( engine_status != 0 )); then
     return "$engine_status"
   fi
@@ -589,8 +590,8 @@ __lmline_fix_widget() {
   __LMLINE_LAST_MODE=fix
   __LMLINE_INDEX=0
   __LMLINE_ENGINE_OUTPUT=""
-  __lmline_run_internal_job "fixing command" "$tmp/engine" __lmline_fix_run "$original" bash "${#original}" "$LMLINE_ENGINE" "$LMLINE_CANDIDATE_COUNT" "$LMLINE_PS0"
-  engine_status=$?
+  engine_status=0
+  __lmline_run_internal_job "fixing command" "$tmp/engine" __lmline_fix_run "$original" bash "${#original}" "$LMLINE_ENGINE" "$LMLINE_CANDIDATE_COUNT" "$LMLINE_PS0" || engine_status=$?
   __lmline_read_engine_meta "$tmp/engine"
   engine_output=$(__lmline_strip_progress_lines <"$tmp/engine" 2>/dev/null || true)
   if (( engine_status == 3 )); then

@@ -20,6 +20,16 @@ LMLINE_CONFIG_DIR="$fix_tmp/config" LMLINE_EXEC_BACKEND=local LMLINE_ENGINE="$fi
   __lmline_fix_widget >/tmp/lmline-widget-fix-risk.out 2>/tmp/lmline-widget-fix-risk.err
   [[ "$READLINE_LINE" == "rm -rf build" ]]
 ' _ "$repo_dir" || fail "fix high-risk refusal"
+# A shell with errexit on must survive the refusal: the internal command that
+# fails is the one the widget reports, not a reason to end the user's shell.
+LMLINE_CONFIG_DIR="$fix_tmp/config" LMLINE_EXEC_BACKEND=local LMLINE_ENGINE="$fix_tmp/engine" bash --norc -i -c '
+  set -e
+  source "$1/lmline/init.bash"
+  READLINE_LINE="rm -rf build"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_fix_widget >/tmp/lmline-widget-fix-errexit.out 2>/tmp/lmline-widget-fix-errexit.err
+  [[ "$READLINE_LINE" == "rm -rf build" ]]
+' _ "$repo_dir" || fail "fix high-risk refusal with errexit on"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'while (($#)); do case "$1" in --mode) mode=$2; shift 2;; *) shift;; esac; done' \
