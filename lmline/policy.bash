@@ -672,6 +672,17 @@ __lmline_risk_recursive_remove() {
   return 1
 }
 
+# Risk precedence: structural recognition (piped shell, interactive history,
+# unresolved variable command, capped brace expansion, recursive remove) is
+# mechanism only; its levels are configuration (LMLINE_RISK_*_LEVEL, defaults
+# high/high/medium/medium/high; unknown or empty falls back to the default).
+# A replacement risk_patterns file overrides shipped patterns and structural
+# defaults: with a user or explicit file, the first matching rule wins and
+# structural fallbacks apply only when no rule matched. With the shipped
+# default file, shipped patterns and structural fallbacks compete and the
+# highest level wins, so a generic medium rule never shadows a structural
+# high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
+# stay protective.
 __lmline_risk_match() {
   local cmd=$1 expanded file line level pattern reason alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
@@ -703,9 +714,9 @@ __lmline_risk_match() {
     # Normalize: canonicalize quoting/IFS/braces, squeeze whitespace, and
     # wrap in single spaces so one pattern like "* dd *" matches at line
     # start, mid-pipeline, and bare. Structural pipe-to-shell recognition
-    # is recorded here and decided after pattern matching (see precedence
-    # below): a replacement rule can override it, while shipped defaults
-    # compete with it for the highest level.
+    # is recorded here and decided after pattern matching (see the
+    # precedence note above): a replacement rule can override it, while
+    # shipped defaults compete with it for the highest level.
     if __lmline_risk_piped_shell "$alt"; then
       piped_found=1
     fi
