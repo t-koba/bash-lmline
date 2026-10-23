@@ -775,7 +775,9 @@ Use `--workspace none` for image-only checks.
 
 After setup, persist the printed `next_config` commands in the project config (and enable `LMLINE_PROJECT_CONFIG` so project files are loaded).
 Then `LMLINE_EXEC_BACKEND=microsandbox` uses `msb exec` in that named sandbox
-instead of ephemeral `msb run`.
+instead of ephemeral `msb run`. Ephemeral images must contain `/bin/sh`:
+lmline overrides the image entrypoint with `/bin/sh` and passes the command
+via `-c`, even when the image defines a non-shell entrypoint.
 
 </details>
 

@@ -141,7 +141,7 @@ __lmline_microsandbox_cli_capture() {
       >"$stdout_file" 2>"$stderr_file" || status=$?
   else
     __lmline_microsandbox_with_host_timeout "$timeout_s" \
-      "$msb" --error run "$image" --timeout "${timeout_s}s" -c "$cpus" -m "$memory" -- sh -c "$command_line" \
+      "$msb" --error run "$image" --timeout "${timeout_s}s" -c "$cpus" -m "$memory" --entrypoint /bin/sh -- -c "$command_line" \
       >"$stdout_file" 2>"$stderr_file" || status=$?
   fi
   __LMLINE_EXEC_STATUS=$status

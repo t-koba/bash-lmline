@@ -1040,6 +1040,9 @@ if [[ "${1-}" == "--version" ]]; then
   printf 'msb fake 0\n'
   exit 0
 fi
+if [[ -n "${FAKE_MSB_ARGV_LOG:-}" ]]; then
+  printf '%s\0' "$@" >"$FAKE_MSB_ARGV_LOG"
+fi
 if [[ "${1-}" == "--error" ]]; then
   shift
 fi
@@ -1049,17 +1052,19 @@ printf '%s %s\n' "$sub" "$*" >>"${FAKE_MSB_LOG:-/dev/null}" 2>/dev/null || true
 case "$sub" in
   run)
     image=${1-}
+    entrypoint=
     shift || true
     while (($#)) && [[ "$1" != "--" ]]; do
       case "$1" in
+        --entrypoint) entrypoint=${2-}; shift 2 ;;
         --timeout|-c|-m|-w|-e|-u|--rlimit) shift 2 ;;
         -t|--tty|-q|--quiet|-d|--detach) shift ;;
         *) shift ;;
       esac
     done
     [[ "${1-}" == "--" ]] && shift
-    [[ "${1-}" == sh && "${2-}" == -c ]] || exit 64
-    printf 'msb:%s\n' "${3-}"
+    [[ "$entrypoint" == /bin/sh && $# == 2 && "${1-}" == -c ]] || exit 64
+    printf 'msb:%s\n' "${2-}"
     ;;
   exec)
     name=${1-}
@@ -1102,8 +1107,12 @@ grep -q '^reason=microsandbox_unavailable$' <<<"$missing_msb_out" || fail "comma
 sandbox_check_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox check)
 grep -q '^available=1$' <<<"$sandbox_check_out" || fail "sandbox check microsandbox"
 grep -q '^version=msb fake 0$' <<<"$sandbox_check_out" || fail "sandbox check version"
-sandbox_cli_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run -- echo cli)
+# Represent an image with an application ENTRYPOINT; only an explicit shell
+# override may receive the command, which must remain one argv element.
+sandbox_cli_out=$(FAKE_MSB_ARGV_LOG="$command_tmp/msb.argv" LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_MICROSANDBOX_IMAGE=app-entrypoint-image:test LMLINE_MICROSANDBOX_CPUS=2 LMLINE_MICROSANDBOX_MEMORY=768M LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --timeout 7 -- echo cli)
 grep -q '^msb:echo cli$' <<<"$sandbox_cli_out" || fail "sandbox run microsandbox"
+printf '%s\0' --error run app-entrypoint-image:test --timeout 7s -c 2 -m 768M --entrypoint /bin/sh -- -c 'echo cli' >"$command_tmp/msb.expected"
+cmp -s "$command_tmp/msb.expected" "$command_tmp/msb.argv" || fail "sandbox ephemeral shell override argv"
 sandbox_setup_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --name lmline-test --image test-image --workspace none)
 grep -q '^sandbox_name=lmline-test$' <<<"$sandbox_setup_out" || fail "sandbox setup name"
 grep -q '^image=test-image$' <<<"$sandbox_setup_out" || fail "sandbox setup image"
@@ -1113,8 +1122,10 @@ grep -q 'LMLINE_MICROSANDBOX_NAME' <<<"$sandbox_setup_out" || fail "sandbox setu
 command_root=$(cd -P -- "$command_tmp" && pwd -P)
 FAKE_MSB_LOG="$command_tmp/msb.log" LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --name lmline-test-ro --image test-image --workspace readonly --root "$command_tmp" >/dev/null
 grep -F -q -- "--volume $command_root:/workspace:ro" "$command_tmp/msb.log" || fail "sandbox setup readonly volume"
-sandbox_named_run_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --name lmline-test -- echo named)
+sandbox_named_run_out=$(FAKE_MSB_ARGV_LOG="$command_tmp/msb.argv" LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox run --name lmline-test -- echo named)
 grep -q '^named:echo named$' <<<"$sandbox_named_run_out" || fail "sandbox run named microsandbox"
+printf '%s\0' --error exec lmline-test --timeout 3s -w /workspace -- sh -c 'echo named' >"$command_tmp/msb.expected"
+cmp -s "$command_tmp/msb.expected" "$command_tmp/msb.argv" || fail "sandbox named exec argv unchanged"
 
 # Exercise the portable deadline with injected timer ticks when GNU timeout is
 # missing (e.g. stock macOS), avoiding real one-second sleeps in the test.
