@@ -930,11 +930,13 @@ tool descriptions     LMLINE_TOOL_MODE=auto and enabled LMLINE_TOOL_* flags
 Default context collection does not read file contents, shell history, lmline
 debug history, the full command inventory, current-directory file names, or the
 clipboard. Tools can expose extra local facts only when enabled and only when
-the model calls them. `file_excerpt` is disabled by default because it reads
-bounded file content. `command_run` is disabled by default because it executes
-a command through the selected backend and sends bounded stdout/stderr back to
-the model. `git_status`, `file_excerpt`, and `command_run` require exact `1`
-to enable; unset, empty, and any other value leave them disabled.
+the model calls them. `command_info` is disabled by default because it runs a
+bounded `--version` probe for a model-named program and returns its output to
+the model. `file_excerpt` is disabled by default because it reads bounded file
+content. `command_run` is disabled by default because it executes a command
+through the selected backend and sends bounded stdout/stderr back to the model.
+`git_status`, `command_info`, `file_excerpt`, and `command_run` require exact
+`1` to enable; unset, empty, and any other value leave them disabled.
 `Ctrl-x Ctrl-v` sends redacted clipboard text because that action is
 explicitly about the clipboard. `Ctrl-x Ctrl-f` sends the captured stdout,
 stderr, exit status, and execution backend from the command it runs.
