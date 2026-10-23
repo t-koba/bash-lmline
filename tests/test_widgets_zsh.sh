@@ -38,6 +38,27 @@ if command -v zsh >/dev/null 2>&1; then
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-2.out 2>/tmp/lmline-zsh-widget-async-2.err
     [[ "$BUFFER" == "echo zsh-widget" ]]
   ' _ "$repo_dir" || fail "zsh async widget"
+  printf '#!/usr/bin/env bash\npoint=0\nwhile (($#)); do case "$1" in --point) point=$2; shift 2;; *) shift;; esac; done\nsleep 0.3\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo point-%%s\\n" "$point"\n' >"$zsh_tmp/engine-cursor"
+  chmod +x "$zsh_tmp/engine-cursor"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cursor" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-cursor" zsh -efic '
+    source "$1/lmline/init.zsh"
+    BUFFER="echo cursor"
+    CURSOR=0
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first_pid=$__LMLINE_ZSH_ASYNC_PID
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first_pid" ]]
+    CURSOR=3
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second_pid=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second_pid" != "$first_pid" ]]
+    for i in {1..150}; do
+      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$second_pid" 2>/dev/null; then break; fi
+      sleep 0.1
+    done
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo point-3" ]]
+  ' _ "$repo_dir" || fail "zsh async cursor identity"
   printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: synthetic zsh async failure\\n" >&2\nexit 1\n' >"$zsh_tmp/engine-async-fail"
   chmod +x "$zsh_tmp/engine-async-fail"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-async-fail" zsh -efic '

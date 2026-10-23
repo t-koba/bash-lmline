@@ -352,11 +352,11 @@ __lmline_zsh_bridge() {
 }
 
 __lmline_zsh_request_key() {
-  local mode=$1 line=$2
+  local mode=$1 line=$2 point=$3
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
-    __lmline_request_key "$2" "$3"
-  ' _ "$LMLINE_DIR" "$mode" "$line"
+    printf "%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$4"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point"
 }
 
 __lmline_zsh_load_candidates_from_file() {
@@ -368,7 +368,7 @@ __lmline_zsh_load_candidates_from_file() {
 __lmline_zsh_async_start() {
   local mode=$1 line=$2 point=$3 async_file=$4 async_status_file tmp_out key
   __lmline_zsh_async_cleanup
-  key=$(__lmline_zsh_request_key "$mode" "$line")
+  key=$(__lmline_zsh_request_key "$mode" "$line" "$point")
   async_status_file=$async_file.status
   tmp_out=$async_file.tmp.$$
   rm -f "$async_status_file" "$async_status_file.err" "$tmp_out" "$async_file"
@@ -404,7 +404,7 @@ __lmline_zsh_async_prompt_check() {
 
 __lmline_zsh_generate_async() {
   local original=$1 mode=$2 point=$3 async_file current_key async_status_file err_msg
-  current_key=$(__lmline_zsh_request_key "$mode" "$original")
+  current_key=$(__lmline_zsh_request_key "$mode" "$original" "$point")
 
   if [[ "$__LMLINE_ZSH_ASYNC_KEY" == "$current_key" && $__LMLINE_ZSH_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ZSH_ASYNC_FILE
