@@ -218,55 +218,55 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" bash --norc -i -
   COMP_WORDS=(lmline use "")
   COMP_CWORD=2
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^local$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^local$" || exit 1
   COMP_WORDS=(lmline use cloud "")
   COMP_CWORD=3
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^openai/gpt-test$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^openai/gpt-test$" || exit 1
   COMP_WORDS=(lmline config set LMLINE_MIC "")
   COMP_CWORD=3
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^LMLINE_MICROSANDBOX_COMMAND$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^LMLINE_MICROSANDBOX_COMMAND$" || exit 1
   COMP_WORDS=(lmline config describe LMLINE_MIC "")
   COMP_CWORD=3
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^LMLINE_MICROSANDBOX_COMMAND$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^LMLINE_MICROSANDBOX_COMMAND$" || exit 1
   COMP_WORDS=(lmline config set LMLINE_EXEC_BACKEND "")
   COMP_CWORD=4
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^microsandbox$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^microsandbox$" || exit 1
   COMP_WORDS=(lmline config set LMLINE_API_FORMAT "")
   COMP_CWORD=4
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^responses$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^responses$" || exit 1
   COMP_WORDS=(lmline endpoint add ep https://example.invalid/v1 "")
   COMP_CWORD=5
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^--models-url$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^--models-url$" || exit 1
   COMP_WORDS=(lmline model add local local-test-model "")
   COMP_CWORD=5
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^--api-format$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^--api-format$" || exit 1
   COMP_WORDS=(lmline model add local local-test-model --api-format "")
   COMP_CWORD=6
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^responses$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^responses$" || exit 1
   COMP_WORDS=(lmline help config "")
   COMP_CWORD=3
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^describe$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^describe$" || exit 1
   COMP_WORDS=(lmline complete subcommands con "")
   COMP_CWORD=3
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^config$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^config$" || exit 1
   COMP_WORDS=(lmline sandbox "")
   COMP_CWORD=2
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^setup$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^setup$" || exit 1
   COMP_WORDS=(lmline sandbox setup --workspace "")
   COMP_CWORD=4
   __lmline_cli_complete
-  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^readonly$"
+  printf "%s\n" "${COMPREPLY[@]}" | grep -q "^readonly$" || exit 1
 ' _ "$repo_dir" || fail "bash profile completion"
 if command -v zsh >/dev/null 2>&1; then
   PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" zsh -fic '
@@ -277,79 +277,79 @@ if command -v zsh >/dev/null 2>&1; then
     words=(lmline use "")
     CURRENT=3
     _lmline
-    grep -q "^local$" /tmp/lmline-zsh-complete-endpoints.out
+    grep -q "^local$" /tmp/lmline-zsh-complete-endpoints.out || exit 1
     OUT=/tmp/lmline-zsh-complete-models.out
     : >"$OUT"
     words=(lmline use cloud "")
     CURRENT=4
     _lmline
-    grep -q "^openai/gpt-test$" /tmp/lmline-zsh-complete-models.out
+    grep -q "^openai/gpt-test$" /tmp/lmline-zsh-complete-models.out || exit 1
     OUT=/tmp/lmline-zsh-complete-config-settings.out
     : >"$OUT"
     words=(lmline config set LMLINE_MIC "")
     CURRENT=4
     _lmline
-    grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT"
+    grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-config-describe.out
     : >"$OUT"
     words=(lmline config describe LMLINE_MIC "")
     CURRENT=4
     _lmline
-    grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT"
+    grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-backend-values.out
     : >"$OUT"
     words=(lmline config set LMLINE_EXEC_BACKEND "")
     CURRENT=5
     _lmline
-    grep -q "^microsandbox$" "$OUT"
+    grep -q "^microsandbox$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-api-format-values.out
     : >"$OUT"
     words=(lmline config set LMLINE_API_FORMAT "")
     CURRENT=5
     _lmline
-    grep -q "^responses$" "$OUT"
+    grep -q "^responses$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-endpoint-add.out
     : >"$OUT"
     words=(lmline endpoint add ep https://example.invalid/v1 "")
     CURRENT=6
     _lmline
-    grep -q "^--models-url$" "$OUT"
+    grep -q "^--models-url$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-model-add.out
     : >"$OUT"
     words=(lmline model add local local-test-model "")
     CURRENT=6
     _lmline
-    grep -q "^--api-format$" "$OUT"
+    grep -q "^--api-format$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-model-api-format.out
     : >"$OUT"
     words=(lmline model add local local-test-model --api-format "")
     CURRENT=7
     _lmline
-    grep -q "^responses$" "$OUT"
+    grep -q "^responses$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-help-config.out
     : >"$OUT"
     words=(lmline help config "")
     CURRENT=4
     _lmline
-    grep -q "^describe$" "$OUT"
+    grep -q "^describe$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-subcommands.out
     : >"$OUT"
     words=(lmline complete subcommands con "")
     CURRENT=4
     _lmline
-    grep -q "^config$" "$OUT"
+    grep -q "^config$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-sandbox.out
     : >"$OUT"
     words=(lmline sandbox "")
     CURRENT=3
     _lmline
-    grep -q "^setup$" "$OUT"
+    grep -q "^setup$" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-sandbox-workspace.out
     : >"$OUT"
     words=(lmline sandbox setup --workspace "")
     CURRENT=5
     _lmline
-    grep -q "^readonly$" "$OUT"
+    grep -q "^readonly$" "$OUT" || exit 1
   ' _ "$repo_dir" /tmp/lmline-zsh-complete.out || fail "zsh profile completion"
 fi
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use local local-test-model
