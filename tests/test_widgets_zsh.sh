@@ -104,10 +104,10 @@ if command -v zsh >/dev/null 2>&1; then
     grep -q "3 candidates; m=zsh-model; tok=80/8/88" /tmp/lmline-zsh-rewrite.err
     lmline-zsh-next-widget
     [[ "$BUFFER" == "echo zsh-two" ]]
-    ! grep -q "2/3" /tmp/lmline-zsh-rewrite.err
+    if grep -q "2/3" /tmp/lmline-zsh-rewrite.err; then exit 1; fi
     lmline-zsh-next-widget
     [[ "$BUFFER" == "echo old" ]]
-    ! grep -q "3/3" /tmp/lmline-zsh-rewrite.err
+    if grep -q "3/3" /tmp/lmline-zsh-rewrite.err; then exit 1; fi
     lmline-zsh-prev-widget
     [[ "$BUFFER" == "echo zsh-two" ]]
     test -s "$LMLINE_HISTORY_DIR/suggestions.log"
