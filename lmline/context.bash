@@ -157,7 +157,7 @@ __lmline_tool_enabled() {
   # Default-off tools require affirmative opt-in: only the exact value `1`
   # enables them. Unset, empty, documented false values, and any other
   # value fail closed.
-  if [[ "$name" == git_status || "$name" == file_excerpt || "$name" == command_run ]]; then
+  if [[ "$name" == command_info || "$name" == git_status || "$name" == file_excerpt || "$name" == command_run ]]; then
     value=${!var-}
     [[ "$value" == 1 ]]
     return

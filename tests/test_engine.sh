@@ -7,6 +7,8 @@ cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-engine-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_BASE_URL https://api.test.invalid/v1
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_MODEL test-model
+# command_info is opt-in (only exact 1 enables probes); this suite exercises its tool rounds.
+export LMLINE_TOOL_COMMAND_INFO=1
 printf '# list files\n' >"$cfg_tmp/line"
 printf '## available_tools\n' >"$cfg_tmp/context"
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode unknown --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-invalid-mode.out 2>/tmp/lmline-invalid-mode.err; then

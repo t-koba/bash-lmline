@@ -274,7 +274,7 @@ LMLINE_TOOL_MODE	auto	auto, openai, text, or none
 LMLINE_TOOL_CHOICE	auto	OpenAI-compatible tool_choice value
 LMLINE_TOOL_COMMAND_EXISTS	1	enable command_exists
 LMLINE_TOOL_COMMANDS	1	enable commands
-LMLINE_TOOL_COMMAND_INFO	1	enable command_info
+LMLINE_TOOL_COMMAND_INFO	0	enable command_info (opt-in: only exact `1` enables version probes)
 LMLINE_TOOL_FILES	1	enable files
 LMLINE_TOOL_GIT_STATUS	0	enable git_status
 LMLINE_TOOL_FILE_EXCERPT	0	enable file_excerpt

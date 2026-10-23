@@ -9,9 +9,7 @@ explicitly re-runs the current line once through `LMLINE_EXEC_BACKEND` to
 capture failure evidence (`LMLINE_EXEC_BACKEND=off` disables it), the opt-in
 `command_run` tool, and `lmline sandbox run`, all of which the user invokes or
 enables and all of which are risk-gated (see Candidate Handling and
-SECURITY.md). One more path runs a program without the user invoking it: the
-`command_info` tool is on by default and probes an external program the model
-names with the fixed flag `--version` under a short timeout (see SECURITY.md).
+SECURITY.md). One more path can run a program without the user invoking it, but only when explicitly opted in with `LMLINE_TOOL_COMMAND_INFO=1`: the `command_info` tool then probes an external program the model names with the fixed flag `--version` under a short timeout (see SECURITY.md).
 
 The bundled engine is `lmline/engine`. A replacement set with `LMLINE_ENGINE`
 must implement [docs/engine-protocol.md](docs/engine-protocol.md).
@@ -673,7 +671,7 @@ Cycling with `Ctrl-x Ctrl-n` / `Ctrl-x Ctrl-p` shows the current position
 truncated candidates and the preserved original (rewrite mode) are flagged in
 the same indicator.
 
-`Ctrl-x Ctrl-f` is the only key binding that executes the current line; the other execution paths are the opt-in `command_run` tool, `lmline sandbox run`, and the `command_info` version probe (see intro and SECURITY.md).
+`Ctrl-x Ctrl-f` is the only key binding that executes the current line; the other execution paths are the opt-in `command_run` tool, `lmline sandbox run`, and the opt-in `command_info` version probe (see intro and SECURITY.md).
 With the local backend, it refuses high-risk commands and medium-risk commands
 require `LMLINE_FIX_ALLOW_MEDIUM=1`. With `microsandbox`, the command runs
 through the configured `msb` CLI backend.
@@ -976,6 +974,7 @@ lmline config set LMLINE_INCLUDE_SUGGESTED_COMMANDS 1
 
 ```bash
 lmline config set LMLINE_TOOL_MODE none
+lmline config set LMLINE_TOOL_COMMAND_INFO 0
 lmline config set LMLINE_TOOL_GIT_STATUS 0
 lmline config set LMLINE_TOOL_FILE_EXCERPT 0
 lmline config set LMLINE_TOOL_COMMAND_RUN 0
@@ -1078,7 +1077,8 @@ Available tools:
 
 ```text
 command_exists  command -v for specific command names
-command_info    command path, kind, type -a, and bounded version/help output
+command_info    command path, kind, type -a, and bounded version/help output,
+                disabled by default
 commands        local command-name search by fragment
 files           local file-name search from find . -maxdepth 2
 git_status      git --no-optional-locks status --short --branch,
@@ -1285,7 +1285,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_TOOL_CHOICE` | `auto` | OpenAI-compatible `tool_choice` value |
 | `LMLINE_TOOL_COMMAND_EXISTS` | `1` | enable `command_exists` |
 | `LMLINE_TOOL_COMMANDS` | `1` | enable `commands` |
-| `LMLINE_TOOL_COMMAND_INFO` | `1` | enable `command_info` |
+| `LMLINE_TOOL_COMMAND_INFO` | `0` | enable `command_info` (opt-in: only exact `1` enables version probes) |
 | `LMLINE_TOOL_FILES` | `1` | enable `files` |
 | `LMLINE_TOOL_GIT_STATUS` | `0` | enable `git_status` |
 | `LMLINE_TOOL_FILE_EXCERPT` | `0` | enable `file_excerpt` |

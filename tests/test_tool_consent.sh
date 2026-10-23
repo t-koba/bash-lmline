@@ -21,6 +21,9 @@ set_tool_value() {
     file_excerpt)
       if [[ "$mode" == unset ]]; then unset LMLINE_TOOL_FILE_EXCERPT
       else export LMLINE_TOOL_FILE_EXCERPT="$value"; fi ;;
+    command_info)
+      if [[ "$mode" == unset ]]; then unset LMLINE_TOOL_COMMAND_INFO
+      else export LMLINE_TOOL_COMMAND_INFO="$value"; fi ;;
     command_run)
       if [[ "$mode" == unset ]]; then unset LMLINE_TOOL_COMMAND_RUN
       else export LMLINE_TOOL_COMMAND_RUN="$value"; fi ;;
@@ -28,12 +31,12 @@ set_tool_value() {
 }
 
 clear_default_off() {
-  unset LMLINE_TOOL_GIT_STATUS LMLINE_TOOL_FILE_EXCERPT LMLINE_TOOL_COMMAND_RUN 2>/dev/null || true
+  unset LMLINE_TOOL_COMMAND_INFO LMLINE_TOOL_GIT_STATUS LMLINE_TOOL_FILE_EXCERPT LMLINE_TOOL_COMMAND_RUN 2>/dev/null || true
 }
 
 # --- shared guard: only exact `1` enables each default-off tool ---
 disabled_values=(__UNSET__ "" "0" "false" "FALSE" "off" "OFF" "no" "NO" "flase" "disabled" "true" "yes" "2")
-for tool in git_status file_excerpt command_run; do
+for tool in command_info git_status file_excerpt command_run; do
   for value in "${disabled_values[@]}"; do
     if [[ "$value" == __UNSET__ ]]; then
       set_tool_value "$tool" unset
@@ -63,24 +66,28 @@ ok "default-on files behavior preserved"
 # --- advertisement: __lmline_available_tools omits default-off tools unless exact `1` ---
 clear_default_off
 tools_out=$(__lmline_available_tools)
+! grep -q '^command_info commands=' <<<"$tools_out" || fail "advertised command_info when unset"
 ! grep -q '^git_status$' <<<"$tools_out" || fail "advertised git_status when unset"
 ! grep -q '^file_excerpt path=' <<<"$tools_out" || fail "advertised file_excerpt when unset"
 ! grep -q '^command_run command=' <<<"$tools_out" || fail "advertised command_run when unset"
 
-export LMLINE_TOOL_GIT_STATUS="" LMLINE_TOOL_FILE_EXCERPT="" LMLINE_TOOL_COMMAND_RUN=""
+export LMLINE_TOOL_COMMAND_INFO="" LMLINE_TOOL_GIT_STATUS="" LMLINE_TOOL_FILE_EXCERPT="" LMLINE_TOOL_COMMAND_RUN=""
 tools_out=$(__lmline_available_tools)
+! grep -q '^command_info commands=' <<<"$tools_out" || fail "advertised command_info when empty"
 ! grep -q '^git_status$' <<<"$tools_out" || fail "advertised git_status when empty"
 ! grep -q '^file_excerpt path=' <<<"$tools_out" || fail "advertised file_excerpt when empty"
 ! grep -q '^command_run command=' <<<"$tools_out" || fail "advertised command_run when empty"
 
-export LMLINE_TOOL_GIT_STATUS="flase" LMLINE_TOOL_FILE_EXCERPT="flase" LMLINE_TOOL_COMMAND_RUN="flase"
+export LMLINE_TOOL_COMMAND_INFO="flase" LMLINE_TOOL_GIT_STATUS="flase" LMLINE_TOOL_FILE_EXCERPT="flase" LMLINE_TOOL_COMMAND_RUN="flase"
 tools_out=$(__lmline_available_tools)
+! grep -q '^command_info commands=' <<<"$tools_out" || fail "advertised command_info when unrecognized"
 ! grep -q '^git_status$' <<<"$tools_out" || fail "advertised git_status when unrecognized"
 ! grep -q '^file_excerpt path=' <<<"$tools_out" || fail "advertised file_excerpt when unrecognized"
 ! grep -q '^command_run command=' <<<"$tools_out" || fail "advertised command_run when unrecognized"
 
-export LMLINE_TOOL_GIT_STATUS=1 LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_TOOL_COMMAND_RUN=1
+export LMLINE_TOOL_COMMAND_INFO=1 LMLINE_TOOL_GIT_STATUS=1 LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_TOOL_COMMAND_RUN=1
 tools_out=$(__lmline_available_tools)
+grep -q '^command_info commands=' <<<"$tools_out" || fail "missing command_info when exact 1"
 grep -q '^git_status$' <<<"$tools_out" || fail "missing git_status when exact 1"
 grep -q '^file_excerpt path=' <<<"$tools_out" || fail "missing file_excerpt when exact 1"
 grep -q '^command_run command=' <<<"$tools_out" || fail "missing command_run when exact 1"
@@ -99,7 +106,7 @@ check_payload_tools() {
   local label=$1 expect=$2 names tool
   __lmline_write_chat_payload "$payload_tmp/messages.json" "$payload_tmp/payload.json" 1
   names=$(jq -r '(.tools // [])[].function.name' "$payload_tmp/payload.json")
-  for tool in git_status file_excerpt command_run; do
+  for tool in command_info git_status file_excerpt command_run; do
     if [[ "$expect" == present ]]; then
       grep -qx "$tool" <<<"$names" || fail "payload missing $tool ($label)"
     else
@@ -110,16 +117,17 @@ check_payload_tools() {
 
 clear_default_off
 check_payload_tools "unset" absent
-export LMLINE_TOOL_GIT_STATUS="" LMLINE_TOOL_FILE_EXCERPT="" LMLINE_TOOL_COMMAND_RUN=""
+export LMLINE_TOOL_COMMAND_INFO="" LMLINE_TOOL_GIT_STATUS="" LMLINE_TOOL_FILE_EXCERPT="" LMLINE_TOOL_COMMAND_RUN=""
 check_payload_tools "empty" absent
-export LMLINE_TOOL_GIT_STATUS="flase" LMLINE_TOOL_FILE_EXCERPT="flase" LMLINE_TOOL_COMMAND_RUN="flase"
+export LMLINE_TOOL_COMMAND_INFO="flase" LMLINE_TOOL_GIT_STATUS="flase" LMLINE_TOOL_FILE_EXCERPT="flase" LMLINE_TOOL_COMMAND_RUN="flase"
 check_payload_tools "unrecognized" absent
-export LMLINE_TOOL_GIT_STATUS=1 LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_TOOL_COMMAND_RUN=1
+export LMLINE_TOOL_COMMAND_INFO=1 LMLINE_TOOL_GIT_STATUS=1 LMLINE_TOOL_FILE_EXCERPT=1 LMLINE_TOOL_COMMAND_RUN=1
 check_payload_tools "exact 1" present
 clear_default_off
 ok "payload tools omit default-off tools unless exact 1"
 
 # --- dispatch: refused before any tool action (handlers stubbed, nothing executes or reads files) ---
+__lmline_tool_command_info() { printf 'STUB-CALLED command_info\n'; }
 __lmline_tool_git_status() { printf 'STUB-CALLED git_status\n'; }
 __lmline_tool_file_excerpt() { printf 'STUB-CALLED file_excerpt\n'; }
 __lmline_tool_command_run() { printf 'STUB-CALLED command_run\n'; }
@@ -133,8 +141,9 @@ check_dispatch_refused() {
   fi
 }
 
-for tool in git_status file_excerpt command_run; do
+for tool in command_info git_status file_excerpt command_run; do
   case "$tool" in
+    command_info) args='{"commands":"awk"}' ;;
     git_status) args='{}' ;;
     file_excerpt) args='{"path":"some/file.txt","query":"x"}' ;;
     command_run) args='{"command":"echo hi"}' ;;
@@ -150,6 +159,9 @@ done
 ok "dispatch refuses disabled default-off tools without invoking handlers"
 
 # Enabled dispatch reaches the handler (stub proves the allow path without running real actions).
+export LMLINE_TOOL_COMMAND_INFO=1
+out=$(__lmline_tool_output command_info '{"commands":"awk"}' 2>/dev/null)
+grep -q 'STUB-CALLED command_info' <<<"$out" || fail "enabled command_info did not dispatch"
 export LMLINE_TOOL_GIT_STATUS=1
 out=$(__lmline_tool_output git_status '{}' 2>/dev/null)
 grep -q 'STUB-CALLED git_status' <<<"$out" || fail "enabled git_status did not dispatch"
