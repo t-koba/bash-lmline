@@ -227,8 +227,35 @@ EOF
   grep -q "3/3" "$pty_tmp/bash-next.out" || fail "bash pty second next should advance candidate position"
   bash_next_norm=$(tr '\r' '\n' <"$pty_tmp/bash-next.out" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
   ! grep -E 'candidates.*echo one|candidates.*echo two|candidates.*echo three' <<<"$bash_next_norm" >/dev/null || fail "bash pty candidate count shares edit line"
-  printf '#!/usr/bin/env bash\nsleep 0.15\nprintf "lmline-progress: tool files (openai, round 1/10)\\n" >&2\nsleep 0.2\ncase " $* " in *" --mode explain "*) printf "explained pty\\n";; *) printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo pty-slow\\n";; esac\n' >"$pty_tmp/engine-slow"
+  cat >"$pty_tmp/engine-slow" <<'ENGINE'
+#!/usr/bin/env bash
+case " $* " in
+*" --mode explain "*)
+  # Gated explain: wait (bounded) until the Expect side has observed the
+  # real fallback label before emitting progress/completing, so the
+  # transient frame cannot be skipped by parent scheduling delays.
+  release="${LMLINE_CONFIG_DIR:-}/spinner-release"
+  for ((i = 0; i < 100; i++)); do
+    [[ -e "$release" ]] && break
+    sleep 0.05
+  done
+  # Record whether the gate was released causally (file observed) or via the
+  # bounded-wait fallback, so the Zsh test can prove the spinner hint did it.
+  if [[ -e "$release" ]]; then printf 'gated=1\n' > "${release}.seen"; else printf 'gated=0\n' > "${release}.seen"; fi
+  printf 'lmline-progress: tool files (openai, round 1/10)\n' >&2
+  sleep 0.2
+  printf 'explained pty\n'
+  ;;
+*)
+  sleep 0.15
+  printf 'lmline-progress: tool files (openai, round 1/10)\n' >&2
+  sleep 0.2
+  printf 'lmline-candidate: low\tno matching risk rule\t-\techo pty-slow\n'
+  ;;
+esac
+ENGINE
   chmod +x "$pty_tmp/engine-slow"
+  mkdir -p "$pty_tmp/bash-spinner-config"
   expect <<EOF >"$pty_tmp/bash-spinner.out" 2>&1 || fail "bash pty spinner"
 # The spinner redraws while the model answer arrives; the interaction needs
 # more patience than the single-message blocks above.
@@ -248,10 +275,11 @@ expect_required "tool files"
 expect_required "echo pty-slow"
 send "\025echo hi"
 send "\030\005"
-expect_required_spinner_and_explanation
+expect_required_spinner_and_explanation "$pty_tmp/bash-spinner-config/spinner-release"
 send "\025exit\r"
 expect eof
 EOF
+  grep -q "gated=1" "$pty_tmp/bash-spinner-config/spinner-release.seen" || fail "bash pty spinner gate was not released by Expect"
   ! grep -E '\[[0-9]+\]|終了|Done|__lmline_call_engine_raw' "$pty_tmp/bash-spinner.out" >/dev/null || fail "bash pty spinner job noise"
   bash_spinner_norm=$(tr '\r' '\n' <"$pty_tmp/bash-spinner.out" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
   ! grep -E '\[rewrite\].*(bash.*\$|echo pty-slow)' <<<"$bash_spinner_norm" >/dev/null || fail "bash pty spinner left rewrite text on prompt line"
@@ -301,6 +329,22 @@ expect_required "echo pty-ok"
 send "\025exit\r"
 expect eof
 EOF
+    mkdir -p "$pty_tmp/zsh-spinner-config"
+    # Test-local instrumentation (no product change): release the gated fake
+    # engine when the Zsh spinner loop actually emits the fallback hint.
+    # Neither the "command: " header (captured in the bridge output file until
+    # wait finishes) nor zle -M spinner text (flushed after the widget returns)
+    # is visible on the PTY before engine completion, so Expect cannot release
+    # this gate causally from outside.
+    cat >"$pty_tmp/zsh-hint-gate.zsh" <<'WRAPPER'
+functions -c __lmline_zsh_hint __lmline_zsh_hint_orig
+__lmline_zsh_hint() {
+  case "$1" in
+    *explaining*) : > "$LMLINE_CONFIG_DIR/spinner-release" 2>/dev/null ;;
+  esac
+  __lmline_zsh_hint_orig "$1"
+}
+WRAPPER
     expect <<EOF >"$pty_tmp/zsh-spinner.out" 2>&1 || fail "zsh pty spinner"
 set timeout 15
 source "$repo_dir/tests/pty-expect-helpers.exp"
@@ -311,6 +355,8 @@ send "export PS1='ZSH_SPINNER_''READY> '; export LMLINE_CONFIG_DIR=$pty_tmp/zsh-
 expect_required "ZSH_SPINNER_READY> "
 send "source $repo_dir/lmline/init.zsh\r"
 expect_required "ZSH_SPINNER_READY> "
+send "source $pty_tmp/zsh-hint-gate.zsh\r"
+expect_required "ZSH_SPINNER_READY> "
 send "echo old"
 send "\030\022"
 expect_required "\\[rewrite\\]"
@@ -318,10 +364,11 @@ expect_required "tool files"
 expect_required "echo pty-slow"
 send "\025echo hi"
 send "\030\005"
-expect_required_spinner_and_explanation
+expect_required_zsh_explanation
 send "\025exit\r"
 expect eof
 EOF
+    grep -q "gated=1" "$pty_tmp/zsh-spinner-config/spinner-release.seen" || fail "zsh pty spinner gate was not released by the spinner hint (engine used fallback timeout)"
     ! grep -E '\[[0-9]+\]|終了|Done|__lmline_zsh_bridge' "$pty_tmp/zsh-spinner.out" >/dev/null || fail "zsh pty spinner job noise"
     zsh_spinner_norm=$(tr '\r' '\n' <"$pty_tmp/zsh-spinner.out" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
     ! grep -E '\[rewrite\].*(ZSH_SPINNER_READY> |echo pty-slow)' <<<"$zsh_spinner_norm" >/dev/null || fail "zsh pty spinner left rewrite text on prompt line"

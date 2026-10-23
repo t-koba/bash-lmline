@@ -19,14 +19,60 @@ proc expect_required {args} {
   }
 }
 
-# Spinner refreshes can race the model response, so require both in any order.
-proc expect_required_spinner_and_explanation {} {
-  # Preserve both messages even if frequent spinner redraws overrun Expect's
+# Explain gate (Bash): the fake engine holds its explain progress/completion
+# until this proc releases it via a file under the case config dir, so parent
+# scheduling delays cannot skip the transient fallback frame. Bash draws the
+# fallback frame straight to the terminal, so releasing on observed spinner
+# text "explaining" is causal there, and that observation already proves the
+# spinner. The engine waits on the file boundedly and then proceeds, so a
+# missing release still finishes instead of hanging. Rewrite callers keep
+# their own progress expectations; this gate covers only the explain step.
+# Every wait still fails closed on timeout or EOF.
+proc expect_required_spinner_and_explanation {release_file} {
+  # Preserve messages even if frequent spinner redraws overrun Expect's
   # small default buffer while the async display is finishing.
   match_max 16384
   expect {
-    -re {(?s)(explaining.*explained pty|explained pty.*explaining)} {}
-    timeout {puts stderr {timed out waiting for spinner and explanation}; exit 1}
-    eof {puts stderr {PTY process exited before spinner and explanation}; exit 1}
+    -re {explaining} {}
+    timeout {puts stderr {timed out waiting for explain gate trigger}; exit 1}
+    eof {puts stderr {PTY process exited before explain gate trigger}; exit 1}
+  }
+  if {[catch {close [open $release_file w]} err]} {
+    puts stderr "failed to release fake engine: $err"
+    exit 1
+  }
+  expect {
+    -re {explained pty} {}
+    timeout {puts stderr {timed out waiting for explanation}; exit 1}
+    eof {puts stderr {PTY process exited before explanation}; exit 1}
+  }
+}
+
+# Explain gate (Zsh): no Expect-side release. The Zsh bridge captures all of
+# its output (including the "command: " header) in a file and prints it only
+# after wait, and widget hints go through "zle -M", which only reaches the
+# terminal once the widget finishes. Nothing the PTY shows before engine
+# completion can therefore release the fake engine from outside: waiting for
+# "command: " observes post-completion output, so the engine's own bounded
+# wait would be the real releaser. Instead the test sources a wrapper that
+# redefines __lmline_zsh_hint to create the release file when the spinner
+# loop actually emits the fallback "explaining" hint; the fake engine records
+# gated=1 when it observes the file before its bounded wait expires (gated=0
+# on fallback timeout, asserted after the PTY run). Expect then only asserts
+# both final outputs appear: the engine answer and the flushed spinner text.
+# Every wait still fails closed on timeout or EOF.
+proc expect_required_zsh_explanation {} {
+  # Preserve messages even if frequent spinner redraws overrun Expect's
+  # small default buffer while the async display is finishing.
+  match_max 16384
+  expect {
+    -re {explained pty} {}
+    timeout {puts stderr {timed out waiting for explanation}; exit 1}
+    eof {puts stderr {PTY process exited before explanation}; exit 1}
+  }
+  expect {
+    -re {explaining} {}
+    timeout {puts stderr {timed out waiting for spinner}; exit 1}
+    eof {puts stderr {PTY process exited before spinner}; exit 1}
   }
 }
