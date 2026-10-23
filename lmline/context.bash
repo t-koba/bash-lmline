@@ -441,31 +441,90 @@ __lmline_require_policy_support() {
   fi
 }
 
+# Accept decoded literal words only, never a shell string. In particular, do
+# not skip assignments or command prefixes: the first word is the command
+# whose name must be allowlisted, and find's actions are exact argument words.
 __lmline_local_segment_allowed() {
-  local segment=$1 cmd="" token plain=""
-  for token in $segment; do
-    [[ "$token" == *=* && "$token" != */* ]] && continue
-    if __lmline_word_is_command_prefix "$token"; then
+  local cmd=${1-} word
+  [[ -n "$cmd" && "$cmd" != *=* ]] || return 1
+  __lmline_local_command_allowed "$cmd" || return 1
+  if [[ "$cmd" == find ]]; then
+    shift
+    for word in "$@"; do
+      case "$word" in
+        -delete|-exec|-execdir|-ok|-okdir|-fls|-fprint|-fprint0|-fprintf) return 1 ;;
+      esac
+    done
+  fi
+  return 0
+}
+
+__lmline_local_words_rejection_reason() {
+  local word path
+  for word in "$@"; do
+    # Also check the value of assignment-style operands such as --file=x.
+    for path in "$word" "${word#*=}"; do
+      case "$path" in
+        /*|~*|..|../*|*/..|*/../*|*\$*)
+          printf 'unsafe_path_or_expansion\n'
+          return 0
+          ;;
+      esac
+    done
+  done
+  __lmline_local_segment_allowed "$@" || { printf 'command_not_allowed\n'; return 0; }
+  printf 'ok\n'
+}
+
+__lmline_local_literal_rejection_reason() {
+  local line=$1 word="" quote="" ch next active=0 i rejection
+  local -a words=()
+  # The general policy split/canonicalization helpers approximate risk, not
+  # shell words. Decode literal quoting and escaping here, including pipeline
+  # boundaries, so path, command and action checks share bash's interpretation.
+  # Never eval, expand, glob, or execute the input.
+  for ((i = 0; i < ${#line}; i++)); do
+    ch=${line:i:1}
+    if [[ "$quote" == "'" ]]; then
+      if [[ "$ch" == "'" ]]; then quote=""; else word+=$ch; fi
       continue
     fi
-    token=${token#\"}; token=${token%\"}
-    token=${token#\'}; token=${token%\'}
-    cmd=$token
-    break
+    if [[ "$ch" == '\' ]]; then
+      next=${line:i+1:1}
+      if [[ "$quote" != '"' || "$next" == '\' || "$next" == '"' || "$next" == '$' || "$next" == '`' ]]; then
+        word+=$next
+        i=$((i + 1))
+      else
+        word+=$ch
+      fi
+      active=1
+      continue
+    fi
+    if [[ "$quote" == '"' ]]; then
+      if [[ "$ch" == '"' ]]; then quote=""; else word+=$ch; fi
+      continue
+    fi
+    case "$ch" in
+      "'"|'"') quote=$ch; active=1 ;;
+      ' '|$'\t'|'|')
+        if (( active )); then
+          words+=("$word")
+          word=""; active=0
+        fi
+        if [[ "$ch" == '|' ]]; then
+          rejection=$(__lmline_local_words_rejection_reason "${words[@]}")
+          [[ "$rejection" == ok ]] || { printf '%s\n' "$rejection"; return 0; }
+          words=()
+        fi
+        ;;
+      '*'|'?'|'['|'#') printf 'unsupported_shell_syntax\n'; return 0 ;;
+      '~') printf 'unsafe_path_or_expansion\n'; return 0 ;;
+      *) word+=$ch; active=1 ;;
+    esac
   done
-  [[ -n "$cmd" ]] || return 1
-  __lmline_local_command_allowed "$cmd" || return 1
-  case "$cmd" in
-    find)
-      # The shell removes the quotes before find sees the action, so the
-      # action words are compared as the shell passes them.
-      plain=$(__lmline_canonicalize_for_risk <<<"$segment" | tr -s '[:space:]' ' ')
-      case " $plain " in
-        *" -delete "*|*" -exec "*|*" -execdir "*|*" -ok "*|*" -okdir "*|*" -fls "*|*" -fprint "*|*" -fprint0 "*|*" -fprintf "*) return 1 ;;
-      esac
-      ;;
-  esac
-  return 0
+  [[ -z "$quote" ]] || { printf 'unsupported_shell_syntax\n'; return 0; }
+  (( ! active )) || words+=("$word")
+  __lmline_local_words_rejection_reason "${words[@]}"
 }
 
 __lmline_risk_within_max() {
@@ -492,7 +551,7 @@ __lmline_command_run_common_rejection_reason() {
 }
 
 __lmline_command_run_local_rejection_reason() {
-  local command_line=$1 risk segment token clean_token common
+  local command_line=$1 risk common
   common=$(__lmline_command_run_common_rejection_reason "$command_line")
   [[ "$common" == ok ]] || { printf '%s\n' "$common"; return 0; }
   __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
@@ -509,21 +568,7 @@ __lmline_command_run_local_rejection_reason() {
   risk=$(__lmline_risk_level "$command_line") || { printf 'policy_unavailable\n'; return 0; }
   [[ "$risk" == low ]] || { printf 'risk_not_low\n'; return 0; }
   __lmline_validate_candidate "$command_line" || { printf 'candidate_rejected:%s\n' "$(__lmline_candidate_rejection_reason "$command_line")"; return 0; }
-  while IFS= read -r segment; do
-    [[ -n "${segment//[[:space:]]/}" ]] || continue
-    for token in $segment; do
-      clean_token=${token#\"}; clean_token=${clean_token%\"}
-      clean_token=${clean_token#\'}; clean_token=${clean_token%\'}
-      case "$clean_token" in
-        /*|~*|..|../*|*/..|*/../*|*=/*|*=~*|*=..|*=../*|*=/../*|*\$*)
-          printf 'unsafe_path_or_expansion\n'
-          return 0
-          ;;
-      esac
-    done
-    __lmline_local_segment_allowed "$segment" || { printf 'command_not_allowed\n'; return 0; }
-  done < <(__lmline_split_pipeline "$command_line" 1)
-  printf 'ok\n'
+  __lmline_local_literal_rejection_reason "$command_line"
 }
 
 __lmline_command_run_sandbox_rejection_reason() {

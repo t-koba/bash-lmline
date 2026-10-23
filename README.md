@@ -884,8 +884,23 @@ and structural fallbacks apply only when no rule matched.
 selected execution backend is `local`. The local backend also requires a low
 risk result and rejects redirection, command substitution, background jobs,
 command-list separators, absolute paths, parent-directory paths, and selected
-write-capable options. Pipelines are allowed only when every segment uses
-configured command names.
+write-capable options. Pipelines are allowed only when every segment's first
+word is a configured command name; leading environment assignments and wrappers
+are not skipped to find an allowlisted command.
+
+Local command operands support literal unquoted text, single/double-quoted
+text (including spaces and empty arguments), and adjacent quote fragments.
+Path and action checks use the resulting words after quote removal, including
+values of assignment-style operands such as `--file='relative name'`.
+Literal backslash escapes follow Bash's unquoted and double-quoted rules;
+single-quoted backslashes remain literal. Unquoted glob characters (`*`, `?`,
+`[`), unquoted `#`, dollar signs, unquoted tildes, and tilde-prefixed decoded
+words/assignment values are refused rather than expanded or interpreted as
+comments. The shell operators, substitution syntax, and braces listed above
+remain refused even inside quotes. These are lexical restrictions, not
+filesystem isolation: local commands still run in the host environment (for example, a relative
+symlink can refer outside the working directory). Use microsandbox when
+isolation is needed.
 
 </details>
 
