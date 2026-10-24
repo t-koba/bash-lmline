@@ -49,6 +49,20 @@ for target in bash zsh; do
 
   check_shellc "$target" "bash() { printf ok; }; bash -c 'lmline_missing_shellc'" ok
 
+  # Caller-shell functions are not visible inside the invoked shell: the
+  # validator must not short-circuit availability with its own `command -v`.
+  # Only the quoted word is probed in a fresh shell; nothing here runs it.
+  lmline_caller_only_shellc_fn() { :; }
+  check_shellc "$target" "bash -c 'lmline_caller_only_shellc_fn'" command-not-found
+  unset -f lmline_caller_only_shellc_fn
+  # An exported function travels with the environment, so the invoked Bash
+  # still resolves it.
+  lmline_exported_shellc_fn() { :; }
+  export -f lmline_exported_shellc_fn
+  check_shellc "$target" "bash -c 'lmline_exported_shellc_fn'" ok
+  export -n -f lmline_exported_shellc_fn 2>/dev/null || true
+  unset -f lmline_exported_shellc_fn
+
   if command -v zsh >/dev/null 2>&1; then
     check_shellc "$target" "zsh -f -c 'printf ok'" ok
     check_shellc "$target" "zsh -f -c 'printf ok' # trailing comment" ok
@@ -59,6 +73,9 @@ for target in bash zsh; do
     check_shellc "$target" "zsh -f -c 'if'" command-not-found
     check_shellc "$target" "printf before; zsh -f -c 'definitely-not-a-command-for-lmline'" command-not-found
     check_shellc "$target" "lmline_probe() { printf ok; }; zsh -f -c 'lmline_probe'" command-not-found
+    lmline_caller_only_zshc_fn() { :; }
+    check_shellc "$target" "zsh -f -c 'lmline_caller_only_zshc_fn'" command-not-found
+    unset -f lmline_caller_only_zshc_fn
     check_shellc "$target" "zsh -f -c 'lmline_probe() { printf ok; }; lmline_probe'" ok
     check_shellc "$target" "zsh() { printf ok; }; zsh -f -c 'lmline_missing_shellc'" ok
   fi

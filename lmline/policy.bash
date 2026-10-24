@@ -1230,7 +1230,10 @@ __lmline_extract_literal_trap_words() {
 # command vocabulary, so a zsh-only builtin inside `zsh -f -c` is available
 # even when the outer candidate targets bash. Outer function definitions do
 # not leak into the new shell process; definitions inside the script itself
-# are handled by its own availability scan.
+# are handled by its own availability scan. Unexported caller-shell functions
+# and aliases are not visible to the new process either; only commands the
+# invoked shell itself resolves (its builtins, PATH lookups and inherited
+# exported functions) count as available.
 __lmline_extract_literal_shell_c_words() {
   local token=$1 remaining=$2 functions=${3:-} inner inner_shell words word
   local bash_literal="^([[:blank:]]+-[euvx]+)*[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)])"
@@ -1265,7 +1268,7 @@ __lmline_extract_literal_shell_c_words() {
     command -v zsh >/dev/null 2>&1 || return 2
     command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
   else
-    bash -n -c "$inner" >/dev/null 2>&1 || return 1
+    command bash -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
   words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
   while IFS= read -r word; do
@@ -1273,11 +1276,10 @@ __lmline_extract_literal_shell_c_words() {
     [[ "$word" == */* ]] && continue
     __lmline_word_is_policy_skip "$word" && continue
     if [[ "$inner_shell" == zsh ]]; then
-      command -v "$word" >/dev/null 2>&1 && continue
       __lmline_word_available_in_zsh "$word" && continue
       return 1
     else
-      command -v "$word" >/dev/null 2>&1 || return 1
+      __lmline_word_available_in_bash "$word" || return 1
     fi
   done <<<"$words"
   return 0
@@ -1810,7 +1812,17 @@ __lmline_extract_command_words() {
 __lmline_word_available_in_zsh() {
   local word=$1
   command -v zsh >/dev/null 2>&1 || return 1
-  zsh -f -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
+  command zsh -f -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
+}
+
+# Invoked-shell command check for literal `bash -c` scripts: ask a fresh Bash
+# process so unexported caller-shell functions and aliases do not leak into
+# the new shell's command namespace. Exported functions travel with the
+# environment, and builtins and PATH lookups resolve in the child, so they
+# stay available. The word stays data; the candidate script never runs.
+__lmline_word_available_in_bash() {
+  local word=$1
+  command bash -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
 }
 
 __lmline_validate_commands_available() {
