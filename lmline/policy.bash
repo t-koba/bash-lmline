@@ -1282,13 +1282,14 @@ __lmline_extract_literal_shell_c_words() {
     __lmline_words_available_in_bash ${bash_words[@]+"${bash_words[@]}"} || return 1
     return 0
   fi
+  local -a zsh_words=()
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
     __lmline_word_is_policy_skip "$word" && continue
-    __lmline_word_available_in_zsh "$word" && continue
-    return 1
+    zsh_words+=("$word")
   done <<<"$words"
+  __lmline_words_available_in_zsh ${zsh_words[@]+"${zsh_words[@]}"} || return 1
   return 0
 }
 
@@ -1820,6 +1821,16 @@ __lmline_word_available_in_zsh() {
   local word=$1
   command -v zsh >/dev/null 2>&1 || return 1
   command zsh -f -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
+}
+
+# Invoked-shell command check for literal `zsh -f -c` scripts: ask one fresh
+# Zsh process about all collected words so caller-shell functions and aliases
+# do not leak into the new shell's command namespace. Builtins and
+# PATH lookups resolve in the child, so they stay available. The words stay
+# data in "$@"; only `command -v` lookups run, the candidate script never runs.
+__lmline_words_available_in_zsh() {
+  (( $# )) || return 0
+  command zsh -f -c 'for _lmline_word in "$@"; do command -v "$_lmline_word" >/dev/null 2>&1 || exit 1; done' _ "$@"
 }
 
 # Invoked-shell command check for literal `bash -c` scripts: ask one fresh Bash

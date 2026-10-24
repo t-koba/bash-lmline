@@ -75,6 +75,7 @@ for target in bash zsh; do
     check_shellc "$target" "zsh -f -c 'definitely-not-a-command-for-lmline'" command-not-found
     check_shellc "$target" "zsh -f -c 'definitely-not-a-command-for-lmline' # trailing comment" command-not-found
     check_shellc "$target" "zsh -f -c 'printf ok | definitely-not-a-command-for-lmline'" command-not-found
+    check_shellc "$target" "zsh -f -c 'printf ok; printf ok; definitely-not-a-command-for-lmline'" command-not-found
     check_shellc "$target" "zsh -f -c 'if'" command-not-found
     check_shellc "$target" "printf before; zsh -f -c 'definitely-not-a-command-for-lmline'" command-not-found
     check_shellc "$target" "lmline_probe() { printf ok; }; zsh -f -c 'lmline_probe'" command-not-found
