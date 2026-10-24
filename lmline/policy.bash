@@ -1169,9 +1169,168 @@ __lmline_risk_has_unresolved_var_command() {
   return 1
 }
 
+# Make an availability-only copy with case headers removed, not case bodies.
+# Token boundaries, quotes and escapes distinguish syntax from arguments. A
+# stack keeps nested cases independent; pattern parentheses do not open bodies.
+# Substitutions are checked recursively, including those inside quoted selectors.
+# The target shell's syntax-only parser finds their closing delimiter, so nested
+# substitutions and case-pattern ')' characters cannot truncate the check.
+__lmline_case_command_copy() {
+  local cmd=$1 shell=$2 only_substitutions=${3:-0} out="" substitutions=""
+  local i=0 start ch next token quote end fragment inner words word
+  local depth=0 command_start=1 pattern_started=0 pattern_depth=0
+  local -a state=(body)
+  while (( i < ${#cmd} )); do
+    ch=${cmd:i:1}
+    if [[ "$ch" == [[:space:]] ]]; then
+      out+=$ch
+      i=$((i + 1))
+      continue
+    fi
+    start=$i
+    case "$ch" in
+      ';'|'|'|'&'|'('|')')
+        token=$ch
+        next=${cmd:i+1:1}
+        if [[ "$ch$next" == ';;' || "$ch$next" == ';&' || "$ch$next" == ';|' || "$ch$next" == '&&' || "$ch$next" == '||' ]]; then
+          token+=$next
+          i=$((i + 1))
+          if [[ "$token" == ';;' && ${cmd:i+1:1} == '&' ]]; then
+            token+='&'
+            i=$((i + 1))
+          fi
+        fi
+        i=$((i + 1))
+        ;;
+      *)
+        quote=""
+        while (( i < ${#cmd} )); do
+          ch=${cmd:i:1}
+          next=${cmd:i+1:1}
+          if [[ "$quote" != "'" && "$ch" == '\' ]]; then
+            i=$((i + 2))
+            continue
+          fi
+          if [[ "$quote" != "'" && ( "$ch$next" == '$(' || "$ch" == '`' ) ]]; then
+            # Parse only: never expand or execute the fragment. The wrapper's
+            # double quotes also work for substitutions in double-quoted words.
+            end=$((i + 1))
+            while (( end < ${#cmd} )); do
+              if [[ ( "$ch" == '$' && ${cmd:end:1} == ')' ) || ( "$ch" == '`' && ${cmd:end:1} == '`' ) ]]; then
+                fragment=${cmd:i:end-i+1}
+                if [[ "$shell" == zsh ]]; then
+                  command zsh -f -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
+                else
+                  bash -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
+                fi
+              fi
+              end=$((end + 1))
+            done
+            (( end < ${#cmd} )) || return 1
+            if [[ ${fragment:0:3} == '$((' ]]; then
+              inner=${fragment:3:${#fragment}-5}
+              words=$(__lmline_case_command_copy "$inner" "$shell" 1) || return 1
+              substitutions+=$words
+            else
+              if [[ "$ch" == '$' ]]; then
+                inner=${fragment:2:${#fragment}-3}
+              else
+                inner=${fragment:1:${#fragment}-2}
+                # Escaped nested backticks need another unquoting pass. Leave
+                # such unsupported forms closed rather than dropping commands.
+                [[ "$inner" != *'\`'* ]] || return 1
+              fi
+              words=$(__lmline_extract_command_words "$inner" "$shell" 1) || return 1
+              while IFS= read -r word; do
+                [[ -z "$word" ]] || substitutions+="; $word "
+              done <<<"$words"
+            fi
+            i=$((end + 1))
+            continue
+          fi
+          if [[ -n "$quote" ]]; then
+            [[ "$ch" != "$quote" ]] || quote=""
+          else
+            case "$ch" in
+              "'"|'"') quote=$ch ;;
+              [[:space:]]|';'|'|'|'&'|'('|')') break ;;
+            esac
+          fi
+          i=$((i + 1))
+        done
+        token=${cmd:start:i-start}
+        ;;
+    esac
+    case "${state[depth]}" in
+      selector) state[depth]=in ;;
+      in)
+        [[ "$token" == in ]] || return 1
+        state[depth]=pattern
+        pattern_started=0
+        pattern_depth=0
+        ;;
+      pattern)
+        case "$token" in
+          "esac")
+            (( pattern_started == 0 )) || return 1
+            depth=$((depth - 1))
+            out+=' '
+            command_start=0
+            ;;
+          '(')
+            (( pattern_started == 0 )) || pattern_depth=$((pattern_depth + 1))
+            pattern_started=1
+            ;;
+          ')')
+            if (( pattern_depth > 0 )); then
+              pattern_depth=$((pattern_depth - 1))
+            else
+              state[depth]=body
+              command_start=1
+              out+='; '
+            fi
+            ;;
+          *) pattern_started=1 ;;
+        esac
+        ;;
+      body)
+        if [[ "$token" == case && $command_start == 1 ]]; then
+          depth=$((depth + 1))
+          state[depth]=selector
+          out+=' '
+        elif (( depth > 0 )) && [[ "$token" == ';;' || "$token" == ';&' || "$token" == ';;&' || "$token" == ';|' ]]; then
+          state[depth]=pattern
+          pattern_started=0
+          pattern_depth=0
+          out+='; '
+        elif (( depth > 0 && command_start == 1 )) && [[ "$token" == "esac" ]]; then
+          depth=$((depth - 1))
+          out+=' '
+          command_start=0
+        else
+          out+=$token
+          case "$token" in
+            ';'|'|'|'&'|'&&'|'||'|'('|')'|'{'|'!'|if|then|else|do|while|until) command_start=1 ;;
+            *) command_start=0 ;;
+          esac
+        fi
+        ;;
+    esac
+  done
+  (( depth == 0 )) || return 1
+  if (( only_substitutions )); then
+    printf '%s' "$substitutions"
+  else
+    printf '%s%s' "$out" "$substitutions"
+  fi
+}
+
 __lmline_extract_command_words() {
-  local cmd=$1 shell=${2:-bash} stripped segment token arithmetic array_assignment
+  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} stripped segment token arithmetic array_assignment
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
+  if [[ "$cmd" == *case* ]] || (( scan_substitutions )); then
+    cmd=$(__lmline_case_command_copy "$cmd" "$shell") || return 1
+  fi
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
   # Strip them only from this availability-check copy; other policy checks
   # still see the original candidate, and nested forms remain conservative.
@@ -1228,7 +1387,8 @@ __lmline_word_available_in_zsh() {
 
 __lmline_validate_commands_available() {
   local cmd=$1 shell=${2:-bash}
-  local word
+  local word words
+  words=$(__lmline_extract_command_words "$cmd" "$shell") || return 1
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
@@ -1236,6 +1396,6 @@ __lmline_validate_commands_available() {
     command -v "$word" >/dev/null 2>&1 && continue
     [[ "$shell" == zsh ]] && __lmline_word_available_in_zsh "$word" && continue
     return 1
-  done < <(__lmline_extract_command_words "$cmd" "$shell")
+  done <<<"$words"
   return 0
 }
