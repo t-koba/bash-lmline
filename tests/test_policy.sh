@@ -265,6 +265,29 @@ bash -c '
     zsh_stacked_candidate="ls *(N)(.)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_stacked_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_stacked_candidate" zsh) == ls ]]
+    zsh_short_for_candidate="for i (one two) print ok"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_short_for_candidate" zsh) == print ]]
+    zsh_short_for_missing_body="for i (one two) definitely-not-a-command-for-lmline"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_missing_body" rewrite zsh) == command-not-found ]]
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_candidate" rewrite bash) == shell-syntax ]]
+    # Loop-like data in comments or quoted arguments is not a loop header.
+    zsh_short_for_comment="printf ok # for i (one two) definitely-not-a-command-for-lmline"
+    command zsh -f -n -c "$zsh_short_for_comment"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_comment" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_short_for_comment" zsh) == printf ]]
+    zsh_short_for_quoted="printf \"for i (one two) definitely-not-a-command-for-lmline\""
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_quoted" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_short_for_quoted" zsh) == printf ]]
+    zsh_short_for_dynamic="for i (\$(definitely-not-a-command-for-lmline)) print ok"
+    command zsh -f -n -c "$zsh_short_for_dynamic"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_dynamic" rewrite zsh) == command-not-found ]]
+    zsh_short_for_function_leak="for i () lmline_probe() { printf ok; }; lmline_probe"
+    command zsh -f -n -c "$zsh_short_for_function_leak"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_function_leak" rewrite zsh) == command-not-found ]]
+    zsh_short_for_dynamic_function_leak="for i (\$(printf one)) lmline_probe() { printf ok; }; lmline_probe"
+    command zsh -f -n -c "$zsh_short_for_dynamic_function_leak"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_dynamic_function_leak" rewrite zsh) == command-not-found ]]
     zsh_for_candidate="for f in *.txt(N); do print -- \"\$f\"; done"
     [[ $(__lmline_candidate_rejection_reason "$zsh_for_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_for_candidate" zsh) == print ]]
@@ -290,6 +313,10 @@ bash -c '
     zsh_for_execution_candidate="for f in one; do touch \"$zsh_for_marker\"; done"
     [[ $(__lmline_candidate_rejection_reason "$zsh_for_execution_candidate" rewrite zsh) == ok ]]
     [[ ! -e "$zsh_for_marker" ]]
+    zsh_short_for_marker=$syntax_tmp/short-for-executed
+    zsh_short_for_execution_candidate="for i (one two) touch \"$zsh_short_for_marker\""
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_execution_candidate" rewrite zsh) == ok ]]
+    [[ ! -e "$zsh_short_for_marker" ]]
     rm -rf "$syntax_tmp"
   fi
   bash_for_candidate="for f in *.txt; do printf \"%s\\n\" \"\$f\"; done"

@@ -1169,7 +1169,8 @@ __lmline_risk_has_unresolved_var_command() {
   return 1
 }
 
-# Make an availability-only copy with case/function headers removed, not bodies.
+# Make an availability-only copy with case/function/static Zsh loop headers
+# removed, not bodies.
 # Definitions inside conditional (if), case-branch, loop or subshell bodies
 # are scoped to that body and never leak past their control flow.
 # Token boundaries, quotes and escapes distinguish syntax from arguments. A
@@ -1184,7 +1185,10 @@ __lmline_case_command_copy() {
   local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
   local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
   local paren_signature='^[[:space:]]*\([[:space:]]*\)'
+  local zsh_for_prefix='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(]'
+  local zsh_for_header="^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\\([^()\$\`'\";|&<>!{}#\\\\]*\\)"
   local i=0 start ch next token quote end fragment inner words word scope_idx compound_end=0 previous_compound_end
+  local zsh_short_for_seen=0
   local depth=0 command_start=1 pattern_started=0 pattern_depth=0
   local if_pending=0 elif_pending=0 brace_depth=0
   # Definitions in and/or lists or pipelines need control-flow reasoning.
@@ -1198,7 +1202,16 @@ __lmline_case_command_copy() {
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
       out+=$ch
+      [[ "$ch" != $'\n' ]] || command_start=1
       i=$((i + 1))
+      continue
+    fi
+    # A comment starts only at an unquoted token boundary. Do not scan its
+    # apparent headers, separators or substitutions as executable syntax.
+    if [[ "$ch" == '#' ]]; then
+      while (( i < ${#cmd} )) && [[ ${cmd:i:1} != $'\n' ]]; do
+        i=$((i + 1))
+      done
       continue
     fi
     start=$i
@@ -1321,6 +1334,11 @@ __lmline_case_command_copy() {
         # recursive substitution scans inherit them but cannot add names here.
         name=""
         remaining=${cmd:i}
+        if (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_prefix ]]; then
+          # Track every short form, including dynamic lists whose substitutions
+          # remain visible to the recursive availability scan below.
+          zsh_short_for_seen=1
+        fi
         if (( command_start )) && [[ "$token" == function ]]; then
           [[ "$remaining" =~ $function_header ]] || return 1
           header=${BASH_REMATCH[0]}
@@ -1332,7 +1350,20 @@ __lmline_case_command_copy() {
           header=${BASH_REMATCH[0]}
           name=$token
         fi
-        if [[ -n "$name" ]]; then
+        if (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_header ]]; then
+          # Only an actual command-position keyword can introduce a short
+          # loop. Static list words are data; keep its executable body visible.
+          # Dynamic lists do not match and retain substitution scanning below.
+          header=${BASH_REMATCH[0]}
+          zsh_short_for_seen=1
+          i=$((i + ${#header}))
+          out+='; '
+          command_start=1
+        elif [[ -n "$name" ]]; then
+          # Function definitions in or after a short-form loop need control-flow
+          # reasoning to prove they run. Fail closed rather than let a possibly
+          # skipped body satisfy a later call.
+          (( zsh_short_for_seen == 0 )) || return 1
           (( list_operator[brace_depth] == 0 )) || return 1
           list_definition[brace_depth]=1
           brace_definition[brace_depth]=1
@@ -1488,7 +1519,7 @@ __lmline_extract_command_words() {
   local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment
   local function_definition='[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\([[:space:]]*\)'
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
-  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" =~ $function_definition ]] || (( scan_substitutions )); then
+  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" =~ $function_definition || ( "$shell" == zsh && "$cmd" == *for* ) ]] || (( scan_substitutions )); then
     cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
   fi
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
