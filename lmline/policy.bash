@@ -166,9 +166,11 @@ __lmline_candidate_rejection_reason() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash}
-  local stripped="" i ch quote="" prev="" zsh_glob_qualifier_depth=0
+  local stripped="" i ch quote="" prev="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   for ((i = 0; i < ${#cmd}; i++)); do
     ch=${cmd:i:1}
+    prior_zsh_qualifier_close=$zsh_qualifier_just_closed
+    zsh_qualifier_just_closed=0
     if [[ -n "$quote" ]]; then
       if [[ "$quote" == '"' && "$ch" == '\' && "$prev" != '\' ]]; then
         prev=$ch
@@ -187,34 +189,35 @@ __lmline_split_pipeline() {
         quote=$ch
         (( keep_quoted )) && stripped+=$ch
         ;;
-      '|'|';'|'&')
-        if [[ "$syntax_shell" == zsh ]] && (( zsh_glob_qualifier_depth > 0 )); then
-          stripped+=$ch
-        else
-          stripped+=$'\n'
-        fi
-        ;;
+      '|'|';'|'&') stripped+=$'\n' ;;
       *)
         if [[ -n "$extra_seps" && "$extra_seps" == *"$ch"* ]]; then
-          if [[ "$syntax_shell" == zsh && "$ch" == '(' ]] && (( zsh_glob_qualifier_depth > 0 )); then
-            zsh_glob_qualifier_depth=$((zsh_glob_qualifier_depth + 1))
-            stripped+=$ch
+          # A zsh glob qualifier is attached to a word; keep the qualifier
+          # pair together, including stacked qualifiers like *(N)(.).
+          if [[ "$syntax_shell" == zsh && "$ch" == '(' ]]; then
+            if (( zsh_glob_qualifier_depth > 0 )); then
+              zsh_glob_qualifier_depth=$((zsh_glob_qualifier_depth + 1))
+              stripped+=$ch
+            elif (( prior_zsh_qualifier_close )); then
+              zsh_glob_qualifier_depth=1
+              stripped+=$ch
+            else
+              case "$prev" in
+                ''|[[:space:]]|'|'|';'|'&'|'('|'$'|'<'|'>'|'=')
+                  stripped+=$'\n'
+                  ;;
+                *)
+                  zsh_glob_qualifier_depth=1
+                  stripped+=$ch
+                  ;;
+              esac
+            fi
           elif [[ "$syntax_shell" == zsh && "$ch" == ')' ]] && (( zsh_glob_qualifier_depth > 0 )); then
             zsh_glob_qualifier_depth=$((zsh_glob_qualifier_depth - 1))
             stripped+=$ch
-          elif [[ "$syntax_shell" == zsh && "$ch" == '(' ]]; then
-            case "$prev" in
-              ''|[[:space:]]|'|'|';'|'&'|'('|')'|'$'|'<'|'>'|'='|'`')
-                stripped+=$'\n'
-                ;;
-              *)
-                # An attached pair is a zsh glob qualifier, even when its
-                # word has no wildcard; command/process substitutions begin
-                # with a distinct shell metacharacter handled above.
-                zsh_glob_qualifier_depth=1
-                stripped+=$ch
-                ;;
-            esac
+            if (( zsh_glob_qualifier_depth == 0 )); then
+              zsh_qualifier_just_closed=1
+            fi
           else
             stripped+=$'\n'
           fi
