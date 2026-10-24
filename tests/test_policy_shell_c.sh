@@ -33,6 +33,9 @@ for target in bash zsh; do
   check_shellc "$target" "bash -v -e -u -x -c 'printf ok'" ok
   check_shellc "$target" "bash -c 'definitely-not-a-command-for-lmline' # trailing comment" command-not-found
   check_shellc "$target" "bash -c 'printf ok | definitely-not-a-command-for-lmline'" command-not-found
+  # A batched availability probe must still reject a missing word after
+  # available words in the same literal script.
+  check_shellc "$target" "bash -c 'printf ok; printf ok; definitely-not-a-command-for-lmline'" command-not-found
   check_shellc "$target" "bash -c 'case x in x) printf ok;; esac'" ok
   check_shellc "$target" "bash -c 'case x in x) definitely-not-a-command-for-lmline;; esac'" command-not-found
   check_shellc "$target" "bash -c 'printf \"\$(definitely-not-a-command-for-lmline)\"'" command-not-found

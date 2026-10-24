@@ -1271,16 +1271,23 @@ __lmline_extract_literal_shell_c_words() {
     command bash -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
   words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
+  if [[ "$inner_shell" == bash ]]; then
+    local -a bash_words=()
+    while IFS= read -r word; do
+      [[ -n "$word" ]] || continue
+      [[ "$word" == */* ]] && continue
+      __lmline_word_is_policy_skip "$word" && continue
+      bash_words+=("$word")
+    done <<<"$words"
+    __lmline_words_available_in_bash ${bash_words[@]+"${bash_words[@]}"} || return 1
+    return 0
+  fi
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
     __lmline_word_is_policy_skip "$word" && continue
-    if [[ "$inner_shell" == zsh ]]; then
-      __lmline_word_available_in_zsh "$word" && continue
-      return 1
-    else
-      __lmline_word_available_in_bash "$word" || return 1
-    fi
+    __lmline_word_available_in_zsh "$word" && continue
+    return 1
   done <<<"$words"
   return 0
 }
@@ -1815,14 +1822,15 @@ __lmline_word_available_in_zsh() {
   command zsh -f -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
 }
 
-# Invoked-shell command check for literal `bash -c` scripts: ask a fresh Bash
-# process so unexported caller-shell functions and aliases do not leak into
-# the new shell's command namespace. Exported functions travel with the
-# environment, and builtins and PATH lookups resolve in the child, so they
-# stay available. The word stays data; the candidate script never runs.
-__lmline_word_available_in_bash() {
-  local word=$1
-  command bash -c 'command -v "$1" >/dev/null 2>&1' _ "$word"
+# Invoked-shell command check for literal `bash -c` scripts: ask one fresh Bash
+# process about all collected words so unexported caller-shell functions and
+# aliases do not leak into the new shell's command namespace. Exported
+# functions travel with the environment, and builtins and PATH lookups resolve
+# in the child, so they stay available. The words stay data in "$@"; only
+# `command -v` lookups run, the candidate script never runs.
+__lmline_words_available_in_bash() {
+  (( $# )) || return 0
+  command bash -c 'for _lmline_word in "$@"; do command -v "$_lmline_word" >/dev/null 2>&1 || exit 1; done' _ "$@"
 }
 
 __lmline_validate_commands_available() {
