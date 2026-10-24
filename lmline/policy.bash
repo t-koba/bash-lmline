@@ -1169,17 +1169,31 @@ __lmline_risk_has_unresolved_var_command() {
   return 1
 }
 
-# Make an availability-only copy with case headers removed, not case bodies.
+# Make an availability-only copy with case/function headers removed, not bodies.
+# Definitions inside conditional (if), case-branch, loop or subshell bodies
+# are scoped to that body and never leak past their control flow.
 # Token boundaries, quotes and escapes distinguish syntax from arguments. A
 # stack keeps nested cases independent; pattern parentheses do not open bodies.
 # Substitutions are checked recursively, including those inside quoted selectors.
 # The target shell's syntax-only parser finds their closing delimiter, so nested
 # substitutions and case-pattern ')' characters cannot truncate the check.
 __lmline_case_command_copy() {
-  local cmd=$1 shell=$2 only_substitutions=${3:-0} out="" substitutions=""
-  local i=0 start ch next token quote end fragment inner words word
+  local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} out="" substitutions=""
+  local name header remaining
+  local function_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*(\([[:space:]]*\)[[:space:]]*)?\{([[:space:]]|$)'
+  local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
+  local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
+  local paren_signature='^[[:space:]]*\([[:space:]]*\)'
+  local i=0 start ch next token quote end fragment inner words word scope_idx compound_end=0 previous_compound_end
   local depth=0 command_start=1 pattern_started=0 pattern_depth=0
-  local -a state=(body)
+  local if_pending=0 elif_pending=0 brace_depth=0
+  # Definitions in and/or lists or pipelines need control-flow reasoning.
+  # Conservatively fail closed for those lists rather than evaluating their
+  # conditions or depending on the shell's last-pipeline-member options.
+  # Brace bodies get independent list state, so ordinary pipelines inside a
+  # function do not make an otherwise direct definition unavailable.
+  local -a list_operator=(0) list_definition=(0) brace_definition=(0)
+  local -a state=(body) scope_saved=() scope_kind=()
   while (( i < ${#cmd} )); do
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
@@ -1229,7 +1243,7 @@ __lmline_case_command_copy() {
             (( end < ${#cmd} )) || return 1
             if [[ ${fragment:0:3} == '$((' ]]; then
               inner=${fragment:3:${#fragment}-5}
-              words=$(__lmline_case_command_copy "$inner" "$shell" 1) || return 1
+              words=$(__lmline_case_command_copy "$inner" "$shell" 1 "$functions") || return 1
               substitutions+=$words
             else
               if [[ "$ch" == '$' ]]; then
@@ -1240,7 +1254,7 @@ __lmline_case_command_copy() {
                 # such unsupported forms closed rather than dropping commands.
                 [[ "$inner" != *'\`'* ]] || return 1
               fi
-              words=$(__lmline_extract_command_words "$inner" "$shell" 1) || return 1
+              words=$(__lmline_extract_command_words "$inner" "$shell" 1 "$functions") || return 1
               while IFS= read -r word; do
                 [[ -z "$word" ]] || substitutions+="; $word "
               done <<<"$words"
@@ -1261,6 +1275,8 @@ __lmline_case_command_copy() {
         token=${cmd:start:i-start}
         ;;
     esac
+    previous_compound_end=$compound_end
+    compound_end=0
     case "${state[depth]}" in
       selector) state[depth]=in ;;
       in)
@@ -1276,6 +1292,7 @@ __lmline_case_command_copy() {
             depth=$((depth - 1))
             out+=' '
             command_start=0
+            compound_end=1
             ;;
           '(')
             (( pattern_started == 0 )) || pattern_depth=$((pattern_depth + 1))
@@ -1288,36 +1305,178 @@ __lmline_case_command_copy() {
               state[depth]=body
               command_start=1
               out+='; '
+              # A case branch body is conditional: definitions inside are
+              # visible only within that branch, never after the case.
+              scope_saved+=("$functions")
+              scope_kind+=("case-branch")
             fi
             ;;
           *) pattern_started=1 ;;
         esac
         ;;
       body)
-        if [[ "$token" == case && $command_start == 1 ]]; then
+        # Recognize only static, brace-bodied definitions at command boundaries.
+        # Consuming the header (including its opening brace) leaves every body
+        # command visible. Names are local to this scan, not installed in a shell;
+        # recursive substitution scans inherit them but cannot add names here.
+        name=""
+        remaining=${cmd:i}
+        if (( command_start )) && [[ "$token" == function ]]; then
+          [[ "$remaining" =~ $function_header ]] || return 1
+          header=${BASH_REMATCH[0]}
+          name=${BASH_REMATCH[1]}
+        elif (( command_start )) && [[ "$remaining" =~ $paren_signature ]]; then
+          # Other names/body forms need parsing we do not provide. Do not let
+          # an installed executable with the same name mask an unsupported header.
+          [[ "$token" =~ $function_name && "$remaining" =~ $paren_header ]] || return 1
+          header=${BASH_REMATCH[0]}
+          name=$token
+        fi
+        if [[ -n "$name" ]]; then
+          (( list_operator[brace_depth] == 0 )) || return 1
+          list_definition[brace_depth]=1
+          brace_definition[brace_depth]=1
+          brace_depth=$((brace_depth + 1))
+          list_operator[brace_depth]=0
+          list_definition[brace_depth]=0
+          brace_definition[brace_depth]=0
+          functions+=$'\n'"$name"$'\n'
+          i=$((i + ${#header}))
+          out+='; '
+          command_start=1
+        elif [[ "$token" == case && $command_start == 1 ]]; then
           depth=$((depth + 1))
           state[depth]=selector
           out+=' '
         elif (( depth > 0 )) && [[ "$token" == ';;' || "$token" == ';&' || "$token" == ';;&' || "$token" == ';|' ]]; then
+          (( ${#scope_saved[@]} > 0 )) || return 1
+          scope_idx=$((${#scope_saved[@]} - 1))
+          [[ ${scope_kind[scope_idx]} == "case-branch" ]] || return 1
+          functions=${scope_saved[scope_idx]}
+          unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
           state[depth]=pattern
           pattern_started=0
           pattern_depth=0
           out+='; '
         elif (( depth > 0 && command_start == 1 )) && [[ "$token" == "esac" ]]; then
+          if (( ${#scope_saved[@]} > 0 )); then
+            scope_idx=$((${#scope_saved[@]} - 1))
+            if [[ ${scope_kind[scope_idx]} == "case-branch" ]]; then
+              functions=${scope_saved[scope_idx]}
+              unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+            fi
+          fi
           depth=$((depth - 1))
           out+=' '
           command_start=0
+          compound_end=1
         else
-          out+=$token
           case "$token" in
-            ';'|'|'|'&'|'&&'|'||'|'('|')'|'{'|'!'|if|then|else|do|while|until) command_start=1 ;;
+            '&&'|'||'|'|')
+              (( list_definition[brace_depth] == 0 )) || return 1
+              list_operator[brace_depth]=1
+              ;;
+            ';')
+              list_operator[brace_depth]=0
+              list_definition[brace_depth]=0
+              ;;
+            '{')
+              if (( command_start )); then
+                brace_depth=$((brace_depth + 1))
+                list_operator[brace_depth]=0
+                list_definition[brace_depth]=0
+                brace_definition[brace_depth]=0
+              fi
+              ;;
+            '}')
+              if (( command_start || previous_compound_end )); then
+                (( brace_depth > 0 )) || return 1
+                name=${brace_definition[brace_depth]}
+                brace_depth=$((brace_depth - 1))
+                if (( name )); then
+                  (( list_operator[brace_depth] == 0 )) || return 1
+                  list_definition[brace_depth]=1
+                  brace_definition[brace_depth]=1
+                fi
+                compound_end=1
+              fi
+              ;;
+          esac
+          # Conditional bodies are scoped: definitions inside an if branch,
+          # loop body or subshell are visible only within that body, never
+          # after the containing control flow. Direct unconditional
+          # definitions and calls still pass through.
+          if [[ "$token" == "if" && $command_start == 1 ]]; then
+            if_pending=$((if_pending + 1))
+          elif [[ "$token" == "then" && $command_start == 1 ]]; then
+            if (( elif_pending > 0 )); then
+              elif_pending=$((elif_pending - 1))
+              (( ${#scope_saved[@]} > 0 )) || return 1
+            elif (( if_pending > 0 )); then
+              if_pending=$((if_pending - 1))
+              scope_saved+=("$functions")
+              scope_kind+=("if")
+            else
+              return 1
+            fi
+          elif [[ "$token" == "elif" && $command_start == 1 ]]; then
+            (( ${#scope_saved[@]} > 0 )) || return 1
+            scope_idx=$((${#scope_saved[@]} - 1))
+            [[ ${scope_kind[scope_idx]} == "if" ]] || return 1
+            functions=${scope_saved[scope_idx]}
+            elif_pending=$((elif_pending + 1))
+          elif [[ "$token" == "else" && $command_start == 1 ]]; then
+            (( ${#scope_saved[@]} > 0 )) || return 1
+            scope_idx=$((${#scope_saved[@]} - 1))
+            [[ ${scope_kind[scope_idx]} == "if" ]] || return 1
+            functions=${scope_saved[scope_idx]}
+          elif [[ "$token" == "fi" && $command_start == 1 ]]; then
+            compound_end=1
+            (( ${#scope_saved[@]} > 0 )) || return 1
+            scope_idx=$((${#scope_saved[@]} - 1))
+            [[ ${scope_kind[scope_idx]} == "if" ]] || return 1
+            functions=${scope_saved[scope_idx]}
+            unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+          elif [[ "$token" == "do" && $command_start == 1 ]]; then
+            scope_saved+=("$functions")
+            scope_kind+=("loop")
+          elif [[ "$token" == "done" && $command_start == 1 ]]; then
+            compound_end=1
+            (( ${#scope_saved[@]} > 0 )) || return 1
+            scope_idx=$((${#scope_saved[@]} - 1))
+            [[ ${scope_kind[scope_idx]} == "loop" ]] || return 1
+            functions=${scope_saved[scope_idx]}
+            unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+          elif [[ "$token" == '(' ]]; then
+            scope_saved+=("$functions")
+            scope_kind+=("subshell")
+          elif [[ "$token" == ')' ]]; then
+            compound_end=1
+            (( ${#scope_saved[@]} > 0 )) || return 1
+            scope_idx=$((${#scope_saved[@]} - 1))
+            [[ ${scope_kind[scope_idx]} == "subshell" ]] || return 1
+            functions=${scope_saved[scope_idx]}
+            unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+          fi
+          # A direct call to a previously declared candidate function needs no
+          # external executable. Keep wrappers such as `command name` unchanged.
+          if (( command_start )) && [[ $'\n'"$functions"$'\n' == *$'\n'"$token"$'\n'* ]]; then
+            out+=':'
+          else
+            out+=$token
+          fi
+          case "$token" in
+            ';'|'|'|'&'|'&&'|'||'|'('|')'|'!'|if|then|else|do|while|until) command_start=1 ;;
+            '{') : ;; # A brace argument does not start a command.
             *) command_start=0 ;;
           esac
         fi
         ;;
     esac
   done
-  (( depth == 0 )) || return 1
+  (( depth == 0 && brace_depth == 0 )) || return 1
+  (( ${#scope_saved[@]} == 0 )) || return 1
+  (( if_pending == 0 && elif_pending == 0 )) || return 1
   if (( only_substitutions )); then
     printf '%s' "$substitutions"
   else
@@ -1326,10 +1485,11 @@ __lmline_case_command_copy() {
 }
 
 __lmline_extract_command_words() {
-  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} stripped segment token arithmetic array_assignment
+  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment
+  local function_definition='[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\([[:space:]]*\)'
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
-  if [[ "$cmd" == *case* ]] || (( scan_substitutions )); then
-    cmd=$(__lmline_case_command_copy "$cmd" "$shell") || return 1
+  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" =~ $function_definition ]] || (( scan_substitutions )); then
+    cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
   fi
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
   # Strip them only from this availability-check copy; other policy checks
