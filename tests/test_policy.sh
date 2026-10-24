@@ -232,6 +232,11 @@ bash -c '
     [[ -z $(__lmline_extract_command_words "$arithmetic_candidate" zsh) ]]
     arithmetic_with_missing_command="(( total = 1 + 2 )); definitely-not-a-command-for-lmline"
     [[ $(__lmline_candidate_rejection_reason "$arithmetic_with_missing_command" rewrite zsh) == command-not-found ]]
+    array_candidate="a=(one two); printf ok"
+    [[ $(__lmline_candidate_rejection_reason "$array_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$array_candidate" zsh) == printf ]]
+    array_with_missing_command="a=(one two); definitely-not-a-command-for-lmline"
+    [[ $(__lmline_candidate_rejection_reason "$array_with_missing_command" rewrite zsh) == command-not-found ]]
     __lmline_validate_candidate "print -r -- hello" rewrite zsh
     ! __lmline_validate_candidate "print -r -- hello" rewrite bash
     # Zsh process substitution is valid shell syntax even though Bash rejects it.
@@ -264,6 +269,10 @@ bash -c '
     zsh_marker=$syntax_tmp/executed
     [[ $(__lmline_candidate_rejection_reason "touch \"$zsh_marker\"" rewrite zsh) == ok ]]
     [[ ! -e "$zsh_marker" ]]
+    array_exec_candidate="a=(\$(touch \"$zsh_marker\")); printf ok"
+    [[ $(__lmline_candidate_rejection_reason "$array_exec_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$array_exec_candidate" zsh | paste -sd, -) == touch,printf ]]
+    [[ ! -e "$zsh_marker" ]]
     zsh_for_marker=$syntax_tmp/for-executed
     zsh_for_execution_candidate="for f in one; do touch \"$zsh_for_marker\"; done"
     [[ $(__lmline_candidate_rejection_reason "$zsh_for_execution_candidate" rewrite zsh) == ok ]]
@@ -280,6 +289,11 @@ bash -c '
   [[ -z $(__lmline_extract_command_words "$arithmetic_candidate" bash) ]]
   arithmetic_with_missing_command="(( total = 1 + 2 )); definitely-not-a-command-for-lmline"
   [[ $(__lmline_candidate_rejection_reason "$arithmetic_with_missing_command" rewrite bash) == command-not-found ]]
+  array_candidate="a=(one two); printf ok"
+  [[ $(__lmline_candidate_rejection_reason "$array_candidate" rewrite bash) == ok ]]
+  [[ $(__lmline_extract_command_words "$array_candidate" bash) == printf ]]
+  array_with_missing_command="a=(one two); definitely-not-a-command-for-lmline"
+  [[ $(__lmline_candidate_rejection_reason "$array_with_missing_command" rewrite bash) == command-not-found ]]
   long_candidate=$(printf "printf %%s "; printf "a%.0s" {1..5000})
   [[ ${#long_candidate} -gt 4096 ]]
   truncated_candidate=$(printf "%s\n" "$long_candidate" | __lmline_valid_candidates)

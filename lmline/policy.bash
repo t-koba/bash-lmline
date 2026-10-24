@@ -1105,14 +1105,21 @@ __lmline_risk_has_unresolved_var_command() {
 }
 
 __lmline_extract_command_words() {
-  local cmd=$1 shell=${2:-bash} stripped segment token arithmetic
-  local arithmetic_pattern='\(\([^()]*\)\)'
+  local cmd=$1 shell=${2:-bash} stripped segment token arithmetic array_assignment
+  local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
   # Strip them only from this availability-check copy; other policy checks
   # still see the original candidate, and nested forms remain conservative.
   while [[ "$cmd" =~ $arithmetic_pattern ]]; do
     arithmetic=${BASH_REMATCH[0]}
     cmd=${cmd/"$arithmetic"/ }
+  done
+  # Flat static array assignments contain data words, not commands. Keep
+  # nested substitutions conservative by matching only simple parenthesis-free
+  # values; other policy checks still use the unmodified candidate.
+  while [[ "$cmd" =~ $array_pattern ]]; do
+    array_assignment=${BASH_REMATCH[0]}
+    cmd=${cmd/"$array_assignment"/ }
   done
   # A conservative lexical approximation: split at command separators and keep
   # the first simple command word after env assignments, negation, and builtins.
