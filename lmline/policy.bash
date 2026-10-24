@@ -1180,13 +1180,13 @@ __lmline_risk_has_unresolved_var_command() {
 # substitutions and case-pattern ')' characters cannot truncate the check.
 __lmline_case_command_copy() {
   local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} out="" substitutions=""
-  local name header remaining
+  local name header remaining zsh_for_words
   local function_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*(\([[:space:]]*\)[[:space:]]*)?\{([[:space:]]|$)'
   local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
   local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
   local paren_signature='^[[:space:]]*\([[:space:]]*\)'
   local zsh_for_prefix='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(]'
-  local zsh_for_header="^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\\([^()\$\`'\";|&<>!{}#\\\\]*\\)"
+  local zsh_for_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(](([^()]|[(][^()]*[)])*)[)]'
   local i=0 start ch next token quote end fragment inner words word scope_idx compound_end=0 previous_compound_end
   local zsh_short_for_seen=0
   local depth=0 command_start=1 pattern_started=0 pattern_depth=0
@@ -1351,14 +1351,28 @@ __lmline_case_command_copy() {
           name=$token
         fi
         if (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_header ]]; then
-          # Only an actual command-position keyword can introduce a short
-          # loop. Static list words are data; keep its executable body visible.
-          # Dynamic lists do not match and retain substitution scanning below.
           header=${BASH_REMATCH[0]}
-          zsh_short_for_seen=1
-          i=$((i + ${#header}))
-          out+='; '
-          command_start=1
+          zsh_for_words=${BASH_REMATCH[2]}
+          # Parentheses in simple glob qualifiers such as *.txt(N) are static
+          # list data. Leave substitutions, executable e-qualifiers and other
+          # complex forms untouched so their commands remain conservatively scanned.
+          if [[ "$zsh_for_words" == *'$('* || "$zsh_for_words" == *'`'* ||
+                "$zsh_for_words" == *'<('* || "$zsh_for_words" == *'>('* ||
+                "$zsh_for_words" == *'=('* || "$zsh_for_words" == *':'* ||
+                "$zsh_for_words" == *';'* || "$zsh_for_words" == *'|'* ||
+                "$zsh_for_words" == *'&'* || "$zsh_for_words" == *'+'* ||
+                "$zsh_for_words" == *'#'* || "$zsh_for_words" == *'!'* ||
+                "$zsh_for_words" == *'{'* || "$zsh_for_words" == *'}'* ||
+                "$zsh_for_words" == *'\\'* || "$zsh_for_words" == *'"'* ||
+                "$zsh_for_words" == *"'"* ]]; then
+            out+=$token
+            command_start=0
+          else
+            zsh_short_for_seen=1
+            i=$((i + ${#header}))
+            out+='; '
+            command_start=1
+          fi
         elif [[ -n "$name" ]]; then
           # Function definitions in or after a short-form loop need control-flow
           # reasoning to prove they run. Fail closed rather than let a possibly

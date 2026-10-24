@@ -268,6 +268,15 @@ bash -c '
     zsh_short_for_candidate="for i (one two) print ok"
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_short_for_candidate" zsh) == print ]]
+    zsh_short_for_glob_candidate="for i (*.txt(N)) print ok"
+    command zsh -f -n -c "$zsh_short_for_glob_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_glob_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_short_for_glob_candidate" zsh) == print ]]
+    zsh_short_for_glob_missing_body="for i (*.txt(N)) definitely-not-a-command-for-lmline"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_glob_missing_body" rewrite zsh) == command-not-found ]]
+    zsh_short_for_glob_exec_qualifier="for i (*(e:definitely-not-a-command-for-lmline:)) print ok"
+    command zsh -f -n -c "$zsh_short_for_glob_exec_qualifier"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_glob_exec_qualifier" rewrite zsh) == command-not-found ]]
     zsh_short_for_missing_body="for i (one two) definitely-not-a-command-for-lmline"
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_missing_body" rewrite zsh) == command-not-found ]]
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_candidate" rewrite bash) == shell-syntax ]]
