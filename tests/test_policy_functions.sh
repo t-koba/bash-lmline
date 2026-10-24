@@ -93,5 +93,14 @@ for target in bash zsh; do
   check_function "$target" 'while true; do lmline_probe() { printf ok; }; done; lmline_probe' command-not-found
   check_function "$target" 'while true; do lmline_probe() { printf ok; }; lmline_probe; done' ok
   check_function "$target" '( lmline_probe() { printf ok; }; ); lmline_probe' command-not-found
+  # Nested definitions stay inside their containing body: an inner name is
+  # usable later in that body but never after an uncalled outer body.
+  check_function "$target" 'lmline_probe() { printf ok; }; lmline_probe' ok
+  check_function "$target" 'lmline_probe() { lmline_probe; }; lmline_probe' ok
+  check_function "$target" 'lmline_outer() { lmline_inner() { printf ok; }; }; lmline_inner' command-not-found
+  check_function "$target" 'function lmline_outer { lmline_inner() { printf ok; }; }; lmline_inner' command-not-found
+  check_function "$target" 'lmline_outer() { lmline_inner() { printf ok; }; lmline_inner; }; lmline_outer' ok
+  check_function "$target" 'lmline_outer() { lmline_missing_function_body; }; lmline_outer' command-not-found
+  check_function "$target" 'lmline_outer() { lmline_inner() { lmline_missing_function_body; }; }; lmline_outer' command-not-found
   ok "$target function definitions and later calls are checked without execution"
 done

@@ -1326,7 +1326,7 @@ __lmline_case_command_copy() {
   # Brace bodies get independent list state, so ordinary pipelines inside a
   # function do not make an otherwise direct definition unavailable.
   local -a list_operator=(0) list_definition=(0) brace_definition=(0)
-  local -a state=(body) scope_saved=() scope_kind=()
+  local -a state=(body) scope_saved=() scope_kind=() function_scope_saved=() function_scope_depth=()
   while (( i < ${#cmd} )); do
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
@@ -1579,6 +1579,8 @@ __lmline_case_command_copy() {
           list_definition[brace_depth]=0
           brace_definition[brace_depth]=0
           functions+=$'\n'"$name"$'\n'
+          function_scope_saved+=("$functions")
+          function_scope_depth+=("$brace_depth")
           i=$((i + ${#header}))
           out+='; '
           command_start=1
@@ -1630,6 +1632,13 @@ __lmline_case_command_copy() {
               if (( command_start || previous_compound_end )); then
                 (( brace_depth > 0 )) || return 1
                 name=${brace_definition[brace_depth]}
+                if (( ${#function_scope_depth[@]} > 0 )); then
+                  scope_idx=$((${#function_scope_depth[@]} - 1))
+                  if (( function_scope_depth[scope_idx] == brace_depth )); then
+                    functions=${function_scope_saved[scope_idx]}
+                    unset "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
+                  fi
+                fi
                 brace_depth=$((brace_depth - 1))
                 if (( name )); then
                   (( list_operator[brace_depth] == 0 )) || return 1
