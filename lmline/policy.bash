@@ -1327,11 +1327,24 @@ __lmline_case_command_copy() {
   # function do not make an otherwise direct definition unavailable.
   local -a list_operator=(0) list_definition=(0) brace_definition=(0)
   local -a state=(body) scope_saved=() scope_kind=() function_scope_saved=() function_scope_depth=()
+  # Installer metadata shares the existing function-body stack. Only immediate
+  # declarations are collected; their bodies still pass through every check.
+  local -a function_names=() installer_pure=() installer_children=()
+  local pending_installer="" pending_children="" installer_called=0
+  local direct_start=1 was_direct_start installer_idx installer_loop_pending=0
   while (( i < ${#cmd} )); do
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
       out+=$ch
-      [[ "$ch" != $'\n' ]] || command_start=1
+      if [[ "$ch" == $'\n' ]]; then
+        command_start=1
+        direct_start=1
+        if (( installer_called )); then
+          functions+="$pending_children"
+          pending_installer=""
+          installer_called=0
+        fi
+      fi
       i=$((i + 1))
       continue
     fi
@@ -1423,6 +1436,8 @@ __lmline_case_command_copy() {
         token=${cmd:start:i-start}
         ;;
     esac
+    was_direct_start=$direct_start
+    direct_start=0
     previous_compound_end=$compound_end
     compound_end=0
     case "${state[depth]}" in
@@ -1484,6 +1499,47 @@ __lmline_case_command_copy() {
           [[ "$token" =~ $function_name && "$remaining" =~ $paren_header ]] || return 1
           header=${BASH_REMATCH[0]}
           name=$token
+        fi
+        # The existing scope stack starts at then/do, not at the condition.
+        # Never infer an installation in a condition/header. Count only loop
+        # headers here; if/elif already have pending counters below.
+        if (( command_start )) && [[ -z "$name" ]]; then
+          case "$token" in
+            for|select|while|until) installer_loop_pending=$((installer_loop_pending + 1)) ;;
+            do) (( installer_loop_pending == 0 )) || installer_loop_pending=$((installer_loop_pending - 1)) ;;
+          esac
+        fi
+        # Any token between declaration and call (or between call and its
+        # terminator) cancels the transfer. This also prevents pending state
+        # crossing a scope boundary, without interpreting any control flow.
+        if [[ -n "$pending_installer" ]]; then
+          if [[ "$token" == ';' ]]; then
+            if (( installer_called )); then
+              functions+="$pending_children"
+              pending_installer=""
+              installer_called=0
+            fi
+          elif (( ! installer_called && command_start && was_direct_start )) \
+            && (( list_operator[brace_depth] == 0 )) \
+            && [[ -z "$name" && "$token" == "$pending_installer" ]]; then
+            installer_called=1
+          else
+            pending_installer=""
+            installer_called=0
+          fi
+        fi
+        # At the direct level of a function body, only named declarations and
+        # their separators qualify. Commands, wrappers, redirects and control
+        # constructs disqualify the body; grandchildren are never collected.
+        if (( ${#function_scope_depth[@]} > 0 )); then
+          installer_idx=$((${#function_scope_depth[@]} - 1))
+          if (( function_scope_depth[installer_idx] == brace_depth )); then
+            if [[ -n "$name" ]]; then
+              installer_children[installer_idx]+=$'\n'"$name"$'\n'
+            elif [[ "$token" != ';' && "$token" != '}' ]]; then
+              installer_pure[installer_idx]=0
+            fi
+          fi
         fi
         if (( zsh_repeat_count_pending )); then
           # The count is data, but its substitutions were scanned above. Start
@@ -1581,6 +1637,10 @@ __lmline_case_command_copy() {
           functions+=$'\n'"$name"$'\n'
           function_scope_saved+=("$functions")
           function_scope_depth+=("$brace_depth")
+          function_names+=("$name")
+          installer_pure+=("$((was_direct_start && if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0))")
+          installer_children+=("")
+          direct_start=1
           i=$((i + ${#header}))
           out+='; '
           command_start=1
@@ -1636,7 +1696,13 @@ __lmline_case_command_copy() {
                   scope_idx=$((${#function_scope_depth[@]} - 1))
                   if (( function_scope_depth[scope_idx] == brace_depth )); then
                     functions=${function_scope_saved[scope_idx]}
+                    if (( installer_pure[scope_idx] )) && [[ -n "${installer_children[scope_idx]}" ]]; then
+                      pending_installer=${function_names[scope_idx]}
+                      pending_children=${installer_children[scope_idx]}
+                      installer_called=0
+                    fi
                     unset "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
+                    unset "function_names[$scope_idx]" "installer_pure[$scope_idx]" "installer_children[$scope_idx]"
                   fi
                 fi
                 brace_depth=$((brace_depth - 1))
@@ -1724,6 +1790,11 @@ __lmline_case_command_copy() {
         fi
         ;;
     esac
+    # Unlike command_start, this boundary is not preserved by !/time/while or
+    # other prefixes. Both the declaration and call must be standalone.
+    if (( command_start )); then
+      case "$token" in ';'|'{'|'('|')'|then|else|do) direct_start=1 ;; esac
+    fi
   done
   (( depth == 0 && brace_depth == 0 && zsh_repeat_count_pending == 0 )) || return 1
   (( ${#scope_saved[@]} == 0 )) || return 1

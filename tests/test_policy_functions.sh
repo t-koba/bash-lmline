@@ -102,5 +102,67 @@ for target in bash zsh; do
   check_function "$target" 'lmline_outer() { lmline_inner() { printf ok; }; lmline_inner; }; lmline_outer' ok
   check_function "$target" 'lmline_outer() { lmline_missing_function_body; }; lmline_outer' command-not-found
   check_function "$target" 'lmline_outer() { lmline_inner() { lmline_missing_function_body; }; }; lmline_outer' command-not-found
+  # A declaration-only installer transfers only its immediate children after
+  # the immediately following standalone call, without running any candidate.
+  for header in 'lmline_outer()' 'function lmline_outer'; do
+    installer="$header { lmline_inner() { printf ok; }; }"
+    check_function "$target" "$installer; lmline_outer; lmline_inner" ok
+    check_function "$target" "$installer; lmline_inner" command-not-found
+    check_function "$target" "$header { lmline_inner() { printf ok; }; function lmline_second { pwd; }; }; lmline_outer; lmline_inner; lmline_second" ok
+    check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_inner" ok
+    check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_grandchild" command-not-found
+    check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_inner; lmline_grandchild" command-not-found
+    for statement in 'printf before' 'return' 'true'; do
+      check_function "$target" "$header { $statement; lmline_inner() { printf ok; }; }; lmline_outer; lmline_inner" command-not-found
+    done
+    check_function "$target" "$header { lmline_inner() { printf ok; }; return; }; lmline_outer; lmline_inner" command-not-found
+    check_function "$target" "$header { lmline_inner() { lmline_missing_nested_body; }; }; lmline_outer; lmline_inner" command-not-found
+    marker=$function_tmp/$target-installer-executed
+    check_function "$target" "$header { lmline_inner() { touch '$marker'; printf '%s' \"\$(touch '$marker')\"; }; }; lmline_outer; lmline_inner" ok
+    [[ ! -e "$marker" ]] || fail "$target installer candidate executed during validation"
+  done
+  installer='lmline_outer() { lmline_inner() { printf ok; }; }'
+  # No arguments, redirects, prefixes, list operators or intervening commands.
+  for call in 'lmline_outer arg' 'lmline_outer >/dev/null' 'LMLINE_TEST=1 lmline_outer' \
+    'time lmline_outer' 'command lmline_outer' 'env lmline_outer' \
+    'true && lmline_outer' 'false || lmline_outer' 'lmline_outer && true' \
+    'lmline_outer || true' 'lmline_outer | cat' 'printf ok | lmline_outer' \
+    'printf before; lmline_outer' 'unset -f lmline_outer; lmline_outer' \
+    'lmline_outer() { printf replacement; }; lmline_outer'; do
+    check_function "$target" "$installer; $call; lmline_inner" command-not-found
+  done
+  if [[ "$target" == bash ]]; then
+    # Zsh's -n reports the negated status even without executing the command.
+    check_function "$target" "$installer; ! lmline_outer; lmline_inner" command-not-found
+  fi
+  check_function "$target" "$installer; lmline_outer & lmline_inner" command-not-found
+  check_function "$target" "$installer >/dev/null; lmline_outer; lmline_inner" command-not-found
+  for body in 'if true; then lmline_inner() { printf ok; }; fi' \
+    'for i in 1; do lmline_inner() { printf ok; }; done' \
+    '{ lmline_inner() { printf ok; }; }' \
+    'lmline_inner() { printf ok; } >/dev/null'; do
+    check_function "$target" "lmline_outer() { $body; }; lmline_outer; lmline_inner" command-not-found
+  done
+  # Transfers are useful within the current analysis body, never across it.
+  sequence="$installer; lmline_outer; lmline_inner"
+  check_function "$target" "if true; then $sequence; fi" ok
+  check_function "$target" "case x in x) $sequence;; esac" ok
+  check_function "$target" "for i in 1; do $sequence; done" ok
+  check_function "$target" "( $sequence )" ok
+  check_function "$target" "lmline_caller() { $sequence; }; lmline_caller" ok
+  for body in "if true; then $sequence; fi" "case x in x) $sequence;; esac" \
+    "for i in 1; do $sequence; done" "( $sequence )" \
+    "lmline_caller() { $sequence; }; lmline_caller"; do
+    check_function "$target" "$body; lmline_inner" command-not-found
+  done
+  check_function "$target" "if true; then $installer; fi; lmline_outer; lmline_inner" command-not-found
+  check_function "$target" "$installer; if true; then lmline_outer; fi; lmline_inner" command-not-found
+  # Conditions precede the existing then/do scope save; no transfer may seed
+  # that save and thereby escape the containing conditional or loop.
+  check_function "$target" "if true; $installer; lmline_outer; then printf ok; fi; lmline_inner" command-not-found
+  check_function "$target" "while false; $installer; lmline_outer; do printf ok; done; lmline_inner" command-not-found
+  check_function "$target" "until true; $installer; lmline_outer; do printf ok; done; lmline_inner" command-not-found
+  check_function "$target" "if { $installer; lmline_outer; }; then printf ok; fi; lmline_inner" command-not-found
+  check_function "$target" "while { $installer; lmline_outer; }; do printf ok; done; lmline_inner" command-not-found
   ok "$target function definitions and later calls are checked without execution"
 done
