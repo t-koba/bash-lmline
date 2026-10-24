@@ -1188,7 +1188,7 @@ __lmline_case_command_copy() {
   local zsh_for_prefix='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(]'
   local zsh_for_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(](([^()]|[(][^()]*[)])*)[)]'
   local i=0 start ch next token quote end fragment inner words word scope_idx compound_end=0 previous_compound_end
-  local zsh_short_for_seen=0
+  local zsh_unscoped_loop_seen=0 zsh_repeat_count_pending=0
   local depth=0 command_start=1 pattern_started=0 pattern_depth=0
   local if_pending=0 elif_pending=0 brace_depth=0
   # Definitions in and/or lists or pipelines need control-flow reasoning.
@@ -1337,7 +1337,7 @@ __lmline_case_command_copy() {
         if (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_prefix ]]; then
           # Track every short form, including dynamic lists whose substitutions
           # remain visible to the recursive availability scan below.
-          zsh_short_for_seen=1
+          zsh_unscoped_loop_seen=1
         fi
         if (( command_start )) && [[ "$token" == function ]]; then
           [[ "$remaining" =~ $function_header ]] || return 1
@@ -1350,7 +1350,20 @@ __lmline_case_command_copy() {
           header=${BASH_REMATCH[0]}
           name=$token
         fi
-        if (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_header ]]; then
+        if (( zsh_repeat_count_pending )); then
+          # The count is data, but its substitutions were scanned above. Start
+          # a new command boundary so compound bodies get their own headers
+          # recognized too, rather than leaking short-for values as commands.
+          case "$token" in ';'|'|'|'&'|'&&'|'||'|'('|')') return 1 ;; esac
+          zsh_repeat_count_pending=0
+          out+='; '
+          command_start=1
+        elif (( command_start )) && [[ "$shell" == zsh && "$token" == repeat ]]; then
+          zsh_repeat_count_pending=1
+          zsh_unscoped_loop_seen=1
+          out+=' '
+          command_start=0
+        elif (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_header ]]; then
           header=${BASH_REMATCH[0]}
           zsh_for_words=${BASH_REMATCH[2]}
           # Parentheses in simple glob qualifiers such as *.txt(N) are static
@@ -1368,16 +1381,16 @@ __lmline_case_command_copy() {
             out+=$token
             command_start=0
           else
-            zsh_short_for_seen=1
+            zsh_unscoped_loop_seen=1
             i=$((i + ${#header}))
             out+='; '
             command_start=1
           fi
         elif [[ -n "$name" ]]; then
-          # Function definitions in or after a short-form loop need control-flow
+          # Definitions in or after short-for/repeat loops need control-flow
           # reasoning to prove they run. Fail closed rather than let a possibly
           # skipped body satisfy a later call.
-          (( zsh_short_for_seen == 0 )) || return 1
+          (( zsh_unscoped_loop_seen == 0 )) || return 1
           (( list_operator[brace_depth] == 0 )) || return 1
           list_definition[brace_depth]=1
           brace_definition[brace_depth]=1
@@ -1511,7 +1524,11 @@ __lmline_case_command_copy() {
             out+=$token
           fi
           case "$token" in
-            ';'|'|'|'&'|'&&'|'||'|'('|')'|'!'|if|then|else|do|while|until) command_start=1 ;;
+            ';'|'|'|'&'|'&&'|'||'|'('|')') command_start=1 ;;
+            # Reserved words preserve an existing command boundary, but the
+            # same words used as arguments must not manufacture a repeat body.
+            '!'|if|then|else|do|while|until) : ;;
+            time) [[ "$shell" == zsh ]] || command_start=0 ;;
             '{') : ;; # A brace argument does not start a command.
             *) command_start=0 ;;
           esac
@@ -1519,7 +1536,7 @@ __lmline_case_command_copy() {
         ;;
     esac
   done
-  (( depth == 0 && brace_depth == 0 )) || return 1
+  (( depth == 0 && brace_depth == 0 && zsh_repeat_count_pending == 0 )) || return 1
   (( ${#scope_saved[@]} == 0 )) || return 1
   (( if_pending == 0 && elif_pending == 0 )) || return 1
   if (( only_substitutions )); then
@@ -1533,7 +1550,7 @@ __lmline_extract_command_words() {
   local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment
   local function_definition='[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\([[:space:]]*\)'
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
-  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" =~ $function_definition || ( "$shell" == zsh && "$cmd" == *for* ) ]] || (( scan_substitutions )); then
+  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
     cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
   fi
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
@@ -1559,6 +1576,12 @@ __lmline_extract_command_words() {
   while IFS= read -r segment; do
     for token in $segment; do
       [[ "$token" == *=* && "$token" != /* && "$token" != ./* && "$token" != ../* ]] && continue
+      if [[ "$shell" == zsh && "$token" == repeat ]]; then
+        # Supported repeat headers were removed by the syntax-aware copy.
+        # Do not let an unsupported wrapper position mask its body by resolving
+        # the reserved word itself as an available Zsh command.
+        return 1
+      fi
       if [[ "$token" == for ]]; then
         # A static word-list loop header names an iteration variable and
         # values, not commands; the semicolon splitter leaves its body in

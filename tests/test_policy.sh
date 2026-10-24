@@ -279,6 +279,54 @@ bash -c '
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_glob_exec_qualifier" rewrite zsh) == command-not-found ]]
     zsh_short_for_missing_body="for i (one two) definitely-not-a-command-for-lmline"
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_missing_body" rewrite zsh) == command-not-found ]]
+    zsh_repeat_candidate="repeat 2 print ok"
+    command zsh -f -n -c "$zsh_repeat_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_repeat_candidate" zsh) == print ]]
+    zsh_repeat_missing_body="repeat 2 definitely-not-a-command-for-lmline"
+    command zsh -f -n -c "$zsh_repeat_missing_body"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_missing_body" rewrite zsh) == command-not-found ]]
+    [[ $(__lmline_extract_command_words "$zsh_repeat_missing_body" zsh) == definitely-not-a-command-for-lmline ]]
+    zsh_repeat_separated_body="repeat 2; definitely-not-a-command-for-lmline"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_separated_body" rewrite zsh) == command-not-found ]]
+    # A repeat body is a command boundary even for nested compound commands.
+    for zsh_repeat_compound in \
+      "repeat 2 for i (one two) print ok" \
+      "repeat 2 for i in one two; do print ok; done" \
+      "repeat 2 repeat 3 print ok" \
+      "time repeat 2 print ok"; do
+      command zsh -f -n -c "$zsh_repeat_compound"
+      [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_compound" rewrite zsh) == ok ]]
+      [[ $(__lmline_extract_command_words "$zsh_repeat_compound" zsh) == print ]]
+      zsh_repeat_compound_missing=${zsh_repeat_compound/print ok/definitely-not-a-command-for-lmline}
+      command zsh -f -n -c "$zsh_repeat_compound_missing"
+      [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_compound_missing" rewrite zsh) == command-not-found ]]
+      [[ $(__lmline_extract_command_words "$zsh_repeat_compound_missing" zsh) == definitely-not-a-command-for-lmline ]]
+    done
+    # An argument named repeat must neither hide following commands nor taint
+    # later unconditional function definitions as possibly skipped loop bodies.
+    for zsh_repeat_data_prefix in "" time do "!"; do
+      zsh_repeat_data="printf $zsh_repeat_data_prefix repeat 2 definitely-not-a-command-for-lmline; lmline_probe() { printf ok; }; lmline_probe"
+      command zsh -f -n -c "$zsh_repeat_data"
+      [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_data" rewrite zsh) == ok ]]
+      [[ $(__lmline_extract_command_words "$zsh_repeat_data" zsh | paste -sd, -) == "printf,printf,},:" ]]
+    done
+    zsh_repeat_for_data="for i in repeat 2; do print ok; done"
+    command zsh -f -n -c "$zsh_repeat_for_data"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_for_data" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_repeat_for_data" zsh) == print ]]
+    # A possibly empty repeat cannot establish a function for a later call.
+    # Unsupported exact scoping stays closed, including brace/do bodies.
+    for zsh_repeat_function_leak in \
+      "repeat 0 lmline_probe() { printf ok; }; lmline_probe" \
+      "repeat 0 { lmline_probe() { printf ok; }; }; lmline_probe" \
+      "repeat 0 do lmline_probe() { printf ok; }; done; lmline_probe"; do
+      command zsh -f -n -c "$zsh_repeat_function_leak"
+      [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_function_leak" rewrite zsh) == command-not-found ]]
+    done
+    zsh_repeat_dynamic_count="repeat \$(definitely-not-a-command-for-lmline) print ok"
+    command zsh -f -n -c "$zsh_repeat_dynamic_count"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_dynamic_count" rewrite zsh) == command-not-found ]]
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_candidate" rewrite bash) == shell-syntax ]]
     # Loop-like data in comments or quoted arguments is not a loop header.
     zsh_short_for_comment="printf ok # for i (one two) definitely-not-a-command-for-lmline"
@@ -326,6 +374,15 @@ bash -c '
     zsh_short_for_execution_candidate="for i (one two) touch \"$zsh_short_for_marker\""
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_execution_candidate" rewrite zsh) == ok ]]
     [[ ! -e "$zsh_short_for_marker" ]]
+    zsh_repeat_marker=$syntax_tmp/repeat-executed
+    zsh_repeat_execution_candidate="repeat 2 touch \"$zsh_repeat_marker\""
+    command zsh -f -n -c "$zsh_repeat_execution_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_execution_candidate" rewrite zsh) == ok ]]
+    [[ ! -e "$zsh_repeat_marker" ]]
+    zsh_repeat_nested_execution_candidate="repeat \$(touch \"$zsh_repeat_marker\"; printf 2) for i (one two) touch \"$zsh_repeat_marker\""
+    command zsh -f -n -c "$zsh_repeat_nested_execution_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_nested_execution_candidate" rewrite zsh) == ok ]]
+    [[ ! -e "$zsh_repeat_marker" ]]
     rm -rf "$syntax_tmp"
   fi
   bash_for_candidate="for f in *.txt; do printf \"%s\\n\" \"\$f\"; done"
