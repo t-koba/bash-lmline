@@ -1220,6 +1220,68 @@ __lmline_extract_literal_trap_words() {
   __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
 }
 
+# Recognize only direct `bash -c '...'` and `zsh -f -c '...'` with a single
+# statically single-quoted script argument and no other options, wrappers,
+# concatenation or trailing operands. Unsupported/dynamic forms remain opaque
+# (2). Single quotes need no decoding: their contents are passed only to
+# syntax-only parsing and the availability extractor, never to an executing
+# shell. The script is parsed and checked with the invoked shell's parser and
+# command vocabulary, so a zsh-only builtin inside `zsh -f -c` is available
+# even when the outer candidate targets bash. Outer function definitions do
+# not leak into the new shell process; definitions inside the script itself
+# are handled by its own availability scan.
+__lmline_extract_literal_shell_c_words() {
+  local token=$1 remaining=$2 functions=${3:-} inner inner_shell words word
+  local bash_literal="^[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)"$'\n'"])"
+  local bash_comment="^[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]+#"
+  local zsh_literal="^[[:blank:]]+-f[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)"$'\n'"])"
+  local zsh_comment="^[[:blank:]]+-f[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]+#"
+  if [[ $'\n'"$functions"$'\n' == *$'\n'"$token"$'\n'* ]]; then
+    return 2
+  fi
+  if [[ "$token" == bash ]]; then
+    inner_shell=bash
+    if [[ "$remaining" =~ $bash_literal ]]; then
+      inner=${BASH_REMATCH[1]}
+    elif [[ "$remaining" =~ $bash_comment ]]; then
+      inner=${BASH_REMATCH[1]}
+    else
+      return 2
+    fi
+  elif [[ "$token" == zsh ]]; then
+    inner_shell=zsh
+    if [[ "$remaining" =~ $zsh_literal ]]; then
+      inner=${BASH_REMATCH[1]}
+    elif [[ "$remaining" =~ $zsh_comment ]]; then
+      inner=${BASH_REMATCH[1]}
+    else
+      return 2
+    fi
+  else
+    return 2
+  fi
+  if [[ "$inner_shell" == zsh ]]; then
+    command -v zsh >/dev/null 2>&1 || return 2
+    command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
+  else
+    bash -n -c "$inner" >/dev/null 2>&1 || return 1
+  fi
+  words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
+  while IFS= read -r word; do
+    [[ -n "$word" ]] || continue
+    [[ "$word" == */* ]] && continue
+    __lmline_word_is_policy_skip "$word" && continue
+    if [[ "$inner_shell" == zsh ]]; then
+      command -v "$word" >/dev/null 2>&1 && continue
+      __lmline_word_available_in_zsh "$word" && continue
+      return 1
+    else
+      command -v "$word" >/dev/null 2>&1 || return 1
+    fi
+  done <<<"$words"
+  return 0
+}
+
 # Make an availability-only copy with case/function/static Zsh loop headers
 # removed, not bodies.
 # Definitions inside conditional (if), case-branch, loop or subshell bodies
@@ -1229,11 +1291,11 @@ __lmline_extract_literal_trap_words() {
 # Substitutions are checked recursively, including those inside quoted selectors.
 # The target shell's syntax-only parser finds their closing delimiter, so nested
 # substitutions and case-pattern ')' characters cannot truncate the check.
-# The literal-only mode collects literal eval/trap words without rewriting outer
+# The literal-only mode collects literal eval/trap/shell-c words without rewriting outer
 # syntax or broadening substitution checks; status 2 marks a recognized invalid literal.
 __lmline_case_command_copy() {
   local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} only_literal_evals=${5:-0} out="" substitutions=""
-  local name header remaining zsh_for_words eval_status trap_status
+  local name header remaining zsh_for_words eval_status trap_status shellc_status
   local function_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*(\([[:space:]]*\)[[:space:]]*)?\{([[:space:]]|$)'
   local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
   local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
@@ -1447,6 +1509,15 @@ __lmline_case_command_copy() {
           fi
           out+=$token
           command_start=0
+        elif (( command_start )) && [[ ( "$token" == bash || "$token" == zsh ) && -z "$name" ]]; then
+          if __lmline_extract_literal_shell_c_words "$token" "$remaining" "$functions"; then
+            :
+          else
+            shellc_status=$?
+            (( shellc_status == 2 )) || return 2
+          fi
+          out+=$token
+          command_start=0
         elif (( command_start )) && [[ "$token" == coproc ]]; then
           # A coprocess body runs asynchronously, so it is checked like any
           # other command: consume only the header and leave the body as a new
@@ -1653,9 +1724,9 @@ __lmline_extract_command_words() {
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
   if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" == *coproc* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
     cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
-  elif [[ "$cmd" == *eval* || "$cmd" == *trap* ]]; then
+  elif [[ "$cmd" == *eval* || "$cmd" == *trap* || "$cmd" == *bash* || "$cmd" == *zsh* ]]; then
     # Reuse token boundaries without rewriting the original simple-command
-    # path or checking substitutions in unsupported/dynamic eval/trap arguments.
+    # path or checking substitutions in unsupported/dynamic eval/trap/shell-c arguments.
     # Unsupported outer syntax remains subject to the existing extractor.
     if eval_copy=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions" 1); then
       cmd+=$eval_copy
