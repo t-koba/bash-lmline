@@ -610,6 +610,14 @@ The engine filters candidates before printing them:
 - deduplicated
 - truncated to `LMLINE_MAX_CANDIDATE_BYTES` when needed
 
+Availability checking also recognizes a plain `eval` command with exactly one
+single-quoted literal argument, for example `eval 'printf ok'`. Its contents are
+parsed with the target shell's syntax-only mode and checked for available command
+words; validation never executes the text or its substitutions. Dynamic arguments
+and unsupported forms (including double quotes, concatenation, multiple arguments,
+options, wrappers, and redirections) retain their existing availability behavior.
+This is conservative recognition, not a complete shell interpreter or sandbox.
+
 Each accepted candidate is classified with the configured `risk_patterns.tsv`
 and structural pipe-to-shell, interactive history expansion, unresolved
 variable, capped brace, and recursive remove recognition. High-risk candidates are inserted as comments prefixed with

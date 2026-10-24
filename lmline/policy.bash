@@ -1169,6 +1169,29 @@ __lmline_risk_has_unresolved_var_command() {
   return 1
 }
 
+# Recognize only one plain single-quoted eval argument, with no concatenation,
+# extra arguments or redirections. Unsupported/dynamic forms remain opaque (2).
+# Single quotes need no decoding: their contents are passed only to syntax-only
+# parsing and the availability extractor, never to eval or an executing shell.
+__lmline_extract_literal_eval_words() {
+  local remaining=$1 shell=$2 functions=${3:-} inner
+  local literal="^[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)"$'\n'"])"
+  local comment_literal="^[[:blank:]]+'([^']*)'[[:blank:]]+#"
+  if [[ "$remaining" =~ $literal ]]; then
+    inner=${BASH_REMATCH[1]}
+  elif [[ "$remaining" =~ $comment_literal ]]; then
+    inner=${BASH_REMATCH[1]}
+  else
+    return 2
+  fi
+  if [[ "$shell" == zsh ]]; then
+    command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
+  else
+    bash -n -c "$inner" >/dev/null 2>&1 || return 1
+  fi
+  __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
+}
+
 # Make an availability-only copy with case/function/static Zsh loop headers
 # removed, not bodies.
 # Definitions inside conditional (if), case-branch, loop or subshell bodies
@@ -1178,9 +1201,11 @@ __lmline_risk_has_unresolved_var_command() {
 # Substitutions are checked recursively, including those inside quoted selectors.
 # The target shell's syntax-only parser finds their closing delimiter, so nested
 # substitutions and case-pattern ')' characters cannot truncate the check.
+# The eval-only mode collects literal eval words without rewriting outer syntax
+# or broadening substitution checks; status 2 marks a recognized invalid literal.
 __lmline_case_command_copy() {
-  local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} out="" substitutions=""
-  local name header remaining zsh_for_words
+  local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} only_literal_evals=${5:-0} out="" substitutions=""
+  local name header remaining zsh_for_words eval_status
   local function_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*(\([[:space:]]*\)[[:space:]]*)?\{([[:space:]]|$)'
   local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
   local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
@@ -1257,6 +1282,12 @@ __lmline_case_command_copy() {
               end=$((end + 1))
             done
             (( end < ${#cmd} )) || return 1
+            if (( only_literal_evals )); then
+              # An eval-only scan must not broaden checking of dynamic or
+              # unsupported outer arguments. Their substitutions stay opaque.
+              i=$((end + 1))
+              continue
+            fi
             if [[ ${fragment:0:3} == '$((' ]]; then
               inner=${fragment:3:${#fragment}-5}
               words=$(__lmline_case_command_copy "$inner" "$shell" 1 "$functions") || return 1
@@ -1365,6 +1396,17 @@ __lmline_case_command_copy() {
           zsh_repeat_count_pending=1
           zsh_unscoped_loop_seen=1
           out+=' '
+          command_start=0
+        elif (( command_start )) && [[ "$token" == eval && -z "$name" && $'\n'"$functions"$'\n' != *$'\n'eval$'\n'* ]]; then
+          if words=$(__lmline_extract_literal_eval_words "$remaining" "$shell" "$functions"); then
+            while IFS= read -r word; do
+              [[ -z "$word" ]] || substitutions+="; $word "
+            done <<<"$words"
+          else
+            eval_status=$?
+            (( eval_status == 2 )) || return 2
+          fi
+          out+=$token
           command_start=0
         elif (( command_start )) && [[ "$token" == coproc ]]; then
           # A coprocess body runs asynchronously, so it is checked like any
@@ -1556,7 +1598,7 @@ __lmline_case_command_copy() {
   (( depth == 0 && brace_depth == 0 && zsh_repeat_count_pending == 0 )) || return 1
   (( ${#scope_saved[@]} == 0 )) || return 1
   (( if_pending == 0 && elif_pending == 0 )) || return 1
-  if (( only_substitutions )); then
+  if (( only_substitutions || only_literal_evals )); then
     printf '%s' "$substitutions"
   else
     printf '%s%s' "$out" "$substitutions"
@@ -1564,7 +1606,7 @@ __lmline_case_command_copy() {
 }
 
 __lmline_extract_command_words() {
-  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0
+  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0 eval_copy eval_status
   local function_definition='[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\([[:space:]]*\)'
   local coproc_compound_keywords='!|if|for|while|until|case|select|time|function|coproc'
   [[ "$shell" != zsh ]] || coproc_compound_keywords+='|repeat'
@@ -1572,6 +1614,16 @@ __lmline_extract_command_words() {
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
   if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" == *coproc* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
     cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
+  elif [[ "$cmd" == *eval* ]]; then
+    # Reuse token boundaries without rewriting the original simple-command
+    # path or checking substitutions in unsupported/dynamic eval arguments.
+    # Unsupported outer syntax remains subject to the existing extractor.
+    if eval_copy=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions" 1); then
+      cmd+=$eval_copy
+    else
+      eval_status=$?
+      (( eval_status != 2 )) || return 1
+    fi
   fi
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
   # Strip them only from this availability-check copy; other policy checks
