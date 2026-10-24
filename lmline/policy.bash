@@ -1192,6 +1192,34 @@ __lmline_extract_literal_eval_words() {
   __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
 }
 
+# Recognize only one plain single-quoted trap action followed by at least one
+# signal word, with no options, concatenation or wrappers. Unsupported/dynamic
+# forms (including double quotes, missing signals and option/wrapper positions)
+# remain opaque (2). Single quotes need no decoding: their contents are passed
+# only to syntax-only parsing and the availability extractor, never to an
+# executing shell.
+__lmline_extract_literal_trap_words() {
+  local remaining=$1 shell=$2 functions=${3:-} inner rest after
+  local prefix="^[[:blank:]]+'([^']*)'"
+  [[ "$remaining" =~ $prefix ]] || return 2
+  inner=${BASH_REMATCH[1]}
+  rest=${remaining:${#BASH_REMATCH[0]}}
+  [[ "$rest" =~ ^[[:blank:]]+([^[:blank:]]) ]] || return 2
+  after=${BASH_REMATCH[1]}
+  case "$after" in
+    ';'|'|'|'&'|'('|')'|'#'|'<'|'>') return 2 ;;
+  esac
+  if [[ "$inner" =~ ^[[:blank:]]*(-)?[[:blank:]]*$ ]]; then
+    return 0
+  fi
+  if [[ "$shell" == zsh ]]; then
+    command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
+  else
+    bash -n -c "$inner" >/dev/null 2>&1 || return 1
+  fi
+  __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
+}
+
 # Make an availability-only copy with case/function/static Zsh loop headers
 # removed, not bodies.
 # Definitions inside conditional (if), case-branch, loop or subshell bodies
@@ -1201,11 +1229,11 @@ __lmline_extract_literal_eval_words() {
 # Substitutions are checked recursively, including those inside quoted selectors.
 # The target shell's syntax-only parser finds their closing delimiter, so nested
 # substitutions and case-pattern ')' characters cannot truncate the check.
-# The eval-only mode collects literal eval words without rewriting outer syntax
-# or broadening substitution checks; status 2 marks a recognized invalid literal.
+# The literal-only mode collects literal eval/trap words without rewriting outer
+# syntax or broadening substitution checks; status 2 marks a recognized invalid literal.
 __lmline_case_command_copy() {
   local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} only_literal_evals=${5:-0} out="" substitutions=""
-  local name header remaining zsh_for_words eval_status
+  local name header remaining zsh_for_words eval_status trap_status
   local function_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*(\([[:space:]]*\)[[:space:]]*)?\{([[:space:]]|$)'
   local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
   local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
@@ -1405,6 +1433,17 @@ __lmline_case_command_copy() {
           else
             eval_status=$?
             (( eval_status == 2 )) || return 2
+          fi
+          out+=$token
+          command_start=0
+        elif (( command_start )) && [[ "$token" == trap && -z "$name" && $'\n'"$functions"$'\n' != *$'\n'trap$'\n'* ]]; then
+          if words=$(__lmline_extract_literal_trap_words "$remaining" "$shell" "$functions"); then
+            while IFS= read -r word; do
+              [[ -z "$word" ]] || substitutions+="; $word "
+            done <<<"$words"
+          else
+            trap_status=$?
+            (( trap_status == 2 )) || return 2
           fi
           out+=$token
           command_start=0
@@ -1614,9 +1653,9 @@ __lmline_extract_command_words() {
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
   if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" == *coproc* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
     cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
-  elif [[ "$cmd" == *eval* ]]; then
+  elif [[ "$cmd" == *eval* || "$cmd" == *trap* ]]; then
     # Reuse token boundaries without rewriting the original simple-command
-    # path or checking substitutions in unsupported/dynamic eval arguments.
+    # path or checking substitutions in unsupported/dynamic eval/trap arguments.
     # Unsupported outer syntax remains subject to the existing extractor.
     if eval_copy=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions" 1); then
       cmd+=$eval_copy

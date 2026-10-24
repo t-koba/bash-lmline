@@ -618,6 +618,15 @@ and unsupported forms (including double quotes, concatenation, multiple argument
 options, wrappers, and redirections) retain their existing availability behavior.
 This is conservative recognition, not a complete shell interpreter or sandbox.
 
+Availability checking also recognizes a plain `trap` command with exactly one
+single-quoted literal action followed by signal specification(s), for example
+`trap 'printf ok' EXIT`. Its contents are parsed with the target shell's
+syntax-only mode and checked for available command words; validation never
+executes the text or its substitutions. Dynamic actions and unsupported forms
+(including double quotes, concatenation, missing signals, options, wrappers, and
+non-command positions) retain their existing availability behavior. This is
+conservative recognition, not a complete shell interpreter or sandbox.
+
 Each accepted candidate is classified with the configured `risk_patterns.tsv`
 and structural pipe-to-shell, interactive history expansion, unresolved
 variable, capped brace, and recursive remove recognition. High-risk candidates are inserted as comments prefixed with
