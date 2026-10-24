@@ -236,6 +236,9 @@ bash -c '
     zsh_glob_candidate="printf %s *.txt(N)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_glob_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_glob_candidate" zsh) == printf ]]
+    zsh_qualifier_pipe_candidate="ls *(e:echo hi|cat:)"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_qualifier_pipe_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_qualifier_pipe_candidate" zsh) == ls ]]
     zsh_stacked_candidate="ls *(N)(.)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_stacked_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_stacked_candidate" zsh) == ls ]]

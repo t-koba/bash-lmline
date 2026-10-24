@@ -189,7 +189,15 @@ __lmline_split_pipeline() {
         quote=$ch
         (( keep_quoted )) && stripped+=$ch
         ;;
-      '|'|';'|'&') stripped+=$'\n' ;;
+      '|'|';'|'&')
+        # Inside an open zsh glob qualifier a separator is part of the word
+        # (*(e:echo hi|cat:) is one glob), so it does not split there.
+        if [[ "$syntax_shell" == zsh ]] && (( zsh_glob_qualifier_depth > 0 )); then
+          stripped+=$ch
+        else
+          stripped+=$'\n'
+        fi
+        ;;
       *)
         if [[ -n "$extra_seps" && "$extra_seps" == *"$ch"* ]]; then
           # A zsh glob qualifier is attached to a word; keep the qualifier
