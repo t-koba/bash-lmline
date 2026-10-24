@@ -158,17 +158,18 @@ __lmline_candidate_rejection_reason() {
   else
     bash -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
   fi
-  __lmline_reject_env_only_pipeline "$cmd" || { printf 'env-only-command-segment'; return 0; }
+  __lmline_reject_env_only_pipeline "$cmd" "$shell" || { printf 'env-only-command-segment'; return 0; }
   __lmline_reject_directory_file_operands "$cmd" || { printf 'directory-file-operand'; return 0; }
   __lmline_validate_commands_available "$cmd" "$shell" || { printf 'command-not-found'; return 0; }
   printf 'ok'
 }
 
 __lmline_split_pipeline() {
-  local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash}
-  local stripped="" i ch quote="" prev="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
+  local stripped="" i ch next quote="" prev="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   for ((i = 0; i < ${#cmd}; i++)); do
     ch=${cmd:i:1}
+    next=${cmd:i+1:1}
     prior_zsh_qualifier_close=$zsh_qualifier_just_closed
     zsh_qualifier_just_closed=0
     if [[ -n "$quote" ]]; then
@@ -194,6 +195,30 @@ __lmline_split_pipeline() {
         # (*(e:echo hi|cat:) is one glob), so it does not split there.
         if [[ "$syntax_shell" == zsh ]] && (( zsh_glob_qualifier_depth > 0 )); then
           stripped+=$ch
+        elif [[ "$split_mode" == env-pipeline ]]; then
+          case "$ch" in
+            '|')
+              if [[ "$next" == '|' ]]; then
+                # || is a list operator, not a pipeline member boundary.
+                stripped+=$'\001'
+                i=$((i + 1))
+              else
+                # |& is still a pipeline operator.
+                stripped+=$'\n'
+                [[ "$next" == '&' ]] && i=$((i + 1))
+              fi
+              ;;
+            ';') stripped+=$'\001' ;;
+            '&')
+              if [[ "$prev" == '>' || "$next" == '>' ]]; then
+                # Preserve redirections such as >&2 and &>file.
+                stripped+=$ch
+              else
+                stripped+=$'\001'
+                [[ "$next" == '&' ]] && i=$((i + 1))
+              fi
+              ;;
+          esac
         else
           stripped+=$'\n'
         fi
@@ -239,20 +264,60 @@ __lmline_split_pipeline() {
   printf '%s\n' "$stripped"
 }
 
+__lmline_segment_is_assignment_only() {
+  local segment=$1 token saw_assignment=0
+  local -a words
+  read -r -a words <<<"$segment"
+  for token in "${words[@]}"; do
+    case "$token" in
+      [A-Za-z_]*=*) saw_assignment=1 ;;
+      *) return 1 ;;
+    esac
+  done
+  (( saw_assignment == 1 ))
+}
+
 __lmline_reject_env_only_pipeline() {
-  local cmd=$1 stripped segment token saw_non_assignment
-  stripped=$(__lmline_split_pipeline "$cmd" 0)
+  local cmd=$1 syntax_shell=${2:-bash} stripped segment rest list_part i last_list_part has_command
+  local -a pipeline_segments list_segments
+  stripped=$(__lmline_split_pipeline "$cmd" 0 "" "$syntax_shell" env-pipeline)
 
   while IFS= read -r segment; do
-    saw_non_assignment=0
-    for token in $segment; do
-      case "$token" in
-        [A-Za-z_]*=*) continue ;;
-        *) saw_non_assignment=1; break ;;
-      esac
-    done
-    [[ -z "${segment//[[:space:]]/}" || $saw_non_assignment -eq 1 ]] || return 1
+    pipeline_segments+=("$segment")
   done <<<"$stripped"
+  if ((${#pipeline_segments[@]} == 1)); then
+    rest=${pipeline_segments[0]}
+    has_command=0
+    while [[ "$rest" == *$'\001'* ]]; do
+      list_part=${rest%%$'\001'*}
+      __lmline_segment_is_assignment_only "$list_part" || has_command=1
+      rest=${rest#*$'\001'}
+    done
+    __lmline_segment_is_assignment_only "$rest" || has_command=1
+    ((has_command == 1)) || return 1
+    return 0
+  fi
+
+  for ((i = 0; i < ${#pipeline_segments[@]}; i++)); do
+    rest=${pipeline_segments[i]}
+    list_segments=()
+    while [[ "$rest" == *$'\001'* ]]; do
+      list_part=${rest%%$'\001'*}
+      list_segments+=("$list_part")
+      rest=${rest#*$'\001'}
+    done
+    list_segments+=("$rest")
+    last_list_part=${list_segments[$((${#list_segments[@]} - 1))]}
+
+    # Only the command immediately next to a pipe belongs to that pipeline.
+    # Earlier/later list commands may be assignment-only statements.
+    if ((i > 0)) && __lmline_segment_is_assignment_only "${list_segments[0]}"; then
+      return 1
+    fi
+    if ((i < ${#pipeline_segments[@]} - 1)) && __lmline_segment_is_assignment_only "$last_list_part"; then
+      return 1
+    fi
+  done
   return 0
 }
 

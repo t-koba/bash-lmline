@@ -219,11 +219,24 @@ bash -c '
   __lmline_validate_candidate "curl -s '\''https://api.example.com/data'\'' | jq -r '\''.data.value'\''"
   [[ $(__lmline_candidate_rejection_reason "curl https://weather.invalid/current?key=YOUR_API_KEY") == "ok" ]]
   [[ $(__lmline_candidate_rejection_reason "printf hi | FOO=bar") == "env-only-command-segment" ]]
+  [[ $(__lmline_candidate_rejection_reason "FOO=bar") == "env-only-command-segment" ]]
+  [[ $(__lmline_candidate_rejection_reason "FOO=bar | printf ok") == "env-only-command-segment" ]]
+  [[ $(__lmline_candidate_rejection_reason "FOO=bar; printf hi | FOO=bar") == "env-only-command-segment" ]]
+  [[ $(__lmline_candidate_rejection_reason "printf hi | FOO=bar; printf ok") == "env-only-command-segment" ]]
+  [[ $(__lmline_candidate_rejection_reason "FOO=bar; printf hi | cat") == "ok" ]]
+  for list_op in ";" "&&" "||"; do
+    [[ $(__lmline_candidate_rejection_reason "FOO=bar $list_op printf ok" rewrite bash) == "ok" ]]
+  done
+  [[ $(__lmline_candidate_rejection_reason "FOO=bar; lmline_missing_command_for_policy_test" rewrite bash) == "command-not-found" ]]
   [[ $(__lmline_candidate_rejection_reason "wc $1") == "directory-file-operand" ]]
   [[ $(__lmline_candidate_rejection_reason "## captured" fix) == "fix-heading" ]]
   [[ $(__lmline_candidate_rejection_reason "exit_status=2" fix) == "fix-status" ]]
   if command -v zsh >/dev/null 2>&1; then
     [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite zsh) == "ok" ]]
+    for list_op in ";" "&&" "||"; do
+      [[ $(__lmline_candidate_rejection_reason "FOO=bar $list_op print -r -- hello" rewrite zsh) == "ok" ]]
+    done
+    [[ $(__lmline_candidate_rejection_reason "FOO=bar | print -r -- hello" rewrite zsh) == "env-only-command-segment" ]]
     [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite bash) == "command-not-found" ]]
     [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite) == "command-not-found" ]]
     [[ $(__lmline_candidate_rejection_reason "definitely-not-a-command-for-lmline" rewrite zsh) == "command-not-found" ]]
