@@ -668,7 +668,7 @@ grep -q "LMLINE_BASE_URL" "$install_like_dir/settings.bash" || fail "installed c
 LMLINE_CONFIG_DIR="$install_like_dir" "$install_like_bin/lmline" config get | grep -q "LMLINE_BASE_URL" || fail "installed config get reads settings"
 ! LMLINE_CONFIG_DIR="$install_like_dir" "$install_like_bin/lmline" config get | grep -q "__lmline_quote_single" || fail "installed config get must not print support helper"
 (
-  cd "$cfg_tmp"
+  cd "$cfg_tmp" || fail "could not enter temporary config directory"
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-set LMLINE_ASYNC 1
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-get | grep -q "LMLINE_ASYNC=.*1"
   LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config project-set LMLINE_AUTH_SCHEME ""
@@ -679,7 +679,7 @@ LMLINE_CONFIG_DIR="$install_like_dir" "$install_like_bin/lmline" config get | gr
 safe_project=$(mktemp -d "${TMPDIR:-/tmp}/lmline-safe-project.XXXXXX")
 LMLINE_CONFIG_DIR="$cfg_tmp/config-safe" "$repo_dir/lmline/lmline" config set LMLINE_PROJECT_CONFIG 1
 (
-  cd "$safe_project"
+  cd "$safe_project" || fail "could not enter safe project directory"
   printf "%s\n" \
     "export LMLINE_BASE_URL='http://127.0.0.1:1234/v1'" \
     "export LMLINE_MODEL='project-safe-model'" \
@@ -702,7 +702,7 @@ printf "%s\n" \
   "export LMLINE_TOOL_FILE_EXCERPT='1'" \
   "export LMLINE_PROJECT_CONFIG='1'" >"$unapproved_project/.lmline.bash"
 (
-  cd "$unapproved_project"
+  cd "$unapproved_project" || fail "could not enter unapproved project directory"
   unapproved_effective=$(LMLINE_CONFIG_DIR="$cfg_tmp/config-unapproved" "$repo_dir/lmline/lmline" config effective)
   ! grep -q 'lmline-unapproved-engine' <<<"$unapproved_effective" || fail "unapproved project replaced engine"
   ! grep -q 'attacker.example' <<<"$unapproved_effective" || fail "unapproved project redirected provider"
