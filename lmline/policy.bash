@@ -1341,11 +1341,16 @@ __lmline_case_command_copy() {
   local -a declaration_names=() declaration_children=()
   local pending_installers="" installer_called=0 selected_installer=0 child_id
   local direct_start=1 was_direct_start installer_idx installer_loop_pending=0
+  local removal_mode="" removal_wrapper=0 removal_word removal_pattern removal_scope
+  local removal_background_pending=0 removal_background_functions=""
   while (( i < ${#cmd} )); do
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
       out+=$ch
       if [[ "$ch" == $'\n' ]]; then
+        removal_mode=""
+        removal_wrapper=0
+        removal_background_pending=0
         closed_brace_pending=0
         command_start=1
         direct_start=1
@@ -1509,6 +1514,7 @@ __lmline_case_command_copy() {
         # Consuming the header (including its opening brace) leaves every body
         # command visible. Names are local to this scan, not installed in a shell;
         # recursive substitution scans inherit them but cannot add names here.
+        # Headers win over removal words so `unset`/`unfunction` can be defined.
         name=""
         remaining=${cmd:i}
         if (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_prefix ]]; then
@@ -1527,6 +1533,89 @@ __lmline_case_command_copy() {
           header=${BASH_REMATCH[0]}
           name=$token
         fi
+        # A deliberately small removal grammar, using the same lexical tokens
+        # as declarations: unset -f NAME..., unset -v ..., unfunction NAME....
+        # No expansion, option guessing, redirects or wrapped removals. Reject
+        # uncertain branch/loop contexts rather than restoring stale availability
+        # from their snapshots. Subshell/function and async-brace snapshots stay
+        # isolated; ordinary braces lose names. Non-direct list positions fail
+        # closed too, without reasoning about pipeline/and-or execution.
+        if [[ "$token" == '&' && $removal_background_pending == 1 ]] \
+          && (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
+          # A literal remover run asynchronously changes only its child shell.
+          functions=$removal_background_functions
+          removal_background_pending=0
+        fi
+        case "$token" in
+          ';'|'|'|'&'|'&&'|'||'|'('|')'|'}')
+            removal_mode=""
+            removal_wrapper=0
+            removal_background_pending=0
+            ;;
+        esac
+        if [[ -n "$removal_mode" ]]; then
+          case "$removal_mode" in
+            option)
+              case "$token" in
+                -f)
+                  removal_mode=names
+                  removal_background_functions=$functions
+                  removal_background_pending=1
+                  ;;
+                -v) removal_mode=variables ;;
+                *) return 1 ;;
+              esac
+              ;;
+            names|variables)
+              [[ "$token" =~ $function_name ]] || return 1
+              if [[ "$removal_mode" == names ]]; then
+                (( if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0 && zsh_unscoped_loop_seen == 0 )) || return 1
+                for removal_scope in "${scope_kind[@]}"; do
+                  [[ "$removal_scope" == subshell ]] || return 1
+                done
+                removal_pattern=$'\n'"$token"$'\n'
+                while [[ $'\n'"$functions"$'\n' == *"$removal_pattern"* ]]; do
+                  functions=$'\n'"$functions"$'\n'
+                  functions=${functions//"$removal_pattern"/$'\n'}
+                done
+              fi
+              ;;
+          esac
+        else
+          # Strip quote/escape characters only to detect unsupported literal
+          # spellings and fail closed, never to expand a candidate word.
+          removal_word=${token//\\/}
+          removal_word=${removal_word//\"/}
+          removal_word=${removal_word//\'/}
+          if [[ "$removal_word" == unset || ( "$shell" == zsh && "$removal_word" == unfunction ) ]] \
+            && (( command_start || removal_wrapper )) && [[ -z "$name" ]]; then
+            # A candidate-defined function shadows the builtin remover: the
+            # call is an ordinary known-function call, not a removal. An
+            # explicit wrapper still fails closed below.
+            if (( ! removal_wrapper )) && [[ $'\n'"$functions"$'\n' == *$'\n'"$removal_word"$'\n'* ]]; then
+              :
+            else
+              (( command_start && was_direct_start && ! removal_wrapper )) || return 1
+              [[ "$token" == "$removal_word" ]] || return 1
+              if [[ "$token" != unfunction ]]; then
+                removal_mode=option
+              else
+                removal_mode=names
+                removal_background_functions=$functions
+                removal_background_pending=1
+              fi
+            fi
+          fi
+        fi
+        # Track only potential wrapper/assignment command positions, not ordinary
+        # arguments such as `printf unset`. A removal behind a wrapper fails closed.
+        if (( command_start )); then
+          case "$removal_word" in
+            builtin|command|env|exec|sudo|time|'!') removal_wrapper=1 ;;
+            *=*) removal_wrapper=1 ;;
+          esac
+        fi
+
         # The existing scope stack starts at then/do, not at the condition.
         # Never infer an installation in a condition/header. Count only loop
         # headers here; if/elif already have pending counters below.

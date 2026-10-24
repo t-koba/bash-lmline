@@ -230,5 +230,92 @@ for target in bash zsh; do
   check_function "$target" "until true; $installer; lmline_outer; do printf ok; done; lmline_inner" command-not-found
   check_function "$target" "if { $installer; lmline_outer; }; then printf ok; fi; lmline_inner" command-not-found
   check_function "$target" "while { $installer; lmline_outer; }; do printf ok; done; lmline_inner" command-not-found
+  # Removal is tokenized but never run, and must remove every duplicate binding.
+  probe='lmline_removed() { printf ok; }'
+  other='lmline_retained() { printf ok; }'
+  # Both removal builtins get the same scope/operand coverage on Zsh below.
+  removal_forms=('unset -f')
+  [[ "$target" != zsh ]] || removal_forms+=('unfunction')
+  for removal in "${removal_forms[@]}"; do
+    check_function "$target" "$probe; $removal lmline_removed; lmline_removed" command-not-found
+    check_function "$target" "$probe; $probe; $removal lmline_removed; lmline_removed" command-not-found
+    check_function "$target" "$probe; $other; $removal lmline_removed; lmline_retained" ok
+    check_function "$target" "$probe; $other; lmline_third() { printf ok; }; $removal lmline_removed lmline_retained; lmline_third" ok
+    check_function "$target" "$probe; $other; $removal lmline_removed lmline_retained; lmline_retained" command-not-found
+    check_function "$target" "$probe; $other; $removal lmline_removed lmline_retained; lmline_removed" command-not-found
+    check_function "$target" "$probe; $removal lmline_removed & lmline_removed" ok
+    check_function "$target" "$probe; $removal lmline_removed; $probe; lmline_removed" ok
+    simple_installer='lmline_outer() { lmline_inner() { printf ok; }; }'
+    chain_installer='lmline_outer() { lmline_middle() { lmline_inner() { printf ok; }; }; }'
+    check_function "$target" "$simple_installer; lmline_outer; $removal lmline_inner; lmline_inner" command-not-found
+    check_function "$target" "$chain_installer; lmline_outer; lmline_middle; $removal lmline_inner; lmline_inner" command-not-found
+    for operand in '"$lmline_dynamic"' '"lmline_removed"' '-- lmline_removed' 'lmline_*' 'lmline_removed >/dev/null'; do
+      check_function "$target" "$probe; $removal $operand; lmline_removed" command-not-found
+    done
+    for wrapper in builtin command 'command --' env 'X=1' time '"builtin"' '\builtin'; do
+      check_function "$target" "$probe; $wrapper $removal lmline_removed; lmline_removed" command-not-found
+    done
+    for spelling in "'${removal%% *}'" "\\${removal%% *}"; do
+      suffix=${removal#"${removal%% *}"}
+      check_function "$target" "$probe; $spelling$suffix lmline_removed; lmline_removed" command-not-found
+    done
+    # Uncertain scopes fail closed rather than resurrecting entry snapshots.
+    for scope in "if true; then $removal lmline_removed; fi" \
+      "if false; then printf ok; else $removal lmline_removed; fi" \
+      "if false; then printf ok; elif true; then $removal lmline_removed; fi" \
+      "case x in x) $removal lmline_removed;; esac" \
+      "for i in 1; do $removal lmline_removed; done" \
+      "while false; do $removal lmline_removed; done" \
+      "until true; do $removal lmline_removed; done" \
+      "if $removal lmline_removed; then printf ok; fi" \
+      "while $removal lmline_removed; do printf ok; done" \
+      "{ $removal lmline_removed; }" \
+      "{ { $removal lmline_removed; }; }" \
+      "true && $removal lmline_removed" "false || $removal lmline_removed" \
+      "$removal lmline_removed && true" "$removal lmline_removed || true" \
+      "$removal lmline_removed | cat" "printf ok | $removal lmline_removed"; do
+      check_function "$target" "$probe; $scope; lmline_removed" command-not-found
+    done
+    # Isolated scans cannot delete the parent's binding. Ordinary braces run
+    # here; background braces and subshells do not. Calls inside still see removal.
+    check_function "$target" "$probe; ( $removal lmline_removed ); lmline_removed" ok
+    check_function "$target" "$probe; ( $removal lmline_removed; lmline_removed )" command-not-found
+    check_function "$target" "$probe; lmline_holder() { $removal lmline_removed; }; lmline_removed" ok
+    check_function "$target" "$probe; lmline_holder() { $removal lmline_removed; lmline_removed; }" command-not-found
+    check_function "$target" "$probe; { $removal lmline_removed; } & lmline_removed" ok
+    check_function "$target" "$probe; { $removal lmline_removed; lmline_removed; } & printf ok" command-not-found
+    check_function "$target" "$probe; if true; then ( $removal lmline_removed ); fi; lmline_removed" command-not-found
+    marker=$function_tmp/$target-removal-executed
+    check_function "$target" "$probe; $removal lmline_removed; touch '$marker'; lmline_removed" command-not-found
+    check_function "$target" "$probe; $removal \"\$(touch '$marker')\"; lmline_removed" command-not-found
+    [[ ! -e "$marker" ]] || fail "$target removal policy executed candidate text"
+  done
+  check_function "$target" "$probe; unset -v lmline_removed; lmline_removed" ok
+  check_function "$target" "$probe; if true; then unset -v lmline_removed; fi; lmline_removed" ok
+  check_function "$target" "$probe; printf unset; lmline_removed" ok
+  check_function "$target" "$probe; unset -v -f lmline_removed; lmline_removed" command-not-found
+  # Headers win over removal words, and a candidate function shadowing the
+  # remover name makes its calls ordinary calls, never removals. Wrappers
+  # stay fail-closed. All fixtures are syntax-only, never executed.
+  for header in 'unset()' 'function unset'; do
+    check_function "$target" "$header { printf ok; }; unset" ok
+  done
+  check_function "$target" 'lmline_probe() { printf ok; }; unset() { printf ok; }; unset -f lmline_probe; lmline_probe' ok
+  check_function "$target" 'lmline_probe() { printf ok; }; function unset { printf ok; }; unset -f lmline_probe; lmline_probe' ok
+  check_function "$target" 'lmline_probe() { printf ok; }; unset() { printf ok; }; unset -f lmline_probe; unset' ok
+  check_function "$target" 'lmline_probe() { printf ok; }; unset() { printf ok; }; builtin unset -f lmline_probe; lmline_probe' command-not-found
+  check_function "$target" 'lmline_probe() { printf ok; }; unset() { printf ok; }; command unset -f lmline_probe; lmline_probe' command-not-found
+  if [[ "$target" == zsh ]]; then
+    for header in 'unfunction()' 'function unfunction'; do
+      check_function "$target" "$header { printf ok; }; unfunction" ok
+    done
+    check_function "$target" 'lmline_probe() { printf ok; }; unfunction() { printf ok; }; unfunction lmline_probe; lmline_probe' ok
+    check_function "$target" 'lmline_probe() { printf ok; }; function unfunction { printf ok; }; unfunction lmline_probe; lmline_probe' ok
+    check_function "$target" 'lmline_probe() { printf ok; }; unfunction() { printf ok; }; builtin unfunction lmline_probe; lmline_probe' command-not-found
+  fi
+  marker=$function_tmp/$target-shadow-executed
+  check_function "$target" "unset() { touch '$marker'; }; unset" ok
+  check_function "$target" "lmline_probe() { printf ok; }; unset() { touch '$marker'; }; unset -f lmline_probe; lmline_probe" ok
+  [[ ! -e "$marker" ]] || fail "$target shadowed remover executed candidate text"
   ok "$target function definitions and later calls are checked without execution"
 done

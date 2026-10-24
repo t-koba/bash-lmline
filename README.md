@@ -610,6 +610,20 @@ The engine filters candidates before printing them:
 - deduplicated
 - truncated to `LMLINE_MAX_CANDIDATE_BYTES` when needed
 
+For candidate-defined functions, availability checking tracks direct literal
+`unset -f NAME...` (Bash/Zsh) and `unfunction NAME...` (Zsh), where each `NAME` is
+an unquoted identifier (`[a-zA-Z_][a-zA-Z0-9_]*`). Removal forgets every matching
+binding, preserves unrelated names, and permits later explicit redefinition.
+`unset -v NAME...` only affects variables. Unsupported removal operands/options,
+quoting, redirections, and command-prefix wrappers fail closed. Removals in
+conditional branches, loop bodies/headers, and non-direct pipeline/and-or positions
+also fail closed rather than re-trusting a saved function binding. A remover
+terminated by a backgrounding operator does not invalidate the parent shell's
+availability. Ordinary braces share availability; subshells, function-definition
+bodies, and background braces keep their existing isolated snapshots. These are
+syntax-only availability rules,
+not interpretation of execution effects of arbitrary function calls.
+
 Availability checking also recognizes a plain `eval` command with exactly one
 single-quoted literal argument, for example `eval 'printf ok'`. Its contents are
 parsed with the target shell's syntax-only mode and checked for available command
