@@ -185,9 +185,29 @@ __lmline_split_pipeline() {
       prev=$ch
       continue
     fi
+    # Prefix inspection needs opaque quoted/escaped words, not their data:
+    # dropping a quoted command would expose its arguments as a false prefix.
+    # Keep this view local; other splitter callers retain their existing copy.
+    if [[ "$split_mode" == command-prefix ]]; then
+      if [[ "$ch" == '#' && ( -z "$prev" || "$prev" == [[:space:]\;\&\|\(\)] ) ]]; then
+        while (( i < ${#cmd} )) && [[ ${cmd:i:1} != $'\n' ]]; do
+          i=$((i + 1))
+        done
+        stripped+=$'\n'
+        prev=$'\n'
+        continue
+      fi
+      if [[ "$ch" == '\' ]]; then
+        stripped+=$'\001'
+        i=$((i + 1))
+        prev=$'\001'
+        continue
+      fi
+    fi
     case "$ch" in
       "'"|'"'|'`')
         quote=$ch
+        [[ "$split_mode" != command-prefix ]] || stripped+=$'\001'
         (( keep_quoted )) && stripped+=$ch
         ;;
       '|'|';'|'&')
@@ -2175,6 +2195,11 @@ __lmline_case_command_copy() {
 
 __lmline_extract_command_words() {
   local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0 eval_copy eval_status
+  # Nested literal scripts cannot use the direct-prefix lookup: their
+  # surrounding command/wrapper has a separate environment. Fail closed.
+  if (( scan_substitutions )) && __lmline_has_path_prefix "$cmd" "$shell"; then
+    return 1
+  fi
   local enable_query=0 disable_query=0
   # Bash documents these no-name forms as builtin-list queries; `-n NAME`
   # remains a mutating operation and is rejected below.
@@ -2306,10 +2331,105 @@ __lmline_words_available_in_bash() {
   command bash -c 'for _lmline_word in "$@"; do command -v "$_lmline_word" >/dev/null 2>&1 || exit 1; done' _ "$@"
 }
 
+# Inspect only command-prefix positions. The shared splitter hides quoted
+# data/comments but retains opaque word markers, so a quoted command still
+# ends its prefix. Lists restart inspection; wrappers use the same vocabulary
+# as command extraction. Detection does not imply support: the validator below
+# deliberately rejects PATH-bearing wrappers and lists.
+__lmline_has_path_prefix() {
+  local cmd=$1 shell=${2:-bash} segment token expect_redirection_operand
+  local -a tokens
+  [[ "$cmd" == *PATH=* || "$cmd" == *PATH+=* || ( "$shell" == zsh && ( "$cmd" == *path=* || "$cmd" == *path+=* ) ) ]] || return 1
+  while IFS= read -r segment; do
+    read -r -a tokens <<<"$segment"
+    expect_redirection_operand=0
+    for token in "${tokens[@]}"; do
+      if (( expect_redirection_operand )); then
+        expect_redirection_operand=0
+        continue
+      fi
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>)$ ]]; then
+        expect_redirection_operand=1
+        continue
+      fi
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>).+ ]]; then
+        continue
+      fi
+      case "$token" in
+        PATH=*|PATH+=*) return 0 ;;
+        path=*|path+=*) [[ "$shell" == zsh ]] && return 0 ;;
+        [A-Za-z_]*=*) continue ;;
+        -*) continue ;;
+        '{'|'}') continue ;;
+        for) break ;;
+      esac
+      __lmline_word_is_command_prefix "${token##*/}" && continue
+      break
+    done
+  done <<<"$(__lmline_split_pipeline "$cmd" 0 "()" "$shell" command-prefix)"
+  return 1
+}
+
+# Check one direct PATH-prefixed simple command using the extractor's words,
+# not a second token walk. The extractor intentionally discards assignment
+# values; this bounded raw-prefix match retains only the value needed for
+# lookup. Wrappers, compound syntax, extra assignments, quoted command names,
+# and nested code are unsupported here and fail closed. Quoted/expanded PATH
+# values are opaque: only a guaranteed builtin (or slash path) can use them.
+__lmline_validate_path_prefix() {
+  local cmd=$1 shell=$2 words=$3 value word literal=0 structure segment path_names=PATH
+  local -a structure_segments=()
+  [[ "$shell" != zsh ]] || path_names='PATH|path'
+  local prefix="^[[:blank:]]*(${path_names})(\\+)?=([^[:space:]]*)[[:blank:]]+([^[:space:]]+)"
+  # Reject compound/list syntax only when the quote-aware splitter sees it as
+  # structure. Delimiters in quoted arguments and comments are inert data.
+  structure=$(__lmline_split_pipeline "$cmd" 0 '(){}' "$shell" command-prefix)
+  while IFS= read -r segment; do
+    [[ -n "$segment" ]] || continue
+    structure_segments+=("$segment")
+  done <<<"$structure"
+  ((${#structure_segments[@]} == 1)) || return 1
+  [[ "$cmd" =~ $prefix ]] || return 1
+  value=${BASH_REMATCH[3]}
+  word=${BASH_REMATCH[4]}
+  [[ -z "${BASH_REMATCH[2]}" && "$value" =~ ^[A-Za-z0-9_/:.+@-]*$ ]] && literal=1
+  # The first extracted word must agree with the raw command position.
+  # Trailing comment text may contribute extra lexical words to the lossy
+  # extractor; the quote-aware structural view above already strips it.
+  [[ "${words%%$'\n'*}" == "$word" ]] || return 1
+  __lmline_word_is_command_prefix "$word" && return 1
+  __lmline_risk_is_runner "$word" && return 1
+  __lmline_word_is_shell "${word##*/}" && return 1
+  case "$word" in
+    eval|trap|source|.) return 1 ;;
+  esac
+  [[ "$word" == */* ]] && return 0
+  __lmline_word_available_under_path "$word" "$value" "$shell" "$literal"
+}
+
+# Resolve the probe shell before changing PATH. Candidate values stay data in
+# positional parameters; only builtin lookup runs, never the candidate word.
+# Set PATH inside the shell, since zsh restores a default on an empty inherited
+# PATH. An opaque value must not be evaluated: accept only a builtin instead.
+__lmline_word_available_under_path() {
+  local word=$1 path_value=$2 shell=${3:-bash} literal=${4:-1} bin
+  bin=$(type -P "$shell") || return 1
+  [[ "$bin" == */* ]] || return 1
+  if [[ "$shell" == zsh ]]; then
+    "$bin" -f -c 'if [[ "$3" == 1 ]]; then PATH="$1"; command -v "$2" >/dev/null 2>&1; else [[ $(whence -w "$2") == "$2: builtin" ]]; fi' _ "$path_value" "$word" "$literal"
+  else
+    "$bin" -c 'if [[ "$3" == 1 ]]; then PATH="$1"; command -v "$2" >/dev/null 2>&1; else [[ $(type -t -- "$2") == builtin ]]; fi' _ "$path_value" "$word" "$literal"
+  fi
+}
+
 __lmline_validate_commands_available() {
   local cmd=$1 shell=${2:-bash}
   local word words
   words=$(__lmline_extract_command_words "$cmd" "$shell") || return 1
+  if __lmline_has_path_prefix "$cmd" "$shell"; then
+    __lmline_validate_path_prefix "$cmd" "$shell" "$words"
+    return $?
+  fi
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
