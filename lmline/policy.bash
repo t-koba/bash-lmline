@@ -1187,6 +1187,9 @@ __lmline_case_command_copy() {
   local paren_signature='^[[:space:]]*\([[:space:]]*\)'
   local zsh_for_prefix='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(]'
   local zsh_for_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*[(](([^()]|[(][^()]*[)])*)[)]'
+  local coproc_compound_keywords='!|if|for|while|until|case|select|time|function|coproc'
+  [[ "$shell" != zsh ]] || coproc_compound_keywords+='|repeat'
+  local coproc_named_compound='^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(\{|\[|\()|^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]+('"$coproc_compound_keywords"')([[:space:];]|$)'
   local i=0 start ch next token quote end fragment inner words word scope_idx compound_end=0 previous_compound_end
   local zsh_unscoped_loop_seen=0 zsh_repeat_count_pending=0
   local depth=0 command_start=1 pattern_started=0 pattern_depth=0
@@ -1363,6 +1366,20 @@ __lmline_case_command_copy() {
           zsh_unscoped_loop_seen=1
           out+=' '
           command_start=0
+        elif (( command_start )) && [[ "$token" == coproc ]]; then
+          # A coprocess body runs asynchronously, so it is checked like any
+          # other command: consume only the header and leave the body as a new
+          # command boundary. A NAME names the coprocess and precedes only a
+          # compound body (`{ ...; }`, `( ... )`, `[[ ... ]]`, keyword bodies);
+          # a simple body has no NAME, so the next word is the command itself
+          # and stays visible. Never executes the body here.
+          out+='; '
+          command_start=1
+          if [[ "$remaining" =~ $coproc_named_compound ]]; then
+            [[ "$remaining" =~ ^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]* ]]
+            i=$((i + ${#BASH_REMATCH[0]}))
+            out+=' '
+          fi
         elif (( command_start )) && [[ "$shell" == zsh && "$token" == for && "$remaining" =~ $zsh_for_header ]]; then
           header=${BASH_REMATCH[0]}
           zsh_for_words=${BASH_REMATCH[2]}
@@ -1547,10 +1564,13 @@ __lmline_case_command_copy() {
 }
 
 __lmline_extract_command_words() {
-  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment
+  local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0
   local function_definition='[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\([[:space:]]*\)'
+  local coproc_compound_keywords='!|if|for|while|until|case|select|time|function|coproc'
+  [[ "$shell" != zsh ]] || coproc_compound_keywords+='|repeat'
+  local coproc_named_keywords='coproc[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]+('"$coproc_compound_keywords"')([[:space:];]|$)'
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
-  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
+  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" == *coproc* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
     cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
   fi
   # Flat ((...)) arithmetic groups are shell expressions, not command words.
@@ -1574,13 +1594,30 @@ __lmline_extract_command_words() {
   stripped=$(__lmline_split_pipeline "$cmd" 0 "()" "$shell")
 
   while IFS= read -r segment; do
+    coproc_skip_next=0
     for token in $segment; do
+      if (( coproc_skip_next )); then
+        coproc_skip_next=0
+        continue
+      fi
       [[ "$token" == *=* && "$token" != /* && "$token" != ./* && "$token" != ../* ]] && continue
       if [[ "$shell" == zsh && "$token" == repeat ]]; then
         # Supported repeat headers were removed by the syntax-aware copy.
         # Do not let an unsupported wrapper position mask its body by resolving
         # the reserved word itself as an available Zsh command.
         return 1
+      fi
+      if [[ "$token" == coproc ]]; then
+        # A header the syntax-aware copy did not consume (for example after
+        # `time` in Bash, which clears the command boundary). Skip it and any
+        # same-segment NAME so the body stays visible; cross-segment NAME
+        # forms were already consumed by the copy when at a boundary.
+        if [[ "$segment" =~ coproc[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(\{|\[|\() ]]; then
+          coproc_skip_next=1
+        elif [[ "$segment" =~ $coproc_named_keywords ]]; then
+          coproc_skip_next=1
+        fi
+        continue
       fi
       if [[ "$token" == for ]]; then
         # A static word-list loop header names an iteration variable and

@@ -327,6 +327,27 @@ bash -c '
     zsh_repeat_dynamic_count="repeat \$(definitely-not-a-command-for-lmline) print ok"
     command zsh -f -n -c "$zsh_repeat_dynamic_count"
     [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_dynamic_count" rewrite zsh) == command-not-found ]]
+    coproc_direct_candidate="coproc print ok"
+    command zsh -f -n -c "$coproc_direct_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_direct_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$coproc_direct_candidate" zsh) == print ]]
+    coproc_direct_missing="coproc definitely-not-a-command-for-lmline"
+    command zsh -f -n -c "$coproc_direct_missing"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_direct_missing" rewrite zsh) == command-not-found ]]
+    [[ $(__lmline_extract_command_words "$coproc_direct_missing" zsh) == definitely-not-a-command-for-lmline ]]
+    # A named brace body is Bash syntax; Zsh rejects it before availability.
+    [[ $(__lmline_candidate_rejection_reason "coproc worker { print ok; }" rewrite zsh) == shell-syntax ]]
+    coproc_subshell_candidate="coproc (print ok)"
+    command zsh -f -n -c "$coproc_subshell_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_subshell_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$coproc_subshell_candidate" zsh) == print ]]
+    coproc_subshell_missing="coproc (definitely-not-a-command-for-lmline)"
+    command zsh -f -n -c "$coproc_subshell_missing"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_subshell_missing" rewrite zsh) == command-not-found ]]
+    # A word named coproc that is only an argument must not manufacture a body.
+    coproc_data_candidate="print coproc definitely-not-a-command-for-lmline"
+    command zsh -f -n -c "$coproc_data_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_data_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_candidate_rejection_reason "$zsh_short_for_candidate" rewrite bash) == shell-syntax ]]
     # Loop-like data in comments or quoted arguments is not a loop header.
     zsh_short_for_comment="printf ok # for i (one two) definitely-not-a-command-for-lmline"
@@ -383,6 +404,15 @@ bash -c '
     command zsh -f -n -c "$zsh_repeat_nested_execution_candidate"
     [[ $(__lmline_candidate_rejection_reason "$zsh_repeat_nested_execution_candidate" rewrite zsh) == ok ]]
     [[ ! -e "$zsh_repeat_marker" ]]
+    coproc_marker=$syntax_tmp/coproc-executed
+    coproc_execution_candidate="coproc touch \"$coproc_marker\""
+    command zsh -f -n -c "$coproc_execution_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_execution_candidate" rewrite zsh) == ok ]]
+    [[ ! -e "$coproc_marker" ]]
+    coproc_subshell_execution_candidate="coproc (touch \"$coproc_marker\")"
+    command zsh -f -n -c "$coproc_subshell_execution_candidate"
+    [[ $(__lmline_candidate_rejection_reason "$coproc_subshell_execution_candidate" rewrite zsh) == ok ]]
+    [[ ! -e "$coproc_marker" ]]
     rm -rf "$syntax_tmp"
   fi
   bash_for_candidate="for f in *.txt; do printf \"%s\\n\" \"\$f\"; done"
@@ -390,6 +420,51 @@ bash -c '
   [[ $(__lmline_extract_command_words "$bash_for_candidate" bash) == printf ]]
   bash_for_missing_body="for f in *.txt; do definitely-not-a-command-for-lmline; done"
   [[ $(__lmline_candidate_rejection_reason "$bash_for_missing_body" rewrite bash) == command-not-found ]]
+  bash_coproc_direct="coproc printf ok"
+  bash -n -c "$bash_coproc_direct"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_direct" rewrite bash) == ok ]]
+  [[ $(__lmline_extract_command_words "$bash_coproc_direct" bash) == printf ]]
+  bash_coproc_missing="coproc definitely-not-a-command-for-lmline"
+  bash -n -c "$bash_coproc_missing"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_missing" rewrite bash) == command-not-found ]]
+  [[ $(__lmline_extract_command_words "$bash_coproc_missing" bash) == definitely-not-a-command-for-lmline ]]
+  # repeat is an ordinary Bash command, not a compound-body keyword. A
+  # simple coprocess has no NAME, even when repeat itself is available.
+  repeat() { :; }
+  for bash_coproc_prefix in "" "time "; do
+    # time exercises fallback extraction as well as the syntax-aware copy.
+    bash_coproc_repeat="${bash_coproc_prefix}coproc worker repeat definitely-not-a-command-for-lmline"
+    bash -n -c "$bash_coproc_repeat"
+    [[ $(__lmline_candidate_rejection_reason "$bash_coproc_repeat" rewrite bash) == command-not-found ]]
+    [[ $(__lmline_extract_command_words "$bash_coproc_repeat" bash) == worker ]]
+  done
+  unset -f repeat
+  bash_coproc_named="coproc worker { printf ok; }"
+  bash -n -c "$bash_coproc_named"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_named" rewrite bash) == ok ]]
+  [[ $(__lmline_extract_command_words "$bash_coproc_named" bash | paste -sd, -) == "printf,}" ]]
+  bash_coproc_named_missing="coproc worker { definitely-not-a-command-for-lmline; }"
+  bash -n -c "$bash_coproc_named_missing"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_named_missing" rewrite bash) == command-not-found ]]
+  [[ $(__lmline_extract_command_words "$bash_coproc_named_missing" bash | paste -sd, -) == "definitely-not-a-command-for-lmline,}" ]]
+  bash_coproc_subshell="coproc (printf ok)"
+  bash -n -c "$bash_coproc_subshell"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_subshell" rewrite bash) == ok ]]
+  [[ $(__lmline_extract_command_words "$bash_coproc_subshell" bash) == printf ]]
+  bash_coproc_subshell_missing="coproc (definitely-not-a-command-for-lmline)"
+  bash -n -c "$bash_coproc_subshell_missing"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_subshell_missing" rewrite bash) == command-not-found ]]
+  bash_coproc_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-bash-coproc.XXXXXX")
+  bash_coproc_marker=$bash_coproc_tmp/coproc-executed
+  bash_coproc_execution_candidate="coproc touch \"$bash_coproc_marker\""
+  bash -n -c "$bash_coproc_execution_candidate"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_execution_candidate" rewrite bash) == ok ]]
+  [[ ! -e "$bash_coproc_marker" ]]
+  bash_coproc_named_execution_candidate="coproc worker { touch \"$bash_coproc_marker\"; }"
+  bash -n -c "$bash_coproc_named_execution_candidate"
+  [[ $(__lmline_candidate_rejection_reason "$bash_coproc_named_execution_candidate" rewrite bash) == ok ]]
+  [[ ! -e "$bash_coproc_marker" ]]
+  rm -rf "$bash_coproc_tmp"
   arithmetic_candidate="(( total = 1 + 2 ))"
   [[ $(__lmline_candidate_rejection_reason "$arithmetic_candidate" rewrite bash) == ok ]]
   [[ -z $(__lmline_extract_command_words "$arithmetic_candidate" bash) ]]
