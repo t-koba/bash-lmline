@@ -139,6 +139,30 @@ for target in bash zsh; do
   ok "$target literal shell-c availability and non-execution"
 done
 
+# Syntax-only: reject Bash command-position enable instead of interpreting
+# builtin state. Exact no-name builtin-list queries are exempt; wrappers and
+# literal shell-c/eval/trap bodies reuse the same command-word extraction.
+check_shellc bash 'enable -n read; read' command-not-found
+check_shellc bash 'enable -n read mapfile; read' command-not-found
+check_shellc bash 'builtin enable -n read; read' command-not-found
+check_shellc bash 'command enable -n read; read' command-not-found
+check_shellc bash "bash -c 'enable -n read; read'" command-not-found
+check_shellc bash "eval 'enable -n read; read'" command-not-found
+check_shellc bash "trap 'enable -n read; read' EXIT" command-not-found
+check_shellc bash 'enable -p' ok
+check_shellc bash 'enable -a' ok
+check_shellc bash 'enable -n' ok
+check_shellc bash 'enable -s' ok
+check_shellc bash 'enable -p; printf ok' command-not-found
+check_shellc bash 'enable -n $lmline_dynamic_name; read' command-not-found
+check_shellc bash 'enable -n read*; read' command-not-found
+check_shellc bash 'if true; then enable -n read; fi; read' command-not-found
+check_shellc bash "printf 'enable -n read'" ok
+check_shellc bash 'printf ok # enable -n read' ok
+command -v read >/dev/null 2>&1 || fail "builtin-disable validation executed candidate text"
+ok "bash builtin-disable availability and non-execution"
+
+
 if command -v zsh >/dev/null 2>&1; then
   # Check the inner text with the invoked shell, including its reserved syntax
   # and builtins, rather than assuming Bash's parser or command table.
