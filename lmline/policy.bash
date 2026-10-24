@@ -2287,6 +2287,15 @@ __lmline_extract_command_words() {
       token=${token#\"}; token=${token%\"}
       token=${token#\'}; token=${token%\'}
       token=${token#\`}; token=${token%\`}
+      # Bash hash options/operands can mutate remembered command paths. Keep
+      # only the unambiguous no-argument and `-l` listing queries; do not
+      # simulate the shell's mutable hash table.
+      if [[ "$shell" == bash && "$token" == hash ]]; then
+        case "$segment" in
+          hash|"hash -l") ;;
+          *) return 1 ;;
+        esac
+      fi
       # Bash enable and Zsh disable can change builtin availability. Fail
       # closed rather than interpreting state; only documented no-name queries
       # are safe. Literal eval/trap/shell-c scripts reuse this extractor.
