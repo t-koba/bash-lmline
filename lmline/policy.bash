@@ -1220,11 +1220,12 @@ __lmline_extract_literal_trap_words() {
   __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
 }
 
-# Recognize only direct `bash -c '...'` and `zsh -f -c '...'` with a single
-# statically single-quoted script argument and no other options, wrappers,
-# concatenation or trailing operands. Unsupported/dynamic forms remain opaque
-# (2). Single quotes need no decoding: their contents are passed only to
-# syntax-only parsing and the availability extractor, never to an executing
+# Recognize direct `bash [-euvx] -c '…'` and `zsh -f -c '…'` with a
+# single statically single-quoted script argument and no wrappers,
+# concatenation or trailing operands. Bash's no-argument -e, -u, -v and -x
+# flags may appear separately or clustered before -c; other options remain
+# opaque (2). Single quotes need no decoding: their contents are passed only
+# to syntax-only parsing and the availability extractor, never to an executing
 # shell. The script is parsed and checked with the invoked shell's parser and
 # command vocabulary, so a zsh-only builtin inside `zsh -f -c` is available
 # even when the outer candidate targets bash. Outer function definitions do
@@ -1232,8 +1233,8 @@ __lmline_extract_literal_trap_words() {
 # are handled by its own availability scan.
 __lmline_extract_literal_shell_c_words() {
   local token=$1 remaining=$2 functions=${3:-} inner inner_shell words word
-  local bash_literal="^[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)"$'\n'"])"
-  local bash_comment="^[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]+#"
+  local bash_literal="^([[:blank:]]+-[euvx]+)*[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)])"
+  local bash_comment="^([[:blank:]]+-[euvx]+)*[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]+#"
   local zsh_literal="^[[:blank:]]+-f[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)"$'\n'"])"
   local zsh_comment="^[[:blank:]]+-f[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]+#"
   if [[ $'\n'"$functions"$'\n' == *$'\n'"$token"$'\n'* ]]; then
@@ -1242,9 +1243,9 @@ __lmline_extract_literal_shell_c_words() {
   if [[ "$token" == bash ]]; then
     inner_shell=bash
     if [[ "$remaining" =~ $bash_literal ]]; then
-      inner=${BASH_REMATCH[1]}
+      inner=${BASH_REMATCH[2]}
     elif [[ "$remaining" =~ $bash_comment ]]; then
-      inner=${BASH_REMATCH[1]}
+      inner=${BASH_REMATCH[2]}
     else
       return 2
     fi

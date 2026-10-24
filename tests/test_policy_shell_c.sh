@@ -28,6 +28,9 @@ for target in bash zsh; do
   check_shellc "$target" "bash -c 'printf ok' # trailing comment" ok
   check_shellc "$target" "bash -c ''" ok
   check_shellc "$target" "bash -c 'definitely-not-a-command-for-lmline'" command-not-found
+  check_shellc "$target" "bash -x -c 'definitely-not-a-command-for-lmline'" command-not-found
+  check_shellc "$target" "bash -eu -c 'definitely-not-a-command-for-lmline'" command-not-found
+  check_shellc "$target" "bash -v -e -u -x -c 'printf ok'" ok
   check_shellc "$target" "bash -c 'definitely-not-a-command-for-lmline' # trailing comment" command-not-found
   check_shellc "$target" "bash -c 'printf ok | definitely-not-a-command-for-lmline'" command-not-found
   check_shellc "$target" "bash -c 'case x in x) printf ok;; esac'" ok
@@ -61,7 +64,7 @@ for target in bash zsh; do
   fi
 
   # Dynamic text, non-single-quoted forms, concatenation, extra operands,
-  # options, wrappers and redirects are deliberately outside this recognizer.
+  # unallowlisted options, wrappers and redirects remain outside this recognizer.
   for candidate in \
     'bash -c "$lmline_dynamic_text"' \
     'bash -c "$(lmline_missing_shellc)"' \
@@ -71,7 +74,7 @@ for target in bash zsh; do
     "bash -c 'lmline_missing_shellc' ''" \
     "bash -c 'lmline_missing_shellc' \"\$(lmline_missing_shellc)\"" \
     "bash -c 'lmline_missing_shellc' extra" \
-    "bash -x -c 'lmline_missing_shellc'" \
+    "bash -o pipefail -c 'lmline_missing_shellc'" \
     "bash -- -c 'lmline_missing_shellc'" \
     "command bash -c 'lmline_missing_shellc'" \
     "sudo bash -c 'lmline_missing_shellc'" \
@@ -99,6 +102,8 @@ for target in bash zsh; do
 
   marker=$shellc_tmp/$target-executed
   check_shellc "$target" "bash -c 'touch \"$marker\"; printf \"\$(touch \"$marker-substitution\")\"'" ok
+  check_shellc "$target" "bash -x -c 'touch \"$marker\"; printf \"\$(touch \"$marker-substitution\")\"'" ok
+  check_shellc "$target" "bash -e -c 'touch \"$marker\"; definitely-not-a-command-for-lmline'" command-not-found
   check_shellc "$target" "bash -c 'touch \"$marker\"; definitely-not-a-command-for-lmline'" command-not-found
   check_shellc "$target" "bash -c \"\$(touch '$marker-dynamic')\"" ok
   if command -v zsh >/dev/null 2>&1; then
