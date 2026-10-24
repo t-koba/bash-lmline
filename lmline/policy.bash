@@ -2175,10 +2175,12 @@ __lmline_case_command_copy() {
 
 __lmline_extract_command_words() {
   local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0 eval_copy eval_status
-  local enable_query=0
+  local enable_query=0 disable_query=0
   # Bash documents these no-name forms as builtin-list queries; `-n NAME`
   # remains a mutating operation and is rejected below.
   [[ "$cmd" =~ ^[[:space:]]*enable[[:space:]]+-(a|n|p|s)[[:space:]]*$ ]] && enable_query=1
+  # Zsh's no-argument `disable` lists disabled names without changing state.
+  [[ "$cmd" =~ ^[[:space:]]*disable[[:space:]]*$ ]] && disable_query=1
   local function_definition='[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\([[:space:]]*\)'
   local coproc_compound_keywords='!|if|for|while|until|case|select|time|function|coproc'
   [[ "$shell" != zsh ]] || coproc_compound_keywords+='|repeat'
@@ -2260,10 +2262,13 @@ __lmline_extract_command_words() {
       token=${token#\"}; token=${token%\"}
       token=${token#\'}; token=${token%\'}
       token=${token#\`}; token=${token%\`}
-      # Bash enable can change builtin availability. Fail closed rather than
-      # interpreting options or state; only the exact standalone query is safe.
-      # Literal eval/trap/shell-c scripts reuse this extractor with their shell.
+      # Bash enable and Zsh disable can change builtin availability. Fail
+      # closed rather than interpreting state; only documented no-name queries
+      # are safe. Literal eval/trap/shell-c scripts reuse this extractor.
       if [[ "$shell" == bash && "$token" == enable ]] && (( ! enable_query )); then
+        return 1
+      fi
+      if [[ "$shell" == zsh && "$token" == disable ]] && (( ! disable_query )); then
         return 1
       fi
       [[ -n "$token" && "$token" != '$'* ]] && printf '%s\n' "$token"

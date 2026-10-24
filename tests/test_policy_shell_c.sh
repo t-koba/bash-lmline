@@ -162,6 +162,27 @@ check_shellc bash 'printf ok # enable -n read' ok
 command -v read >/dev/null 2>&1 || fail "builtin-disable validation executed candidate text"
 ok "bash builtin-disable availability and non-execution"
 
+if command -v zsh >/dev/null 2>&1; then
+  # Syntax-only: Zsh `disable` affects builtin availability by default; its
+  # no-argument form only lists disabled names.
+  check_shellc zsh 'disable read; read' command-not-found
+  check_shellc zsh 'disable read printf; read' command-not-found
+  check_shellc zsh 'builtin disable read; read' command-not-found
+  check_shellc zsh 'command disable read; read' command-not-found
+  check_shellc bash "zsh -f -c 'disable read; read'" command-not-found
+  check_shellc zsh "eval 'disable read; read'" command-not-found
+  check_shellc zsh "trap 'disable read; read' EXIT" command-not-found
+  check_shellc zsh 'disable' ok
+  check_shellc zsh 'disable "$lmline_dynamic_name"; read' command-not-found
+  check_shellc zsh 'disable r*; read' command-not-found
+  check_shellc zsh 'if true; then disable read; fi; read' command-not-found
+  check_shellc zsh "printf 'disable read'" ok
+  check_shellc zsh 'printf ok # disable read' ok
+  marker=$shellc_tmp/zsh-disable-executed
+  check_shellc zsh "disable read; touch '$marker'; read" command-not-found
+  [[ ! -e "$marker" ]] || fail "Zsh builtin-disable validation executed candidate text"
+  ok "zsh builtin-disable availability and non-execution"
+fi
 
 if command -v zsh >/dev/null 2>&1; then
   # Check the inner text with the invoked shell, including its reserved syntax
