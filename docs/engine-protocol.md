@@ -16,7 +16,7 @@ engine --mode MODE --shell SHELL --cwd DIR --point N \
 | Argument | Meaning |
 | --- | --- |
 | `--mode` | `generate`, `rewrite`, `fix`, `explain`, or `clip` |
-| `--shell` | frontend shell name (`bash` or `zsh`); informational |
+| `--shell` | frontend shell name (`bash` or `zsh`); selects target-shell syntax validation and zsh command checks |
 | `--cwd` | caller working directory; included in the prompt only when `LMLINE_INCLUDE_CWD_CONTEXT` is enabled, and always included in the response-cache identity |
 | `--point` | cursor position in the line; informational, included only when `LMLINE_INCLUDE_EDITOR_CONTEXT` is enabled |
 | `--line-file` | file containing the user line (for `fix`: line plus captured execution report; for `clip`: question plus redacted clipboard text) |
@@ -63,9 +63,12 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
   the fourth and final field).
 
 Candidates are validated and deduplicated by the engine before emission.
-Validation rejects multiline text, control characters, invalid `bash -n`,
+Validation rejects multiline text, control characters, syntax invalid for the
+target shell (checked with `bash -n` or `zsh -f -n`),
 environment-assignment-only command segments, selected direct directory file
-operands, and command words unavailable in the target shell. Frontends only parse, display, and
+operands, and command words unavailable in the target shell. If the zsh syntax
+validator is unavailable, zsh candidates are rejected rather than checked with
+a different shell. Frontends only parse, display, and
 insert.
 
 ## Output: `explain` / `clip`

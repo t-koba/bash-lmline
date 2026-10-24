@@ -603,7 +603,7 @@ The engine filters candidates before printing them:
 
 - one line only
 - no control characters
-- valid `bash -n`
+- valid syntax for the target shell (`bash -n` or `zsh -f -n`)
 - no environment-assignment-only command segment
 - no direct directory operands for simple file readers such as `cat`
 - command words available locally, except words containing `/`, configured shell syntax words, and command prefixes (for zsh, its builtins count)

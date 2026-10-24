@@ -229,6 +229,16 @@ bash -c '
     [[ $(__lmline_candidate_rejection_reason "definitely-not-a-command-for-lmline" rewrite zsh) == "command-not-found" ]]
     __lmline_validate_candidate "print -r -- hello" rewrite zsh
     ! __lmline_validate_candidate "print -r -- hello" rewrite bash
+    # Zsh process substitution is valid shell syntax even though Bash rejects it.
+    zsh_candidate="cat =(printf hi)"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_candidate_rejection_reason "$zsh_candidate" rewrite bash) == shell-syntax ]]
+    # Syntax validation must parse, not execute, the command.
+    syntax_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-syntax.XXXXXX")
+    zsh_marker=$syntax_tmp/executed
+    [[ $(__lmline_candidate_rejection_reason "touch \"$zsh_marker\"" rewrite zsh) == ok ]]
+    [[ ! -e "$zsh_marker" ]]
+    rm -rf "$syntax_tmp"
   fi
   long_candidate=$(printf "printf %%s "; printf "a%.0s" {1..5000})
   [[ ${#long_candidate} -gt 4096 ]]
@@ -413,7 +423,7 @@ PATH="$nozsh_bin" bash -c '
   set -euo pipefail
   source "$1/lmline/policy.bash"
   command -v zsh >/dev/null 2>&1 && exit 3
-  [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite zsh) == "command-not-found" ]]
+  [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite zsh) == "shell-validator-unavailable" ]]
 ' _ "$repo_dir" || fail "zsh availability fails closed"
 rm -rf "$nozsh_bin"
 

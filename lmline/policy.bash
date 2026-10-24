@@ -152,7 +152,12 @@ __lmline_candidate_rejection_reason() {
     [[ "$cmd" != exit_status=* ]] || { printf 'fix-status'; return 0; }
   fi
   [[ "$cmd" == "# TRUNCATED: "* || "$cmd" == "# REVIEW REQUIRED: "* ]] && { printf 'ok'; return 0; }
-  bash -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
+  if [[ "$shell" == zsh ]]; then
+    command -v zsh >/dev/null 2>&1 || { printf 'shell-validator-unavailable'; return 0; }
+    command zsh -f -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
+  else
+    bash -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
+  fi
   __lmline_reject_env_only_pipeline "$cmd" || { printf 'env-only-command-segment'; return 0; }
   __lmline_reject_directory_file_operands "$cmd" || { printf 'directory-file-operand'; return 0; }
   __lmline_validate_commands_available "$cmd" "$shell" || { printf 'command-not-found'; return 0; }
