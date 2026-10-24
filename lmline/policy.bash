@@ -165,8 +165,8 @@ __lmline_candidate_rejection_reason() {
 }
 
 __lmline_split_pipeline() {
-  local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-}
-  local stripped="" i ch quote="" prev=""
+  local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash}
+  local stripped="" i ch quote="" prev="" zsh_glob_qualifier_depth=0
   for ((i = 0; i < ${#cmd}; i++)); do
     ch=${cmd:i:1}
     if [[ -n "$quote" ]]; then
@@ -187,10 +187,37 @@ __lmline_split_pipeline() {
         quote=$ch
         (( keep_quoted )) && stripped+=$ch
         ;;
-      '|'|';'|'&') stripped+=$'\n' ;;
+      '|'|';'|'&')
+        if [[ "$syntax_shell" == zsh ]] && (( zsh_glob_qualifier_depth > 0 )); then
+          stripped+=$ch
+        else
+          stripped+=$'\n'
+        fi
+        ;;
       *)
         if [[ -n "$extra_seps" && "$extra_seps" == *"$ch"* ]]; then
-          stripped+=$'\n'
+          if [[ "$syntax_shell" == zsh && "$ch" == '(' ]] && (( zsh_glob_qualifier_depth > 0 )); then
+            zsh_glob_qualifier_depth=$((zsh_glob_qualifier_depth + 1))
+            stripped+=$ch
+          elif [[ "$syntax_shell" == zsh && "$ch" == ')' ]] && (( zsh_glob_qualifier_depth > 0 )); then
+            zsh_glob_qualifier_depth=$((zsh_glob_qualifier_depth - 1))
+            stripped+=$ch
+          elif [[ "$syntax_shell" == zsh && "$ch" == '(' ]]; then
+            case "$prev" in
+              ''|[[:space:]]|'|'|';'|'&'|'('|')'|'$'|'<'|'>'|'='|'`')
+                stripped+=$'\n'
+                ;;
+              *)
+                # An attached pair is a zsh glob qualifier, even when its
+                # word has no wildcard; command/process substitutions begin
+                # with a distinct shell metacharacter handled above.
+                zsh_glob_qualifier_depth=1
+                stripped+=$ch
+                ;;
+            esac
+          else
+            stripped+=$'\n'
+          fi
         else
           stripped+=$ch
         fi
@@ -1067,10 +1094,12 @@ __lmline_risk_has_unresolved_var_command() {
 }
 
 __lmline_extract_command_words() {
-  local cmd=$1 stripped segment token
+  local cmd=$1 shell=${2:-bash} stripped segment token
   # A conservative lexical approximation: split at command separators and keep
   # the first simple command word after env assignments, negation, and builtins.
-  stripped=$(__lmline_split_pipeline "$cmd" 0 "()")
+  # For zsh, parentheses attached to a glob word are its glob qualifier, not a
+  # subshell boundary; the splitter preserves those pairs for this check only.
+  stripped=$(__lmline_split_pipeline "$cmd" 0 "()" "$shell")
 
   while IFS= read -r segment; do
     for token in $segment; do
@@ -1110,6 +1139,6 @@ __lmline_validate_commands_available() {
     command -v "$word" >/dev/null 2>&1 && continue
     [[ "$shell" == zsh ]] && __lmline_word_available_in_zsh "$word" && continue
     return 1
-  done < <(__lmline_extract_command_words "$cmd")
+  done < <(__lmline_extract_command_words "$cmd" "$shell")
   return 0
 }

@@ -233,6 +233,15 @@ bash -c '
     zsh_candidate="cat =(printf hi)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_candidate_rejection_reason "$zsh_candidate" rewrite bash) == shell-syntax ]]
+    zsh_glob_candidate="printf %s *.txt(N)"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_glob_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_glob_candidate" zsh) == printf ]]
+    [[ $(__lmline_extract_command_words "$zsh_glob_candidate" bash | paste -sd, -) == printf,N ]]
+    [[ $(__lmline_candidate_rejection_reason "$zsh_glob_candidate" rewrite bash) == shell-syntax ]]
+    subshell_candidate="(rm -rf /)"
+    command_sub_candidate="\$(date)"
+    [[ $(__lmline_extract_command_words "$subshell_candidate" zsh) == rm ]]
+    [[ $(__lmline_extract_command_words "$command_sub_candidate" zsh) == date ]]
     # Syntax validation must parse, not execute, the command.
     syntax_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-syntax.XXXXXX")
     zsh_marker=$syntax_tmp/executed
