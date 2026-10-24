@@ -1334,13 +1334,14 @@ __lmline_case_command_copy() {
   local -a state=(body) scope_saved=() scope_kind=() function_scope_saved=() function_scope_depth=()
   # Installer metadata shares the existing function-body stack. Only immediate
   # declarations are collected; their bodies still pass through every check.
-  local -a function_ids=() installer_pure=() installer_children=() remover_pure=() remover_targets=()
+  local -a function_ids=() installer_pure=() installer_children=() remover_pure=() remover_targets=() remover_scope_top_level=()
   # Immutable, scan-local summaries use declaration occurrence IDs, not names.
   # A child list retains declaration order so the last binding wins, including
   # a non-installer redefinition. Only the pending direct edge is callable.
   local -a declaration_names=() declaration_children=() declaration_removals=() declaration_unsafe=()
   local pending_installers="" installer_called=0 selected_installer=0 child_id
   local pending_remover="" remover_called=0 selected_remover=0 remover_scan_idx=0 remover_target=""
+  local pending_function_definition_id="" remover_redefinition_ambiguous=0
   local remover_top_level=0 remover_redefinition_unsafe=""
   local direct_start=1 was_direct_start installer_idx installer_loop_pending=0
   local removal_mode="" removal_wrapper=0 removal_word removal_pattern removal_scope
@@ -1357,6 +1358,7 @@ __lmline_case_command_copy() {
         remover_call_wrapper=0
         remover_call_bypass=0
         closed_brace_pending=0
+        pending_function_definition_id=""
         command_start=1
         direct_start=1
         if (( installer_called )); then
@@ -1514,6 +1516,30 @@ __lmline_case_command_copy() {
         esac
         ;;
       body)
+        if [[ -n "$pending_function_definition_id" ]]; then
+          case "$token" in
+            '&')
+              if (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
+                remover_redefinition_ambiguous=1
+              fi
+              ;;
+            '|'|'&&'|'||'|'('|')'|'}') remover_redefinition_ambiguous=1 ;;
+            ';'|';;'|';&'|';;&'|';|') pending_function_definition_id="" ;;
+          esac
+          if (( remover_redefinition_ambiguous )); then
+            for (( remover_scan_idx=pending_function_definition_id-1; remover_scan_idx>=0; remover_scan_idx-- )); do
+              if [[ "${declaration_names[remover_scan_idx]}" == "${declaration_names[pending_function_definition_id]}" ]]; then
+                if [[ -n "${declaration_removals[remover_scan_idx]}${declaration_unsafe[remover_scan_idx]}" ]] \
+                  && [[ -z "${declaration_removals[pending_function_definition_id]}" ]]; then
+                  declaration_unsafe[pending_function_definition_id]=1
+                fi
+                break
+              fi
+            done
+            pending_function_definition_id=""
+            remover_redefinition_ambiguous=0
+          fi
+        fi
         if (( closed_brace_pending )); then
           case "$token" in
             '&')
@@ -1810,6 +1836,13 @@ __lmline_case_command_copy() {
             else
               remover_pure[installer_idx]=0
             fi
+          elif (( function_scope_depth[installer_idx] < brace_depth )) \
+            && [[ "$removal_mode" == names && "$token" =~ $function_name ]]; then
+            # A removal nested in a function body's ordinary brace or subshell
+            # cannot be transferred as a pure summary, but the enclosing call
+            # must not restore and trust a binding that it may remove.
+            remover_pure[installer_idx]=0
+            remover_targets[installer_idx]+=" $token"
           fi
         fi
         if (( zsh_repeat_count_pending )); then
@@ -1935,6 +1968,7 @@ __lmline_case_command_copy() {
           installer_children+=("")
           remover_pure+=("$remover_top_level")
           remover_targets+=("")
+          remover_scope_top_level+=("$remover_top_level")
           direct_start=1
           i=$((i + ${#header}))
           out+='; '
@@ -2021,9 +2055,12 @@ __lmline_case_command_copy() {
                       declaration_removals[child_id]=""
                       declaration_unsafe[child_id]=1
                     fi
+                    if (( remover_scope_top_level[scope_idx] )); then
+                      pending_function_definition_id=${function_ids[scope_idx]}
+                    fi
                     unset "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
                     unset "function_ids[$scope_idx]" "installer_pure[$scope_idx]" "installer_children[$scope_idx]"
-                    unset "remover_pure[$scope_idx]" "remover_targets[$scope_idx]"
+                    unset "remover_pure[$scope_idx]" "remover_targets[$scope_idx]" "remover_scope_top_level[$scope_idx]"
                   fi
                 fi
                 brace_depth=$((brace_depth - 1))
