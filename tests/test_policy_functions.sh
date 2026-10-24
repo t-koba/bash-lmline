@@ -244,6 +244,8 @@ for target in bash zsh; do
     check_function "$target" "$probe; $other; $removal lmline_removed lmline_retained; lmline_retained" command-not-found
     check_function "$target" "$probe; $other; $removal lmline_removed lmline_retained; lmline_removed" command-not-found
     check_function "$target" "$probe; $removal lmline_removed & lmline_removed" ok
+    check_function "$target" "$probe; printf ok & unset -v lmline_dynamic; lmline_removed" ok
+    check_function "$target" "$probe; $other; printf ok & $removal lmline_retained; lmline_removed" ok
     check_function "$target" "$probe; $removal lmline_removed; $probe; lmline_removed" ok
     simple_installer='lmline_outer() { lmline_inner() { printf ok; }; }'
     chain_installer='lmline_outer() { lmline_middle() { lmline_inner() { printf ok; }; }; }'

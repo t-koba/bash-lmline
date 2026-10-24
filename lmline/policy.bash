@@ -1927,7 +1927,16 @@ __lmline_case_command_copy() {
     # Unlike command_start, this boundary is not preserved by !/time/while or
     # other prefixes. Both the declaration and call must be standalone.
     if (( command_start )); then
-      case "$token" in ';'|'{'|'('|')'|then|else|do) direct_start=1 ;; esac
+      case "$token" in
+        ';'|'{'|'('|')'|then|else|do) direct_start=1 ;;
+        '&')
+          # Only a list-terminating ampersand starts a new direct command;
+          # >& / <& / &> are redirections and must not widen inference.
+          if (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
+            direct_start=1
+          fi
+          ;;
+      esac
     fi
   done
   (( depth == 0 && brace_depth == 0 && zsh_repeat_count_pending == 0 )) || return 1
