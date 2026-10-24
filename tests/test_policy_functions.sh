@@ -111,7 +111,7 @@ for target in bash zsh; do
     check_function "$target" "$header { lmline_inner() { printf ok; }; function lmline_second { pwd; }; }; lmline_outer; lmline_inner; lmline_second" ok
     check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_inner" ok
     check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_grandchild" command-not-found
-    check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_inner; lmline_grandchild" command-not-found
+    check_function "$target" "$header { lmline_inner() { lmline_grandchild() { printf ok; }; }; }; lmline_outer; lmline_inner; lmline_grandchild" ok
     for statement in 'printf before' 'return' 'true'; do
       check_function "$target" "$header { $statement; lmline_inner() { printf ok; }; }; lmline_outer; lmline_inner" command-not-found
     done
@@ -120,6 +120,72 @@ for target in bash zsh; do
     marker=$function_tmp/$target-installer-executed
     check_function "$target" "$header { lmline_inner() { touch '$marker'; printf '%s' \"\$(touch '$marker')\"; }; }; lmline_outer; lmline_inner" ok
     [[ ! -e "$marker" ]] || fail "$target installer candidate executed during validation"
+  done
+  # Each explicit adjacent call advances exactly one declaration edge.
+  chain='lmline_outer() { lmline_middle() { lmline_inner() { printf ok; }; }; }'
+  sequence="$chain; lmline_outer; lmline_middle; lmline_inner"
+  check_function "$target" "$sequence" ok
+  check_function "$target" "$chain; lmline_outer; lmline_inner" command-not-found
+  check_function "$target" 'lmline_outer() { lmline_middle() { lmline_inner() { lmline_deepest() { printf ok; }; }; }; }; lmline_outer; lmline_middle; lmline_inner; lmline_deepest' ok
+  for call in 'lmline_middle arg' 'lmline_middle >/dev/null' 'LMLINE_TEST=1 lmline_middle' \
+    'time lmline_middle' 'command lmline_middle' 'env lmline_middle' \
+    'true && lmline_middle' 'false || lmline_middle' 'lmline_middle && true' \
+    'lmline_middle || true' 'lmline_middle | cat' 'printf ok | lmline_middle' \
+    'printf before; lmline_middle' 'unset -f lmline_middle; lmline_middle' \
+    'lmline_middle() { printf replacement; }; lmline_middle'; do
+    check_function "$target" "$chain; lmline_outer; $call; lmline_inner" command-not-found
+  done
+  check_function "$target" "$chain; lmline_outer; lmline_middle & lmline_inner" command-not-found
+  if [[ "$target" == bash ]]; then
+    check_function "$target" "$chain; lmline_outer; ! lmline_middle; lmline_inner" command-not-found
+  fi
+  # Resolve duplicate children by declaration occurrence: the last binding
+  # may be a different installer or no installer at all.
+  check_function "$target" 'lmline_outer() { lmline_middle() { lmline_inner() { printf ok; }; }; lmline_middle() { printf replacement; }; }; lmline_outer; lmline_middle; lmline_inner' command-not-found
+  check_function "$target" 'lmline_outer() { lmline_middle() { printf first; }; lmline_middle() { lmline_inner() { printf ok; }; }; }; lmline_outer; lmline_middle; lmline_inner' ok
+  replacement='lmline_outer() { lmline_middle() { lmline_stale() { printf old; }; }; lmline_middle() { lmline_inner() { printf ok; }; }; }'
+  check_function "$target" "$replacement; lmline_outer; lmline_middle; lmline_inner" ok
+  check_function "$target" "$replacement; lmline_outer; lmline_middle; lmline_stale" command-not-found
+  check_function "$target" 'lmline_outer() { lmline_middle() { lmline_inner() { lmline_missing_deepest_body; }; }; }; lmline_outer; lmline_middle; lmline_inner' command-not-found
+  marker=$function_tmp/$target-chain-executed
+  check_function "$target" "lmline_outer() { lmline_middle() { lmline_inner() { touch '$marker'; printf '%s' \"\$(touch '$marker')\"; }; }; }; lmline_outer; lmline_middle; lmline_inner" ok
+  [[ ! -e "$marker" ]] || fail "$target deepest candidate body executed during validation"
+  # A backgrounded ordinary brace group cannot install names in its parent;
+  # foreground groups still can. All candidates remain syntax-only fixtures.
+  check_function "$target" '{ lmline_probe() { printf ok; }; } & lmline_probe' command-not-found
+  check_function "$target" "{ $chain; lmline_outer; lmline_middle; } & lmline_inner" command-not-found
+  check_function "$target" '{ lmline_probe() { printf ok; }; }; lmline_probe' ok
+  check_function "$target" "{ $chain; lmline_outer; lmline_middle; }; lmline_inner" ok
+  # Restore exactly the entry availability, including names declared earlier,
+  # and keep independent snapshots for nested groups and function bodies.
+  check_function "$target" 'lmline_probe() { printf before; }; { lmline_probe() { printf after; }; } & lmline_probe' ok
+  check_function "$target" '{ { lmline_probe() { printf ok; }; }; } & lmline_probe' command-not-found
+  check_function "$target" '{ { lmline_probe() { printf ok; }; } & printf ok; }; lmline_probe' command-not-found
+  check_function "$target" 'lmline_caller() { { lmline_probe() { printf ok; }; }; lmline_probe; }; lmline_caller' ok
+  check_function "$target" 'lmline_caller() { { lmline_probe() { printf ok; }; } & lmline_probe; }; lmline_caller' command-not-found
+  # Redirection ampersands are not background operators. Trailing redirects
+  # must neither discard a foreground installation nor hide an async group.
+  for redirect in '>/dev/null' '&>/dev/null'; do
+    check_function "$target" "{ lmline_probe() { printf ok; }; } $redirect; lmline_probe" ok
+    check_function "$target" "{ $chain; lmline_outer; lmline_middle; } $redirect & lmline_inner" command-not-found
+  done
+  marker=$function_tmp/$target-async-group-executed
+  check_function "$target" "{ touch '$marker'; lmline_outer() { lmline_middle() { lmline_inner() { touch '$marker'; }; }; }; lmline_outer; lmline_middle; } & lmline_inner" command-not-found
+  [[ ! -e "$marker" ]] || fail "$target background group executed during validation"
+  # Pending edges cannot cross a scope boundary; completed chains install
+  # names only in that analysis scope, including recursive substitution scans.
+  for body in "if true; then $sequence; fi" "case x in x) $sequence;; esac" \
+    "for i in 1; do $sequence; done" "( $sequence )" \
+    "lmline_caller() { $sequence; }; lmline_caller" \
+    "printf '%s' \"\$($sequence)\""; do
+    check_function "$target" "$body" ok
+    check_function "$target" "$body; lmline_inner" command-not-found
+  done
+  for call in 'if true; then lmline_middle; fi' \
+    'for i in 1; do lmline_middle; done' '( lmline_middle )' \
+    'lmline_caller() { lmline_middle; }; lmline_caller' \
+    'printf "%s" "$(lmline_middle)"'; do
+    check_function "$target" "$chain; lmline_outer; $call; lmline_inner" command-not-found
   done
   installer='lmline_outer() { lmline_inner() { printf ok; }; }'
   # No arguments, redirects, prefixes, list operators or intervening commands.

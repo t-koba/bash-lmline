@@ -1326,22 +1326,34 @@ __lmline_case_command_copy() {
   # Brace bodies get independent list state, so ordinary pipelines inside a
   # function do not make an otherwise direct definition unavailable.
   local -a list_operator=(0) list_definition=(0) brace_definition=(0)
+  # Ordinary braces run in this shell unless their completed command is
+  # backgrounded. Retain the entry snapshot through any trailing redirects.
+  local -a brace_functions_saved=()
+  local closed_brace_pending=0 closed_brace_functions=""
+  local amp_is_redirect=0 next_amp_is_redirect=0
   local -a state=(body) scope_saved=() scope_kind=() function_scope_saved=() function_scope_depth=()
   # Installer metadata shares the existing function-body stack. Only immediate
   # declarations are collected; their bodies still pass through every check.
-  local -a function_names=() installer_pure=() installer_children=()
-  local pending_installer="" pending_children="" installer_called=0
+  local -a function_ids=() installer_pure=() installer_children=()
+  # Immutable, scan-local summaries use declaration occurrence IDs, not names.
+  # A child list retains declaration order so the last binding wins, including
+  # a non-installer redefinition. Only the pending direct edge is callable.
+  local -a declaration_names=() declaration_children=()
+  local pending_installers="" installer_called=0 selected_installer=0 child_id
   local direct_start=1 was_direct_start installer_idx installer_loop_pending=0
   while (( i < ${#cmd} )); do
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
       out+=$ch
       if [[ "$ch" == $'\n' ]]; then
+        closed_brace_pending=0
         command_start=1
         direct_start=1
         if (( installer_called )); then
-          functions+="$pending_children"
-          pending_installer=""
+          pending_installers=${declaration_children[selected_installer]}
+          for child_id in $pending_installers; do
+            functions+=$'\n'"${declaration_names[child_id]}"$'\n'
+          done
           installer_called=0
         fi
       fi
@@ -1357,6 +1369,8 @@ __lmline_case_command_copy() {
       continue
     fi
     start=$i
+    amp_is_redirect=$next_amp_is_redirect
+    next_amp_is_redirect=0
     case "$ch" in
       ';'|'|'|'&'|'('|')')
         token=$ch
@@ -1428,6 +1442,7 @@ __lmline_case_command_copy() {
           else
             case "$ch" in
               "'"|'"') quote=$ch ;;
+              '<'|'>') [[ "$next" != '&' ]] || next_amp_is_redirect=1 ;;
               [[:space:]]|';'|'|'|'&'|'('|')') break ;;
             esac
           fi
@@ -1478,6 +1493,18 @@ __lmline_case_command_copy() {
         esac
         ;;
       body)
+        if (( closed_brace_pending )); then
+          case "$token" in
+            '&')
+              # >& / <& and &> are redirections, not async terminators.
+              if (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
+                functions=$closed_brace_functions
+                closed_brace_pending=0
+              fi
+              ;;
+            ';'|';;'|';&'|';;&'|';|'|'&&'|'||'|'|'|'('|')') closed_brace_pending=0 ;;
+          esac
+        fi
         # Recognize only static, brace-bodied definitions at command boundaries.
         # Consuming the header (including its opening brace) leaves every body
         # command visible. Names are local to this scan, not installed in a shell;
@@ -1512,30 +1539,38 @@ __lmline_case_command_copy() {
         # Any token between declaration and call (or between call and its
         # terminator) cancels the transfer. This also prevents pending state
         # crossing a scope boundary, without interpreting any control flow.
-        if [[ -n "$pending_installer" ]]; then
+        if [[ -n "$pending_installers" ]]; then
           if [[ "$token" == ';' ]]; then
             if (( installer_called )); then
-              functions+="$pending_children"
-              pending_installer=""
+              pending_installers=${declaration_children[selected_installer]}
+              for child_id in $pending_installers; do
+                functions+=$'\n'"${declaration_names[child_id]}"$'\n'
+              done
               installer_called=0
             fi
           elif (( ! installer_called && command_start && was_direct_start )) \
-            && (( list_operator[brace_depth] == 0 )) \
-            && [[ -z "$name" && "$token" == "$pending_installer" ]]; then
-            installer_called=1
+            && (( list_operator[brace_depth] == 0 )) && [[ -z "$name" ]]; then
+            for child_id in $pending_installers; do
+              if [[ "$token" == "${declaration_names[child_id]}" ]]; then
+                selected_installer=$child_id
+                installer_called=1
+              fi
+            done
+            (( installer_called )) || pending_installers=""
           else
-            pending_installer=""
+            pending_installers=""
             installer_called=0
           fi
         fi
         # At the direct level of a function body, only named declarations and
         # their separators qualify. Commands, wrappers, redirects and control
-        # constructs disqualify the body; grandchildren are never collected.
+        # constructs disqualify the body. Child summaries advance only when
+        # their own immediate installer is explicitly called.
         if (( ${#function_scope_depth[@]} > 0 )); then
           installer_idx=$((${#function_scope_depth[@]} - 1))
           if (( function_scope_depth[installer_idx] == brace_depth )); then
             if [[ -n "$name" ]]; then
-              installer_children[installer_idx]+=$'\n'"$name"$'\n'
+              installer_children[installer_idx]+=" ${#declaration_names[@]}"
             elif [[ "$token" != ';' && "$token" != '}' ]]; then
               installer_pure[installer_idx]=0
             fi
@@ -1637,7 +1672,9 @@ __lmline_case_command_copy() {
           functions+=$'\n'"$name"$'\n'
           function_scope_saved+=("$functions")
           function_scope_depth+=("$brace_depth")
-          function_names+=("$name")
+          function_ids+=("${#declaration_names[@]}")
+          declaration_names+=("$name")
+          declaration_children+=("")
           installer_pure+=("$((was_direct_start && if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0))")
           installer_children+=("")
           direct_start=1
@@ -1686,23 +1723,31 @@ __lmline_case_command_copy() {
                 list_operator[brace_depth]=0
                 list_definition[brace_depth]=0
                 brace_definition[brace_depth]=0
+                brace_functions_saved[brace_depth]=$functions
               fi
               ;;
             '}')
               if (( command_start || previous_compound_end )); then
                 (( brace_depth > 0 )) || return 1
                 name=${brace_definition[brace_depth]}
+                closed_brace_pending=0
+                if [[ ${brace_functions_saved[brace_depth]+saved} ]]; then
+                  closed_brace_functions=${brace_functions_saved[brace_depth]}
+                  closed_brace_pending=1
+                  unset 'brace_functions_saved[brace_depth]'
+                fi
                 if (( ${#function_scope_depth[@]} > 0 )); then
                   scope_idx=$((${#function_scope_depth[@]} - 1))
                   if (( function_scope_depth[scope_idx] == brace_depth )); then
                     functions=${function_scope_saved[scope_idx]}
                     if (( installer_pure[scope_idx] )) && [[ -n "${installer_children[scope_idx]}" ]]; then
-                      pending_installer=${function_names[scope_idx]}
-                      pending_children=${installer_children[scope_idx]}
+                      child_id=${function_ids[scope_idx]}
+                      declaration_children[child_id]=${installer_children[scope_idx]}
+                      pending_installers=$child_id
                       installer_called=0
                     fi
                     unset "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
-                    unset "function_names[$scope_idx]" "installer_pure[$scope_idx]" "installer_children[$scope_idx]"
+                    unset "function_ids[$scope_idx]" "installer_pure[$scope_idx]" "installer_children[$scope_idx]"
                   fi
                 fi
                 brace_depth=$((brace_depth - 1))
