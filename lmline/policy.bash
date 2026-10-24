@@ -1334,15 +1334,18 @@ __lmline_case_command_copy() {
   local -a state=(body) scope_saved=() scope_kind=() function_scope_saved=() function_scope_depth=()
   # Installer metadata shares the existing function-body stack. Only immediate
   # declarations are collected; their bodies still pass through every check.
-  local -a function_ids=() installer_pure=() installer_children=()
+  local -a function_ids=() installer_pure=() installer_children=() remover_pure=() remover_targets=()
   # Immutable, scan-local summaries use declaration occurrence IDs, not names.
   # A child list retains declaration order so the last binding wins, including
   # a non-installer redefinition. Only the pending direct edge is callable.
-  local -a declaration_names=() declaration_children=()
+  local -a declaration_names=() declaration_children=() declaration_removals=() declaration_unsafe=()
   local pending_installers="" installer_called=0 selected_installer=0 child_id
+  local pending_remover="" remover_called=0 selected_remover=0 remover_scan_idx=0 remover_target=""
+  local remover_top_level=0 remover_redefinition_unsafe=""
   local direct_start=1 was_direct_start installer_idx installer_loop_pending=0
   local removal_mode="" removal_wrapper=0 removal_word removal_pattern removal_scope
   local removal_background_pending=0 removal_background_functions=""
+  local remover_call_wrapper=0 remover_call_bypass=0
   while (( i < ${#cmd} )); do
     ch=${cmd:i:1}
     if [[ "$ch" == [[:space:]] ]]; then
@@ -1351,6 +1354,8 @@ __lmline_case_command_copy() {
         removal_mode=""
         removal_wrapper=0
         removal_background_pending=0
+        remover_call_wrapper=0
+        remover_call_bypass=0
         closed_brace_pending=0
         command_start=1
         direct_start=1
@@ -1360,6 +1365,17 @@ __lmline_case_command_copy() {
             functions+=$'\n'"${declaration_names[child_id]}"$'\n'
           done
           installer_called=0
+        fi
+        if (( remover_called )); then
+          for remover_target in ${declaration_removals[selected_remover]}; do
+            removal_pattern=$'\n'"$remover_target"$'\n'
+            while [[ $'\n'"$functions"$'\n' == *"$removal_pattern"* ]]; do
+              functions=$'\n'"$functions"$'\n'
+              functions=${functions//"$removal_pattern"/$'\n'}
+            done
+          done
+          pending_remover=""
+          remover_called=0
         fi
       fi
       i=$((i + 1))
@@ -1615,6 +1631,29 @@ __lmline_case_command_copy() {
             *=*) removal_wrapper=1 ;;
           esac
         fi
+        # Track a command behind wrappers/assignments for remover calls too.
+        # `time remover` and `X=1 remover` still run the function and must fail
+        # closed, while `command`/`builtin`/`env` bypass functions and leave the
+        # parent availability unchanged. Only the first word after the wrapper
+        # chain is a command; later words are arguments and stay unchecked here.
+        case "$token" in
+          ';'|'|'|'&'|'&&'|'||'|'('|')'|'}') remover_call_wrapper=0; remover_call_bypass=0 ;;
+        esac
+        if (( command_start )) && [[ -z "$name" ]]; then
+          case "$removal_word" in
+            builtin|command|env)
+              remover_call_wrapper=1
+              if [[ $'\n'"$functions"$'\n' == *$'\n'"$removal_word"$'\n'* ]]; then
+                # A candidate-defined function shadows the bypass builtin.
+                remover_call_bypass=0
+              else
+                remover_call_bypass=1
+              fi
+              ;;
+            exec|sudo|time|'!') remover_call_wrapper=1; remover_call_bypass=0 ;;
+            *=*) remover_call_wrapper=1; remover_call_bypass=0 ;;
+          esac
+        fi
 
         # The existing scope stack starts at then/do, not at the condition.
         # Never infer an installation in a condition/header. Count only loop
@@ -1651,6 +1690,96 @@ __lmline_case_command_copy() {
             installer_called=0
           fi
         fi
+        # Remover edges transfer only across the immediately adjacent bare
+        # direct call, like installers. A bare call with trailing words,
+        # redirections, list operators or backgrounding before its terminator
+        # fails closed, except for a list-terminating background ampersand
+        # which runs the remover in a child shell and leaves the parent
+        # availability unchanged.
+        if [[ -n "$pending_remover" ]]; then
+          if [[ "$token" == ';' ]]; then
+            if (( remover_called )); then
+              for remover_target in ${declaration_removals[selected_remover]}; do
+                removal_pattern=$'\n'"$remover_target"$'\n'
+                while [[ $'\n'"$functions"$'\n' == *"$removal_pattern"* ]]; do
+                  functions=$'\n'"$functions"$'\n'
+                  functions=${functions//"$removal_pattern"/$'\n'}
+                done
+              done
+              pending_remover=""
+              remover_called=0
+            fi
+          elif (( ! remover_called && command_start && was_direct_start )) \
+            && (( list_operator[brace_depth] == 0 )) && [[ -z "$name" ]]; then
+            if [[ "$token" == "${declaration_names[pending_remover]}" ]]; then
+              selected_remover=$pending_remover
+              remover_called=1
+            else
+              pending_remover=""
+              remover_called=0
+            fi
+          else
+            if (( remover_called )); then
+              if [[ "$token" == '&' ]] && (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
+                pending_remover=""
+                remover_called=0
+              else
+                return 1
+              fi
+            else
+              if [[ -z "$name" && "$token" == "${declaration_names[pending_remover]}" ]]; then
+                return 1
+              fi
+              pending_remover=""
+              remover_called=0
+            fi
+          fi
+        fi
+        # A command-position call to a recognized remover outside its adjacent
+        # top-level edge (including conditions and and/or lists) fails closed: the body would run in the parent shell and remove its
+        # targets, which the adjacent-only transfer did not model. Definitions
+        # are never calls, and arguments behind ordinary commands stay data.
+        # Wrapper-bypassed names (`command`/`builtin`/`env`) never run the
+        # function, so they stay unchecked; other wrappers still fail closed.
+        if [[ -z "$pending_remover" ]] && [[ -z "$name" ]]; then
+          if (( command_start )); then
+            for (( remover_scan_idx=${#declaration_names[@]}-1; remover_scan_idx>=0; remover_scan_idx-- )); do
+              if [[ "${declaration_names[remover_scan_idx]}" == "$token" ]]; then
+                if [[ -n "${declaration_removals[remover_scan_idx]}" ]] || [[ -n "${declaration_unsafe[remover_scan_idx]}" ]]; then
+                  return 1
+                fi
+                break
+              fi
+            done
+          elif (( remover_call_wrapper )) && (( ! remover_call_bypass )); then
+            case "$token" in
+              builtin|command|env|exec|sudo|time|'!') : ;;
+              --) : ;;
+              *=*) : ;;
+              *)
+                if [[ "$token" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+                  for (( remover_scan_idx=${#declaration_names[@]}-1; remover_scan_idx>=0; remover_scan_idx-- )); do
+                    if [[ "${declaration_names[remover_scan_idx]}" == "$token" ]]; then
+                      if [[ -n "${declaration_removals[remover_scan_idx]}" ]] || [[ -n "${declaration_unsafe[remover_scan_idx]}" ]]; then
+                        return 1
+                      fi
+                      break
+                    fi
+                  done
+                  remover_call_wrapper=0
+                  remover_call_bypass=0
+                fi
+                ;;
+            esac
+          elif (( remover_call_wrapper )) && (( remover_call_bypass )); then
+            case "$token" in
+              builtin|command|env|exec|sudo|time|'!') : ;;
+              --) : ;;
+              *=*) : ;;
+              *) remover_call_wrapper=0; remover_call_bypass=0 ;;
+            esac
+          fi
+        fi
         # At the direct level of a function body, only named declarations and
         # their separators qualify. Commands, wrappers, redirects and control
         # constructs disqualify the body. Child summaries advance only when
@@ -1662,6 +1791,24 @@ __lmline_case_command_copy() {
               installer_children[installer_idx]+=" ${#declaration_names[@]}"
             elif [[ "$token" != ';' && "$token" != '}' ]]; then
               installer_pure[installer_idx]=0
+            fi
+            # A body-local pure remover holds only supported literal function
+            # removals and their separators. Any declaration or other command
+            # disqualifies the body; targets are collected occurrence-bound.
+            if [[ -n "$name" ]]; then
+              remover_pure[installer_idx]=0
+            elif [[ "$token" == ';' || "$token" == '}' ]]; then
+              :
+            elif [[ "$token" == unset && "$removal_mode" == option ]]; then
+              :
+            elif [[ "$token" == unfunction && "$shell" == zsh && "$removal_mode" == names ]]; then
+              :
+            elif [[ "$token" == -f && "$removal_mode" == names ]]; then
+              :
+            elif [[ "$removal_mode" == names && "$token" =~ $function_name ]]; then
+              remover_targets[installer_idx]+=" $token"
+            else
+              remover_pure[installer_idx]=0
             fi
           fi
         fi
@@ -1758,14 +1905,36 @@ __lmline_case_command_copy() {
           list_operator[brace_depth]=0
           list_definition[brace_depth]=0
           brace_definition[brace_depth]=0
+          # Only an unconditional top-level declaration can offer a removal
+          # edge. Nested/scoped bodies still collect targets so their calls
+          # fail closed instead of losing effects on snapshot restoration.
+          remover_top_level=$((was_direct_start && brace_depth == 1 && ${#function_scope_depth[@]} == 0 && ${#scope_saved[@]} == 0 && depth == 0 && if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0))
+          remover_redefinition_unsafe=""
+          if (( ! remover_top_level )); then
+            # A nested/scoped benign definition is not proof that a previous
+            # remover binding was replaced. Do not let its lexical occurrence
+            # mask that binding in the fail-closed lookup below.
+            for (( remover_scan_idx=${#declaration_names[@]}-1; remover_scan_idx>=0; remover_scan_idx-- )); do
+              if [[ "${declaration_names[remover_scan_idx]}" == "$name" ]]; then
+                if [[ -n "${declaration_removals[remover_scan_idx]}${declaration_unsafe[remover_scan_idx]}" ]]; then
+                  remover_redefinition_unsafe=1
+                fi
+                break
+              fi
+            done
+          fi
           functions+=$'\n'"$name"$'\n'
           function_scope_saved+=("$functions")
           function_scope_depth+=("$brace_depth")
           function_ids+=("${#declaration_names[@]}")
           declaration_names+=("$name")
           declaration_children+=("")
+          declaration_removals+=("")
+          declaration_unsafe+=("$remover_redefinition_unsafe")
           installer_pure+=("$((was_direct_start && if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0))")
           installer_children+=("")
+          remover_pure+=("$remover_top_level")
+          remover_targets+=("")
           direct_start=1
           i=$((i + ${#header}))
           out+='; '
@@ -1834,9 +2003,27 @@ __lmline_case_command_copy() {
                       declaration_children[child_id]=${installer_children[scope_idx]}
                       pending_installers=$child_id
                       installer_called=0
+                      pending_remover=""
+                      remover_called=0
+                    elif (( remover_pure[scope_idx] )) && [[ -n "${remover_targets[scope_idx]}" ]]; then
+                      child_id=${function_ids[scope_idx]}
+                      declaration_removals[child_id]=${remover_targets[scope_idx]}
+                      declaration_unsafe[child_id]=""
+                      pending_remover=$child_id
+                      remover_called=0
+                      pending_installers=""
+                      installer_called=0
+                    elif [[ -n "${remover_targets[scope_idx]//[[:space:]]/}" ]]; then
+                      # An impure body that still holds a direct literal removal
+                      # would run that removal when called. It never transfers;
+                      # any call to it must fail closed.
+                      child_id=${function_ids[scope_idx]}
+                      declaration_removals[child_id]=""
+                      declaration_unsafe[child_id]=1
                     fi
                     unset "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
                     unset "function_ids[$scope_idx]" "installer_pure[$scope_idx]" "installer_children[$scope_idx]"
+                    unset "remover_pure[$scope_idx]" "remover_targets[$scope_idx]"
                   fi
                 fi
                 brace_depth=$((brace_depth - 1))

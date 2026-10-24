@@ -244,6 +244,7 @@ for target in bash zsh; do
     check_function "$target" "$probe; $other; $removal lmline_removed lmline_retained; lmline_retained" command-not-found
     check_function "$target" "$probe; $other; $removal lmline_removed lmline_retained; lmline_removed" command-not-found
     check_function "$target" "$probe; $removal lmline_removed & lmline_removed" ok
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; command() { \"\$@\"; }; command lmline_remove; lmline_probe" command-not-found
     check_function "$target" "$probe; printf ok & unset -v lmline_dynamic; lmline_removed" ok
     check_function "$target" "$probe; $other; printf ok & $removal lmline_retained; lmline_removed" ok
     check_function "$target" "$probe; $removal lmline_removed; $probe; lmline_removed" ok
@@ -315,6 +316,44 @@ for target in bash zsh; do
     check_function "$target" 'lmline_probe() { printf ok; }; function unfunction { printf ok; }; unfunction lmline_probe; lmline_probe' ok
     check_function "$target" 'lmline_probe() { printf ok; }; unfunction() { printf ok; }; builtin unfunction lmline_probe; lmline_probe' command-not-found
   fi
+  # A body-local pure remover transfers only across the immediately adjacent
+  # bare direct call of that exact declaration. Uncalled bodies never affect
+  # outer availability, and a benign same-name redefinition never inherits a
+  # stale summary. All fixtures are syntax-only, never executed.
+  remover_forms=('unset -f')
+  [[ "$target" != zsh ]] || remover_forms+=('unfunction')
+  for removal in "${remover_forms[@]}"; do
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_other() { printf ok; }; lmline_retained() { printf ok; }; lmline_remove() { $removal lmline_probe lmline_other; }; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_other() { printf ok; }; lmline_retained() { printf ok; }; lmline_remove() { $removal lmline_probe lmline_other; }; lmline_remove; lmline_other" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_other() { printf ok; }; lmline_retained() { printf ok; }; lmline_remove() { $removal lmline_probe lmline_other; }; lmline_remove; lmline_retained" ok
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_probe" ok
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_remove() { printf replacement; }; lmline_remove; lmline_probe" ok
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { printf replacement; }; lmline_remove() { $removal lmline_probe; }; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_remove arg; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; printf before; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_remove | cat; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_remove & lmline_probe" ok
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; printf ok; }; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; printf ok; }; lmline_probe" ok
+    # Nested/function-body and control-flow calls are outside the adjacent
+    # top-level transfer: never restore a snapshot that hides their effects.
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_outer() { lmline_remove() { $removal lmline_probe; }; lmline_remove; }; lmline_outer; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_outer() { lmline_remove; }; lmline_outer; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; ( lmline_remove() { $removal lmline_probe; }; lmline_remove; ); lmline_probe" command-not-found
+    for remover_context in 'if lmline_remove; then :; fi' 'if true; then lmline_remove; fi' 'while lmline_remove; do :; done' 'for item in one; do lmline_remove; done' 'case x in x) lmline_remove;; esac' 'true && lmline_remove' 'false || lmline_remove'; do
+      check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; $remover_context; lmline_probe" command-not-found
+    done
+    # Scope exits and benign redefinitions cannot carry a pending edge or
+    # hide an earlier remover binding with an uncalled nested declaration.
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_outer() { lmline_remove() { $removal lmline_probe; }; }; lmline_outer; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; lmline_outer() { lmline_remove() { printf replacement; }; }; printf before; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf ok; }; lmline_remove() { $removal lmline_probe; }; ( lmline_remove() { printf replacement; }; ); lmline_remove; lmline_probe" command-not-found
+    marker=$function_tmp/$target-remover-executed
+    check_function "$target" "lmline_probe() { printf '%s' \"\$(touch '$marker')\"; }; lmline_remove() { $removal lmline_probe; }; lmline_remove; lmline_probe" command-not-found
+    check_function "$target" "lmline_probe() { printf '%s' \"\$(touch '$marker')\"; }; lmline_outer() { lmline_remove() { $removal lmline_probe; }; lmline_remove; }; lmline_outer; lmline_probe" command-not-found
+    [[ ! -e "$marker" ]] || fail "$target remover candidate executed during validation"
+  done
   marker=$function_tmp/$target-shadow-executed
   check_function "$target" "unset() { touch '$marker'; }; unset" ok
   check_function "$target" "lmline_probe() { printf ok; }; unset() { touch '$marker'; }; unset -f lmline_probe; lmline_probe" ok

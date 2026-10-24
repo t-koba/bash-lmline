@@ -617,12 +617,15 @@ binding, preserves unrelated names, and permits later explicit redefinition.
 `unset -v NAME...` only affects variables. Unsupported removal operands/options,
 quoting, redirections, and command-prefix wrappers fail closed. Removals in
 conditional branches, loop bodies/headers, and non-direct pipeline/and-or positions
-also fail closed rather than re-trusting a saved function binding. A remover
+also fail closed rather than re-trusting a saved function binding. A function
+whose entire body is supported literal removals is summarized only for its
+immediately adjacent bare direct call at top level; nested, wrapped, argument-
+bearing, redirected, non-adjacent, or mixed-effect calls fail closed. A remover
 terminated by a backgrounding operator does not invalidate the parent shell's
 availability. Ordinary braces share availability; subshells, function-definition
 bodies, and background braces keep their existing isolated snapshots. These are
-syntax-only availability rules,
-not interpretation of execution effects of arbitrary function calls.
+syntax-only rules, not a general interpretation of arbitrary function-call
+effects.
 
 Availability checking also recognizes a plain `eval` command with exactly one
 single-quoted literal argument, for example `eval 'printf ok'`. Its contents are
