@@ -227,6 +227,11 @@ bash -c '
     [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite bash) == "command-not-found" ]]
     [[ $(__lmline_candidate_rejection_reason "print -r -- hello" rewrite) == "command-not-found" ]]
     [[ $(__lmline_candidate_rejection_reason "definitely-not-a-command-for-lmline" rewrite zsh) == "command-not-found" ]]
+    arithmetic_candidate="(( total = 1 + 2 ))"
+    [[ $(__lmline_candidate_rejection_reason "$arithmetic_candidate" rewrite zsh) == ok ]]
+    [[ -z $(__lmline_extract_command_words "$arithmetic_candidate" zsh) ]]
+    arithmetic_with_missing_command="(( total = 1 + 2 )); definitely-not-a-command-for-lmline"
+    [[ $(__lmline_candidate_rejection_reason "$arithmetic_with_missing_command" rewrite zsh) == command-not-found ]]
     __lmline_validate_candidate "print -r -- hello" rewrite zsh
     ! __lmline_validate_candidate "print -r -- hello" rewrite bash
     # Zsh process substitution is valid shell syntax even though Bash rejects it.
@@ -270,6 +275,11 @@ bash -c '
   [[ $(__lmline_extract_command_words "$bash_for_candidate" bash) == printf ]]
   bash_for_missing_body="for f in *.txt; do definitely-not-a-command-for-lmline; done"
   [[ $(__lmline_candidate_rejection_reason "$bash_for_missing_body" rewrite bash) == command-not-found ]]
+  arithmetic_candidate="(( total = 1 + 2 ))"
+  [[ $(__lmline_candidate_rejection_reason "$arithmetic_candidate" rewrite bash) == ok ]]
+  [[ -z $(__lmline_extract_command_words "$arithmetic_candidate" bash) ]]
+  arithmetic_with_missing_command="(( total = 1 + 2 )); definitely-not-a-command-for-lmline"
+  [[ $(__lmline_candidate_rejection_reason "$arithmetic_with_missing_command" rewrite bash) == command-not-found ]]
   long_candidate=$(printf "printf %%s "; printf "a%.0s" {1..5000})
   [[ ${#long_candidate} -gt 4096 ]]
   truncated_candidate=$(printf "%s\n" "$long_candidate" | __lmline_valid_candidates)

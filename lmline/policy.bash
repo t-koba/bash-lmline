@@ -1105,7 +1105,15 @@ __lmline_risk_has_unresolved_var_command() {
 }
 
 __lmline_extract_command_words() {
-  local cmd=$1 shell=${2:-bash} stripped segment token
+  local cmd=$1 shell=${2:-bash} stripped segment token arithmetic
+  local arithmetic_pattern='\(\([^()]*\)\)'
+  # Flat ((...)) arithmetic groups are shell expressions, not command words.
+  # Strip them only from this availability-check copy; other policy checks
+  # still see the original candidate, and nested forms remain conservative.
+  while [[ "$cmd" =~ $arithmetic_pattern ]]; do
+    arithmetic=${BASH_REMATCH[0]}
+    cmd=${cmd/"$arithmetic"/ }
+  done
   # A conservative lexical approximation: split at command separators and keep
   # the first simple command word after env assignments, negation, and builtins.
   # For zsh, parentheses attached to a glob word are its glob qualifier, not a
