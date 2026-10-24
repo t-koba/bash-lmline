@@ -1115,6 +1115,12 @@ __lmline_extract_command_words() {
   while IFS= read -r segment; do
     for token in $segment; do
       [[ "$token" == *=* && "$token" != /* && "$token" != ./* && "$token" != ../* ]] && continue
+      if [[ "$token" == for ]]; then
+        # A static word-list loop header names an iteration variable and
+        # values, not commands; the semicolon splitter leaves its body in
+        # following segments, where command checks continue as usual.
+        break
+      fi
       if __lmline_word_is_command_prefix "$token"; then
         continue
       fi

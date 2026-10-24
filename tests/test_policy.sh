@@ -242,6 +242,11 @@ bash -c '
     zsh_stacked_candidate="ls *(N)(.)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_stacked_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_stacked_candidate" zsh) == ls ]]
+    zsh_for_candidate="for f in *.txt(N); do print -- \"\$f\"; done"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_for_candidate" rewrite zsh) == ok ]]
+    [[ $(__lmline_extract_command_words "$zsh_for_candidate" zsh) == print ]]
+    zsh_for_missing_body="for f in *.txt(N); do definitely-not-a-command-for-lmline; done"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_for_missing_body" rewrite zsh) == command-not-found ]]
     [[ $(__lmline_extract_command_words "$zsh_glob_candidate" bash | paste -sd, -) == printf,N ]]
     [[ $(__lmline_candidate_rejection_reason "$zsh_glob_candidate" rewrite bash) == shell-syntax ]]
     subshell_candidate="(rm -rf /)"
@@ -254,8 +259,17 @@ bash -c '
     zsh_marker=$syntax_tmp/executed
     [[ $(__lmline_candidate_rejection_reason "touch \"$zsh_marker\"" rewrite zsh) == ok ]]
     [[ ! -e "$zsh_marker" ]]
+    zsh_for_marker=$syntax_tmp/for-executed
+    zsh_for_execution_candidate="for f in one; do touch \"$zsh_for_marker\"; done"
+    [[ $(__lmline_candidate_rejection_reason "$zsh_for_execution_candidate" rewrite zsh) == ok ]]
+    [[ ! -e "$zsh_for_marker" ]]
     rm -rf "$syntax_tmp"
   fi
+  bash_for_candidate="for f in *.txt; do printf \"%s\\n\" \"\$f\"; done"
+  [[ $(__lmline_candidate_rejection_reason "$bash_for_candidate" rewrite bash) == ok ]]
+  [[ $(__lmline_extract_command_words "$bash_for_candidate" bash) == printf ]]
+  bash_for_missing_body="for f in *.txt; do definitely-not-a-command-for-lmline; done"
+  [[ $(__lmline_candidate_rejection_reason "$bash_for_missing_body" rewrite bash) == command-not-found ]]
   long_candidate=$(printf "printf %%s "; printf "a%.0s" {1..5000})
   [[ ${#long_candidate} -gt 4096 ]]
   truncated_candidate=$(printf "%s\n" "$long_candidate" | __lmline_valid_candidates)
