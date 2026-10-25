@@ -646,13 +646,15 @@ non-command positions) retain their existing availability behavior. This is
 conservative recognition, not a complete shell interpreter or sandbox.
 
 Availability checking also recognizes direct `bash -c '...'` and `zsh -f -c '...'`
-invocations with exactly one single-quoted literal script argument, for example
-`bash -c 'printf ok'`. Its contents are parsed with the invoked shell's
-syntax-only mode and checked with that shell's command vocabulary; validation
-never executes the text or its substitutions. Dynamic arguments and unsupported
-forms (including double quotes, concatenation, extra operands, other options,
-wrappers, paths, and redirections) retain their existing availability behavior.
-This is conservative recognition, not a complete shell interpreter or sandbox.
+invocations with exactly one single-quoted literal script argument. Bash may
+also receive `-e`, `-u`, `-v`, and `-x` separately or clustered before `-c`,
+for example `bash -e -u -vx -c 'printf ok'`. The contents are parsed with the
+invoked shell's syntax-only mode and checked with that shell's command
+vocabulary; validation never executes the text or its substitutions. Dynamic
+arguments and unsupported forms (including double quotes, concatenation, extra
+operands, unallowlisted options, wrappers, paths, and redirections)
+retain their existing availability behavior. This is conservative recognition,
+not a complete shell interpreter or sandbox.
 
 Each accepted candidate is classified with the configured `risk_patterns.tsv`
 and structural pipe-to-shell, interactive history expansion, unresolved
