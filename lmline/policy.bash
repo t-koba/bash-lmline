@@ -2431,6 +2431,96 @@ __lmline_word_available_under_path() {
   fi
 }
 
+# A relative PATH component (including an empty one) is resolved against the
+# current directory, so a shell directory change can invalidate a lookup.
+__lmline_path_has_relative_entry() {
+  [[ -n "${PATH+set}" ]] || return 1
+  local rest=$PATH entry
+  while [[ "$rest" == *:* ]]; do
+    entry=${rest%%:*}
+    [[ "$entry" == /* ]] || return 0
+    rest=${rest#*:}
+  done
+  [[ "$rest" == /* ]] || return 0
+  return 1
+}
+
+# Find whether a bare external currently resolves through a relative PATH
+# entry. Builtins and functions are independent of PATH; only lookup runs.
+__lmline_word_resolves_via_relative_path() {
+  local word=$1 shell=${2:-bash} resolved kind
+  __lmline_word_is_policy_skip "$word" && return 1
+  [[ "$shell" == zsh && "$word" == chdir ]] && return 1
+  kind=$(type -t -- "$word") || return 1
+  [[ "$kind" == file ]] || return 1
+  resolved=$(type -P -- "$word") || return 1
+  [[ -n "$resolved" && "$resolved" != /* ]]
+}
+
+# Inspect quote-aware command segments for directory-changing builtins. A later
+# bare external that resolves through a relative PATH entry is unreliable.
+# Opaque command positions are treated as possible directory changes; candidate
+# code is never evaluated.
+__lmline_has_relative_cwd_risk() {
+  local cmd=$1 shell=${2:-bash} segment token first changed=0 expect_redirection_operand
+  local -a tokens
+  __lmline_path_has_relative_entry || return 1
+  while IFS= read -r segment; do
+    read -r -a tokens <<<"$segment" || continue
+    first=""
+    expect_redirection_operand=0
+    for token in "${tokens[@]}"; do
+      if (( expect_redirection_operand )); then
+        expect_redirection_operand=0
+        continue
+      fi
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>)$ ]]; then
+        expect_redirection_operand=1
+        continue
+      fi
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>).+ ]]; then
+        continue
+      fi
+      case "$token" in
+        [A-Za-z_]*=*) continue ;;
+        '{'|'}') continue ;;
+      esac
+      case "${token##*/}" in
+        eval|trap|source|.)
+          first=$token
+          break
+          ;;
+      esac
+      __lmline_word_is_command_prefix "${token##*/}" && continue
+      first=$token
+      break
+    done
+    [[ -n "$first" ]] || continue
+    if [[ "$first" == *$'\001'* ]]; then
+      changed=1
+      continue
+    fi
+    case "$first" in
+      cd|pushd|popd)
+        changed=1
+        continue
+        ;;
+      chdir)
+        [[ "$shell" == zsh ]] && { changed=1; continue; }
+        ;;
+      eval|trap|source|.)
+        changed=1
+        continue
+        ;;
+    esac
+    (( changed )) || continue
+    [[ "$first" == */* ]] && continue
+    __lmline_word_resolves_via_relative_path "$first" "$shell" || continue
+    return 0
+  done <<<"$(__lmline_split_pipeline "$cmd" 0 "(){}" "$shell" command-prefix)"
+  return 1
+}
+
 __lmline_validate_commands_available() {
   local cmd=$1 shell=${2:-bash}
   local word words
@@ -2439,6 +2529,7 @@ __lmline_validate_commands_available() {
     __lmline_validate_path_prefix "$cmd" "$shell" "$words"
     return $?
   fi
+  __lmline_has_relative_cwd_risk "$cmd" "$shell" && return 1
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
