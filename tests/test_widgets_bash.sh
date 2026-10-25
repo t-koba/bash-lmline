@@ -8,19 +8,19 @@ printf '#!/usr/bin/env bash\nprintf "lmline-status: m=widget-model; tok=100/23/1
 chmod +x "$widget_tmp/engine"
 cat >"$widget_tmp/engine-function" <<'EOF'
 #!/usr/bin/env bash
-if ! printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'lmline_widget_function_probe'; then
+if ! printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'lmline/widget-function-probe'; then
   exit 1
 fi
-printf 'lmline-candidate: low\tno matching risk rule\t-\tlmline_widget_function_probe\n'
+printf 'lmline-candidate: low\tno matching risk rule\t-\tlmline/widget-function-probe\n'
 EOF
 chmod +x "$widget_tmp/engine-function"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
-  lmline_widget_function_probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
+  lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"
   READLINE_LINE="# call the shell function"
   READLINE_POINT=${#READLINE_LINE}
   __lmline_generate_widget >/tmp/lmline-widget-function.out 2>/tmp/lmline-widget-function.err
-  [[ "$READLINE_LINE" == "lmline_widget_function_probe" ]]
+  [[ "$READLINE_LINE" == "lmline/widget-function-probe" ]]
   [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
 ' _ "$repo_dir" || fail "bash widget hands off function names without executing them"
 # Child interactive Bash shells enable errexit explicitly; parent shell options do not propagate.

@@ -1304,7 +1304,8 @@ __lmline_extract_literal_shell_c_words() {
   else
     command bash -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
-  words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
+  words=$(unset __LMLINE_CALLER_FUNCTIONS LMLINE_SHELL_FUNCTIONS
+    __lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
   if [[ "$inner_shell" == bash ]]; then
     local -a bash_words=()
     while IFS= read -r word; do
@@ -2331,7 +2332,12 @@ __lmline_extract_command_words() {
         __lmline_word_is_command_prefix "$literal" && return 1
         token=$literal
         if [[ "$token" == */* ]]; then
-          __lmline_command_path_available "$token" || return 1
+          # A bounded literal slash word may be a function name in the
+          # current Bash/Zsh shell. Fresh-shell literal scripts parse with the
+          # caller list unset; same-shell substitutions/eval/trap keep it.
+          if ! __lmline_word_in_caller_functions "$token"; then
+            __lmline_command_path_available "$token" || return 1
+          fi
         fi
       fi
       # Bash hash options/operands can mutate remembered command paths. Keep
@@ -2399,10 +2405,13 @@ __lmline_words_available_in_bash() {
 # for top-level words of the engine's target shell. Nested literal
 # `bash -c`/`zsh -f -c` scripts keep their fresh-shell probes, which never
 # see this list, so a parent-shell function never validates code running in
-# a new shell. Every name is strictly checked and matched as an exact line,
-# and candidate text is never executed here.
+# a new shell. Names use the parser's bounded literal alphabet and are matched
+# as exact lines; candidate text is never executed here.
 __lmline_valid_caller_function_name() {
-  [[ ${1-} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+  # Match the parser's bounded literal command alphabet rather than the
+  # identifier grammar: Bash and Zsh both allow punctuation (and slash) in
+  # function names. Names remain newline-delimited data and are never eval'd.
+  [[ ${1-} =~ ^[A-Za-z0-9_/:.+@-]+$ ]]
 }
 
 # Names of functions defined in the interactive editing shell. The engine's

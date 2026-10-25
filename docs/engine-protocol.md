@@ -73,9 +73,12 @@ own shell; the engine captures that transport into a non-exported internal
 variable at startup before any subprocess and unsets the transport, and the
 zsh bridge child does the same at its own start before sourcing context. The
 Bash fix path keeps names function-local and passes them only on its engine
-command. Context and Copilot subprocesses never inherit the list. Those names
-are accepted only as top-level command words. Literal nested `bash -c`/`zsh -f -c`
-scripts are checked in a fresh shell and never inherit the list. If the zsh syntax
+command. Context and Copilot subprocesses never inherit the list. The
+newline-delimited names use the validator's bounded literal command alphabet
+and are matched as exact lines; a slash-containing word skips executable-path
+lookup only when its exact name is present. Those names are accepted only in
+the target shell's command context. Literal nested `bash -c`/`zsh -f -c` scripts
+are checked in a fresh shell and never inherit the list. If the zsh syntax
 validator is unavailable, zsh candidates are rejected rather than checked with
 a different shell. Frontends only parse, display, and
 insert.

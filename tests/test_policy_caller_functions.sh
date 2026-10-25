@@ -28,8 +28,12 @@ for target in bash zsh; do
   if [[ "$target" == zsh ]] && ! command -v zsh >/dev/null 2>&1; then
     continue
   fi
-  # An active caller-shell function name is accepted at the top level.
+  # Active caller-shell function names are accepted as top-level commands,
+  # including valid non-identifier punctuation and slash names.
   check_caller "$target" 'lmline_caller_probe_fn' ok 'lmline_caller_probe_fn'
+  check_caller "$target" 'lmline-caller-probe' ok 'lmline-caller-probe'
+  check_caller "$target" 'lmline_caller_dir/lmline-caller-probe' ok 'lmline_caller_dir/lmline-caller-probe'
+  check_caller "$target" 'printf "$(lmline_caller_dir/lmline-caller-probe)"' ok 'lmline_caller_dir/lmline-caller-probe'
   check_caller "$target" 'lmline_caller_probe_fn --flag' ok 'lmline_caller_probe_fn'
   check_caller "$target" 'printf ok; lmline_caller_probe_fn' ok 'lmline_other_fn
 lmline_caller_probe_fn'
@@ -42,13 +46,17 @@ lmline_caller_probe_fn'
   check_caller "$target" 'lmline_caller_probe_fn' ok 'lmline_caller_probe_fn_extra
 lmline_caller_probe_fn'
   check_caller "$target" 'lmline_caller_probe_fn' command-not-found 'lmline_caller_probe_fn lmline_other_fn'
-  # Stored names that fail the strict check never validate anything.
-  check_caller "$target" 'definitely-not-a-command-for-lmline' command-not-found 'definitely-not-a-command-for-lmline'
+  # Unsafe stored lines never authorize a different command.
+  check_caller "$target" 'definitely-not-a-command-for-lmline' command-not-found 'definitely-not-a-command-for-lmline;other'
   # A nested literal shell script does not inherit the parent list, even when
-  # it names the same function.
-  check_caller "$target" "bash -c 'lmline_caller_probe_fn'" command-not-found 'lmline_caller_probe_fn'
+  # it names the same plain or slash-containing function.
+  check_caller "$target" "bash -c 'lmline-caller-probe'" command-not-found 'lmline-caller-probe'
+  check_caller "$target" "bash -c 'lmline_caller_dir/lmline-caller-probe'" command-not-found 'lmline_caller_dir/lmline-caller-probe'
+  check_caller "$target" "bash -c 'printf \"\$(lmline_caller_dir/lmline-caller-probe)\"'" command-not-found 'lmline_caller_dir/lmline-caller-probe'
   if command -v zsh >/dev/null 2>&1; then
     check_caller "$target" "zsh -f -c 'lmline_caller_probe_fn'" command-not-found 'lmline_caller_probe_fn'
+    check_caller "$target" "zsh -f -c 'lmline_caller_dir/lmline-caller-probe'" command-not-found 'lmline_caller_dir/lmline-caller-probe'
+    check_caller "$target" "zsh -f -c 'printf \"\$(lmline_caller_dir/lmline-caller-probe)\"'" command-not-found 'lmline_caller_dir/lmline-caller-probe'
   fi
   ok "$target caller-shell function names"
 done

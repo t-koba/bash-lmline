@@ -9,19 +9,19 @@ if command -v zsh >/dev/null 2>&1; then
   chmod +x "$zsh_tmp/engine"
   cat >"$zsh_tmp/engine-function" <<'EOF'
 #!/usr/bin/env bash
-if ! printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'lmline_widget_function_probe'; then
+if ! printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'lmline/widget-function-probe'; then
   exit 1
 fi
-printf 'lmline-candidate: low\tno matching risk rule\t-\tlmline_widget_function_probe\n'
+printf 'lmline-candidate: low\tno matching risk rule\t-\tlmline/widget-function-probe\n'
 EOF
   chmod +x "$zsh_tmp/engine-function"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$zsh_tmp/engine-function" LMLINE_WIDGET_FUNCTION_MARKER="$zsh_tmp/function-called" zsh -efic '
-    lmline_widget_function_probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
+    lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
     source "$1/lmline/init.zsh"
     BUFFER="# call the shell function"
     CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-function.out 2>/tmp/lmline-zsh-widget-function.err
-    [[ "$BUFFER" == "lmline_widget_function_probe" ]]
+    [[ "$BUFFER" == "lmline/widget-function-probe" ]]
     [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget hands off function names without executing them"
   # Child Zsh shells enable errexit explicitly so an early failed assertion cannot be masked.
