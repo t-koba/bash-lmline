@@ -1223,7 +1223,9 @@ __lmline_extract_literal_eval_words() {
   else
     bash -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
-  __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
+  # A trailing analysis-only newline commits an adjacent remover call too.
+  # Return words and surviving input bindings separately; neither is executable.
+  __lmline_extract_command_words "$inner"$'\n' "$shell" 1 "$functions" "${4:-}" "${5:-}"
 }
 
 # Recognize only one plain single-quoted trap action followed by at least one
@@ -1234,7 +1236,11 @@ __lmline_extract_literal_eval_words() {
 # executing shell.
 __lmline_extract_literal_trap_words() {
   local remaining=$1 shell=$2 functions=${3:-} inner rest after
+  local literal_trap_words literal_trap_functions trap_without_callers="" trap_active_callers="" trap_name trap_probe_words
   local prefix="^[[:blank:]]+'([^']*)'"
+  # Only plain EXIT/0 triggers are known to run after the candidate. Mixed,
+  # dynamic or other signal lists are conservatively early; no scheduling.
+  local exit_signals="^[[:blank:]]+(EXIT|0)([[:blank:]]+(EXIT|0))*([[:blank:]]*($|[;&|)"$'\n'"])|[[:blank:]]+#)"
   [[ "$remaining" =~ $prefix ]] || return 2
   inner=${BASH_REMATCH[1]}
   rest=${remaining:${#BASH_REMATCH[0]}}
@@ -1244,6 +1250,8 @@ __lmline_extract_literal_trap_words() {
     ';'|'|'|'&'|'('|')'|'#'|'<'|'>') return 2 ;;
   esac
   if [[ "$inner" =~ ^[[:blank:]]*(-)?[[:blank:]]*$ ]]; then
+    printf -v "$4" '%s' ""
+    printf -v "$5" '%s' "$functions"
     return 0
   fi
   if [[ "$shell" == zsh ]]; then
@@ -1251,7 +1259,33 @@ __lmline_extract_literal_trap_words() {
   else
     bash -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
-  __lmline_extract_command_words "$inner" "$shell" 1 "$functions"
+  # Reuse the action's surviving bindings, but never treat registration-time
+  # caller-only state as proof of what a delayed action can call. Explicit
+  # candidate definitions retain their provenance even on a transport collision.
+  # A syntax-only scan without caller-only bindings exposes command positions
+  # (not argument text); action declarations still provide their own bindings.
+  __lmline_extract_command_words "$inner"$'\n' "$shell" 1 "$functions" literal_trap_words literal_trap_functions || return 1
+  while IFS= read -r trap_name; do
+    [[ -n "$trap_name" ]] || continue
+    if [[ $'\n'"${__lmline_trap_caller_functions-}"$'\n' == *$'\n'"$trap_name"$'\n'* && $'\n'"${__lmline_candidate_defined_functions-}"$'\n' != *$'\n'"$trap_name"$'\n'* ]]; then
+      trap_active_callers+=$'\n'"$trap_name"$'\n'
+    else
+      trap_without_callers+=$'\n'"$trap_name"$'\n'
+    fi
+  done <<<"$functions"
+  if [[ -n "$trap_active_callers" ]]; then
+    trap_probe_words=$(__lmline_extract_command_words "$inner"$'\n' "$shell" 1 "$trap_without_callers") || return 1
+    while IFS= read -r trap_name; do
+      [[ -n "$trap_name" ]] || continue
+      [[ $'\n'"$trap_active_callers"$'\n' != *$'\n'"$trap_name"$'\n'* ]] || return 1
+    done <<<"$trap_probe_words"
+  fi
+  # EXIT-only removal cannot invalidate earlier candidate commands. For any
+  # other trigger return surviving input bindings, never action-local additions:
+  # the caller intersects this with its own current state, not the transport.
+  [[ ! "$rest" =~ $exit_signals ]] || literal_trap_functions=$functions
+  printf -v "$4" '%s' "$literal_trap_words"
+  printf -v "$5" '%s' "$literal_trap_functions"
 }
 
 # Recognize direct `bash [-euvx] -c '…'` and `zsh -f -c '…'` with a
@@ -1270,6 +1304,8 @@ __lmline_extract_literal_trap_words() {
 # exported functions) count as available.
 __lmline_extract_literal_shell_c_words() {
   local token=$1 remaining=$2 functions=${3:-} inner inner_shell words word
+  # A new shell has no transported caller bindings, including in its traps.
+  local __lmline_trap_caller_functions="" __lmline_candidate_defined_functions=""
   local bash_literal="^([[:blank:]]+-[euvx]+)*[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)])"
   local bash_comment="^([[:blank:]]+-[euvx]+)*[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]+#"
   local zsh_literal="^[[:blank:]]+-f[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)"$'\n'"])"
@@ -1304,8 +1340,7 @@ __lmline_extract_literal_shell_c_words() {
   else
     command bash -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
-  words=$(unset __LMLINE_CALLER_FUNCTIONS LMLINE_SHELL_FUNCTIONS
-    __lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
+  words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
   if [[ "$inner_shell" == bash ]]; then
     local -a bash_words=()
     while IFS= read -r word; do
@@ -1341,7 +1376,28 @@ __lmline_extract_literal_shell_c_words() {
 # syntax or broadening substitution checks; status 2 marks a recognized invalid literal.
 __lmline_case_command_copy() {
   local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} only_literal_evals=${5:-0} out="" substitutions=""
-  local name header remaining zsh_for_words eval_status trap_status shellc_status
+  local name header remaining zsh_for_words eval_status trap_status shellc_status command_word marked_word eval_functions eval_function_name eval_retained
+  local trap_functions trap_retained trap_function_name
+  # Named state results report surviving input bindings, not action-local
+  # replacements of removed names. Mirror the existing isolation snapshots.
+  local retained_functions=$functions
+  # Exact-name provenance, independent of input multiplicity. Recursive scans
+  # reset retained_functions to their input, so that list alone cannot tell an
+  # inherited candidate definition from a transported binding. Only declaration
+  # sites add names here; removals and isolation follow the active-list scopes.
+  local __lmline_candidate_defined_functions=${__lmline_candidate_defined_functions-}
+  local provenance_name provenance_input=$__lmline_candidate_defined_functions
+  __lmline_candidate_defined_functions=""
+  while IFS= read -r provenance_name; do
+    [[ -n "$provenance_name" ]] || continue
+    if [[ $'\n'"$functions"$'\n' == *$'\n'"$provenance_name"$'\n'* ]]; then
+      __lmline_candidate_defined_functions+=$'\n'"$provenance_name"$'\n'
+    fi
+  done <<<"$provenance_input"
+  local -a retained_scope_saved=() retained_function_scope_saved=() retained_brace_saved=()
+  local -a candidate_scope_saved=() candidate_function_scope_saved=() candidate_brace_saved=()
+  local retained_closed_brace="" retained_background=""
+  local candidate_closed_brace="" candidate_background=""
   local function_header='^[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*(\([[:space:]]*\)[[:space:]]*)?\{([[:space:]]|$)'
   local paren_header='^[[:space:]]*\([[:space:]]*\)[[:space:]]*\{([[:space:]]|$)'
   local function_name='^[a-zA-Z_][a-zA-Z0-9_]*$'
@@ -1400,6 +1456,9 @@ __lmline_case_command_copy() {
           pending_installers=${declaration_children[selected_installer]}
           for child_id in $pending_installers; do
             functions+=$'\n'"${declaration_names[child_id]}"$'\n'
+            if [[ $'\n'"$__lmline_candidate_defined_functions"$'\n' != *$'\n'"${declaration_names[child_id]}"$'\n'* ]]; then
+              __lmline_candidate_defined_functions+=$'\n'"${declaration_names[child_id]}"$'\n'
+            fi
           done
           installer_called=0
         fi
@@ -1409,6 +1468,10 @@ __lmline_case_command_copy() {
             while [[ $'\n'"$functions"$'\n' == *"$removal_pattern"* ]]; do
               functions=$'\n'"$functions"$'\n'
               functions=${functions//"$removal_pattern"/$'\n'}
+              retained_functions=$'\n'"$retained_functions"$'\n'
+              __lmline_candidate_defined_functions=$'\n'"$__lmline_candidate_defined_functions"$'\n'
+              retained_functions=${retained_functions//"$removal_pattern"/$'\n'}
+              __lmline_candidate_defined_functions=${__lmline_candidate_defined_functions//"$removal_pattern"/$'\n'}
             done
           done
           pending_remover=""
@@ -1509,6 +1572,18 @@ __lmline_case_command_copy() {
         token=${cmd:start:i-start}
         ;;
     esac
+    # Decode supported literal command spellings as data, not shell code.
+    # Keep the original token for syntax/removal recognition; the decoded word
+    # is only for function calls and their occurrence-bound summaries.
+    command_word=$token
+    if (( command_start )) && [[ "$token" == *\'* || "$token" == *\"* ]]; then
+      marked_word=$(__lmline_split_pipeline "$token" 2 "" "$shell" command-prefix)
+      if [[ "$token" == */* ]]; then
+        command_word=$(__lmline_literal_command_word "$marked_word") || command_word=$token
+      else
+        command_word=$(__lmline_literal_command_name "$marked_word") || command_word=$token
+      fi
+    fi
     was_direct_start=$direct_start
     direct_start=0
     previous_compound_end=$compound_end
@@ -1544,6 +1619,8 @@ __lmline_case_command_copy() {
               # A case branch body is conditional: definitions inside are
               # visible only within that branch, never after the case.
               scope_saved+=("$functions")
+              retained_scope_saved+=("$retained_functions")
+              candidate_scope_saved+=("$__lmline_candidate_defined_functions")
               scope_kind+=("case-branch")
             fi
             ;;
@@ -1581,6 +1658,8 @@ __lmline_case_command_copy() {
               # >& / <& and &> are redirections, not async terminators.
               if (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
                 functions=$closed_brace_functions
+                retained_functions=$retained_closed_brace
+                __lmline_candidate_defined_functions=$candidate_closed_brace
                 closed_brace_pending=0
               fi
               ;;
@@ -1621,6 +1700,8 @@ __lmline_case_command_copy() {
           && (( ! amp_is_redirect )) && [[ ${cmd:i:1} != '>' ]]; then
           # A literal remover run asynchronously changes only its child shell.
           functions=$removal_background_functions
+          retained_functions=$retained_background
+          __lmline_candidate_defined_functions=$candidate_background
           removal_background_pending=0
         fi
         case "$token" in
@@ -1637,6 +1718,8 @@ __lmline_case_command_copy() {
                 -f)
                   removal_mode=names
                   removal_background_functions=$functions
+                  retained_background=$retained_functions
+                  candidate_background=$__lmline_candidate_defined_functions
                   removal_background_pending=1
                   ;;
                 -v) removal_mode=variables ;;
@@ -1644,7 +1727,13 @@ __lmline_case_command_copy() {
               esac
               ;;
             names|variables)
-              [[ "$token" =~ $function_name ]] || return 1
+              if [[ "$removal_mode" == variables ]]; then
+                [[ "$token" =~ $function_name ]] || return 1
+              else
+                # Function operands may use the transported literal alphabet,
+                # but an option-looking word is still an unsupported form.
+                [[ "$token" != -* ]] && __lmline_valid_caller_function_name "$token" || return 1
+              fi
               if [[ "$removal_mode" == names ]]; then
                 (( if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0 && zsh_unscoped_loop_seen == 0 )) || return 1
                 for removal_scope in "${scope_kind[@]}"; do
@@ -1654,6 +1743,10 @@ __lmline_case_command_copy() {
                 while [[ $'\n'"$functions"$'\n' == *"$removal_pattern"* ]]; do
                   functions=$'\n'"$functions"$'\n'
                   functions=${functions//"$removal_pattern"/$'\n'}
+                  retained_functions=$'\n'"$retained_functions"$'\n'
+                  __lmline_candidate_defined_functions=$'\n'"$__lmline_candidate_defined_functions"$'\n'
+                  retained_functions=${retained_functions//"$removal_pattern"/$'\n'}
+                  __lmline_candidate_defined_functions=${__lmline_candidate_defined_functions//"$removal_pattern"/$'\n'}
                 done
               fi
               ;;
@@ -1679,6 +1772,8 @@ __lmline_case_command_copy() {
               else
                 removal_mode=names
                 removal_background_functions=$functions
+                retained_background=$retained_functions
+                candidate_background=$__lmline_candidate_defined_functions
                 removal_background_pending=1
               fi
             fi
@@ -1734,6 +1829,9 @@ __lmline_case_command_copy() {
               pending_installers=${declaration_children[selected_installer]}
               for child_id in $pending_installers; do
                 functions+=$'\n'"${declaration_names[child_id]}"$'\n'
+                if [[ $'\n'"$__lmline_candidate_defined_functions"$'\n' != *$'\n'"${declaration_names[child_id]}"$'\n'* ]]; then
+                  __lmline_candidate_defined_functions+=$'\n'"${declaration_names[child_id]}"$'\n'
+                fi
               done
               installer_called=0
             fi
@@ -1765,6 +1863,10 @@ __lmline_case_command_copy() {
                 while [[ $'\n'"$functions"$'\n' == *"$removal_pattern"* ]]; do
                   functions=$'\n'"$functions"$'\n'
                   functions=${functions//"$removal_pattern"/$'\n'}
+                  retained_functions=$'\n'"$retained_functions"$'\n'
+                  __lmline_candidate_defined_functions=$'\n'"$__lmline_candidate_defined_functions"$'\n'
+                  retained_functions=${retained_functions//"$removal_pattern"/$'\n'}
+                  __lmline_candidate_defined_functions=${__lmline_candidate_defined_functions//"$removal_pattern"/$'\n'}
                 done
               done
               pending_remover=""
@@ -1772,7 +1874,7 @@ __lmline_case_command_copy() {
             fi
           elif (( ! remover_called && command_start && was_direct_start )) \
             && (( list_operator[brace_depth] == 0 )) && [[ -z "$name" ]]; then
-            if [[ "$token" == "${declaration_names[pending_remover]}" ]]; then
+            if [[ "$command_word" == "${declaration_names[pending_remover]}" ]]; then
               selected_remover=$pending_remover
               remover_called=1
             else
@@ -1788,7 +1890,7 @@ __lmline_case_command_copy() {
                 return 1
               fi
             else
-              if [[ -z "$name" && "$token" == "${declaration_names[pending_remover]}" ]]; then
+              if [[ -z "$name" && "$command_word" == "${declaration_names[pending_remover]}" ]]; then
                 return 1
               fi
               pending_remover=""
@@ -1805,7 +1907,7 @@ __lmline_case_command_copy() {
         if [[ -z "$pending_remover" ]] && [[ -z "$name" ]]; then
           if (( command_start )); then
             for (( remover_scan_idx=${#declaration_names[@]}-1; remover_scan_idx>=0; remover_scan_idx-- )); do
-              if [[ "${declaration_names[remover_scan_idx]}" == "$token" ]]; then
+              if [[ "${declaration_names[remover_scan_idx]}" == "$command_word" ]]; then
                 if [[ -n "${declaration_removals[remover_scan_idx]}" ]] || [[ -n "${declaration_unsafe[remover_scan_idx]}" ]]; then
                   return 1
                 fi
@@ -1866,13 +1968,13 @@ __lmline_case_command_copy() {
               :
             elif [[ "$token" == -f && "$removal_mode" == names ]]; then
               :
-            elif [[ "$removal_mode" == names && "$token" =~ $function_name ]]; then
+            elif [[ "$removal_mode" == names ]] && __lmline_valid_caller_function_name "$token"; then
               remover_targets[installer_idx]+=" $token"
             else
               remover_pure[installer_idx]=0
             fi
           elif (( function_scope_depth[installer_idx] < brace_depth )) \
-            && [[ "$removal_mode" == names && "$token" =~ $function_name ]]; then
+            && [[ "$removal_mode" == names ]] && __lmline_valid_caller_function_name "$token"; then
             # A removal nested in a function body's ordinary brace or subshell
             # cannot be transferred as a pure summary, but the enclosing call
             # must not restore and trust a binding that it may remove.
@@ -1894,7 +1996,38 @@ __lmline_case_command_copy() {
           out+=' '
           command_start=0
         elif (( command_start )) && [[ "$token" == eval && -z "$name" && $'\n'"$functions"$'\n' != *$'\n'eval$'\n'* ]]; then
-          if words=$(__lmline_extract_literal_eval_words "$remaining" "$shell" "$functions"); then
+          if __lmline_extract_literal_eval_words "$remaining" "$shell" "$functions" words eval_functions; then
+            # Literal eval runs now in this shell. Transfer removals, not new
+            # declarations: their installer/remover metadata belongs to the
+            # inner scan and cannot authorize later outer calls.
+            retained_background=$retained_functions
+            candidate_background=$__lmline_candidate_defined_functions
+            eval_retained=""
+            while IFS= read -r eval_function_name; do
+              [[ -n "$eval_function_name" ]] || continue
+              if [[ $'\n'"$eval_functions"$'\n' == *$'\n'"$eval_function_name"$'\n'* ]]; then
+                eval_retained+=$'\n'"$eval_function_name"$'\n'
+              else
+                removal_pattern=$'\n'"$eval_function_name"$'\n'
+                __lmline_candidate_defined_functions=$'\n'"$__lmline_candidate_defined_functions"$'\n'
+                __lmline_candidate_defined_functions=${__lmline_candidate_defined_functions//"$removal_pattern"/$'\n'}
+                while [[ $'\n'"$retained_functions"$'\n' == *"$removal_pattern"* ]]; do
+                  retained_functions=$'\n'"$retained_functions"$'\n'
+                  retained_functions=${retained_functions//"$removal_pattern"/$'\n'}
+                done
+                # Eval has no transferable function-body summary. Refuse a
+                # removal there rather than restoring stale state at body end.
+                (( ${#function_scope_depth[@]} == 0 )) || return 1
+                # Match direct removals' refusal of uncertain outer scopes.
+                (( was_direct_start && if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0 && zsh_unscoped_loop_seen == 0 )) || return 1
+                for removal_scope in "${scope_kind[@]}"; do
+                  [[ "$removal_scope" == subshell ]] || return 1
+                done
+              fi
+            done <<<"$functions"
+            removal_background_functions=$functions
+            removal_background_pending=1
+            functions=$eval_retained
             while IFS= read -r word; do
               [[ -z "$word" ]] || substitutions+="; $word "
             done <<<"$words"
@@ -1905,7 +2038,36 @@ __lmline_case_command_copy() {
           out+=$token
           command_start=0
         elif (( command_start )) && [[ "$token" == trap && -z "$name" && $'\n'"$functions"$'\n' != *$'\n'trap$'\n'* ]]; then
-          if words=$(__lmline_extract_literal_trap_words "$remaining" "$shell" "$functions"); then
+          if __lmline_extract_literal_trap_words "$remaining" "$shell" "$functions" words trap_functions; then
+            # Non-EXIT traps may run before a subsequent command. Forget any
+            # active transported binding the action removes (EXIT is exempt);
+            # do not install action-local definitions or affect unrelated names.
+            retained_background=$retained_functions
+            candidate_background=$__lmline_candidate_defined_functions
+            trap_retained=""
+            while IFS= read -r trap_function_name; do
+              [[ -n "$trap_function_name" ]] || continue
+              if [[ $'\n'"${__lmline_trap_caller_functions-}"$'\n' == *$'\n'"$trap_function_name"$'\n'* && $'\n'"$trap_functions"$'\n' != *$'\n'"$trap_function_name"$'\n'* ]]; then
+                removal_pattern=$'\n'"$trap_function_name"$'\n'
+                __lmline_candidate_defined_functions=$'\n'"$__lmline_candidate_defined_functions"$'\n'
+                __lmline_candidate_defined_functions=${__lmline_candidate_defined_functions//"$removal_pattern"/$'\n'}
+                while [[ $'\n'"$retained_functions"$'\n' == *"$removal_pattern"* ]]; do
+                  retained_functions=$'\n'"$retained_functions"$'\n'
+                  retained_functions=${retained_functions//"$removal_pattern"/$'\n'}
+                done
+                # As with eval, do not lose a possible removal when a function
+                # or uncertain control-flow scope restores its entry snapshot.
+                (( ${#function_scope_depth[@]} == 0 && was_direct_start && if_pending == 0 && elif_pending == 0 && installer_loop_pending == 0 && zsh_unscoped_loop_seen == 0 )) || return 2
+                for removal_scope in "${scope_kind[@]}"; do
+                  [[ "$removal_scope" == subshell ]] || return 2
+                done
+              else
+                trap_retained+=$'\n'"$trap_function_name"$'\n'
+              fi
+            done <<<"$functions"
+            removal_background_functions=$functions
+            removal_background_pending=1
+            functions=$trap_retained
             while IFS= read -r word; do
               [[ -z "$word" ]] || substitutions+="; $word "
             done <<<"$words"
@@ -1992,7 +2154,12 @@ __lmline_case_command_copy() {
             done
           fi
           functions+=$'\n'"$name"$'\n'
+          if [[ $'\n'"$__lmline_candidate_defined_functions"$'\n' != *$'\n'"$name"$'\n'* ]]; then
+            __lmline_candidate_defined_functions+=$'\n'"$name"$'\n'
+          fi
           function_scope_saved+=("$functions")
+          retained_function_scope_saved+=("$retained_functions")
+          candidate_function_scope_saved+=("$__lmline_candidate_defined_functions")
           function_scope_depth+=("$brace_depth")
           function_ids+=("${#declaration_names[@]}")
           declaration_names+=("$name")
@@ -2017,7 +2184,9 @@ __lmline_case_command_copy() {
           scope_idx=$((${#scope_saved[@]} - 1))
           [[ ${scope_kind[scope_idx]} == "case-branch" ]] || return 1
           functions=${scope_saved[scope_idx]}
-          unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+          retained_functions=${retained_scope_saved[scope_idx]}
+          __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
+          unset "candidate_scope_saved[$scope_idx]" "retained_scope_saved[$scope_idx]" "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
           state[depth]=pattern
           pattern_started=0
           pattern_depth=0
@@ -2027,7 +2196,9 @@ __lmline_case_command_copy() {
             scope_idx=$((${#scope_saved[@]} - 1))
             if [[ ${scope_kind[scope_idx]} == "case-branch" ]]; then
               functions=${scope_saved[scope_idx]}
-              unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+              retained_functions=${retained_scope_saved[scope_idx]}
+              __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
+              unset "candidate_scope_saved[$scope_idx]" "retained_scope_saved[$scope_idx]" "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
             fi
           fi
           depth=$((depth - 1))
@@ -2051,6 +2222,8 @@ __lmline_case_command_copy() {
                 list_definition[brace_depth]=0
                 brace_definition[brace_depth]=0
                 brace_functions_saved[brace_depth]=$functions
+                retained_brace_saved[brace_depth]=$retained_functions
+                candidate_brace_saved[brace_depth]=$__lmline_candidate_defined_functions
               fi
               ;;
             '}')
@@ -2060,13 +2233,17 @@ __lmline_case_command_copy() {
                 closed_brace_pending=0
                 if [[ ${brace_functions_saved[brace_depth]+saved} ]]; then
                   closed_brace_functions=${brace_functions_saved[brace_depth]}
+                  retained_closed_brace=${retained_brace_saved[brace_depth]}
+                  candidate_closed_brace=${candidate_brace_saved[brace_depth]}
                   closed_brace_pending=1
-                  unset 'brace_functions_saved[brace_depth]'
+                  unset 'candidate_brace_saved[brace_depth]' 'retained_brace_saved[brace_depth]' 'brace_functions_saved[brace_depth]'
                 fi
                 if (( ${#function_scope_depth[@]} > 0 )); then
                   scope_idx=$((${#function_scope_depth[@]} - 1))
                   if (( function_scope_depth[scope_idx] == brace_depth )); then
                     functions=${function_scope_saved[scope_idx]}
+                    retained_functions=${retained_function_scope_saved[scope_idx]}
+                    __lmline_candidate_defined_functions=${candidate_function_scope_saved[scope_idx]}
                     if (( installer_pure[scope_idx] )) && [[ -n "${installer_children[scope_idx]}" ]]; then
                       child_id=${function_ids[scope_idx]}
                       declaration_children[child_id]=${installer_children[scope_idx]}
@@ -2093,7 +2270,7 @@ __lmline_case_command_copy() {
                     if (( remover_scope_top_level[scope_idx] )); then
                       pending_function_definition_id=${function_ids[scope_idx]}
                     fi
-                    unset "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
+                    unset "candidate_function_scope_saved[$scope_idx]" "retained_function_scope_saved[$scope_idx]" "function_scope_saved[$scope_idx]" "function_scope_depth[$scope_idx]"
                     unset "function_ids[$scope_idx]" "installer_pure[$scope_idx]" "installer_children[$scope_idx]"
                     unset "remover_pure[$scope_idx]" "remover_targets[$scope_idx]" "remover_scope_top_level[$scope_idx]"
                   fi
@@ -2121,6 +2298,8 @@ __lmline_case_command_copy() {
             elif (( if_pending > 0 )); then
               if_pending=$((if_pending - 1))
               scope_saved+=("$functions")
+              retained_scope_saved+=("$retained_functions")
+              candidate_scope_saved+=("$__lmline_candidate_defined_functions")
               scope_kind+=("if")
             else
               return 1
@@ -2130,21 +2309,29 @@ __lmline_case_command_copy() {
             scope_idx=$((${#scope_saved[@]} - 1))
             [[ ${scope_kind[scope_idx]} == "if" ]] || return 1
             functions=${scope_saved[scope_idx]}
+            retained_functions=${retained_scope_saved[scope_idx]}
+            __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
             elif_pending=$((elif_pending + 1))
           elif [[ "$token" == "else" && $command_start == 1 ]]; then
             (( ${#scope_saved[@]} > 0 )) || return 1
             scope_idx=$((${#scope_saved[@]} - 1))
             [[ ${scope_kind[scope_idx]} == "if" ]] || return 1
             functions=${scope_saved[scope_idx]}
+            retained_functions=${retained_scope_saved[scope_idx]}
+            __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
           elif [[ "$token" == "fi" && $command_start == 1 ]]; then
             compound_end=1
             (( ${#scope_saved[@]} > 0 )) || return 1
             scope_idx=$((${#scope_saved[@]} - 1))
             [[ ${scope_kind[scope_idx]} == "if" ]] || return 1
             functions=${scope_saved[scope_idx]}
-            unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+            retained_functions=${retained_scope_saved[scope_idx]}
+            __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
+            unset "candidate_scope_saved[$scope_idx]" "retained_scope_saved[$scope_idx]" "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
           elif [[ "$token" == "do" && $command_start == 1 ]]; then
             scope_saved+=("$functions")
+            retained_scope_saved+=("$retained_functions")
+            candidate_scope_saved+=("$__lmline_candidate_defined_functions")
             scope_kind+=("loop")
           elif [[ "$token" == "done" && $command_start == 1 ]]; then
             compound_end=1
@@ -2152,9 +2339,13 @@ __lmline_case_command_copy() {
             scope_idx=$((${#scope_saved[@]} - 1))
             [[ ${scope_kind[scope_idx]} == "loop" ]] || return 1
             functions=${scope_saved[scope_idx]}
-            unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+            retained_functions=${retained_scope_saved[scope_idx]}
+            __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
+            unset "candidate_scope_saved[$scope_idx]" "retained_scope_saved[$scope_idx]" "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
           elif [[ "$token" == '(' ]]; then
             scope_saved+=("$functions")
+            retained_scope_saved+=("$retained_functions")
+            candidate_scope_saved+=("$__lmline_candidate_defined_functions")
             scope_kind+=("subshell")
           elif [[ "$token" == ')' ]]; then
             compound_end=1
@@ -2162,11 +2353,14 @@ __lmline_case_command_copy() {
             scope_idx=$((${#scope_saved[@]} - 1))
             [[ ${scope_kind[scope_idx]} == "subshell" ]] || return 1
             functions=${scope_saved[scope_idx]}
-            unset "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
+            retained_functions=${retained_scope_saved[scope_idx]}
+            __lmline_candidate_defined_functions=${candidate_scope_saved[scope_idx]}
+            unset "candidate_scope_saved[$scope_idx]" "retained_scope_saved[$scope_idx]" "scope_saved[$scope_idx]" "scope_kind[$scope_idx]"
           fi
-          # A direct call to a previously declared candidate function needs no
-          # external executable. Keep wrappers such as `command name` unchanged.
-          if (( command_start )) && [[ $'\n'"$functions"$'\n' == *$'\n'"$token"$'\n'* ]]; then
+          # Active caller/candidate functions need no external executable.
+          # Removed names retain ordinary builtin/PATH/explicit-path lookup.
+          # Keep wrappers such as `command name` unchanged.
+          if (( command_start )) && [[ $'\n'"$functions"$'\n' == *$'\n'"$command_word"$'\n'* ]]; then
             out+=':'
           else
             out+=$token
@@ -2202,14 +2396,23 @@ __lmline_case_command_copy() {
   (( ${#scope_saved[@]} == 0 )) || return 1
   (( if_pending == 0 && elif_pending == 0 )) || return 1
   if (( only_substitutions || only_literal_evals )); then
-    printf '%s' "$substitutions"
+    out=$substitutions
   else
-    printf '%s%s' "$out" "$substitutions"
+    out+=$substitutions
+  fi
+  # Optional named results keep eval/trap state in-process without encoding it
+  # into command words. Ordinary callers retain the stdout-only interface.
+  if [[ -n ${6:-} ]]; then
+    printf -v "$6" '%s' "$out"
+    printf -v "$7" '%s' "$retained_functions"
+  else
+    printf '%s' "$out"
   fi
 }
 
 __lmline_extract_command_words() {
   local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0 eval_copy eval_status
+  local extracted_copy extracted_functions extracted_words=""
   # Nested literal scripts cannot use the direct-prefix lookup: their
   # surrounding command/wrapper has a separate environment. Fail closed.
   if (( scan_substitutions )) && __lmline_has_path_prefix "$cmd" "$shell"; then
@@ -2228,8 +2431,13 @@ __lmline_extract_command_words() {
   [[ "$shell" != zsh ]] || coproc_compound_keywords+='|repeat'
   local coproc_named_keywords='coproc[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]+('"$coproc_compound_keywords"')([[:space:];]|$)'
   local arithmetic_pattern='\(\([^()]*\)\)' array_pattern='[a-zA-Z_][a-zA-Z0-9_]*=\([^()]*\)'
-  if [[ "$cmd" == *case* || "$cmd" == *function* || "$cmd" == *coproc* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
-    cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
+  if [[ -n "$functions" || "$cmd" == *case* || "$cmd" == *function* || "$cmd" == *coproc* || "$cmd" =~ $function_definition || ( "$shell" == zsh && ( "$cmd" == *for* || "$cmd" == *repeat* ) ) ]] || (( scan_substitutions )); then
+    if [[ -n ${5:-} ]]; then
+      __lmline_case_command_copy "$cmd" "$shell" 0 "$functions" 0 extracted_copy extracted_functions || return 1
+      cmd=$extracted_copy
+    else
+      cmd=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions") || return 1
+    fi
   elif [[ "$cmd" == *eval* || "$cmd" == *trap* || "$cmd" == *bash* || "$cmd" == *zsh* ]]; then
     # Reuse token boundaries without rewriting the original simple-command
     # path or checking substitutions in unsupported/dynamic eval/trap/shell-c arguments.
@@ -2332,12 +2540,7 @@ __lmline_extract_command_words() {
         __lmline_word_is_command_prefix "$literal" && return 1
         token=$literal
         if [[ "$token" == */* ]]; then
-          # A bounded literal slash word may be a function name in the
-          # current Bash/Zsh shell. Fresh-shell literal scripts parse with the
-          # caller list unset; same-shell substitutions/eval/trap keep it.
-          if ! __lmline_word_in_caller_functions "$token"; then
-            __lmline_command_path_available "$token" || return 1
-          fi
+          __lmline_command_path_available "$token" || return 1
         fi
       fi
       # Bash hash options/operands can mutate remembered command paths. Keep
@@ -2358,10 +2561,16 @@ __lmline_extract_command_words() {
       if [[ "$shell" == zsh && "$token" == disable ]] && (( ! disable_query )); then
         return 1
       fi
-      [[ -n "$token" && "$token" != '$'* ]] && printf '%s\n' "$token"
+      [[ -z "$token" || "$token" == '$'* ]] || extracted_words+="$token"$'\n'
       break
     done
   done <<<"$stripped"
+  if [[ -n ${5:-} ]]; then
+    printf -v "$5" '%s' "$extracted_words"
+    printf -v "$6" '%s' "$extracted_functions"
+  else
+    printf '%s' "$extracted_words"
+  fi
 }
 
 # Target-shell command check for candidate validation only (never executes
@@ -2393,7 +2602,7 @@ __lmline_words_available_in_bash() {
   command bash -c 'for _lmline_word in "$@"; do command -v "$_lmline_word" >/dev/null 2>&1 || exit 1; done' _ "$@"
 }
 
-# Caller-shell function allowance for top-level validation only (names only,
+# Caller-shell function state for editing-shell validation (names only,
 # never bodies). The interactive frontend passes its own function names in
 # LMLINE_SHELL_FUNCTIONS (newline-delimited) only on the engine command for
 # its own shell; the engine captures that transport into the non-exported
@@ -2402,9 +2611,12 @@ __lmline_words_available_in_bash() {
 # sourcing context. The Bash fix path keeps names function-local and passes
 # them only on its engine command. Validation consults the snapshot (or, when
 # validation runs in the frontend process itself, the live transport) only
-# for top-level words of the engine's target shell. Nested literal
-# `bash -c`/`zsh -f -c` scripts keep their fresh-shell probes, which never
-# see this list, so a parent-shell function never validates code running in
+# to seed each availability scan's local function state for the target shell.
+# Same-shell substitutions and literal eval inherit that scan-local state.
+# Delayed trap actions are checked conservatively: transported names do not
+# satisfy their command positions, and early literal removals of transported
+# bindings invalidate later checks. Nested literal `bash -c`/`zsh -f -c` scripts use fresh-shell
+# probes that never see this list, so a parent-shell function never validates
 # a new shell. Names use the parser's bounded literal alphabet and are matched
 # as exact lines; candidate text is never executed here.
 __lmline_valid_caller_function_name() {
@@ -2423,18 +2635,6 @@ __lmline_caller_functions_data() {
   else
     printf '%s' "${LMLINE_SHELL_FUNCTIONS-}"
   fi
-}
-
-__lmline_word_in_caller_functions() {
-  local word=$1 line list
-  __lmline_valid_caller_function_name "$word" || return 1
-  list=$(__lmline_caller_functions_data)
-  [[ -n $list ]] || return 1
-  while IFS= read -r line || [[ -n $line ]]; do
-    __lmline_valid_caller_function_name "$line" || continue
-    [[ $line == "$word" ]] && return 0
-  done <<<"$list"
-  return 1
 }
 
 # Snapshot the transport into a non-exported internal variable for same-process
@@ -2746,8 +2946,16 @@ __lmline_has_relative_cwd_risk() {
 
 __lmline_validate_commands_available() {
   local cmd=$1 shell=${2:-bash}
-  local word words
-  words=$(__lmline_extract_command_words "$cmd" "$shell") || return 1
+  local word words line caller_list functions="" __lmline_trap_caller_functions __lmline_candidate_defined_functions=""
+  caller_list=$(__lmline_caller_functions_data)
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    __lmline_valid_caller_function_name "$line" || continue
+    [[ $'\n'"$functions"$'\n' != *$'\n'"$line"$'\n'* ]] || continue
+    functions+=$'\n'"$line"$'\n'
+  done <<<"$caller_list"
+  # Dynamically scoped scan context, cleared explicitly for fresh shell -c.
+  __lmline_trap_caller_functions=$functions
+  words=$(__lmline_extract_command_words "$cmd" "$shell" 0 "$functions") || return 1
   if __lmline_has_path_prefix "$cmd" "$shell"; then
     __lmline_validate_path_prefix "$cmd" "$shell" "$words"
     return $?
@@ -2758,7 +2966,6 @@ __lmline_validate_commands_available() {
     __lmline_word_is_policy_skip "$word" && continue
     command -v "$word" >/dev/null 2>&1 && continue
     [[ "$shell" == zsh ]] && __lmline_word_available_in_zsh "$word" && continue
-    __lmline_word_in_caller_functions "$word" && continue
     return 1
   done <<<"$words"
   return 0

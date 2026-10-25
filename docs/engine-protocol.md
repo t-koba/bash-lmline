@@ -77,8 +77,14 @@ command. Context and Copilot subprocesses never inherit the list. The
 newline-delimited names use the validator's bounded literal command alphabet
 and are matched as exact lines; a slash-containing word skips executable-path
 lookup only when its exact name is present. Those names are accepted only in
-the target shell's command context. Literal nested `bash -c`/`zsh -f -c` scripts
-are checked in a fresh shell and never inherit the list. If the zsh syntax
+the target shell's command context. Literal delayed trap actions are checked
+conservatively: transported names alone do not satisfy their command positions.
+An explicit, still-active candidate definition does, even when its name also
+appears in the transport. Early literal removals of transported bindings
+invalidate later checks;
+action-local definitions do not become outer bindings. Literal nested
+`bash -c`/`zsh -f -c` scripts are checked in a fresh shell and never inherit
+the list. If the zsh syntax
 validator is unavailable, zsh candidates are rejected rather than checked with
 a different shell. Frontends only parse, display, and
 insert.
