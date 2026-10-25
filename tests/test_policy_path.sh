@@ -119,7 +119,8 @@ check_cwd() {
 cwd_fixture=$path_tmp/cwd-fixture
 cwd_empty=$path_tmp/cwd-empty
 mkdir -p "$cwd_fixture" "$cwd_empty" || fail "CWD fixture setup"
-printf '#!/bin/sh\nexit 0\n' > "$cwd_fixture/lmline_cwd_probe" || fail "CWD stub setup"
+cwd_probe_marker=$path_tmp/cwd-probe-executed
+printf '#!/bin/sh\ntouch "%s"\n' "$cwd_probe_marker" > "$cwd_fixture/lmline_cwd_probe" || fail "CWD stub setup"
 chmod +x "$cwd_fixture/lmline_cwd_probe" || fail "CWD stub setup"
 
 for target in bash zsh; do
@@ -136,6 +137,38 @@ for target in bash zsh; do
   cd "$cwd_empty" || fail "$target CWD empty cd"
   command -v lmline_cwd_probe >/dev/null 2>&1 && fail "$target CWD lookup should fail after cd"
   cd "$cwd_fixture" || fail "$target CWD fixture cd"
+  # Only a proven flat simple pipeline isolates non-final cwd changes.
+  # Siblings and the enclosing list retain their original cwd; a final cd
+  # remains conservative for Bash lastpipe and Zsh's pipeline semantics.
+  check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe" ok
+  check_cwd "$target" "cd $cwd_empty | cd $cwd_empty | true; lmline_cwd_probe" ok
+  check_cwd "$target" "cd $cwd_empty | lmline_cwd_probe; lmline_cwd_probe" ok
+  check_cwd "$target" "cd $cwd_empty | true; ./lmline_cwd_probe" ok
+  check_cwd "$target" "cd $cwd_empty; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty && lmline_cwd_probe" command-not-found
+  check_cwd "$target" "true | cd $cwd_empty; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty; true | true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty; lmline_cwd_probe | true" command-not-found
+  check_cwd "$target" "cd $cwd_empty; cd $cwd_empty | true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty; ./lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty; $cwd_fixture/lmline_cwd_probe" ok
+  # Compound, grouped and otherwise ambiguous forms keep the old scan.
+  check_cwd "$target" "{ cd $cwd_empty; lmline_cwd_probe; } | true" command-not-found
+  check_cwd "$target" "{ cd $cwd_empty; } | true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "(cd $cwd_empty; lmline_cwd_probe) | true" command-not-found
+  check_cwd "$target" "if true; then cd $cwd_empty | true; fi; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty |& true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty | true && lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty | true || lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty | true & lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd \"$cwd_empty\" | true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "c\\d $cwd_empty | true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty > /dev/null | true; lmline_cwd_probe" command-not-found
+  check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe # comment" command-not-found
+  if [[ "$target" == zsh ]]; then
+    check_cwd "$target" "chdir $cwd_empty | true; lmline_cwd_probe" ok
+    check_cwd "$target" "cd $cwd_empty | true *(N); lmline_cwd_probe" command-not-found
+  fi
   # The observed false acceptance: direct cd before a relative-only lookup.
   check_cwd "$target" "cd \"$cwd_empty\"; lmline_cwd_probe" command-not-found
   if [[ "$target" == bash ]]; then
@@ -191,6 +224,8 @@ for target in bash zsh; do
   rm -f "$cwd_marker" "$cwd_marker_ok"
   check_cwd "$target" "cd \"$cwd_empty\"; touch \"$cwd_marker\"" ok
   check_cwd "$target" "cd \"$cwd_empty\"; lmline_cwd_probe; touch \"$cwd_marker_ok\"" command-not-found
+  check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe; touch $cwd_marker_ok" ok
+  [[ ! -e "$cwd_probe_marker" ]] || fail "$target CWD validation executed lookup stub"
   [[ ! -e "$cwd_marker" && ! -e "$cwd_marker_ok" ]] || fail "$target CWD validation executed candidate text"
   cd "$orig_pwd" || fail "$target CWD restore cd"
   export PATH="$orig_path"

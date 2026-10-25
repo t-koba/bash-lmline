@@ -167,6 +167,8 @@ __lmline_candidate_rejection_reason() {
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
   local stripped="" i ch next quote="" prev="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  # The cwd-pipeline view is opt-in, only after the caller proves the input
+  # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
     ch=${cmd:i:1}
     next=${cmd:i+1:1}
@@ -194,7 +196,7 @@ __lmline_split_pipeline() {
     # Prefix inspection needs opaque quoted/escaped words, not their data:
     # dropping a quoted command would expose its arguments as a false prefix.
     # Keep this view local; other splitter callers retain their existing copy.
-    if [[ "$split_mode" == command-prefix ]]; then
+    if [[ "$split_mode" == command-prefix || "$split_mode" == cwd-pipeline ]]; then
       if [[ "$ch" == '#' && ( -z "$prev" || "$prev" == [[:space:]\;\&\|\(\)] ) ]]; then
         while (( i < ${#cmd} )) && [[ ${cmd:i:1} != $'\n' ]]; do
           i=$((i + 1))
@@ -213,7 +215,7 @@ __lmline_split_pipeline() {
     case "$ch" in
       "'"|'"'|'`')
         quote=$ch
-        [[ "$split_mode" != command-prefix ]] || stripped+=$'\001'
+        [[ "$split_mode" != command-prefix && "$split_mode" != cwd-pipeline ]] || stripped+=$'\001'
         (( keep_quoted )) && stripped+=$ch
         ;;
       '|'|';'|'&')
@@ -221,6 +223,10 @@ __lmline_split_pipeline() {
         # (*(e:echo hi|cat:) is one glob), so it does not split there.
         if [[ "$syntax_shell" == zsh ]] && (( zsh_glob_qualifier_depth > 0 )); then
           stripped+=$ch
+        elif [[ "$split_mode" == cwd-pipeline && "$ch" == '|' ]]; then
+          # Suffix the member, rather than emitting a standalone boundary:
+          # the consumer must know it is non-final before inspecting it.
+          stripped+=$'\003\n'
         elif [[ "$split_mode" == env-pipeline ]]; then
           case "$ch" in
             '|')
@@ -2522,14 +2528,43 @@ __lmline_word_resolves_via_relative_path() {
   [[ -n "$resolved" && "$resolved" != /* ]]
 }
 
+# Prove only a literal flat simple-list grammar, not arbitrary shell code.
+# Quotes, comments, escapes, assignments, redirections, glob qualifiers,
+# grouping and non-pipeline operators all retain the old conservative scan.
+# Reserved words are excluded even in argument positions: this is deliberately
+# a bounded proof, not another shell parser (syntax is checked separately).
+__lmline_is_flat_simple_list() {
+  local cmd=$1 word
+  local literal_list='^[A-Za-z0-9_/:.+@;|[:space:]-]+$'
+  local -a words
+  [[ "$cmd" =~ $literal_list && "$cmd" != *'||'* ]] || return 1
+  cmd=${cmd//[;|]/ }
+  cmd=${cmd//$'\n'/ }
+  read -r -a words <<<"$cmd"
+  for word in "${words[@]}"; do
+    case "$word" in
+      if|then|elif|else|fi|for|foreach|while|until|do|done|case|in|'esac'|select|function|time|coproc|repeat|end|always|nocorrect|noglob)
+        return 1 ;;
+    esac
+  done
+  return 0
+}
+
 # Inspect quote-aware command segments for directory-changing builtins. Later
 # relative slash paths and bare externals using relative PATH are unreliable.
 # Opaque command positions are treated as possible directory changes; candidate
 # code is never evaluated.
 __lmline_has_relative_cwd_risk() {
-  local cmd=$1 shell=${2:-bash} segment token first changed=0 expect_redirection_operand
+  local cmd=$1 shell=${2:-bash} segment token first changed=0 expect_redirection_operand nonfinal
+  local split_mode=command-prefix
   local -a tokens
+  __lmline_is_flat_simple_list "$cmd" && split_mode=cwd-pipeline
   while IFS= read -r segment; do
+    nonfinal=0
+    if [[ "$split_mode" == cwd-pipeline && "$segment" == *$'\003' ]]; then
+      nonfinal=1
+      segment=${segment%$'\003'}
+    fi
     read -r -a tokens <<<"$segment" || continue
     first=""
     expect_redirection_operand=0
@@ -2568,11 +2603,14 @@ __lmline_has_relative_cwd_risk() {
     fi
     case "$first" in
       cd|pushd|popd)
-        changed=1
+        # A proven non-final stage cannot change its siblings' or parent's
+        # cwd. Never clear a prior persistent change; final stages remain
+        # conservative for lastpipe and target-shell option differences.
+        (( nonfinal )) || changed=1
         continue
         ;;
       chdir)
-        [[ "$shell" == zsh ]] && { changed=1; continue; }
+        [[ "$shell" == zsh ]] && { (( nonfinal )) || changed=1; continue; }
         ;;
       eval|trap|source|.)
         changed=1
@@ -2587,7 +2625,7 @@ __lmline_has_relative_cwd_risk() {
     __lmline_path_has_relative_entry || continue
     __lmline_word_resolves_via_relative_path "$first" "$shell" || continue
     return 0
-  done <<<"$(__lmline_split_pipeline "$cmd" 2 "(){}" "$shell" command-prefix)"
+  done <<<"$(__lmline_split_pipeline "$cmd" 2 "(){}" "$shell" "$split_mode")"
   return 1
 }
 
