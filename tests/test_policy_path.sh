@@ -141,6 +141,11 @@ for target in bash zsh; do
   # Siblings and the enclosing list retain their original cwd; a final cd
   # remains conservative for Bash lastpipe and Zsh's pipeline semantics.
   check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe" ok
+  # Empty quote fragments on a bare lookup do not erase proven isolation of
+  # a non-final pipeline cd; nonempty quoted structure stays conservative.
+  check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe''" ok
+  check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe\"\"" ok
+  check_cwd "$target" "cd \"$cwd_empty\" | true; lmline_cwd_probe''" command-not-found
   check_cwd "$target" "cd $cwd_empty | cd $cwd_empty | true; lmline_cwd_probe" ok
   check_cwd "$target" "cd $cwd_empty | lmline_cwd_probe; lmline_cwd_probe" ok
   check_cwd "$target" "cd $cwd_empty | true; ./lmline_cwd_probe" ok

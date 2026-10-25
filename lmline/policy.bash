@@ -2569,9 +2569,13 @@ __lmline_word_resolves_via_relative_path() {
 # Reserved words are excluded even in argument positions: this is deliberately
 # a bounded proof, not another shell parser (syntax is checked separately).
 __lmline_is_flat_simple_list() {
-  local cmd=$1 word
+  local cmd=$1 word empty_single=$'\047\047' empty_double='""'
   local literal_list='^[A-Za-z0-9_/:.+@;|[:space:]-]+$'
   local -a words
+  # Adjacent matching quote delimiters are empty/concatenated fragments; they
+  # cannot hide list operators. Nonempty quoted content remains unsupported.
+  cmd=${cmd//"$empty_single"/}
+  cmd=${cmd//"$empty_double"/}
   [[ "$cmd" =~ $literal_list && "$cmd" != *'||'* ]] || return 1
   cmd=${cmd//[;|]/ }
   cmd=${cmd//$'\n'/ }
