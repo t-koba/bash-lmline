@@ -2387,6 +2387,63 @@ __lmline_words_available_in_bash() {
   command bash -c 'for _lmline_word in "$@"; do command -v "$_lmline_word" >/dev/null 2>&1 || exit 1; done' _ "$@"
 }
 
+# Caller-shell function allowance for top-level validation only (names only,
+# never bodies). The interactive frontend passes its own function names in
+# LMLINE_SHELL_FUNCTIONS (newline-delimited) only on the engine command for
+# its own shell; the engine captures that transport into the non-exported
+# __LMLINE_CALLER_FUNCTIONS at startup before any subprocess and unsets the
+# transport, and the zsh bridge child does the same at its own start before
+# sourcing context. The Bash fix path keeps names function-local and passes
+# them only on its engine command. Validation consults the snapshot (or, when
+# validation runs in the frontend process itself, the live transport) only
+# for top-level words of the engine's target shell. Nested literal
+# `bash -c`/`zsh -f -c` scripts keep their fresh-shell probes, which never
+# see this list, so a parent-shell function never validates code running in
+# a new shell. Every name is strictly checked and matched as an exact line,
+# and candidate text is never executed here.
+__lmline_valid_caller_function_name() {
+  [[ ${1-} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+# Names of functions defined in the interactive editing shell. The engine's
+# snapshot wins once taken; otherwise the live transport is used (frontend
+# in-process validation and tests).
+__lmline_caller_functions_data() {
+  if [[ -n ${__LMLINE_CALLER_FUNCTIONS-} ]]; then
+    printf '%s' "$__LMLINE_CALLER_FUNCTIONS"
+  else
+    printf '%s' "${LMLINE_SHELL_FUNCTIONS-}"
+  fi
+}
+
+__lmline_word_in_caller_functions() {
+  local word=$1 line list
+  __lmline_valid_caller_function_name "$word" || return 1
+  list=$(__lmline_caller_functions_data)
+  [[ -n $list ]] || return 1
+  while IFS= read -r line || [[ -n $line ]]; do
+    __lmline_valid_caller_function_name "$line" || continue
+    [[ $line == "$word" ]] && return 0
+  done <<<"$list"
+  return 1
+}
+
+# Snapshot the transport into a non-exported internal variable for same-process
+# validation (frontend in-process checks, tests, and the bridge child's Copilot
+# path). Engine and bridge-child entry points snapshot inline before any
+# subprocess; this helper is the same operation for those in-process uses.
+__lmline_snapshot_caller_functions() {
+  __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+  export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
+  unset LMLINE_SHELL_FUNCTIONS
+}
+
+# Names of functions defined in this Bash shell (names only, never bodies).
+# Empty on failure so callers fail closed.
+__lmline_collect_shell_functions() {
+  compgen -A function 2>/dev/null || true
+}
+
 # Inspect only command-prefix positions. The shared splitter hides quoted
 # data/comments but retains opaque word markers, so a quoted command still
 # ends its prefix. Lists restart inspection; wrappers use the same vocabulary
@@ -2692,6 +2749,7 @@ __lmline_validate_commands_available() {
     __lmline_word_is_policy_skip "$word" && continue
     command -v "$word" >/dev/null 2>&1 && continue
     [[ "$shell" == zsh ]] && __lmline_word_available_in_zsh "$word" && continue
+    __lmline_word_in_caller_functions "$word" && continue
     return 1
   done <<<"$words"
   return 0

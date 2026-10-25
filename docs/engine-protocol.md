@@ -66,7 +66,16 @@ Candidates are validated and deduplicated by the engine before emission.
 Validation rejects multiline text, control characters, syntax invalid for the
 target shell (checked with `bash -n` or `zsh -f -n`),
 environment-assignment-only command segments, selected direct directory file
-operands, and command words unavailable in the target shell. If the zsh syntax
+operands, and command words unavailable in the target shell. The frontend for
+the target shell additionally passes its own shell-function names (names only,
+never bodies) in `LMLINE_SHELL_FUNCTIONS` only on the engine command for its
+own shell; the engine captures that transport into a non-exported internal
+variable at startup before any subprocess and unsets the transport, and the
+zsh bridge child does the same at its own start before sourcing context. The
+Bash fix path keeps names function-local and passes them only on its engine
+command. Context and Copilot subprocesses never inherit the list. Those names
+are accepted only as top-level command words. Literal nested `bash -c`/`zsh -f -c`
+scripts are checked in a fresh shell and never inherit the list. If the zsh syntax
 validator is unavailable, zsh candidates are rejected rather than checked with
 a different shell. Frontends only parse, display, and
 insert.

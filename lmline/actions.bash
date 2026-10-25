@@ -392,7 +392,7 @@ __lmline_print_explanation() {
 __lmline_fix_run() {
   local line=$1 shell_name=$2 point=$3 engine=$4 n=$5 prefix=${6:-}
   local risk timeout=${LMLINE_FIX_TIMEOUT:-12} max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
-  local tmp status engine_status backend context_text
+  local tmp status engine_status backend context_text caller_functions
   __lmline_reload_settings_if_changed "${__LMLINE_CONFIG_DIR:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}}"
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
@@ -449,6 +449,25 @@ __lmline_fix_run() {
 
   printf 'lmline-progress: asking model for a fix (exit status %s)\n' "$status"
   engine_status=0
+  # Caller-shell function names (names only, never bodies) for the engine
+  # invocation only: reuse the bridge/engine snapshot when present, otherwise
+  # collect locally when this is the matching Bash frontend. Kept
+  # function-local and passed only on the engine command below, never
+  # exported, so Copilot and context subprocesses never inherit it.
+  # Same-process Copilot validation in a bridge child still sees the
+  # non-exported snapshot.
+  caller_functions=
+  if [[ -n ${__LMLINE_CALLER_FUNCTIONS-} ]]; then
+    caller_functions=${__LMLINE_CALLER_FUNCTIONS}
+  elif [[ "$shell_name" == bash && -n ${BASH_VERSION-} ]]; then
+    if [[ -z ${LMLINE_SHELL_FUNCTIONS-} ]]; then
+      caller_functions=$(__lmline_collect_shell_functions)
+    else
+      caller_functions=${LMLINE_SHELL_FUNCTIONS}
+    fi
+  elif [[ -n ${LMLINE_SHELL_FUNCTIONS-} ]]; then
+    caller_functions=${LMLINE_SHELL_FUNCTIONS}
+  fi
   if [[ "${LMLINE_FIX_BACKEND:-engine}" == copilot ]]; then
     context_text=$( {
       printf '## captured_execution\n'
@@ -465,8 +484,13 @@ __lmline_fix_run() {
   else
     __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr" "$backend"
     __lmline_context_file "$tmp/context" "$line" fix
-    "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
-      --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1 || engine_status=$?
+    if [[ -n $caller_functions ]]; then
+      LMLINE_SHELL_FUNCTIONS="$caller_functions" "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
+        --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1 || engine_status=$?
+    else
+      "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
+        --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1 || engine_status=$?
+    fi
   fi
   if (( engine_status != 0 )); then
     cat "$tmp/engine" >&2

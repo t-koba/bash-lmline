@@ -10,6 +10,14 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) ))
   exit 2
 fi
 
+# Caller-shell function names arrive in LMLINE_SHELL_FUNCTIONS (newline-delimited,
+# names only). Capture into a non-exported internal variable and unset the
+# transport before any subprocess, so no child process or provider request
+# inherits it. Validation reads only the snapshot.
+__LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
+unset LMLINE_SHELL_FUNCTIONS
+
 # The name of this program in the messages that the shared route prints.
 __lmline_program_name=lmline-engine
 

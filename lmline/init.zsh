@@ -284,7 +284,7 @@ __lmline_zsh_run_bridge() {
 }
 
 __lmline_zsh_bridge() {
-  local action=$1 mode=${2-} line=${3-} point=${4-0} key declaration
+  local action=$1 mode=${2-} line=${3-} point=${4-0} key declaration caller_functions
   local -a bridge_env bridge_env_unset bridge_env_set
   # The bridge runs in Bash, but zsh session settings are often globals that
   # were never exported. Pass those values for this invocation without
@@ -302,9 +302,19 @@ __lmline_zsh_bridge() {
   # child's reload identity so it does not re-apply settings files over a
   # session value that the user changed after that load.
   bridge_env=("${bridge_env_unset[@]}" "${bridge_env_set[@]}" "__LMLINE_SETTINGS_CKSUM=$__LMLINE_ZSH_SETTINGS_CKSUM")
+  # Caller-shell function names only (never bodies), carried into the Bash
+  # child only to be snapshotted and unset there before sourcing context.
+  # The child passes them only on its engine command for this (zsh) target;
+  # context and Copilot subprocesses never inherit them, while same-process
+  # Copilot validation still sees the non-exported snapshot.
+  caller_functions=$(print -l ${(k)functions} 2>/dev/null) || caller_functions=
+  bridge_env+=("LMLINE_SHELL_FUNCTIONS=${caller_functions}")
   command env "${bridge_env[@]}" bash -c '
     set -u
     set -o pipefail
+    __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+    export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
+    unset LMLINE_SHELL_FUNCTIONS
     source "$LMLINE_DIR/context.bash"
     source "$LMLINE_DIR/policy.bash"
     source "$LMLINE_DIR/actions.bash"
@@ -323,7 +333,7 @@ __lmline_zsh_bridge() {
         else
           printf "%s" "$line" >"$tmp/line"
           __lmline_context_file "$tmp/context" "$line" "$mode"
-          "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
+          LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
         fi
         grep "^lmline-candidate: " "$engine_file" || true
         if [[ "$status" == 0 && "$mode" == rewrite ]]; then
