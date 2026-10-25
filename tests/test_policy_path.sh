@@ -197,4 +197,137 @@ for target in bash zsh; do
   ok "$target relative-PATH directory-change handling and non-execution"
 done
 
+# Explicit slash-containing command paths are validated against the filesystem
+# only (-f/-x metadata, symlinks followed); candidates go only to the
+# target-shell syntax parser and the static validator, inert stubs are only
+# inspected, never executed.
+slash_dir=$path_tmp/slash-fixture
+slash_empty=$path_tmp/slash-empty
+mkdir -p "$slash_dir" "$slash_empty" || fail "slash fixture setup"
+slash_probe_marker=$slash_dir/probe-executed
+rm -f "$slash_probe_marker"
+printf '#!/bin/sh\ntouch "%s"\n' "$slash_probe_marker" > "$slash_dir/lmline_slash_exe" || fail "slash stub setup"
+chmod +x "$slash_dir/lmline_slash_exe" || fail "slash stub setup"
+ln -s "$slash_dir/lmline_slash_exe" "$slash_dir/has space" || fail "slash space setup"
+printf 'data\n' > "$slash_dir/lmline_slash_noexec" || fail "slash fixture setup"
+chmod -x "$slash_dir/lmline_slash_noexec" || fail "slash fixture setup"
+mkdir -p "$slash_dir/lmline_slash_dir" || fail "slash fixture setup"
+ln -s "$slash_dir/lmline_slash_exe" "$slash_dir/lmline_slash_link_ok" || fail "slash link setup"
+ln -s /no/such/lmline_missing_link_target "$slash_dir/lmline_slash_link_bad" || fail "slash link setup"
+ln -s "$slash_dir/lmline_slash_dir" "$slash_dir/lmline_slash_link_dir" || fail "slash link setup"
+
+for target in bash zsh; do
+  if [[ "$target" == zsh ]] && ! command -v zsh >/dev/null 2>&1; then
+    continue
+  fi
+  # Reproduced false acceptances: unavailable slash paths were accepted, and
+  # quoted slash paths were skipped entirely.
+  check_path "$target" '/no/such/lmline_missing_executable' command-not-found
+  check_path "$target" './lmline_missing_executable' command-not-found
+  check_path "$target" 'dir/lmline_missing_executable' command-not-found
+  check_path "$target" '"/no/such/lmline_missing_executable"' command-not-found
+  check_path "$target" "'/no/such/lmline_missing_executable'" command-not-found
+  # Filesystem truth: executable, non-executable, directory, symlinks.
+  check_path "$target" "$slash_dir/lmline_slash_exe" ok
+  check_path "$target" "'$slash_dir/lmline_slash_exe'" ok
+  check_path "$target" "\"$slash_dir/lmline_slash_exe\"" ok
+  check_path "$target" "$slash_dir/lmline_slash_noexec" command-not-found
+  check_path "$target" "'$slash_dir/lmline_slash_noexec'" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_dir" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_link_ok" ok
+  check_path "$target" "'$slash_dir/lmline_slash_link_ok'" ok
+  check_path "$target" "$slash_dir/lmline_slash_link_bad" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_link_dir" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_missing" command-not-found
+  check_path "$target" "'$slash_dir/lmline_slash_missing'" command-not-found
+  check_path "$target" "\"$slash_dir/lmline_slash_missing\"" command-not-found
+  # Dynamic, escaped, concatenated or otherwise opaque spellings fail closed
+  # without expansion, even where a literal spelling would be available.
+  check_path "$target" '$HOME/lmline_slash_exe' command-not-found
+  check_path "$target" '${lmline_slash_command:=/no/such/exe}' command-not-found
+  tilde_cand=$(printf '~%s' '/lmline_slash_exe')
+  check_path "$target" "$tilde_cand" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_*" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_exe\$HOME" command-not-found
+  check_path "$target" "\"$slash_dir/lmline_slash_exe\$HOME\"" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_exe\\x" command-not-found
+  check_path "$target" "$slash_dir/'lmline_slash_exe'" command-not-found
+  check_path "$target" "'$slash_dir/'lmline_slash_exe" command-not-found
+  check_path "$target" "'$slash_dir/has space'" command-not-found
+  check_path "$target" "\"$slash_dir/has space\"" command-not-found
+  if [[ "$target" == bash ]]; then
+    check_path "$target" '{/no/such,/also/missing}/lmline_slash_exe' command-not-found
+  fi
+  check_path "$target" '$lmline_slash_command' command-not-found
+  check_path "$target" '"$lmline_slash_command"' command-not-found
+  # Literal command names remain usable; their arguments stay data.
+  check_path "$target" "'printf' '$slash_dir/lmline_slash_missing'" ok
+  # Quoted arguments, comments and redirection operands stay opaque.
+  check_path "$target" "printf '$slash_dir/lmline_slash_missing'" ok
+  check_path "$target" "printf ok # $slash_dir/lmline_slash_missing" ok
+  check_path "$target" "printf ok # ; $slash_dir/lmline_slash_missing" ok
+  check_path "$target" "$slash_dir/lmline_slash_exe > /dev/null" ok
+  check_path "$target" "> /dev/null $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "2>/dev/null $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "> 'unused output / path' $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "< 'unused input / path' $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "<> 'unused input / path' $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "< 'unused input / path' $slash_dir/lmline_slash_missing" command-not-found
+  check_path "$target" ">\"unused output / path\" $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "> 'unused output / path' $slash_dir/lmline_slash_missing" command-not-found
+  check_path "$target" "> /dev/null /no/such/lmline_missing_executable" command-not-found
+  check_path "$target" "$slash_dir/lmline_slash_exe -- $slash_dir/lmline_slash_missing" ok
+  # Wrappers carry the path command.
+  check_path "$target" "command $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "command $slash_dir/lmline_slash_missing" command-not-found
+  check_path "$target" "sudo $slash_dir/lmline_slash_missing" command-not-found
+  # Direct PATH-prefix fast paths apply the same file check; PATH text is
+  # irrelevant to slash resolution.
+  check_path "$target" "PATH=/usr/bin:/bin $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "PATH=/nonexistent $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "PATH=/usr/bin:/bin $slash_dir/lmline_slash_missing" command-not-found
+  check_path "$target" "PATH=/nonexistent $slash_dir/lmline_slash_missing" command-not-found
+  check_path "$target" "PATH=/nonexistent '$slash_dir/lmline_slash_exe'" ok
+  check_path "$target" "PATH=/nonexistent \"$slash_dir/lmline_slash_exe\"" ok
+  check_path "$target" "PATH=/nonexistent '$slash_dir/lmline_slash_missing'" command-not-found
+  check_path "$target" "PATH=/nonexistent $slash_dir/'lmline_slash_exe'" command-not-found
+  if [[ "$target" == zsh ]]; then
+    check_path "$target" "path=/nonexistent '$slash_dir/lmline_slash_exe'" ok
+    check_path "$target" "path=/nonexistent $slash_dir/lmline_slash_missing" command-not-found
+  fi
+  # Relative slash paths after a possible directory change fail closed even
+  # with an all-absolute inherited PATH; absolute paths stay independent.
+  slash_orig_pwd=$PWD
+  slash_orig_path=$PATH
+  cd "$slash_dir" || fail "$target slash fixture cd"
+  export PATH=/usr/bin:/bin
+  check_path "$target" './lmline_slash_exe' ok
+  check_path "$target" "'./lmline_slash_exe'" ok
+  check_path "$target" '"./lmline_slash_exe"' ok
+  check_path "$target" 'PATH=/nonexistent ./lmline_slash_exe' ok
+  check_path "$target" "cd \"$slash_empty\"; ./lmline_slash_exe" command-not-found
+  check_path "$target" "cd '$slash_empty'; './lmline_slash_exe'" command-not-found
+  check_path "$target" "'cd' '$slash_empty'; \"./lmline_slash_exe\"" command-not-found
+  check_path "$target" "command cd '$slash_empty'; ./lmline_slash_exe" command-not-found
+  check_path "$target" "pushd '$slash_empty'; ./lmline_slash_exe" command-not-found
+  check_path "$target" 'cd "$destination"; ./lmline_slash_exe' command-not-found
+  check_path "$target" "printf 'cd $slash_empty'; ./lmline_slash_exe" ok
+  check_path "$target" "printf ok > 'cd / output'; ./lmline_slash_exe" ok
+  check_path "$target" "bash -c 'cd /; ./lmline_slash_exe'" command-not-found
+  check_path "$target" "cd \"$slash_empty\"; $slash_dir/lmline_slash_exe" ok
+  check_path "$target" "cd \"$slash_empty\"; \"$slash_dir/lmline_slash_exe\"" ok
+  cd "$slash_orig_pwd" || fail "$target slash restore cd"
+  export PATH="$slash_orig_path"
+  # Non-execution: the probe stub would mark itself if it ever ran; static
+  # validation uses metadata only.
+  slash_marker=$path_tmp/$target-slash-executed
+  slash_marker_ok=$path_tmp/$target-slash-executed-ok
+  rm -f "$slash_marker" "$slash_marker_ok"
+  check_path "$target" "touch \"$slash_marker\"" ok
+  check_path "$target" "$slash_dir/lmline_slash_exe" ok
+  check_path "$target" "$slash_dir/lmline_slash_missing; touch \"$slash_marker_ok\"" command-not-found
+  [[ ! -e "$slash_marker" && ! -e "$slash_marker_ok" && ! -e "$slash_probe_marker" ]] || fail "$target slash validation executed candidate text or stub"
+  ok "$target explicit command-path validation and non-execution"
+done
+
 ok "PATH-prefix availability"

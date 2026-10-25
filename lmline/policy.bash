@@ -181,7 +181,13 @@ __lmline_split_pipeline() {
       if [[ "$ch" == "$quote" && "$prev" != '\' ]]; then
         quote=
       fi
-      (( keep_quoted )) && stripped+=$ch
+      # Availability's opt-in view keeps a quoted word in one whitespace
+      # token. The marker is opaque to literal decoding, not shell syntax.
+      if (( keep_quoted == 2 )) && [[ "$ch" == [[:space:]] ]]; then
+        stripped+=$'\002'
+      else
+        (( keep_quoted )) && stripped+=$ch
+      fi
       prev=$ch
       continue
     fi
@@ -300,7 +306,9 @@ __lmline_segment_is_assignment_only() {
 __lmline_reject_env_only_pipeline() {
   local cmd=$1 syntax_shell=${2:-bash} stripped segment rest list_part i last_list_part has_command
   local -a pipeline_segments list_segments
-  stripped=$(__lmline_split_pipeline "$cmd" 0 "" "$syntax_shell" env-pipeline)
+  # Preserve quoted command words (including PATH-prefixed literal paths);
+  # mask their whitespace so quoted assignment values remain single tokens.
+  stripped=$(__lmline_split_pipeline "$cmd" 2 "" "$syntax_shell" env-pipeline)
 
   while IFS= read -r segment; do
     pipeline_segments+=("$segment")
@@ -2200,7 +2208,9 @@ __lmline_extract_command_words() {
   if (( scan_substitutions )) && __lmline_has_path_prefix "$cmd" "$shell"; then
     return 1
   fi
-  local enable_query=0 disable_query=0
+  local enable_query=0 disable_query=0 expect_redirection_operand literal
+  local -a tokens
+  local assignment_prefix='^[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?\+?='
   # Bash documents these no-name forms as builtin-list queries; `-n NAME`
   # remains a mutating operation and is rejected below.
   [[ "$cmd" =~ ^[[:space:]]*enable[[:space:]]+-(a|n|p|s)[[:space:]]*$ ]] && enable_query=1
@@ -2218,7 +2228,9 @@ __lmline_extract_command_words() {
     # path or checking substitutions in unsupported/dynamic eval/trap/shell-c arguments.
     # Unsupported outer syntax remains subject to the existing extractor.
     if eval_copy=$(__lmline_case_command_copy "$cmd" "$shell" 0 "$functions" 1); then
-      cmd+=$eval_copy
+      # A literal eval copy must survive a trailing shell comment in the
+      # original text; this is an analysis-only newline, not candidate execution.
+      cmd+=$'\n'$eval_copy
     else
       eval_status=$?
       (( eval_status != 2 )) || return 1
@@ -2242,16 +2254,30 @@ __lmline_extract_command_words() {
   # the first simple command word after env assignments, negation, and builtins.
   # For zsh, parentheses attached to a glob word are its glob qualifier, not a
   # subshell boundary; the splitter preserves those pairs for this check only.
-  stripped=$(__lmline_split_pipeline "$cmd" 0 "()" "$shell")
+  __lmline_has_relative_cwd_risk "$cmd" "$shell" && return 1
+  stripped=$(__lmline_split_pipeline "$cmd" 2 "()" "$shell" command-prefix)
 
   while IFS= read -r segment; do
     coproc_skip_next=0
-    for token in $segment; do
+    expect_redirection_operand=0
+    read -r -a tokens <<<"$segment"
+    for token in "${tokens[@]}"; do
+      # Redirection targets are data, including leading redirects before the
+      # command. Keep their slash words out of command availability checks.
+      if (( expect_redirection_operand )); then
+        expect_redirection_operand=0
+        continue
+      fi
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<{1,3}|<>|\>&|<&|&>>?|&>)$ ]]; then
+        expect_redirection_operand=1
+        continue
+      fi
+      [[ ! "$token" =~ ^([0-9]+)?(>>?|<{1,3}|<>|\>&|<&|&>>?|&>).+ ]] || continue
       if (( coproc_skip_next )); then
         coproc_skip_next=0
         continue
       fi
-      [[ "$token" == *=* && "$token" != /* && "$token" != ./* && "$token" != ../* ]] && continue
+      [[ "$token" =~ $assignment_prefix ]] && continue
       if [[ "$shell" == zsh && "$token" == repeat ]]; then
         # Supported repeat headers were removed by the syntax-aware copy.
         # Do not let an unsupported wrapper position mask its body by resolving
@@ -2280,13 +2306,21 @@ __lmline_extract_command_words() {
         continue
       fi
       case "$token" in
-        [{\<\>\&]*)
+        '{'|[\<\>\&]*)
           continue
           ;;
       esac
-      token=${token#\"}; token=${token%\"}
-      token=${token#\'}; token=${token%\'}
-      token=${token#\`}; token=${token%\`}
+      # A standalone `$` is the existing splitter's command-substitution
+      # boundary; the following segment contains its command words.
+      if [[ "$token" != '$' && ( "$token" == */* || "$token" == *$'\001'* || "$token" == '$'* ) ]]; then
+        literal=$(__lmline_literal_command_word "$token") || return 1
+        # Quoted wrapper/syntax words are not part of this bounded subset.
+        __lmline_word_is_command_prefix "$literal" && return 1
+        token=$literal
+        if [[ "$token" == */* ]]; then
+          __lmline_command_path_available "$token" || return 1
+        fi
+      fi
       # Bash hash options/operands can mutate remembered command paths. Keep
       # only the unambiguous no-argument and `-l` listing queries; do not
       # simulate the shell's mutable hash table.
@@ -2357,11 +2391,11 @@ __lmline_has_path_prefix() {
         expect_redirection_operand=0
         continue
       fi
-      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>)$ ]]; then
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<{1,3}|<>|\>&|<&|&>>?|&>)$ ]]; then
         expect_redirection_operand=1
         continue
       fi
-      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>).+ ]]; then
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<{1,3}|<>|\>&|<&|&>>?|&>).+ ]]; then
         continue
       fi
       case "$token" in
@@ -2379,10 +2413,34 @@ __lmline_has_path_prefix() {
   return 1
 }
 
+# Decode only a whitespace-free literal command word. The command-prefix
+# splitter marks each quote/escape: a single leading quote marker is allowed,
+# but embedded markers (concatenation/escaping) are not. No shell expansion.
+# Even quoted paths use this bounded ASCII alphabet; spaces and metacharacters
+# are unsupported rather than requiring another shell-word parser.
+__lmline_literal_command_word() {
+  local word=$1 quote
+  if [[ "$word" == $'\001'* ]]; then
+    word=${word#$'\001'}
+    quote=${word:0:1}
+    [[ "$quote" == "'" || "$quote" == '"' ]] || return 1
+    [[ ${#word} -ge 2 && "${word: -1}" == "$quote" ]] || return 1
+    word=${word:1:${#word}-2}
+  fi
+  [[ "$word" =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || return 1
+  printf '%s\n' "$word"
+}
+
+# Explicit command paths use filesystem metadata only, following symlinks.
+# Neither candidate text nor the file is executed.
+__lmline_command_path_available() {
+  [[ -f "$1" && -x "$1" ]]
+}
+
 # Check one direct PATH-prefixed simple command using the extractor's words,
 # not a second token walk. The extractor intentionally discards assignment
 # values; this bounded raw-prefix match retains only the value needed for
-# lookup. Wrappers, compound syntax, extra assignments, quoted command names,
+# lookup. Wrappers, compound syntax, extra assignments,
 # and nested code are unsupported here and fail closed. Quoted/expanded PATH
 # values are opaque: only a guaranteed builtin (or slash path) can use them.
 __lmline_validate_path_prefix() {
@@ -2402,6 +2460,10 @@ __lmline_validate_path_prefix() {
   value=${BASH_REMATCH[3]}
   word=${BASH_REMATCH[4]}
   [[ -z "${BASH_REMATCH[2]}" && "$value" =~ ^[A-Za-z0-9_/:.+@-]*$ ]] && literal=1
+  case "$word" in
+    \"*|\'*) word=$'\001'"$word" ;;
+  esac
+  word=$(__lmline_literal_command_word "$word") || return 1
   # The first extracted word must agree with the raw command position.
   # Trailing comment text may contribute extra lexical words to the lossy
   # extractor; the quote-aware structural view above already strips it.
@@ -2412,7 +2474,10 @@ __lmline_validate_path_prefix() {
   case "$word" in
     eval|trap|source|.) return 1 ;;
   esac
-  [[ "$word" == */* ]] && return 0
+  if [[ "$word" == */* ]]; then
+    __lmline_command_path_available "$word"
+    return $?
+  fi
   __lmline_word_available_under_path "$word" "$value" "$shell" "$literal"
 }
 
@@ -2457,14 +2522,13 @@ __lmline_word_resolves_via_relative_path() {
   [[ -n "$resolved" && "$resolved" != /* ]]
 }
 
-# Inspect quote-aware command segments for directory-changing builtins. A later
-# bare external that resolves through a relative PATH entry is unreliable.
+# Inspect quote-aware command segments for directory-changing builtins. Later
+# relative slash paths and bare externals using relative PATH are unreliable.
 # Opaque command positions are treated as possible directory changes; candidate
 # code is never evaluated.
 __lmline_has_relative_cwd_risk() {
   local cmd=$1 shell=${2:-bash} segment token first changed=0 expect_redirection_operand
   local -a tokens
-  __lmline_path_has_relative_entry || return 1
   while IFS= read -r segment; do
     read -r -a tokens <<<"$segment" || continue
     first=""
@@ -2474,11 +2538,11 @@ __lmline_has_relative_cwd_risk() {
         expect_redirection_operand=0
         continue
       fi
-      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>)$ ]]; then
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<{1,3}|<>|\>&|<&|&>>?|&>)$ ]]; then
         expect_redirection_operand=1
         continue
       fi
-      if [[ "$token" =~ ^([0-9]+)?(>>?|<<<?|\>&|<&|&>>?|&>).+ ]]; then
+      if [[ "$token" =~ ^([0-9]+)?(>>?|<{1,3}|<>|\>&|<&|&>>?|&>).+ ]]; then
         continue
       fi
       case "$token" in
@@ -2497,8 +2561,10 @@ __lmline_has_relative_cwd_risk() {
     done
     [[ -n "$first" ]] || continue
     if [[ "$first" == *$'\001'* ]]; then
-      changed=1
-      continue
+      if ! first=$(__lmline_literal_command_word "$first"); then
+        changed=1
+        continue
+      fi
     fi
     case "$first" in
       cd|pushd|popd)
@@ -2514,10 +2580,14 @@ __lmline_has_relative_cwd_risk() {
         ;;
     esac
     (( changed )) || continue
-    [[ "$first" == */* ]] && continue
+    if [[ "$first" == */* ]]; then
+      [[ "$first" == /* ]] || return 0
+      continue
+    fi
+    __lmline_path_has_relative_entry || continue
     __lmline_word_resolves_via_relative_path "$first" "$shell" || continue
     return 0
-  done <<<"$(__lmline_split_pipeline "$cmd" 0 "(){}" "$shell" command-prefix)"
+  done <<<"$(__lmline_split_pipeline "$cmd" 2 "(){}" "$shell" command-prefix)"
   return 1
 }
 
@@ -2529,7 +2599,6 @@ __lmline_validate_commands_available() {
     __lmline_validate_path_prefix "$cmd" "$shell" "$words"
     return $?
   fi
-  __lmline_has_relative_cwd_risk "$cmd" "$shell" && return 1
   while IFS= read -r word; do
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
