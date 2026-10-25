@@ -16,7 +16,7 @@ check_function() {
   else
     bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
   fi
-  actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  actual=$(__lmline_test_candidate_rejection_reason "$candidate" rewrite "$target")
   [[ "$actual" == "$expected" ]] || fail "$target function policy: $actual, expected $expected: $candidate"
 }
 
@@ -70,7 +70,7 @@ for target in bash zsh; do
   check_function "$target" 'function printf ( printf ok )' command-not-found
   check_function "$target" 'printf() ( printf ok )' command-not-found
   check_function "$target" 'lmline_probe() { printf ok; }; command lmline_probe' command-not-found
-  actual=$(__lmline_candidate_rejection_reason 'lmline_probe() { printf ok;' rewrite "$target")
+  actual=$(__lmline_test_candidate_rejection_reason 'lmline_probe() { printf ok;' rewrite "$target")
   [[ "$actual" == shell-syntax ]] || fail "$target malformed function was accepted: $actual"
   if __lmline_extract_command_words 'function lmline_probe' "$target" >/dev/null; then
     fail "$target unsupported incomplete function header was extracted"

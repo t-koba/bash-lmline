@@ -16,7 +16,7 @@ check_case() {
   else
     bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
   fi
-  actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  actual=$(__lmline_test_candidate_rejection_reason "$candidate" rewrite "$target")
   [[ "$actual" == "$expected" ]] || fail "$target case policy: $actual, expected $expected: $candidate"
   if [[ -n "$extracted" ]]; then
     actual=$(__lmline_extract_command_words "$candidate" "$target" | paste -sd, -)

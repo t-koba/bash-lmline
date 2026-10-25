@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# Bootstrap only: enter a clean instance before running any helper. Assignment
+# enables POSIX special-builtin precedence even if `command` is an export.
+if [[ ! -o privileged ]]; then
+  POSIXLY_CORRECT=1
+  __lmline_entry_dir=${BASH_SOURCE[0]%/*}
+  [[ $__lmline_entry_dir != "${BASH_SOURCE[0]}" ]] || __lmline_entry_dir=.
+  . "$__lmline_entry_dir/validation-boundary.bash" || exit 1
+  __lmline_validation_run entry "${BASH_SOURCE[0]}" "$@"
+  exit $?
+fi
+__LMLINE_VALIDATION_ISOLATED=1
 set -euo pipefail
 
 # lmline engine entry point: parses arguments, loads and validates settings,
@@ -15,8 +26,9 @@ fi
 # transport before any subprocess, so no child process or provider request
 # inherits it. Validation reads only the snapshot.
 __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
-export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
-unset LMLINE_SHELL_FUNCTIONS
+__LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
+export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
+unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
 
 # The name of this program in the messages that the shared route prints.
 __lmline_program_name=lmline-engine

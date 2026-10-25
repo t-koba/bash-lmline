@@ -64,17 +64,19 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
 
 Candidates are validated and deduplicated by the engine before emission.
 Validation rejects multiline text, control characters, syntax invalid for the
-target shell (checked with `bash -n` or `zsh -f -n`),
+target shell (checked with `bash -p -n` or `zsh -f -n`),
 environment-assignment-only command segments, selected direct directory file
 operands, and command words unavailable in the target shell. The frontend for
-the target shell additionally passes its own shell-function names (names only,
-never bodies) in `LMLINE_SHELL_FUNCTIONS` only on the engine command for its
-own shell; the engine captures that transport into a non-exported internal
-variable at startup before any subprocess and unsets the transport, and the
-zsh bridge child does the same at its own start before sourcing context. The
-Bash fix path keeps names function-local and passes them only on its engine
-command. Context and Copilot subprocesses never inherit the list. The
-newline-delimited names use the validator's bounded literal command alphabet
+the target shell passes its own shell-function names (names only, never bodies)
+in `LMLINE_SHELL_FUNCTIONS`. Bash exported function names are a separate list,
+`LMLINE_EXPORTED_FUNCTIONS`. Both transports are snapshotted into non-exported
+internal variables and unset before context/provider subprocesses. Bash
+frontends collect names using builtin `compgen -A function` and `declare -Fx`;
+no function definition listing is used. The zsh bridge passes all zsh function
+names for its editing namespace and an empty Bash-export list (zsh does not
+export Bash functions). The Bash fix path carries the same two lists only on
+its engine command. The newline-delimited names use the validator's bounded
+literal command alphabet
 and are matched as exact lines; a slash-containing word skips executable-path
 lookup only when its exact name is present. Those names are accepted only in
 the target shell's command context. Literal delayed trap actions are checked
@@ -83,11 +85,85 @@ An explicit, still-active candidate definition does, even when its name also
 appears in the transport. Early literal removals of transported bindings
 invalidate later checks;
 action-local definitions do not become outer bindings. Literal nested
-`bash -c`/`zsh -f -c` scripts are checked in a fresh shell and never inherit
-the list. If the zsh syntax
-validator is unavailable, zsh candidates are rejected rather than checked with
-a different shell. Frontends only parse, display, and
-insert.
+`bash -c`/`zsh -f -c` scripts are checked with the invoked shell's syntax and
+command vocabulary and never inherit the transported list. Bash functions
+exported by the caller are tracked separately by name: an active inherited
+binding is available directly and in literal nested
+Bash scripts, but a modeled removal cannot be undone by an ambient lookup or
+a lookup child importing the original environment. Removed names can still
+resolve to real builtins or PATH executables. Literal identifier assignments
+and Bash `time` (optionally `-p`) preserve this position-local lookup, including
+literal nested Bash validation; they do not make wrapped removals eligible for
+standalone effect inference. Other Bash `time` options are refused.
+`command name` bypasses functions;
+`env name` requires an external executable, not a function or builtin. The
+`command -v` and `command -V` query operands are not invocations. No candidate
+text, function body or resolved executable runs during these checks, and the
+inherited environment is not cleared. If the zsh syntax validator is unavailable,
+zsh candidates are rejected rather than checked with a different shell.
+Frontends only parse, display, and insert.
+
+### Validation process boundary
+
+Engine and CLI entry points bootstrap into the **current Bash** (`$BASH -p`),
+not a fixed system Bash; Bash 4.2+ remains required. Public policy validation
+helpers entered from a sourced interactive frontend use the same clean child.
+Copilot enters one child for the entire request/candidate batch, including
+syntax, availability and risk annotation, rather than one child per candidate.
+The engine validates all candidates inside its clean process. Every
+policy-owned Bash syntax/lookup probe also explicitly uses `-p`: privileged
+startup is not assumed to propagate to children. Candidate text is passed
+only to syntax-only `-n` probes or static scanners; lookup probes run builtin
+type inspection on data words, never candidate text or resolved executables.
+
+`-p` suppresses imported functions, including functions named `read`, `builtin`
+and `bash`. Its other startup effects are intentional here: `BASH_ENV`/`ENV`
+are not sourced by the clean child, and environment-provided `SHELLOPTS`,
+`BASHOPTS`, `CDPATH` and `GLOBIGNORE` do not set its shell state. Ordinary
+environment variables (including PATH and provider configuration) remain;
+this is not an `env -i` sandbox. Validation uses lmline's explicit configuration,
+not caller shell-option/startup customizations. Inherited function bodies may
+already exist in Bash's ordinary export environment, but lmline never lists,
+serializes or evaluates them to transport metadata.
+
+Direct PATH-prefix availability probes use the current `$BASH` with `-p -c`,
+not a `bash` executable selected through PATH. The candidate PATH value, command
+word and literal/opaque flag are positional data: a literal value is assigned to
+PATH inside the clean child for builtin/file lookup; an opaque value is never
+expanded and can authorize only a builtin. Neither probe executes the candidate
+word or a file found on PATH. Zsh probes remain separate (`zsh -f`).
+
+The names-only collector/launcher temporarily enables POSIX mode **in a
+subshell**, using assignment syntax. POSIX special-builtin precedence allows
+`unset -f command` to run without dispatching an imported `unset` or `command`.
+It then uses `command builtin` for all helper operations. A complementary
+builtin-only introspection view recovers the `command` name without dispatching
+it, so helper-name collisions do not silently lose metadata. Unremovable
+(readonly) helper shadows fail closed. The launcher clears its temporary
+`POSIXLY_CORRECT` setting before starting the non-POSIX validation child. The interactive
+shell's options, function definitions and export attributes are unchanged.
+The CLI resolves its installed symlink (including relative targets) before
+sourcing the adjacent launcher. This bounded bootstrap uses the same POSIX
+special-builtin precedence, removes a `command` shadow only in a subshell, and
+uses `command readlink` to bypass caller functions; unsafe helper shadows fail
+closed before any support file is sourced.
+
+This boundary assumes a trusted installed Bash, trusted PATH/configuration,
+and a trusted interactive shell: lmline's own functions/internal variables,
+builtins and special variables must not be tampered with or disabled, and shell
+hooks/traps must be trusted. Sourcing frontend/configuration files is trusted
+initialization outside this candidate-validation boundary. The initial interpreter for an executable entry
+point starts normally before the bootstrap; its startup files/`BASH_ENV` and
+environment-provided options must therefore be trusted too. The clean child
+suppresses those startup effects; the bootstrap does not retroactively sandbox
+the invoking shell or its startup. A direct invocation already using `bash -p`
+must supply the two names-only transports if it needs caller-function visibility;
+without metadata those bindings fail closed. Unsupported/dynamic nested-shell
+forms remain outside the bounded literal nested-script model. Caller-function
+metadata does not widen that model: substitutions in unsupported eval, trap or
+shell-c arguments stay opaque to availability analysis. Subsequent commands
+and supported literal scripts are still checked with their position-local
+bindings.
 
 ## Output: `explain` / `clip`
 

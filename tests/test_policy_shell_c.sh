@@ -16,7 +16,7 @@ check_shellc() {
   else
     bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
   fi
-  actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  actual=$(__lmline_test_candidate_rejection_reason "$candidate" rewrite "$target")
   [[ "$actual" == "$expected" ]] || fail "$target shell-c policy: $actual, expected $expected: $candidate"
 }
 
@@ -123,6 +123,16 @@ for target in bash zsh; do
       check_shellc "$target" "$candidate" ok
     done
   fi
+
+  # Transported names select the function-aware scanner, but must not widen
+  # the dynamic-argument recognizer. Opacity ends at the command separator:
+  # a later literal script must still be checked, including binding removals.
+  for binding in '' lmline_shellc_transport_probe; do
+    LMLINE_SHELL_FUNCTIONS=$binding check_shellc "$target" 'bash -c "$(lmline_missing_shellc)"; printf ok' ok
+    LMLINE_SHELL_FUNCTIONS=$binding check_shellc "$target" "bash -c \"\$(lmline_missing_shellc)\"; bash -c 'lmline_missing_shellc'" command-not-found
+  done
+  LMLINE_SHELL_FUNCTIONS=lmline_shellc_transport_probe check_shellc "$target" 'bash -c "$(lmline_missing_shellc)"; unset -f lmline_shellc_transport_probe; lmline_shellc_transport_probe' command-not-found
+  LMLINE_SHELL_FUNCTIONS=lmline_shellc_transport_probe check_shellc "$target" 'bash -c "$(lmline_missing_shellc)"; printf "$(lmline_missing_shellc)"' command-not-found
 
   marker=$shellc_tmp/$target-executed
   check_shellc "$target" "bash -c 'touch \"$marker\"; printf \"\$(touch \"$marker-substitution\")\"'" ok

@@ -656,12 +656,15 @@ LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint remove "a_b
 install_like_dir="$cfg_tmp/install-like"
 install_like_bin="$cfg_tmp/bin"
 mkdir -p "$install_like_dir" "$install_like_bin"
-cp "$repo_dir/lmline/"{lmline,config.bash,context.bash,policy.bash,sandbox.bash,actions.bash,http.bash,profiles.bash,chat.bash,chatgpt.bash,engine} "$install_like_dir/"
+cp "$repo_dir/lmline/"{lmline,config.bash,context.bash,policy.bash,validation-boundary.bash,validate,sandbox.bash,actions.bash,http.bash,profiles.bash,chat.bash,chatgpt.bash,engine} "$install_like_dir/"
 cp -R "$repo_dir/lmline/defaults" "$install_like_dir/defaults"
 mkdir -p "$install_like_dir/prompts"
 cp "$repo_dir/lmline/prompts/"*.txt "$install_like_dir/prompts/"
 ln -s "$install_like_dir/lmline" "$install_like_bin/lmline"
-LMLINE_CONFIG_DIR="$install_like_dir" "$install_like_bin/lmline" context "# list files" | grep -q "^## suggested_commands$" || fail "installed symlink command resolves support files"
+ln -s ../install-like/lmline "$install_like_bin/lmline-relative"
+for installed_entry in "$install_like_bin/lmline" "$install_like_bin/lmline-relative"; do
+  LMLINE_CONFIG_DIR="$install_like_dir" "$installed_entry" context "# list files" | grep -q "^## suggested_commands$" || fail "installed symlink command resolves support files"
+done
 LMLINE_CONFIG_DIR="$install_like_dir" "$install_like_bin/lmline" config set LMLINE_BASE_URL http://127.0.0.1:1234/v1
 grep -q "LMLINE_BASE_URL" "$install_like_dir/settings.bash" || fail "installed config writes settings file"
 ! grep -q "LMLINE_BASE_URL" "$install_like_dir/config.bash" || fail "installed config must not modify support helper"

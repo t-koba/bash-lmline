@@ -11,11 +11,21 @@ if ! declare -F __lmline_resolve_data_file >/dev/null 2>&1; then
 fi
 __lmline_init_dirs "$__LMLINE_POLICY_DIR"
 : "${LMLINE_MAX_CANDIDATE_BYTES:=4096}"
+# shellcheck source=lmline/validation-boundary.bash
+source "$__LMLINE_POLICY_DIR/validation-boundary.bash"
 
 # Word lists are read once per shell process; candidate validation checks every
 # word of every candidate, so per-word file reads and grep forks add up.
 __lmline_word_is_policy_skip() {
   local word=$1 file
+  # This vocabulary also contains builtins and ordinary programs. Only
+  # structural syntax may bypass target-shell availability: a listed command
+  # still needs a real builtin/PATH binding after position-local functions
+  # have been resolved by the scanner.
+  case "$word" in
+    '[['|']]'|'{'|'}'|'!'|case|do|done|else|esac|fi|for|if|in|then|time|until|while) ;;
+    *) return 1 ;;
+  esac
   if [[ -z "${__LMLINE_SHELL_SYNTAX_WORDS_CACHE_SET:-}" ]]; then
     file=$(__lmline_resolve_data_file shell_syntax_words \
       "${LMLINE_SHELL_SYNTAX_WORDS_FILE:-}" \
@@ -120,6 +130,10 @@ __lmline_truncated_comment_candidate() {
 }
 
 __lmline_valid_candidates() {
+  if [[ ${__LMLINE_VALIDATION_ISOLATED-} != 1 ]]; then
+    __lmline_validation_run valid-candidates "$@"
+    return
+  fi
   local candidate reason
   while IFS= read -r candidate; do
     if __lmline_candidate_truncated "$candidate"; then
@@ -133,11 +147,14 @@ __lmline_valid_candidates() {
 }
 
 __lmline_validate_candidate() {
-  local cmd=$1 mode=${2:-} shell=${3:-bash}
-  [[ $(__lmline_candidate_rejection_reason "$cmd" "$mode" "$shell") == ok ]]
+  [[ $(__lmline_candidate_rejection_reason "$@") == ok ]]
 }
 
 __lmline_candidate_rejection_reason() {
+  if [[ ${__LMLINE_VALIDATION_ISOLATED-} != 1 ]]; then
+    __lmline_validation_run candidate "$@"
+    return
+  fi
   local cmd=$1 mode=${2:-} shell=${3:-bash}
   [[ -n "$cmd" ]] || return 1
   [[ "$cmd" != *$'\n'* ]] || { printf 'multiline'; return 0; }
@@ -156,7 +173,7 @@ __lmline_candidate_rejection_reason() {
     command -v zsh >/dev/null 2>&1 || { printf 'shell-validator-unavailable'; return 0; }
     command zsh -f -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
   else
-    bash -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
+    "$BASH" -p -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
   fi
   __lmline_reject_env_only_pipeline "$cmd" "$shell" || { printf 'env-only-command-segment'; return 0; }
   __lmline_reject_directory_file_operands "$cmd" || { printf 'directory-file-operand'; return 0; }
@@ -1221,7 +1238,7 @@ __lmline_extract_literal_eval_words() {
   if [[ "$shell" == zsh ]]; then
     command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
   else
-    bash -n -c "$inner" >/dev/null 2>&1 || return 1
+    "$BASH" -p -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
   # A trailing analysis-only newline commits an adjacent remover call too.
   # Return words and surviving input bindings separately; neither is executable.
@@ -1257,7 +1274,7 @@ __lmline_extract_literal_trap_words() {
   if [[ "$shell" == zsh ]]; then
     command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
   else
-    bash -n -c "$inner" >/dev/null 2>&1 || return 1
+    "$BASH" -p -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
   # Reuse the action's surviving bindings, but never treat registration-time
   # caller-only state as proof of what a delayed action can call. Explicit
@@ -1303,7 +1320,19 @@ __lmline_extract_literal_trap_words() {
 # invoked shell itself resolves (its builtins, PATH lookups and inherited
 # exported functions) count as available.
 __lmline_extract_literal_shell_c_words() {
-  local token=$1 remaining=$2 functions=${3:-} inner inner_shell words word
+  local token=$1 remaining=$2 functions=${3:-} outer_shell=${4:-bash} inherited_bindings=${5-$functions} inner inner_shell words word
+  local inherited_exports=${__lmline_exported_functions-} __lmline_exported_functions="" inner_functions=""
+  # The child inherits the cwd at this command position. Carry uncertainty,
+  # never a candidate directory value, into its recursive availability scan.
+  local __lmline_cwd_uncertain=${6:-0}
+  # Only unchanged inherited bindings cross a process boundary. The names are
+  # scan-local data; no candidate definition or function body is transported.
+  while IFS= read -r word; do
+    [[ -n "$word" ]] || continue
+    if [[ "$outer_shell" != bash || $'\n'"$inherited_bindings"$'\n' == *$'\n'"$word"$'\n'* ]]; then
+      __lmline_exported_functions+=$'\n'"$word"$'\n'
+    fi
+  done <<<"$inherited_exports"
   # A new shell has no transported caller bindings, including in its traps.
   local __lmline_trap_caller_functions="" __lmline_candidate_defined_functions=""
   local bash_literal="^([[:blank:]]+-[euvx]+)*[[:blank:]]+-c[[:blank:]]+'([^']*)'[[:blank:]]*($|[;&|)])"
@@ -1338,9 +1367,10 @@ __lmline_extract_literal_shell_c_words() {
     command -v zsh >/dev/null 2>&1 || return 2
     command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
   else
-    command bash -n -c "$inner" >/dev/null 2>&1 || return 1
+    "$BASH" -p -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
-  words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "") || return 1
+  [[ "$inner_shell" != bash ]] || inner_functions=$__lmline_exported_functions
+  words=$(__lmline_extract_command_words "$inner" "$inner_shell" 1 "$inner_functions") || return 1
   if [[ "$inner_shell" == bash ]]; then
     local -a bash_words=()
     while IFS= read -r word; do
@@ -1377,7 +1407,7 @@ __lmline_extract_literal_shell_c_words() {
 __lmline_case_command_copy() {
   local cmd=$1 shell=$2 only_substitutions=${3:-0} functions=${4:-} only_literal_evals=${5:-0} out="" substitutions=""
   local name header remaining zsh_for_words eval_status trap_status shellc_status command_word marked_word eval_functions eval_function_name eval_retained
-  local trap_functions trap_retained trap_function_name
+  local trap_functions trap_retained trap_function_name shellc_cwd_uncertain substitution_cwd_uncertain
   # Named state results report surviving input bindings, not action-local
   # replacements of removed names. Mirror the existing isolation snapshots.
   local retained_functions=$functions
@@ -1409,7 +1439,8 @@ __lmline_case_command_copy() {
   local coproc_named_compound='^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(\{|\[|\()|^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]+('"$coproc_compound_keywords"')([[:space:];]|$)'
   local i=0 start ch next token quote end fragment inner words word scope_idx compound_end=0 previous_compound_end
   local zsh_unscoped_loop_seen=0 zsh_repeat_count_pending=0
-  local depth=0 command_start=1 pattern_started=0 pattern_depth=0
+  local depth=0 command_start=1 pattern_started=0 pattern_depth=0 opaque_arguments=0
+  local time_option_pending=0 assignment_prefix='^[a-zA-Z_][a-zA-Z0-9_]*\+?='
   local if_pending=0 elif_pending=0 brace_depth=0
   # Definitions in and/or lists or pipelines need control-flow reasoning.
   # Conservatively fail closed for those lists rather than evaluating their
@@ -1452,6 +1483,7 @@ __lmline_case_command_copy() {
         pending_function_definition_id=""
         command_start=1
         direct_start=1
+        opaque_arguments=0
         if (( installer_called )); then
           pending_installers=${declaration_children[selected_installer]}
           for child_id in $pending_installers; do
@@ -1525,21 +1557,29 @@ __lmline_case_command_copy() {
                 if [[ "$shell" == zsh ]]; then
                   command zsh -f -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
                 else
-                  bash -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
+                  "$BASH" -p -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
                 fi
               fi
               end=$((end + 1))
             done
             (( end < ${#cmd} )) || return 1
-            if (( only_literal_evals )); then
-              # An eval-only scan must not broaden checking of dynamic or
-              # unsupported outer arguments. Their substitutions stay opaque.
+            if (( only_literal_evals || opaque_arguments )); then
+              # Unsupported eval/trap/shell-c arguments stay opaque even when
+              # caller names require the function-aware scan. Syntax is parsed
+              # above, but the dynamic text is neither inspected nor executed.
               i=$((end + 1))
               continue
             fi
+            # Substitutions inherit the cwd at this position just like a
+            # literal child shell. Carry only uncertainty, never a candidate
+            # directory or evaluated substitution, into the recursive scan.
+            substitution_cwd_uncertain=0
+            if __lmline_has_relative_cwd_risk "$out" "$shell" "$cmd" cwd-state; then
+              substitution_cwd_uncertain=1
+            fi
             if [[ ${fragment:0:3} == '$((' ]]; then
               inner=${fragment:3:${#fragment}-5}
-              words=$(__lmline_case_command_copy "$inner" "$shell" 1 "$functions") || return 1
+              words=$(__lmline_cwd_uncertain=$substitution_cwd_uncertain __lmline_case_command_copy "$inner" "$shell" 1 "$functions") || return 1
               substitutions+=$words
             else
               if [[ "$ch" == '$' ]]; then
@@ -1550,7 +1590,7 @@ __lmline_case_command_copy() {
                 # such unsupported forms closed rather than dropping commands.
                 [[ "$inner" != *'\`'* ]] || return 1
               fi
-              words=$(__lmline_extract_command_words "$inner" "$shell" 1 "$functions") || return 1
+              words=$(__lmline_cwd_uncertain=$substitution_cwd_uncertain __lmline_extract_command_words "$inner" "$shell" 1 "$functions") || return 1
               while IFS= read -r word; do
                 [[ -z "$word" ]] || substitutions+="; $word "
               done <<<"$words"
@@ -1583,6 +1623,15 @@ __lmline_case_command_copy() {
       else
         command_word=$(__lmline_literal_command_name "$marked_word") || command_word=$token
       fi
+    fi
+    # Bash's reserved time accepts only the bounded -p form here. Do not
+    # mistake its option for a command or infer function effects from it.
+    if (( time_option_pending )); then
+      time_option_pending=0
+      case "$token" in
+        -p) out+=' '; continue ;;
+        -*) return 1 ;;
+      esac
     fi
     was_direct_start=$direct_start
     direct_start=0
@@ -1811,6 +1860,15 @@ __lmline_case_command_copy() {
           esac
         fi
 
+        # Query operands are data, not wrapped remover invocations. Keep
+        # substitution scanning intact, but do not infer effects from a name
+        # such as `unset` in `command -v unset`.
+        if (( command_start )) && [[ "$token" == command && "$remaining" =~ ^[[:blank:]]+-(v|V|pv|pV|vp|Vp|vV|Vv)([[:blank:]]|$) ]]; then
+          removal_wrapper=0
+          remover_call_wrapper=0
+          remover_call_bypass=0
+        fi
+
         # The existing scope stack starts at then/do, not at the condition.
         # Never infer an installation in a condition/header. Count only loop
         # headers here; if/elif already have pending counters below.
@@ -2034,6 +2092,7 @@ __lmline_case_command_copy() {
           else
             eval_status=$?
             (( eval_status == 2 )) || return 2
+            opaque_arguments=1
           fi
           out+=$token
           command_start=0
@@ -2074,15 +2133,24 @@ __lmline_case_command_copy() {
           else
             trap_status=$?
             (( trap_status == 2 )) || return 2
+            opaque_arguments=1
           fi
           out+=$token
           command_start=0
         elif (( command_start )) && [[ ( "$token" == bash || "$token" == zsh ) && -z "$name" ]]; then
-          if __lmline_extract_literal_shell_c_words "$token" "$remaining" "$functions"; then
+          shellc_cwd_uncertain=0
+          # Reuse the cwd model on the analysis prefix, retaining the original
+          # syntax for its bounded pipeline-isolation proof. This also carries
+          # inherited uncertainty through further literal child shells.
+          if __lmline_has_relative_cwd_risk "$out$token" "$shell" "$cmd" cwd-state; then
+            shellc_cwd_uncertain=1
+          fi
+          if __lmline_extract_literal_shell_c_words "$token" "$remaining" "$functions" "$shell" "$retained_functions" "$shellc_cwd_uncertain"; then
             :
           else
             shellc_status=$?
             (( shellc_status == 2 )) || return 2
+            opaque_arguments=1
           fi
           out+=$token
           command_start=0
@@ -2370,9 +2438,22 @@ __lmline_case_command_copy() {
             # Reserved words preserve an existing command boundary, but the
             # same words used as arguments must not manufacture a repeat body.
             '!'|if|then|else|do|while|until) : ;;
-            time) [[ "$shell" == zsh ]] || command_start=0 ;;
+            time)
+              # Preserve the position-local function namespace through time,
+              # without restoring the stricter direct_start inference edge.
+              [[ "$shell" != bash || $command_start != 1 ]] || time_option_pending=1
+              ;;
             '{') : ;; # A brace argument does not start a command.
-            *) command_start=0 ;;
+            *)
+              # Assignment values remain data (substitutions were scanned
+              # above). Only literal identifier assignments preserve an
+              # existing command boundary, never ordinary argument words.
+              if (( command_start )) && [[ "$token" == *=* ]]; then
+                [[ "$token" =~ $assignment_prefix ]] || return 1
+              else
+                command_start=0
+              fi
+              ;;
           esac
         fi
         ;;
@@ -2380,6 +2461,7 @@ __lmline_case_command_copy() {
     # Unlike command_start, this boundary is not preserved by !/time/while or
     # other prefixes. Both the declaration and call must be standalone.
     if (( command_start )); then
+      opaque_arguments=0
       case "$token" in
         ';'|'{'|'('|')'|then|else|do) direct_start=1 ;;
         '&')
@@ -2412,13 +2494,13 @@ __lmline_case_command_copy() {
 
 __lmline_extract_command_words() {
   local cmd=$1 shell=${2:-bash} scan_substitutions=${3:-0} functions=${4:-} stripped segment token arithmetic array_assignment coproc_skip_next=0 eval_copy eval_status
-  local extracted_copy extracted_functions extracted_words=""
+  local extracted_copy extracted_functions extracted_words="" cwd_syntax=$cmd
   # Nested literal scripts cannot use the direct-prefix lookup: their
   # surrounding command/wrapper has a separate environment. Fail closed.
   if (( scan_substitutions )) && __lmline_has_path_prefix "$cmd" "$shell"; then
     return 1
   fi
-  local enable_query=0 disable_query=0 expect_redirection_operand literal
+  local enable_query=0 disable_query=0 expect_redirection_operand literal lookup_context command_options time_options
   local -a tokens
   local assignment_prefix='^[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?\+?='
   # Bash documents these no-name forms as builtin-list queries; `-n NAME`
@@ -2469,11 +2551,14 @@ __lmline_extract_command_words() {
   # the first simple command word after env assignments, negation, and builtins.
   # For zsh, parentheses attached to a glob word are its glob qualifier, not a
   # subshell boundary; the splitter preserves those pairs for this check only.
-  __lmline_has_relative_cwd_risk "$cmd" "$shell" && return 1
+  __lmline_has_relative_cwd_risk "$cmd" "$shell" "$cwd_syntax" && return 1
   stripped=$(__lmline_split_pipeline "$cmd" 2 "()" "$shell" command-prefix)
 
   while IFS= read -r segment; do
     coproc_skip_next=0
+    lookup_context=""
+    command_options=0
+    time_options=0
     expect_redirection_operand=0
     read -r -a tokens <<<"$segment"
     for token in "${tokens[@]}"; do
@@ -2492,7 +2577,20 @@ __lmline_extract_command_words() {
         coproc_skip_next=0
         continue
       fi
+      # Keep option refusal consistent even on the simple-command fast path,
+      # where the position-local scanner need not have rewritten time's -p.
+      if (( time_options )); then
+        time_options=0
+        case "$token" in
+          -p) continue ;;
+          -*) return 1 ;;
+        esac
+      fi
       [[ "$token" =~ $assignment_prefix ]] && continue
+      if [[ "$shell" == bash && "$token" == time && -z "$lookup_context" ]]; then
+        time_options=1
+        continue
+      fi
       if [[ "$shell" == zsh && "$token" == repeat ]]; then
         # Supported repeat headers were removed by the syntax-aware copy.
         # Do not let an unsupported wrapper position mask its body by resolving
@@ -2500,10 +2598,10 @@ __lmline_extract_command_words() {
         return 1
       fi
       if [[ "$token" == coproc ]]; then
-        # A header the syntax-aware copy did not consume (for example after
-        # `time` in Bash, which clears the command boundary). Skip it and any
-        # same-segment NAME so the body stays visible; cross-segment NAME
-        # forms were already consumed by the copy when at a boundary.
+        # A header the syntax-aware copy did not consume in an unsupported
+        # wrapper position. Skip it and any same-segment NAME so the body
+        # stays visible; cross-segment NAME forms were already consumed by
+        # the copy when at a boundary.
         if [[ "$segment" =~ coproc[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(\{|\[|\() ]]; then
           coproc_skip_next=1
         elif [[ "$segment" =~ $coproc_named_keywords ]]; then
@@ -2517,7 +2615,23 @@ __lmline_extract_command_words() {
         # following segments, where command checks continue as usual.
         break
       fi
-      if __lmline_word_is_command_prefix "$token"; then
+      # Queries inspect names, they do not invoke their operands. Only the
+      # bounded command options are recognized; unknown options fail closed.
+      if (( command_options )); then
+        case "$token" in
+          -v|-V|-pv|-pV|-vp|-Vp|-vV|-Vv) break ;;
+          --) command_options=0; continue ;;
+          -*) return 1 ;;
+        esac
+        command_options=0
+      fi
+      if [[ "$lookup_context" != external ]]; then
+        case "$token" in
+          command) lookup_context=command; command_options=1; continue ;;
+          env) lookup_context=external; continue ;;
+        esac
+      fi
+      if [[ -z "$lookup_context" ]] && __lmline_word_is_command_prefix "$token"; then
         continue
       fi
       case "$token" in
@@ -2561,6 +2675,17 @@ __lmline_extract_command_words() {
       if [[ "$shell" == zsh && "$token" == disable ]] && (( ! disable_query )); then
         return 1
       fi
+      if [[ -n "$lookup_context" ]]; then
+        [[ "$token" != -* ]] || return 1
+        if [[ "$lookup_context" == external ]]; then
+          __lmline_word_available_without_functions "$token" "$shell" 1 || return 1
+        else
+          __lmline_word_available_without_functions "$token" "$shell" || return 1
+        fi
+        # Availability was proved in the wrapper's namespace, not the
+        # validator's ambient function namespace or its syntax skip list.
+        break
+      fi
       [[ -z "$token" || "$token" == '$'* ]] || extracted_words+="$token"$'\n'
       break
     done
@@ -2594,31 +2719,53 @@ __lmline_words_available_in_zsh() {
 # Invoked-shell command check for literal `bash -c` scripts: ask one fresh Bash
 # process about all collected words so unexported caller-shell functions and
 # aliases do not leak into the new shell's command namespace. Exported
-# functions travel with the environment, and builtins and PATH lookups resolve
-# in the child, so they stay available. The words stay data in "$@"; only
-# `command -v` lookups run, the candidate script never runs.
+# functions are handled positionally by the scanner. The fallback probe must
+# ignore them, including exports still present in the validator environment
+# after a modeled removal. Words stay data in "$@"; only builtin type lookups
+# run, never the candidate script or the resolved commands.
 __lmline_words_available_in_bash() {
   (( $# )) || return 0
-  command bash -c 'for _lmline_word in "$@"; do command -v "$_lmline_word" >/dev/null 2>&1 || exit 1; done' _ "$@"
+  "$BASH" -p -c 'for _lmline_word in "$@"; do
+    _lmline_found=0
+    while IFS= read -r _lmline_kind; do
+      case "$_lmline_kind" in builtin|file) _lmline_found=1;; esac
+    done < <(builtin type -a -t -- "$_lmline_word" 2>/dev/null)
+    (( _lmline_found )) || exit 1
+  done' _ "$@"
 }
 
-# Caller-shell function state for editing-shell validation (names only,
-# never bodies). The interactive frontend passes its own function names in
-# LMLINE_SHELL_FUNCTIONS (newline-delimited) only on the engine command for
-# its own shell; the engine captures that transport into the non-exported
-# __LMLINE_CALLER_FUNCTIONS at startup before any subprocess and unsets the
-# transport, and the zsh bridge child does the same at its own start before
-# sourcing context. The Bash fix path keeps names function-local and passes
-# them only on its engine command. Validation consults the snapshot (or, when
-# validation runs in the frontend process itself, the live transport) only
-# to seed each availability scan's local function state for the target shell.
-# Same-shell substitutions and literal eval inherit that scan-local state.
-# Delayed trap actions are checked conservatively: transported names do not
-# satisfy their command positions, and early literal removals of transported
-# bindings invalidate later checks. Nested literal `bash -c`/`zsh -f -c` scripts use fresh-shell
-# probes that never see this list, so a parent-shell function never validates
-# a new shell. Names use the parser's bounded literal alphabet and are matched
-# as exact lines; candidate text is never executed here.
+# The clean process reads the exported-name snapshot. Direct internal helper
+# tests outside it can request a protected live names-only collection.
+__lmline_exported_function_names() {
+  if [[ ${__LMLINE_EXPORTED_FUNCTIONS+x} ]]; then
+    printf '%s' "$__LMLINE_EXPORTED_FUNCTIONS"
+  else
+    __lmline_collect_exported_functions
+  fi
+}
+
+# Static fallback for wrappers and removed imported functions. `type -a`
+# exposes real builtins/PATH entries even when a function shadows the name.
+# Neither the function nor any PATH executable is invoked.
+__lmline_word_available_without_functions() {
+  local word=$1 shell=${2:-bash} external_only=${3:-0} kind
+  if (( external_only )); then
+    builtin type -P -- "$word" >/dev/null 2>&1
+    return $?
+  fi
+  if [[ "$shell" == zsh ]]; then
+    __lmline_word_available_in_zsh "$word"
+    return $?
+  fi
+  while IFS= read -r kind; do
+    case "$kind" in builtin|file) return 0 ;; esac
+  done < <(builtin type -a -t -- "$word" 2>/dev/null)
+  return 1
+}
+
+# Caller-shell function state is names-only data from validation-boundary.bash.
+# Top-level scans get all caller names; ordinary nested Bash scans get only
+# still-active exported names. Neither list contains function definitions.
 __lmline_valid_caller_function_name() {
   # Match the parser's bounded literal command alphabet rather than the
   # identifier grammar: Bash and Zsh both allow punctuation (and slash) in
@@ -2637,20 +2784,14 @@ __lmline_caller_functions_data() {
   fi
 }
 
-# Snapshot the transport into a non-exported internal variable for same-process
-# validation (frontend in-process checks, tests, and the bridge child's Copilot
-# path). Engine and bridge-child entry points snapshot inline before any
-# subprocess; this helper is the same operation for those in-process uses.
+# Snapshot both transports. Entry points do this inline before subprocesses;
+# this helper is for trusted initialization/tests, not the validation boundary.
 __lmline_snapshot_caller_functions() {
   __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
   export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
-  unset LMLINE_SHELL_FUNCTIONS
-}
-
-# Names of functions defined in this Bash shell (names only, never bodies).
-# Empty on failure so callers fail closed.
-__lmline_collect_shell_functions() {
-  compgen -A function 2>/dev/null || true
+  __LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
+  export -n __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
+  unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
 }
 
 # Inspect only command-prefix positions. The shared splitter hides quoted
@@ -2791,15 +2932,17 @@ __lmline_validate_path_prefix() {
 # Resolve the probe shell before changing PATH. Candidate values stay data in
 # positional parameters; only builtin lookup runs, never the candidate word.
 # Set PATH inside the shell, since zsh restores a default on an empty inherited
-# PATH. An opaque value must not be evaluated: accept only a builtin instead.
+# PATH. Bash uses the current interpreter with -p so neither a PATH-selected
+# shell nor imported functions/startup hooks can handle the probe. An opaque
+# value must not be evaluated: accept only a builtin instead.
 __lmline_word_available_under_path() {
   local word=$1 path_value=$2 shell=${3:-bash} literal=${4:-1} bin
-  bin=$(type -P "$shell") || return 1
-  [[ "$bin" == */* ]] || return 1
   if [[ "$shell" == zsh ]]; then
+    bin=$(builtin type -P zsh) || return 1
+    [[ "$bin" == */* ]] || return 1
     "$bin" -f -c 'if [[ "$3" == 1 ]]; then PATH="$1"; command -v "$2" >/dev/null 2>&1; else [[ $(whence -w "$2") == "$2: builtin" ]]; fi' _ "$path_value" "$word" "$literal"
   else
-    "$bin" -c 'if [[ "$3" == 1 ]]; then PATH="$1"; command -v "$2" >/dev/null 2>&1; else [[ $(type -t -- "$2") == builtin ]]; fi' _ "$path_value" "$word" "$literal"
+    "$BASH" -p -c 'if [[ "$3" == 1 ]]; then PATH="$1"; command -v "$2" >/dev/null 2>&1; else [[ $(type -t -- "$2") == builtin ]]; fi' _ "$path_value" "$word" "$literal"
   fi
 }
 
@@ -2818,14 +2961,16 @@ __lmline_path_has_relative_entry() {
 }
 
 # Find whether a bare external currently resolves through a relative PATH
-# entry. Builtins and functions are independent of PATH; only lookup runs.
+# entry. Ignore validator functions: only real builtins (unless the wrapper
+# requires an external) are independent of PATH. No command body runs.
 __lmline_word_resolves_via_relative_path() {
-  local word=$1 shell=${2:-bash} resolved kind
-  __lmline_word_is_policy_skip "$word" && return 1
-  [[ "$shell" == zsh && "$word" == chdir ]] && return 1
-  kind=$(type -t -- "$word") || return 1
-  [[ "$kind" == file ]] || return 1
-  resolved=$(type -P -- "$word") || return 1
+  local word=$1 shell=${2:-bash} lookup_context=${3:-} resolved
+  if [[ "$lookup_context" != external ]]; then
+    # The cross-shell skip vocabulary is not evidence of a builtin in this
+    # target. Reuse the function-free opaque-PATH probe's builtin-only mode.
+    __lmline_word_available_under_path "$word" "" "$shell" 0 && return 1
+  fi
+  resolved=$(builtin type -P -- "$word") || return 1
   [[ -n "$resolved" && "$resolved" != /* ]]
 }
 
@@ -2860,10 +3005,14 @@ __lmline_is_flat_simple_list() {
 # Opaque command positions are treated as possible directory changes; candidate
 # code is never evaluated.
 __lmline_has_relative_cwd_risk() {
-  local cmd=$1 shell=${2:-bash} segment token first decoded_first changed=0 expect_redirection_operand nonfinal
-  local split_mode=command-prefix
+  local cmd=$1 shell=${2:-bash} segment token first decoded_first changed=${__lmline_cwd_uncertain:-0} expect_redirection_operand nonfinal
+  local split_mode=command-prefix lookup_context command_options
   local -a tokens
-  __lmline_is_flat_simple_list "$cmd" && split_mode=cwd-pipeline
+  # Prove isolation against the original syntax, not just an analysis copy:
+  # function-aware rewriting removes comments/quotes and can make a formerly
+  # conservative command look like a flat pipeline. Inspect the copy below
+  # for command positions, but never broaden the original grammar proof.
+  __lmline_is_flat_simple_list "${3-$cmd}" && split_mode=cwd-pipeline
   while IFS= read -r segment; do
     nonfinal=0
     if [[ "$split_mode" == cwd-pipeline && "$segment" == *$'\003' ]]; then
@@ -2872,6 +3021,8 @@ __lmline_has_relative_cwd_risk() {
     fi
     read -r -a tokens <<<"$segment" || continue
     first=""
+    lookup_context=""
+    command_options=0
     expect_redirection_operand=0
     for token in "${tokens[@]}"; do
       if (( expect_redirection_operand )); then
@@ -2889,13 +3040,32 @@ __lmline_has_relative_cwd_risk() {
         [A-Za-z_]*=*) continue ;;
         '{'|'}') continue ;;
       esac
-      case "${token##*/}" in
-        eval|trap|source|.)
-          first=$token
-          break
-          ;;
-      esac
-      __lmline_word_is_command_prefix "${token##*/}" && continue
+      # Keep the extractor's bounded command/env lookup context while
+      # skipping prefixes. In particular env's operand cannot use a builtin
+      # (or the policy skip list) to hide a relative external lookup.
+      if (( command_options )); then
+        case "$token" in
+          -v|-V|-pv|-pV|-vp|-Vp|-vV|-Vv) break ;;
+          --) command_options=0; continue ;;
+          -*) break ;; # The extractor rejects unsupported options.
+        esac
+        command_options=0
+      fi
+      if [[ "$lookup_context" != external ]]; then
+        case "$token" in
+          command) lookup_context=command; command_options=1; continue ;;
+          env) lookup_context=external; continue ;;
+        esac
+        case "${token##*/}" in
+          eval|trap|source|.)
+            first=$token
+            break
+            ;;
+        esac
+      fi
+      if [[ -z "$lookup_context" ]] && __lmline_word_is_command_prefix "${token##*/}"; then
+        continue
+      fi
       first=$token
       break
     done
@@ -2908,7 +3078,7 @@ __lmline_has_relative_cwd_risk() {
           [[ "$first" != */* ]] || return 0
           if __lmline_path_has_relative_entry; then
             decoded_first=$(__lmline_literal_command_name "$first") || return 0
-            __lmline_word_resolves_via_relative_path "$decoded_first" "$shell" && return 0
+            __lmline_word_resolves_via_relative_path "$decoded_first" "$shell" "$lookup_context" && return 0
           fi
         fi
         changed=1
@@ -2916,7 +3086,8 @@ __lmline_has_relative_cwd_risk() {
       fi
       first=$decoded_first
     fi
-    case "$first" in
+    if [[ "$lookup_context" != external ]]; then
+      case "$first" in
       cd|pushd|popd)
         # A proven non-final stage cannot change its siblings' or parent's
         # cwd. Never clear a prior persistent change; final stages remain
@@ -2931,29 +3102,37 @@ __lmline_has_relative_cwd_risk() {
         changed=1
         continue
         ;;
-    esac
+      esac
+    fi
     (( changed )) || continue
     if [[ "$first" == */* ]]; then
       [[ "$first" == /* ]] || return 0
       continue
     fi
     __lmline_path_has_relative_entry || continue
-    __lmline_word_resolves_via_relative_path "$first" "$shell" || continue
+    __lmline_word_resolves_via_relative_path "$first" "$shell" "$lookup_context" || continue
     return 0
   done <<<"$(__lmline_split_pipeline "$cmd" 2 "(){}" "$shell" "$split_mode")"
+  # A literal child needs the position-local state even when this prefix has
+  # not itself attempted a cwd-dependent lookup.
+  [[ ${4:-} == cwd-state ]] && (( changed )) && return 0
   return 1
 }
 
 __lmline_validate_commands_available() {
   local cmd=$1 shell=${2:-bash}
   local word words line caller_list functions="" __lmline_trap_caller_functions __lmline_candidate_defined_functions=""
+  local __lmline_exported_functions
+  __lmline_exported_functions=$(__lmline_exported_function_names)
   caller_list=$(__lmline_caller_functions_data)
+  [[ "$shell" != bash ]] || caller_list+=$'\n'"$__lmline_exported_functions"
   while IFS= read -r line || [[ -n "$line" ]]; do
     __lmline_valid_caller_function_name "$line" || continue
     [[ $'\n'"$functions"$'\n' != *$'\n'"$line"$'\n'* ]] || continue
     functions+=$'\n'"$line"$'\n'
   done <<<"$caller_list"
-  # Dynamically scoped scan context, cleared explicitly for fresh shell -c.
+  # Dynamically scoped context: fresh shell -c clears the caller transport
+  # and filters inherited exports against the position-local surviving list.
   __lmline_trap_caller_functions=$functions
   words=$(__lmline_extract_command_words "$cmd" "$shell" 0 "$functions") || return 1
   if __lmline_has_path_prefix "$cmd" "$shell"; then
@@ -2964,8 +3143,10 @@ __lmline_validate_commands_available() {
     [[ -n "$word" ]] || continue
     [[ "$word" == */* ]] && continue
     __lmline_word_is_policy_skip "$word" && continue
-    command -v "$word" >/dev/null 2>&1 && continue
-    [[ "$shell" == zsh ]] && __lmline_word_available_in_zsh "$word" && continue
+    # Active caller/candidate functions were resolved by the scanner. Any
+    # remaining word must have a real target-shell builtin/PATH fallback;
+    # policy helpers in this Bash process are not candidate bindings.
+    __lmline_word_available_without_functions "$word" "$shell" && continue
     return 1
   done <<<"$words"
   return 0

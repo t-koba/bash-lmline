@@ -16,7 +16,7 @@ check_eval() {
   else
     bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
   fi
-  actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  actual=$(__lmline_test_candidate_rejection_reason "$candidate" rewrite "$target")
   [[ "$actual" == "$expected" ]] || fail "$target eval policy: $actual, expected $expected: $candidate"
 }
 

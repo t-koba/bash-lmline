@@ -1,4 +1,43 @@
 #!/usr/bin/env bash
+# Bootstrap only: special-builtin precedence prevents caller-function dispatch
+# before the clean boundary. Resolve installed links before sourcing neighbors.
+if [[ ! -o privileged ]]; then
+  POSIXLY_CORRECT=1
+fi
+__lmline_entry_path=$(
+  POSIXLY_CORRECT=1
+  unset -f command || exit 1
+  __lmline_path=${BASH_SOURCE[0]}
+  # BSD readlink has no -- option; keep relative operands option-safe.
+  [[ $__lmline_path == /* ]] || __lmline_path=./$__lmline_path
+  __lmline_links=0
+  while [[ -L "$__lmline_path" ]]; do
+    # Bound malformed/cyclic installations as well as ordinary link chains.
+    (( __lmline_links < 40 )) || exit 1
+    __lmline_links=$((__lmline_links + 1))
+    __lmline_dir=${__lmline_path%/*}
+    [[ $__lmline_dir != "$__lmline_path" ]] || __lmline_dir=.
+    __lmline_target=$(command readlink "$__lmline_path") || exit 1
+    [[ -n $__lmline_target ]] || exit 1
+    case $__lmline_target in
+      /*) __lmline_path=$__lmline_target ;;
+      *) __lmline_path=$__lmline_dir/$__lmline_target ;;
+    esac
+  done
+  command builtin printf '%s\n' "$__lmline_path"
+) || exit 1
+if [[ ! -o privileged ]]; then
+  __lmline_entry_dir=${__lmline_entry_path%/*}
+  [[ $__lmline_entry_dir != "$__lmline_entry_path" ]] || __lmline_entry_dir=.
+  . "$__lmline_entry_dir/validation-boundary.bash" || exit 1
+  __lmline_validation_run entry "$__lmline_entry_path" "$@"
+  exit $?
+fi
+__LMLINE_VALIDATION_ISOLATED=1
+__LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+__LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
+export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS
+unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
 set -euo pipefail
 
 if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) )); then
@@ -42,16 +81,7 @@ __lmline_mktemp_dir() {
   printf -v "$__var" '%s' "$path"
 }
 
-script_path=${BASH_SOURCE[0]}
-while [[ -L "$script_path" ]]; do
-  script_dir=${script_path%/*}
-  [[ "$script_dir" == "$script_path" ]] && script_dir=.
-  link_target=$(readlink "$script_path")
-  case "$link_target" in
-    /*) script_path=$link_target ;;
-    *) script_path=$script_dir/$link_target ;;
-  esac
-done
+script_path=$__lmline_entry_path
 script_dir=${script_path%/*}
 [[ $script_dir == "$script_path" ]] && script_dir=.
 script_dir=$(cd -- "$script_dir" && pwd -P)
@@ -1347,7 +1377,7 @@ case "$cmd" in
     __lmline_mktemp_dir tmp "${TMPDIR:-/tmp}/lmline-payload.XXXXXX"
     printf '%s' "$line" >"$tmp/line"
     __lmline_context_file "$tmp/context" "$line" "$mode"
-    "$(engine_path)" --dry-run-payload --mode "$mode" --shell bash --cwd "$PWD" --point "${#line}" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT"
+    LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" LMLINE_EXPORTED_FUNCTIONS="$__LMLINE_EXPORTED_FUNCTIONS" "$(engine_path)" --dry-run-payload --mode "$mode" --shell bash --cwd "$PWD" --point "${#line}" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT"
     ;;
   sandbox)
     sub=${2-}

@@ -257,7 +257,8 @@ __lmline_call_engine_raw() {
   printf '%s' "$line" >"$line_file"
   __lmline_context_file "$context_file" "$line" "$mode"
 
-  LMLINE_SHELL_FUNCTIONS=$(__lmline_collect_shell_functions) "$LMLINE_ENGINE" \
+  LMLINE_SHELL_FUNCTIONS=$(__lmline_collect_shell_functions) \
+  LMLINE_EXPORTED_FUNCTIONS=$(__lmline_collect_exported_functions) "$LMLINE_ENGINE" \
     --mode "$mode" \
     --shell bash \
     --cwd "$PWD" \

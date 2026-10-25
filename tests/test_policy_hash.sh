@@ -7,7 +7,7 @@ source "$repo_dir/lmline/policy.bash"
 check_hash() {
   local candidate=$1 expected=$2 actual
   bash -n -c "$candidate" || fail "invalid Bash fixture: $candidate"
-  actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite bash)
+  actual=$(__lmline_test_candidate_rejection_reason "$candidate" rewrite bash)
   [[ "$actual" == "$expected" ]] || fail "Bash hash policy: $actual, expected $expected: $candidate"
 }
 

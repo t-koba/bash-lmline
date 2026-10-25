@@ -8,7 +8,7 @@ config_file=$config_dir/settings.bash
 
 mkdir -p "$config_dir" "$config_dir/history" "$bin_dir"
 
-for path in init.bash init.zsh config.bash context.bash policy.bash sandbox.bash actions.bash http.bash profiles.bash chat.bash responses.bash websearch.bash chatgpt.bash engine lmline copilot-client.js chatgpt-client.js; do
+for path in init.bash init.zsh config.bash context.bash policy.bash validation-boundary.bash validate sandbox.bash actions.bash http.bash profiles.bash chat.bash responses.bash websearch.bash chatgpt.bash engine lmline copilot-client.js chatgpt-client.js; do
   install -m 0755 "$src_dir/lmline/$path" "$config_dir/$path"
 done
 

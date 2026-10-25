@@ -28,6 +28,13 @@ ok() {
   printf 'ok - %s\n' "$*"
 }
 
+# Policy-unit fixtures exercise the already sourced, trusted scanner directly.
+# The public validation boundary is covered separately by test_policy_boundary.sh
+# and the caller/export transport integration tests.
+__lmline_test_candidate_rejection_reason() {
+  __LMLINE_VALIDATION_ISOLATED=1 __lmline_candidate_rejection_reason "$@"
+}
+
 # Extracts candidate text from engine "lmline-candidate:" protocol lines.
 candidates_of() {
   awk '/^lmline-candidate: /{ s = $0; sub(/^lmline-candidate: /, "", s); for (i = 0; i < 3; i++) { t = index(s, "\t"); s = substr(s, t + 1) } print s }'

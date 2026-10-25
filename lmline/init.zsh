@@ -309,12 +309,13 @@ __lmline_zsh_bridge() {
   # Copilot validation still sees the non-exported snapshot.
   caller_functions=$(print -l ${(k)functions} 2>/dev/null) || caller_functions=
   bridge_env+=("LMLINE_SHELL_FUNCTIONS=${caller_functions}")
-  command env "${bridge_env[@]}" bash -c '
+  command env "${bridge_env[@]}" bash -p -c '
     set -u
     set -o pipefail
     __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
-    export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
-    unset LMLINE_SHELL_FUNCTIONS
+    __LMLINE_EXPORTED_FUNCTIONS=
+    export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
+    unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
     source "$LMLINE_DIR/context.bash"
     source "$LMLINE_DIR/policy.bash"
     source "$LMLINE_DIR/actions.bash"
@@ -333,7 +334,7 @@ __lmline_zsh_bridge() {
         else
           printf "%s" "$line" >"$tmp/line"
           __lmline_context_file "$tmp/context" "$line" "$mode"
-          LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
+          LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" LMLINE_EXPORTED_FUNCTIONS="$__LMLINE_EXPORTED_FUNCTIONS" "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
         fi
         grep "^lmline-candidate: " "$engine_file" || true
         if [[ "$status" == 0 && "$mode" == rewrite ]]; then

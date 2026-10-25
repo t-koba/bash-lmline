@@ -20,7 +20,7 @@ check_caller() {
     bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
   fi
   unset __LMLINE_CALLER_FUNCTIONS
-  actual=$(LMLINE_SHELL_FUNCTIONS="$caller_list" __lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  actual=$(LMLINE_SHELL_FUNCTIONS="$caller_list" __LMLINE_VALIDATION_ISOLATED=1 __lmline_candidate_rejection_reason "$candidate" rewrite "$target")
   [[ "$actual" == "$expected" ]] || fail "$target caller functions: $actual, expected $expected: $candidate (list: $caller_list)"
 }
 
@@ -286,8 +286,10 @@ ok "collector emits names only"
 # The snapshot captures the transport and unsets it, and the snapshot alone
 # still validates.
 LMLINE_SHELL_FUNCTIONS='lmline_snapshot_probe_fn'
+LMLINE_EXPORTED_FUNCTIONS='lmline_export_snapshot_probe_fn'
 __lmline_snapshot_caller_functions
-[[ -z ${LMLINE_SHELL_FUNCTIONS-} ]] || fail "snapshot left the transport set"
+[[ -z ${LMLINE_SHELL_FUNCTIONS-} && -z ${LMLINE_EXPORTED_FUNCTIONS-} ]] || fail "snapshot left a transport set"
+[[ ${__LMLINE_EXPORTED_FUNCTIONS-} == lmline_export_snapshot_probe_fn ]] || fail "snapshot lost the exported list"
 [[ ${__LMLINE_CALLER_FUNCTIONS-} == 'lmline_snapshot_probe_fn' ]] || fail "snapshot lost the list"
 actual=$(__lmline_candidate_rejection_reason 'lmline_snapshot_probe_fn; unset -f lmline_snapshot_probe_fn; lmline_snapshot_probe_fn' rewrite bash)
 [[ "$actual" == command-not-found ]] || fail "snapshot removal was ignored: $actual"
@@ -297,4 +299,115 @@ actual=$(__lmline_candidate_rejection_reason 'lmline_snapshot_probe_fn' rewrite 
 unset __LMLINE_CALLER_FUNCTIONS
 actual=$(__lmline_candidate_rejection_reason 'lmline_snapshot_probe_fn' rewrite bash)
 [[ "$actual" == command-not-found ]] || fail "unset snapshot still validates: $actual"
-ok "snapshot captures and unsets the transport"
+unset __LMLINE_EXPORTED_FUNCTIONS
+ok "snapshot captures and unsets both transports"
+
+# Imported Bash exports must follow scan-local lifetime, not be resurrected
+# by the validator's own lookup or a fresh Bash probe. Each check uses a real
+# child importing the exports; candidate text is only parsed/inspected there.
+check_exported() {
+  local candidate=$1 expected=$2 actual
+  bash -n -c "$candidate" || fail "invalid exported-function fixture: $candidate"
+  actual=$(bash -c 'source "$1/lmline/policy.bash"; __lmline_candidate_rejection_reason "$2" rewrite bash' _ "$repo_dir" "$candidate")
+  [[ "$actual" == "$expected" ]] || fail "exported functions: $actual, expected $expected: $candidate"
+}
+# shellcheck disable=SC2329 # imported and resolved by name only; never invoked
+lmline_export_lifetime_probe() { touch "$caller_tmp/export-function-executed"; }
+# shellcheck disable=SC2329
+lmline_export_unrelated_probe() { touch "$caller_tmp/export-unrelated-executed"; }
+export -f lmline_export_lifetime_probe lmline_export_unrelated_probe
+export caller_tmp
+# Other attributes may appear beside -fx; the collector still emits names only.
+collected=$(declare -ft lmline_export_lifetime_probe; __lmline_collect_exported_functions)
+[[ $'\n'"$collected"$'\n' == *$'\n'lmline_export_lifetime_probe$'\n'* ]] || fail "collector missed a traced export"
+[[ "$collected" != *touch* ]] || fail "export collector leaked a function body"
+check_exported 'lmline_export_lifetime_probe' ok
+# Supported command prefixes retain the position-local function namespace,
+# including the inherited-export view used by a literal child Bash. They do
+# not widen the standalone remover/installer inference edge.
+for prefix in time 'time -p' 'X=1' 'X+=1' 'X=1 Y=2' 'time X=1'; do
+  check_exported "$prefix lmline_export_lifetime_probe" ok
+  check_exported "bash -c '$prefix lmline_export_lifetime_probe'" ok
+  check_exported "$prefix bash -c 'lmline_export_lifetime_probe'" ok
+  check_exported "unset -f lmline_export_lifetime_probe; $prefix lmline_export_lifetime_probe" command-not-found
+  check_exported "$prefix bash -c 'unset -f lmline_export_lifetime_probe; lmline_export_lifetime_probe'" command-not-found
+  check_exported "unset -f lmline_export_lifetime_probe; $prefix bash -c 'lmline_export_lifetime_probe'" command-not-found
+  check_exported "$prefix lmline_export_lifetime_probe; unset -f lmline_export_lifetime_probe" ok
+  check_exported "$prefix bash -c 'lmline_export_lifetime_probe; unset -f lmline_export_lifetime_probe'" ok
+  check_exported "$prefix bash -c 'lmline_export_lifetime_probe'; unset -f lmline_export_lifetime_probe" ok
+  check_exported "$prefix unset -f lmline_export_lifetime_probe; lmline_export_lifetime_probe" command-not-found
+  for query in -v -V; do
+    check_exported "$prefix command $query unset; lmline_export_lifetime_probe" ok
+    check_exported "bash -c '$prefix command $query unset; lmline_export_lifetime_probe'" ok
+  done
+done
+check_exported 'time -x lmline_export_lifetime_probe' command-not-found
+check_exported "lmline_export_lifetime_probe; touch $caller_tmp/export-candidate-executed" ok
+check_exported "bash -c 'lmline_export_lifetime_probe'" ok
+check_exported 'lmline_export_absent_probe' command-not-found
+check_exported "bash -c 'lmline_export_absent_probe'" command-not-found
+check_exported 'unset -f lmline_export_lifetime_probe; lmline_export_lifetime_probe' command-not-found
+check_exported "unset -f lmline_export_lifetime_probe; bash -c 'lmline_export_lifetime_probe'" command-not-found
+check_exported "bash -c 'unset -f lmline_export_lifetime_probe; lmline_export_lifetime_probe'" command-not-found
+check_exported "unset -f lmline_export_lifetime_probe; lmline_export_lifetime_probe() { :; }; bash -c 'lmline_export_lifetime_probe'" command-not-found
+check_exported "lmline_export_lifetime_probe() { :; }; bash -c 'lmline_export_lifetime_probe'" ok
+check_exported 'lmline_export_lifetime_probe; unset -f lmline_export_lifetime_probe' ok
+check_exported "bash -c 'lmline_export_lifetime_probe'; unset -f lmline_export_lifetime_probe" ok
+check_exported "bash -c 'lmline_export_lifetime_probe; unset -f lmline_export_lifetime_probe'" ok
+check_exported "unset -f lmline_export_lifetime_probe; lmline_export_unrelated_probe; bash -c 'lmline_export_unrelated_probe'" ok
+# Removals in isolated scopes do not remove the parent's exported binding.
+check_exported "(unset -f lmline_export_lifetime_probe); bash -c 'lmline_export_lifetime_probe'" ok
+check_exported "bash -c 'unset -f lmline_export_lifetime_probe'; lmline_export_lifetime_probe" ok
+for wrapper in command 'command --' env; do
+  check_exported "$wrapper lmline_export_lifetime_probe" command-not-found
+  check_exported "bash -c '$wrapper lmline_export_lifetime_probe'" command-not-found
+  check_exported "unset -f lmline_export_lifetime_probe; $wrapper lmline_export_lifetime_probe" command-not-found
+done
+for query in -v -V; do
+  check_exported "command $query lmline_export_lifetime_probe" ok
+  check_exported "command $query lmline_export_absent_probe" ok
+  check_exported "command $query unset; lmline_export_lifetime_probe" ok
+  check_exported "unset -f lmline_export_lifetime_probe; command $query lmline_export_lifetime_probe" ok
+  check_exported "bash -c 'command $query lmline_export_lifetime_probe'" ok
+  check_exported "command $query lmline_export_lifetime_probe; lmline_export_absent_probe" command-not-found
+done
+
+# Fallback is a fresh builtin/PATH resolution, not a ban on the removed name.
+# `false` is not in the policy skip list, so this really tests builtin lookup.
+# shellcheck disable=SC2329
+false() { touch "$caller_tmp/export-builtin-executed"; }
+export -f false
+check_exported 'unset -f false; false' ok
+check_exported "unset -f false; bash -c 'false'" ok
+check_exported "bash -c 'unset -f false; false'" ok
+check_exported 'command false' ok
+check_exported 'unset -f false; command false' ok
+check_exported "bash -c 'command false'" ok
+unset -f false
+# `read` has no external fallback: env must not accept a builtin via the skip
+# list even though command can invoke it. No real read function is installed.
+check_exported 'command read' ok
+check_exported 'env read' command-not-found
+cat >"$caller_tmp/lmline_export_path_probe" <<EOF_STUB
+#!/bin/sh
+touch "$caller_tmp/export-path-executed"
+EOF_STUB
+chmod +x "$caller_tmp/lmline_export_path_probe"
+# shellcheck disable=SC2329
+lmline_export_path_probe() { touch "$caller_tmp/export-path-function-executed"; }
+export -f lmline_export_path_probe
+for wrapper in '' command env; do
+  PATH="$caller_tmp:$PATH" check_exported "unset -f lmline_export_path_probe; $wrapper lmline_export_path_probe" ok
+  PATH="$caller_tmp:$PATH" check_exported "bash -c 'unset -f lmline_export_path_probe; $wrapper lmline_export_path_probe'" ok
+  PATH="$caller_tmp:$PATH" check_exported "unset -f lmline_export_path_probe; bash -c '$wrapper lmline_export_path_probe'" ok
+  PATH="$caller_tmp:$PATH" check_exported "$wrapper lmline_export_path_probe" ok
+done
+unset -f lmline_export_lifetime_probe lmline_export_unrelated_probe lmline_export_path_probe
+# No exported names means the simple-command fast path is used; time option
+# support/refusal must not depend on an unrelated inherited function existing.
+check_exported 'time -p false' ok
+check_exported 'time -x false' command-not-found
+for marker in "$caller_tmp"/export-*-executed; do
+  [[ ! -e "$marker" ]] || fail "exported-function validation executed a function or PATH stub: $marker"
+done
+ok "exported Bash functions use positional and wrapper-specific lookup without execution"

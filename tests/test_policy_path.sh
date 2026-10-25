@@ -5,9 +5,74 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 source "$repo_dir/lmline/policy.bash"
 
 # Availability under a literal command-prefix PATH assignment is syntax-only:
-# only target-shell `command -v` probes run, the candidate text never runs.
+# only static target-shell builtin/PATH lookups run; candidate text never runs.
 path_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-path-policy.XXXXXX")
-trap 'rm -rf "$path_tmp"' EXIT
+trap 'status=$?; if [[ -e "$path_tmp/probe-ran" ]]; then printf "ERROR: PATH probe dispatched a body\n" >&2; else printf "PATH probe marker absent (status %s)\n" "$status" >&2; fi; rm -rf "$path_tmp"' EXIT
+
+# Exercise the Bash helper directly, before the outer boundary could discard
+# hostile exports. Neither a PATH-selected shell, startup file, function body,
+# nor a file found by lookup may run. All marker files must remain absent.
+mkdir "$path_tmp/probe-bin"
+printf '%s\n' '#!/bin/sh' ': >"$path_tmp/probe-ran"' >"$path_tmp/probe-bin/bash"
+cp "$path_tmp/probe-bin/bash" "$path_tmp/probe-bin/lmline_path_metadata_probe"
+chmod +x "$path_tmp/probe-bin/"*
+printf '%s\n' ': >"$path_tmp/probe-ran"' >"$path_tmp/startup.bash"
+export path_tmp
+(
+  # shellcheck disable=SC2329
+  command() { : >"$path_tmp/probe-ran"; }
+  # shellcheck disable=SC2329
+  type() { : >"$path_tmp/probe-ran"; }
+  # shellcheck disable=SC2329
+  read() { : >"$path_tmp/probe-ran"; }
+  # shellcheck disable=SC2329
+  lmline_path_function_probe() { : >"$path_tmp/probe-ran"; }
+  export -f command type read lmline_path_function_probe
+  export BASH_ENV="$path_tmp/startup.bash" PATH="$path_tmp/probe-bin:$PATH"
+  for literal in 1 0; do
+    __lmline_word_available_under_path read /nonexistent bash "$literal" \
+      || fail "Bash PATH probe lost builtin (literal=$literal)"
+    [[ ! -e "$path_tmp/probe-ran" ]] || exit 1
+    if __lmline_word_available_under_path lmline_path_function_probe /nonexistent bash "$literal"; then
+      fail "Bash PATH probe imported caller function (literal=$literal)"
+    fi
+    [[ ! -e "$path_tmp/probe-ran" ]] || exit 1
+  done
+  __lmline_word_available_under_path lmline_path_metadata_probe "$path_tmp/probe-bin" bash 1 \
+    || fail "literal Bash PATH probe lost file fallback"
+  [[ ! -e "$path_tmp/probe-ran" ]] || exit 1
+  if __lmline_word_available_under_path lmline_path_metadata_probe "$path_tmp/probe-bin" bash 0; then
+    fail "opaque Bash PATH probe authorized external"
+  fi
+  [[ ! -e "$path_tmp/probe-ran" ]] || exit 1
+  __lmline_word_available_under_path read '$(touch "$path_tmp/probe-ran")' bash 0 \
+    || fail "opaque Bash PATH probe lost builtin"
+  [[ ! -e "$path_tmp/probe-ran" ]] || exit 1
+)
+[[ ! -e "$path_tmp/probe-ran" ]] || fail "Bash PATH probe dispatched a body"
+ok "Bash literal/opaque PATH probes use the current clean interpreter"
+
+# CWD builtin classification must ignore caller functions and use the target
+# shell, even when the caller exports lookup-helper names or builtin names.
+(
+  # shellcheck disable=SC2329
+  type() { : >"$path_tmp/probe-ran"; }
+  # shellcheck disable=SC2329
+  print() { : >"$path_tmp/probe-ran"; }
+  # shellcheck disable=SC2329
+  mapfile() { : >"$path_tmp/probe-ran"; }
+  export -f type print mapfile
+  export BASH_ENV="$path_tmp/startup.bash"
+  __lmline_word_available_under_path mapfile "" bash 0 || fail "CWD Bash builtin classification"
+  if command -v zsh >/dev/null 2>&1; then
+    __lmline_word_available_under_path print "" zsh 0 || fail "CWD Zsh builtin classification"
+    if __lmline_word_available_under_path mapfile "" zsh 0; then
+      fail "CWD Zsh probe treated Bash mapfile as builtin"
+    fi
+  fi
+)
+[[ ! -e "$path_tmp/probe-ran" ]] || fail "CWD builtin probe dispatched caller/startup body"
+ok "CWD builtin classification is target-shell aware and function-free"
 
 check_path() {
   local target=$1 candidate=$2 expected=$3 actual
@@ -19,6 +84,54 @@ check_path() {
   actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
   [[ "$actual" == "$expected" ]] || fail "$target PATH policy: $actual, expected $expected: $candidate"
 }
+
+# Keep the lookup namespace deterministic: no mapfile/readarray/shopt file
+# can accidentally authorize a command that exists only as a Bash builtin.
+syntax_bin=$path_tmp/syntax-bin
+mkdir "$syntax_bin"
+ln -s "$BASH" "$syntax_bin/bash"
+if command -v zsh >/dev/null 2>&1; then
+  ln -s "$(command -v zsh)" "$syntax_bin/zsh"
+fi
+(
+  export PATH="$syntax_bin"
+  for builtin_word in mapfile readarray shopt; do
+    [[ ! -e "$syntax_bin/$builtin_word" ]] || fail "unexpected syntax fixture file"
+    check_path bash "$builtin_word" ok
+    check_path bash "bash -c '$builtin_word'" ok
+  done
+  if [[ -x "$syntax_bin/zsh" ]]; then
+    check_path zsh mapfile command-not-found
+    check_path bash "zsh -f -c 'mapfile'" command-not-found
+    check_path zsh "zsh -f -c 'mapfile'" command-not-found
+    # A transported caller binding is active only until the static removal.
+    # Neither this body nor the candidate's unset is executed.
+    # shellcheck disable=SC2329
+    mapfile() { : >"$path_tmp/probe-ran"; }
+    export -f mapfile
+    export LMLINE_SHELL_FUNCTIONS=mapfile
+    unset __LMLINE_CALLER_FUNCTIONS
+    check_path zsh mapfile ok
+    check_path zsh 'unset -f mapfile; mapfile' command-not-found
+    check_path zsh "zsh -f -c 'mapfile'" command-not-found
+    check_path bash 'unset -f mapfile; mapfile' ok
+    check_path bash "bash -c 'mapfile'" ok
+  fi
+)
+[[ ! -e "$path_tmp/probe-ran" ]] || fail "syntax availability executed a function"
+# A genuine PATH file remains a valid Zsh fallback; it is lookup metadata only.
+printf '#!/bin/sh\n: >"%s"\n' "$path_tmp/probe-ran" > "$syntax_bin/mapfile"
+chmod +x "$syntax_bin/mapfile"
+if [[ -x "$syntax_bin/zsh" ]]; then
+  (
+    export PATH="$syntax_bin"
+    check_path zsh mapfile ok
+    check_path zsh "zsh -f -c 'mapfile'" ok
+    LMLINE_SHELL_FUNCTIONS=mapfile check_path zsh 'unset -f mapfile; mapfile' ok
+  )
+fi
+[[ ! -e "$path_tmp/probe-ran" ]] || fail "syntax availability executed a PATH file"
+ok "actual command words require target-shell builtin/PATH availability"
 
 for target in bash zsh; do
   if [[ "$target" == zsh ]] && ! command -v zsh >/dev/null 2>&1; then
@@ -122,6 +235,11 @@ mkdir -p "$cwd_fixture" "$cwd_empty" || fail "CWD fixture setup"
 cwd_probe_marker=$path_tmp/cwd-probe-executed
 printf '#!/bin/sh\ntouch "%s"\n' "$cwd_probe_marker" > "$cwd_fixture/lmline_cwd_probe" || fail "CWD stub setup"
 chmod +x "$cwd_fixture/lmline_cwd_probe" || fail "CWD stub setup"
+# These names deliberately collide with a validator helper and a real
+# builtin. Files are metadata only; any accidental dispatch leaves a marker.
+for cwd_stub in __lmline_candidate_truncated read mapfile print; do
+  cp "$cwd_fixture/lmline_cwd_probe" "$cwd_fixture/$cwd_stub" || fail "CWD shadow stub setup"
+done
 
 for target in bash zsh; do
   if [[ "$target" == zsh ]] && ! command -v zsh >/dev/null 2>&1; then
@@ -137,6 +255,77 @@ for target in bash zsh; do
   cd "$cwd_empty" || fail "$target CWD empty cd"
   command -v lmline_cwd_probe >/dev/null 2>&1 && fail "$target CWD lookup should fail after cd"
   cd "$cwd_fixture" || fail "$target CWD fixture cd"
+  # A literal child shell inherits the candidate's cwd, not this validator's.
+  # These are syntax/metadata checks only; neither the scripts nor stub bodies
+  # run. Exercise the same recursive path behind supported time/assign prefixes.
+  cwd_children=(bash 'time bash' 'LMLINE_CWD_FIXTURE=1 bash' 'time LMLINE_CWD_FIXTURE=1 bash')
+  [[ $target != bash ]] || cwd_children+=('time -p LMLINE_CWD_FIXTURE=1 bash')
+  for child in "${cwd_children[@]}"; do
+    check_cwd "$target" "$child -c 'lmline_cwd_probe'" ok
+    check_cwd "$target" "cd $cwd_empty; $child -c 'lmline_cwd_probe'" command-not-found
+    check_cwd "$target" "cd $cwd_empty; $child -c './lmline_cwd_probe'" command-not-found
+    check_cwd "$target" "cd $cwd_empty; $child -c 'printf ok'" ok
+    check_cwd "$target" "cd $cwd_empty; $child -c '$cwd_fixture/lmline_cwd_probe'" ok
+  done
+  # A substitution inside a compound body must carry position-local cwd
+  # uncertainty into its literal shell-c scan. Escaped $ keeps every candidate
+  # inert; the existing stub/candidate markers below must remain absent.
+  check_cwd "$target" "case x in x) printf \"\$(bash -c 'lmline_cwd_probe')\";; esac" ok
+  check_cwd "$target" "cd $cwd_empty; case x in x) printf \"\$(bash -c 'lmline_cwd_probe')\";; esac" command-not-found
+  check_cwd "$target" "cd $cwd_empty; case x in x) printf \"\$(bash -c 'printf ok')\";; esac" ok
+  check_cwd "$target" "cd $cwd_empty; case x in x) printf \"\$(bash -c '$cwd_fixture/lmline_cwd_probe')\";; esac" ok
+  check_cwd "$target" "cd $cwd_empty; bash -c 'command lmline_cwd_probe'" command-not-found
+  check_cwd "$target" "cd $cwd_empty; bash -c 'env read'" command-not-found
+  check_cwd "$target" "cd $cwd_empty; bash -c 'command read'" ok
+  check_cwd "$target" "printf ok # cd $cwd_empty; bash -c 'lmline_cwd_probe'" ok
+  if command -v zsh >/dev/null 2>&1; then
+    check_cwd "$target" "zsh -f -c 'lmline_cwd_probe'" ok
+    check_cwd "$target" "cd $cwd_empty; zsh -f -c 'lmline_cwd_probe'" command-not-found
+    check_cwd "$target" "cd $cwd_empty; zsh -f -c 'print ok'" ok
+    check_cwd "$target" "cd $cwd_empty; zsh -f -c '$cwd_fixture/lmline_cwd_probe'" ok
+  fi
+  # The shared skip vocabulary is not proof of a target-shell builtin.
+  # Both files exist only as lookup metadata; print is a Zsh builtin, whereas
+  # mapfile is a Bash builtin even when command bypasses caller functions.
+  check_cwd "$target" 'command mapfile' ok
+  check_cwd "$target" 'command print' ok
+  if [[ "$target" == zsh ]]; then
+    check_cwd "$target" "cd $cwd_empty; print ok" ok
+    check_cwd "$target" "cd $cwd_empty; command print ok" ok
+    check_cwd "$target" "cd $cwd_empty; command mapfile" command-not-found
+  else
+    check_cwd "$target" "cd $cwd_empty; command mapfile" ok
+    check_cwd "$target" "cd $cwd_empty; command print ok" command-not-found
+  fi
+  check_cwd "$target" "cd $cwd_empty; env print" command-not-found
+  check_cwd "$target" "cd $cwd_empty; env mapfile" command-not-found
+  [[ ! -e "$cwd_probe_marker" ]] || fail "$target CWD recursive/builtin lookup dispatched a body"
+  # Validator functions cannot conceal a relative PATH file after the
+  # candidate removes the same name. The removal and candidate never run.
+  builtin declare -F __lmline_candidate_truncated >/dev/null || fail "CWD helper fixture missing"
+  [[ $(builtin type -P -- __lmline_candidate_truncated) == ./__lmline_candidate_truncated ]] \
+    || fail "$target CWD helper file lookup"
+  check_cwd "$target" 'unset -f __lmline_candidate_truncated; __lmline_candidate_truncated' ok
+  check_cwd "$target" "unset -f __lmline_candidate_truncated; cd $cwd_empty; __lmline_candidate_truncated" command-not-found
+  # The live caller-name snapshot still contains the function until unset.
+  check_cwd "$target" "cd $cwd_empty; __lmline_candidate_truncated" ok
+  # env needs an external read, whereas ordinary and command lookups keep
+  # the genuine builtin. Preserve the extractor's context through prefixes.
+  [[ $(builtin type -P -- read) == ./read ]] || fail "$target CWD external read lookup"
+  check_cwd "$target" 'env read' ok
+  check_cwd "$target" "cd $cwd_empty; env read" command-not-found
+  check_cwd "$target" "cd $cwd_empty; env read''" command-not-found
+  check_cwd "$target" "cd $cwd_empty; command env read" command-not-found
+  check_cwd "$target" "cd $cwd_empty; command -- env read" command-not-found
+  check_cwd "$target" "cd $cwd_empty; read" ok
+  check_cwd "$target" "cd $cwd_empty; command read" ok
+  check_cwd "$target" "cd $cwd_empty; command -- read" ok
+  check_cwd "$target" "cd $cwd_empty; command -v read" ok
+  check_cwd "$target" "cd $cwd_empty; env $cwd_fixture/read" ok
+  check_cwd "$target" "cd $cwd_empty | true; env read" ok
+  check_cwd "$target" "cd $cwd_empty | true; env read # comment" command-not-found
+  check_cwd "$target" "printf ok # ; cd $cwd_empty; env read" ok
+  [[ ! -e "$cwd_probe_marker" ]] || fail "$target CWD shadow lookup dispatched a body"
   # Only a proven flat simple pipeline isolates non-final cwd changes.
   # Siblings and the enclosing list retain their original cwd; a final cd
   # remains conservative for Bash lastpipe and Zsh's pipeline semantics.
@@ -177,6 +366,8 @@ for target in bash zsh; do
   check_cwd "$target" "c\\d $cwd_empty | true; lmline_cwd_probe" command-not-found
   check_cwd "$target" "cd $cwd_empty > /dev/null | true; lmline_cwd_probe" command-not-found
   check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe # comment" command-not-found
+  # Discarding apparent syntax inside a comment must not broaden the proof.
+  check_cwd "$target" "cd $cwd_empty | true; lmline_cwd_probe # ; 'quoted'" command-not-found
   if [[ "$target" == zsh ]]; then
     check_cwd "$target" "chdir $cwd_empty | true; lmline_cwd_probe" ok
     check_cwd "$target" "cd $cwd_empty | true *(N); lmline_cwd_probe" command-not-found

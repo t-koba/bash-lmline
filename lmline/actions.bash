@@ -18,12 +18,22 @@ __lmline_copilot_client() {
 # Converts Copilot inline edits into the existing annotated candidate protocol.
 # The Language Server supplies edits; lmline retains final syntax and risk policy.
 __lmline_copilot_candidates() {
-  local line=$1 point=$2 shell_name=${3:-bash} mode=${4:-rewrite} context_text=${5:-} client output entry token candidate risk reason rejection
+  if [[ ${__LMLINE_VALIDATION_ISOLATED-} != 1 ]]; then
+    __lmline_validation_run copilot-request "$@"
+    return
+  fi
+  local line=$1 point=$2 shell_name=${3:-bash} mode=${4:-rewrite} context_text=${5:-} client output
   client=$(__lmline_copilot_client)
   command -v node >/dev/null 2>&1 || { printf 'lmline-copilot: Node.js 20.8+ is required; run: lmline copilot setup\n' >&2; return 1; }
   [[ -r "$client" ]] || { printf 'lmline-copilot: client is missing: %s\n' "$client" >&2; return 1; }
   output=$(jq -cn --arg line "$line" --arg cwd "$PWD" --argjson point "$point" --arg mode "$mode" --arg contextText "$context_text" \
     '{line:$line,cwd:$cwd,point:$point,mode:$mode,contextText:$contextText}' | node "$client" edit-json) || return 1
+  __lmline_copilot_filter_candidates "$shell_name" "$mode" <<<"$output"
+}
+
+# Runs only in the clean validation child, once per provider batch.
+__lmline_copilot_filter_candidates() {
+  local shell_name=$1 mode=$2 entry token candidate rejection risk reason
   while IFS= read -r entry || [[ -n "$entry" ]]; do
     [[ "$entry" == *$'\t'* ]] || continue
     token=${entry%%$'\t'*}
@@ -39,7 +49,7 @@ __lmline_copilot_candidates() {
     reason=$(__lmline_risk_reason "$candidate")
     reason=${reason//$'\t'/ }
     printf 'lmline-candidate: %s\t%s\tcopilot:%s\t%s\n' "$risk" "${reason:--}" "${token:--}" "$candidate"
-  done <<<"$output"
+  done
 }
 
 __lmline_copilot_accept() {
@@ -392,7 +402,7 @@ __lmline_print_explanation() {
 __lmline_fix_run() {
   local line=$1 shell_name=$2 point=$3 engine=$4 n=$5 prefix=${6:-}
   local risk timeout=${LMLINE_FIX_TIMEOUT:-12} max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
-  local tmp status engine_status backend context_text caller_functions
+  local tmp status engine_status backend context_text caller_functions exported_functions
   __lmline_reload_settings_if_changed "${__LMLINE_CONFIG_DIR:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}}"
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
@@ -456,6 +466,7 @@ __lmline_fix_run() {
   # exported, so Copilot and context subprocesses never inherit it.
   # Same-process Copilot validation in a bridge child still sees the
   # non-exported snapshot.
+  exported_functions=${__LMLINE_EXPORTED_FUNCTIONS-$(__lmline_collect_exported_functions)}
   caller_functions=
   if [[ -n ${__LMLINE_CALLER_FUNCTIONS-} ]]; then
     caller_functions=${__LMLINE_CALLER_FUNCTIONS}
@@ -485,10 +496,10 @@ __lmline_fix_run() {
     __lmline_write_fix_input "$tmp/line" "$line" "$status" "$tmp/stdout" "$tmp/stderr" "$backend"
     __lmline_context_file "$tmp/context" "$line" fix
     if [[ -n $caller_functions ]]; then
-      LMLINE_SHELL_FUNCTIONS="$caller_functions" "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
+      LMLINE_SHELL_FUNCTIONS="$caller_functions" LMLINE_EXPORTED_FUNCTIONS="$exported_functions" "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
         --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1 || engine_status=$?
     else
-      "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
+      LMLINE_EXPORTED_FUNCTIONS="$exported_functions" "$engine" --mode fix --shell "$shell_name" --cwd "$PWD" --point "$point" \
         --line-file "$tmp/line" --context-file "$tmp/context" --n "$n" >"$tmp/engine" 2>&1 || engine_status=$?
     fi
   fi
