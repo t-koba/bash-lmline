@@ -2590,7 +2590,7 @@ __lmline_is_flat_simple_list() {
 # Opaque command positions are treated as possible directory changes; candidate
 # code is never evaluated.
 __lmline_has_relative_cwd_risk() {
-  local cmd=$1 shell=${2:-bash} segment token first changed=0 expect_redirection_operand nonfinal
+  local cmd=$1 shell=${2:-bash} segment token first decoded_first changed=0 expect_redirection_operand nonfinal
   local split_mode=command-prefix
   local -a tokens
   __lmline_is_flat_simple_list "$cmd" && split_mode=cwd-pipeline
@@ -2631,10 +2631,20 @@ __lmline_has_relative_cwd_risk() {
     done
     [[ -n "$first" ]] || continue
     if [[ "$first" == *$'\001'* ]]; then
-      if ! first=$(__lmline_literal_command_word "$first"); then
+      if ! decoded_first=$(__lmline_literal_command_word "$first"); then
+        # Keep opaque words as possible cwd mutators, but do not skip their
+        # lookup after a prior change when a bounded bare name is recoverable.
+        if (( changed )); then
+          [[ "$first" != */* ]] || return 0
+          if __lmline_path_has_relative_entry; then
+            decoded_first=$(__lmline_literal_command_name "$first") || return 0
+            __lmline_word_resolves_via_relative_path "$decoded_first" "$shell" && return 0
+          fi
+        fi
         changed=1
         continue
       fi
+      first=$decoded_first
     fi
     case "$first" in
       cd|pushd|popd)
