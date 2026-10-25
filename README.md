@@ -606,10 +606,20 @@ The engine filters candidates before printing them:
 - valid syntax for the target shell (`bash -n` or `zsh -f -n`)
 - no environment-assignment-only command segment
 - no direct directory operands for simple file readers such as `cat`
-- command words available locally, except configured shell syntax words and command prefixes (for zsh, its builtins count)
+- command words available locally, except configured shell syntax words and
+  command prefixes (for zsh, its builtins count); matching interactive-shell
+  function names are recognized at top-level command positions
 - command words containing `/` available only as literal paths to regular executable files (filesystem `-f`/`-x` metadata only, symlinks followed). The supported subset is a whitespace-free word using ASCII letters, digits, `_/:.+@-`, optionally enclosed in one whole pair of single or double quotes. Dynamic, escaped, concatenated and other opaque command spellings fail closed without expansion. Relative slash paths after a possible directory change fail closed even with an all-absolute inherited `PATH`; absolute paths stay independent of cwd. Direct `PATH=...` command prefixes use the same file check
 - deduplicated
 - truncated to `LMLINE_MAX_CANDIDATE_BYTES` when needed
+
+Only caller-function names cross the validator boundary; candidate text is
+parsed but never executed, and function bodies are never transferred. A literal
+nested `bash -c` or `zsh -f -c` script uses the child shell's lookup rather than
+the parent's full function list: unexported parent functions do not authorize
+child commands, while Bash exports normally inherited by a child Bash are
+modeled. `command` and external `env` do not dispatch shell functions, so their
+operands need a real builtin or PATH fallback.
 
 For candidate-defined functions, availability checking tracks direct literal
 `unset -f NAME...` (Bash/Zsh) and `unfunction NAME...` (Zsh), where each `NAME` is
