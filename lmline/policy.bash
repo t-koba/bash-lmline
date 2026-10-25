@@ -2319,7 +2319,14 @@ __lmline_extract_command_words() {
       # A standalone `$` is the existing splitter's command-substitution
       # boundary; the following segment contains its command words.
       if [[ "$token" != '$' && ( "$token" == */* || "$token" == *$'\001'* || "$token" == '$'* ) ]]; then
-        literal=$(__lmline_literal_command_word "$token") || return 1
+        if [[ "$token" == */* ]]; then
+          # Slash paths retain the stricter whole-literal path grammar.
+          literal=$(__lmline_literal_command_word "$token") || return 1
+        else
+          # Adjacent inert quote fragments are valid bare command names (for
+          # example t''rue); decode them without expanding or globbing.
+          literal=$(__lmline_literal_command_name "$token") || return 1
+        fi
         # Quoted wrapper/syntax words are not part of this bounded subset.
         __lmline_word_is_command_prefix "$literal" && return 1
         token=$literal
@@ -2435,6 +2442,34 @@ __lmline_literal_command_word() {
   fi
   [[ "$word" =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || return 1
   printf '%s\n' "$word"
+}
+
+# Decode a bare command name from a bounded shell-word subset. The opt-in
+# splitter marks quote openings with byte 001; accept adjacent single/double
+# quote fragments (including empty ones) only when the decoded name uses inert
+# ASCII characters. Escapes, expansions, whitespace, metacharacters and slash
+# paths are rejected; slash paths use the stricter path decoder above.
+__lmline_literal_command_name() {
+  local raw=$1 decoded="" quote="" ch i
+  for ((i = 0; i < ${#raw}; i++)); do
+    ch=${raw:i:1}
+    if [[ "$ch" == $'\001' ]]; then
+      [[ -z "$quote" ]] || return 1
+      ((i + 1 < ${#raw})) || return 1
+      i=$((i + 1))
+      quote=${raw:i:1}
+      [[ "$quote" == "'" || "$quote" == '"' ]] || return 1
+      continue
+    fi
+    if [[ -n "$quote" && "$ch" == "$quote" ]]; then
+      quote=""
+      continue
+    fi
+    [[ "$ch" =~ ^[A-Za-z0-9_.:+@-]$ ]] || return 1
+    decoded+=$ch
+  done
+  [[ -z "$quote" && -n "$decoded" ]] || return 1
+  printf '%s\n' "$decoded"
 }
 
 # Explicit command paths use filesystem metadata only, following symlinks.

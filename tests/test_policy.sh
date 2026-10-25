@@ -228,6 +228,17 @@ bash -c '
     [[ $(__lmline_candidate_rejection_reason "FOO=bar $list_op printf ok" rewrite bash) == "ok" ]]
   done
   [[ $(__lmline_candidate_rejection_reason "FOO=bar; lmline_missing_command_for_policy_test" rewrite bash) == "command-not-found" ]]
+  # Adjacent quote fragments are a literal bare command name; parsing and
+  # lookup stay static, and the local allowlist still decides authorization.
+  literal_command_fragment=$(printf "%b" "t\047\047rue")
+  bash -n -c "$literal_command_fragment"
+  [[ $(__lmline_extract_command_words "$literal_command_fragment" bash) == true ]]
+  [[ $(__lmline_candidate_rejection_reason "$literal_command_fragment" rewrite bash) == ok ]]
+  literal_command_list=$(mktemp)
+  trap "rm -f \"$literal_command_list\"" EXIT
+  printf "printf\n" > "$literal_command_list"
+  local_command_rejection=$(LMLINE_LOCAL_COMMANDS_FILE="$literal_command_list" __lmline_command_run_local_rejection_reason "$literal_command_fragment")
+  [[ "$local_command_rejection" == command_not_allowed ]]
   [[ $(__lmline_candidate_rejection_reason "wc $1") == "directory-file-operand" ]]
   [[ $(__lmline_candidate_rejection_reason "## captured" fix) == "fix-heading" ]]
   [[ $(__lmline_candidate_rejection_reason "exit_status=2" fix) == "fix-status" ]]

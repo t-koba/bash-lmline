@@ -145,6 +145,8 @@ for target in bash zsh; do
   check_cwd "$target" "cd $cwd_empty | lmline_cwd_probe; lmline_cwd_probe" ok
   check_cwd "$target" "cd $cwd_empty | true; ./lmline_cwd_probe" ok
   check_cwd "$target" "cd $cwd_empty; lmline_cwd_probe" command-not-found
+  # Fragmented cd remains an opaque possible cwd change for the PATH guard.
+  check_cwd "$target" "cd'' $cwd_empty; lmline_cwd_probe" command-not-found
   check_cwd "$target" "cd $cwd_empty && lmline_cwd_probe" command-not-found
   check_cwd "$target" "true | cd $cwd_empty; lmline_cwd_probe" command-not-found
   check_cwd "$target" "cd $cwd_empty; true | true; lmline_cwd_probe" command-not-found
