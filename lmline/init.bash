@@ -558,7 +558,7 @@ __lmline_complete_generation() {
 __lmline_generate_async_widget() {
   local original=$1 mode=$2 point=$3 async_file current_key async_status_file function_names_key
   if function_names_key=$(__lmline_async_function_names_key); then
-    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}"
+    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}"
   else
     current_key=function-context-unavailable
   fi

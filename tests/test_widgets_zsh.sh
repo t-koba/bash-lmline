@@ -192,7 +192,7 @@ EOF
   mkdir "$zsh_tmp/settings-change"
   mkdir "$zsh_tmp/settings-change/config"
   printf 'export LMLINE_CANDIDATE_COUNT=1\n' >"$zsh_tmp/settings-change/config/settings.bash"
-  mkfifo "$zsh_tmp/settings-change/count-1.gate" "$zsh_tmp/settings-change/count-2.gate"
+  mkfifo "$zsh_tmp/settings-change/count-1.gate" "$zsh_tmp/settings-change/count-2.gate" "$zsh_tmp/settings-change/count-3.gate"
   cat >"$zsh_tmp/engine-settings" <<'EOF'
 #!/usr/bin/env bash
 set -eu
@@ -210,10 +210,10 @@ EOF
   LMLINE_TEST_SETTINGS_DIR="$zsh_tmp/settings-change" LMLINE_CONFIG_DIR="$zsh_tmp/settings-change/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-settings" zsh -efic '
     source "$1/lmline/init.zsh"
     cleanup_settings_probe() {
-      for n in 1 2; do
+      for n in 1 2 3; do
         ( exec 3<>"$LMLINE_TEST_SETTINGS_DIR/count-$n.gate"; printf "release\\n" >&3 ) 2>/dev/null || true
       done
-      for pid in "${first_pid:-}" "${second_pid:-}"; do
+      for pid in "${first_pid:-}" "${second_pid:-}" "${third_pid:-}"; do
         [[ -n "$pid" ]] || continue
         kill -TERM "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null || true
@@ -228,7 +228,7 @@ EOF
     [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-1.ready" ]]
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first_pid" ]]
-    printf "export LMLINE_CANDIDATE_COUNT=2\\n" >"$LMLINE_CONFIG_DIR/settings.bash"
+    LMLINE_CANDIDATE_COUNT=2
     lmline-zsh-generate-widget >/dev/null 2>&1
     second_pid=$__LMLINE_ZSH_ASYNC_PID
     [[ "$LMLINE_CANDIDATE_COUNT" == 2 && "$second_pid" != "$first_pid" ]]
@@ -236,15 +236,25 @@ EOF
     [[ ! -e "$LMLINE_TEST_SETTINGS_DIR/count-1.finished" ]]
     for i in {1..200}; do [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.ready" ]] && break; sleep 0.05; done
     [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.ready" ]]
-    printf "release\\n" >"$LMLINE_TEST_SETTINGS_DIR/count-2.gate"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$second_pid" ]]
+    printf "export LMLINE_CANDIDATE_COUNT=3\\n" >"$LMLINE_CONFIG_DIR/settings.bash"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    third_pid=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$LMLINE_CANDIDATE_COUNT" == 3 && "$third_pid" != "$second_pid" ]]
+    [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.stopped" ]]
+    [[ ! -e "$LMLINE_TEST_SETTINGS_DIR/count-2.finished" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.ready" ]]
+    printf "release\\n" >"$LMLINE_TEST_SETTINGS_DIR/count-3.gate"
     for i in {1..200}; do
-      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$second_pid" 2>/dev/null; then break; fi
+      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$third_pid" 2>/dev/null; then break; fi
       sleep 0.05
     done
     lmline-zsh-generate-widget >/dev/null 2>&1
-    [[ "$BUFFER" == "echo count-2" ]]
-    [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.finished" ]]
-  ' _ "$repo_dir" || fail "zsh async settings identity"
+    [[ "$BUFFER" == "echo count-3" ]]
+    [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.finished" ]]
+  ' _ "$repo_dir" || fail "zsh async candidate-count identity"
   mkdir "$zsh_tmp/functions-change"
   mkfifo "$zsh_tmp/functions-change/first.gate" "$zsh_tmp/functions-change/second.gate"
   cat >"$zsh_tmp/engine-functions" <<'EOF'

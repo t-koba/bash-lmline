@@ -410,8 +410,8 @@ __lmline_zsh_request_key() {
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
     function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin)
-    printf "%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions"
+    printf "%s:%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5" "$7"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}"
 }
 
 __lmline_zsh_load_candidates_from_file() {

@@ -356,7 +356,7 @@ LMLINE_TEST_CURSOR_DIR="$widget_tmp/cursor" LMLINE_CONFIG_DIR="$widget_tmp/confi
 mkdir "$widget_tmp/settings-change"
 mkdir "$widget_tmp/settings-change/config"
 printf 'export LMLINE_CANDIDATE_COUNT=1\n' >"$widget_tmp/settings-change/config/settings.bash"
-mkfifo "$widget_tmp/settings-change/count-1.gate" "$widget_tmp/settings-change/count-2.gate"
+mkfifo "$widget_tmp/settings-change/count-1.gate" "$widget_tmp/settings-change/count-2.gate" "$widget_tmp/settings-change/count-3.gate"
 cat >"$widget_tmp/engine-settings" <<'EOF'
 #!/usr/bin/env bash
 set -eu
@@ -374,10 +374,10 @@ chmod +x "$widget_tmp/engine-settings"
 LMLINE_TEST_SETTINGS_DIR="$widget_tmp/settings-change" LMLINE_CONFIG_DIR="$widget_tmp/settings-change/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-settings" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   cleanup_settings_probe() {
-    for n in 1 2; do
+    for n in 1 2 3; do
       ( exec 3<>"$LMLINE_TEST_SETTINGS_DIR/count-$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true
     done
-    for pid in "${first_pid:-}" "${second_pid:-}"; do
+    for pid in "${first_pid:-}" "${second_pid:-}" "${third_pid:-}"; do
       [[ -n "$pid" ]] || continue
       kill -TERM "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
@@ -392,7 +392,7 @@ LMLINE_TEST_SETTINGS_DIR="$widget_tmp/settings-change" LMLINE_CONFIG_DIR="$widge
   [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-1.ready" ]]
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$__LMLINE_ASYNC_PID" == "$first_pid" ]]
-  printf "export LMLINE_CANDIDATE_COUNT=2\n" >"$LMLINE_CONFIG_DIR/settings.bash"
+  LMLINE_CANDIDATE_COUNT=2
   __lmline_generate_widget >/dev/null 2>&1
   second_pid=$__LMLINE_ASYNC_PID
   [[ "$LMLINE_CANDIDATE_COUNT" == 2 && "$second_pid" != "$first_pid" ]]
@@ -400,12 +400,22 @@ LMLINE_TEST_SETTINGS_DIR="$widget_tmp/settings-change" LMLINE_CONFIG_DIR="$widge
   [[ ! -e "$LMLINE_TEST_SETTINGS_DIR/count-1.finished" ]]
   for i in {1..200}; do [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.ready" ]] && break; sleep 0.05; done
   [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.ready" ]]
-  printf "release\n" >"$LMLINE_TEST_SETTINGS_DIR/count-2.gate"
-  wait "$second_pid"
   __lmline_generate_widget >/dev/null 2>&1
-  [[ "$READLINE_LINE" == "echo count-2" ]]
-  [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.finished" ]]
-' _ "$repo_dir" || fail "async settings identity"
+  [[ "$__LMLINE_ASYNC_PID" == "$second_pid" ]]
+  printf "export LMLINE_CANDIDATE_COUNT=3\n" >"$LMLINE_CONFIG_DIR/settings.bash"
+  __lmline_generate_widget >/dev/null 2>&1
+  third_pid=$__LMLINE_ASYNC_PID
+  [[ "$LMLINE_CANDIDATE_COUNT" == 3 && "$third_pid" != "$second_pid" ]]
+  [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.stopped" ]]
+  [[ ! -e "$LMLINE_TEST_SETTINGS_DIR/count-2.finished" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.ready" ]]
+  printf "release\n" >"$LMLINE_TEST_SETTINGS_DIR/count-3.gate"
+  wait "$third_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo count-3" ]]
+  [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.finished" ]]
+' _ "$repo_dir" || fail "async candidate-count identity"
 mkdir "$widget_tmp/functions-change"
 mkfifo "$widget_tmp/functions-change/first.gate" "$widget_tmp/functions-change/second.gate"
 cat >"$widget_tmp/engine-functions" <<'EOF'
