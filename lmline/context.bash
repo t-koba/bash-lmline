@@ -268,8 +268,17 @@ __lmline_tool_data_block() {
   printf 'END_UNTRUSTED_%s\n' "$label"
 }
 
+__lmline_validate_tool_info_timeout() {
+  local timeout_s=${LMLINE_TOOL_INFO_TIMEOUT:-2}
+  [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || {
+    printf 'lmline: invalid LMLINE_TOOL_INFO_TIMEOUT: %s (expected a positive integer)\n' "${LMLINE_TOOL_INFO_TIMEOUT-}" >&2
+    return 2
+  }
+}
+
 __lmline_probe_command() {
   local cmd=$1 flag=$2 timeout_s=${LMLINE_TOOL_INFO_TIMEOUT:-2} max_lines=${LMLINE_TOOL_INFO_LINES:-40} max_bytes=${LMLINE_TOOL_INFO_LINE_BYTES:-240}
+  __lmline_validate_tool_info_timeout || return $?
   local tmp status=0
   tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-probe.XXXXXX") || return 1
   __lmline_timeout_run "$timeout_s" "$cmd" "$flag" </dev/null >"$tmp" 2>&1 || status=$?
@@ -284,6 +293,7 @@ __lmline_probe_command() {
 
 __lmline_tool_command_info() {
   local line=${1-} word clean path kind flag count=0 max_commands=${LMLINE_MAX_PIPELINE_COMMANDS:-30}
+  __lmline_validate_tool_info_timeout || return $?
   for word in $line; do
     [[ "$word" == -* ]] && continue
     clean=${word//[^A-Za-z0-9_.+:-]/}

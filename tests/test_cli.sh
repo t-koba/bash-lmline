@@ -792,6 +792,25 @@ linux_command_info=$(PATH="$fake_portable_bin:$PATH" OSTYPE=linux-gnu bash -c 's
 grep -q 'fake-date invoked --version' <<<"$linux_command_info" || fail "command-info linux version probe"
 darwin_command_info=$(PATH="$fake_portable_bin:$PATH" OSTYPE=darwin23 bash -c 'source "$1/lmline/config.bash"; source "$1/lmline/context.bash"; __lmline_tool_command_info date' _ "$repo_dir")
 ! grep -q 'fake-date invoked --version' <<<"$darwin_command_info" || fail "command-info darwin avoids GNU probe"
+slow_probe="$fake_portable_bin/slow-version"
+cat >"$slow_probe" <<'EOF'
+#!/usr/bin/env bash
+printf 'started\n' >"${LMLINE_TEST_PROBE_MARKER:?}.started"
+sleep 2
+printf 'finished\n' >"${LMLINE_TEST_PROBE_MARKER}.finished"
+printf 'slow-version\n'
+EOF
+chmod +x "$slow_probe"
+invalid_probe_marker="$cfg_tmp/invalid-probe-marker"
+if PATH="$fake_portable_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=1x LMLINE_TEST_PROBE_MARKER="$invalid_probe_marker" bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info slow-version' _ "$repo_dir" >"$cfg_tmp/invalid-command-info-timeout.out" 2>"$cfg_tmp/invalid-command-info-timeout.err"; then
+  fail "invalid command-info timeout unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_TIMEOUT: 1x' "$cfg_tmp/invalid-command-info-timeout.err" || fail "invalid command-info timeout diagnostic"
+[[ ! -e "$invalid_probe_marker.started" ]] || fail "invalid command-info timeout dispatched the probe"
+valid_probe_marker="$cfg_tmp/valid-probe-marker"
+valid_probe_out=$(PATH="$fake_portable_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=1 LMLINE_TEST_PROBE_MARKER="$valid_probe_marker" bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info slow-version' _ "$repo_dir")
+grep -q 'probe=--version timed_out_after=1s' <<<"$valid_probe_out" || fail "valid command-info timeout was not preserved"
+[[ -e "$valid_probe_marker.started" && ! -e "$valid_probe_marker.finished" ]] || fail "the valid command-info timeout did not bound the synthetic probe"
 safe_text_out=$(printf '\033[31mRED\033[0m abcdefghijklmnopqrstuvwxyz\n' | bash -c 'source "$1/lmline/context.bash"; __lmline_safe_tool_text 5 10' _ "$repo_dir")
 [[ "$safe_text_out" == "RED abcdef...<truncated>" ]] || fail "safe tool text"
 safe_short_out=$(printf '%s\n' L1 L2 L3 | bash -c 'source "$1/lmline/context.bash"; __lmline_safe_tool_text 5 240' _ "$repo_dir")

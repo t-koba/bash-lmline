@@ -258,6 +258,7 @@ fi
 if [[ -f "$context_support_file" ]]; then
   # shellcheck source=lmline/context.bash
   source "$context_support_file"
+  __lmline_validate_tool_info_timeout || exit $?
 fi
 # shellcheck source=lmline/chat.bash
 source "$script_dir/chat.bash"

@@ -99,6 +99,38 @@ grep -q '"tools"' "$cfg_tmp/valid-tool-result-bytes-zero.out" || fail "zero tool
 LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_RESULT_MAX_BYTES=100 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-result-bytes-small.out" 2>"$cfg_tmp/valid-tool-result-bytes-small.err" || fail "positive tool result bytes rejected"
 grep -q '"tools"' "$cfg_tmp/valid-tool-result-bytes-small.out" || fail "positive tool result bytes payload"
 
+# Command-info probe timeouts fail closed before any provider request or tool
+# dispatch: a malformed or nonpositive nonempty timeout must not fall through
+# to the generic timeout helper fallback and widen the opt-in command_info
+# external probe budget. Malformed values exit before the fake provider is
+# contacted (no dispatch); unset, empty, and valid positive values still build
+# dry-run payloads. Bounded checks only, no real network calls.
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=1x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-info-timeout.out" 2>"$cfg_tmp/invalid-tool-info-timeout.err"; then
+  fail "invalid tool info timeout unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_TIMEOUT: 1x' "$cfg_tmp/invalid-tool-info-timeout.err" || fail "invalid tool info timeout diagnostic"
+grep -q 'positive integer' "$cfg_tmp/invalid-tool-info-timeout.err" || fail "invalid tool info timeout expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-info-timeout.out" || fail "invalid tool info timeout emitted tools"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "invalid tool info timeout dispatched provider request"
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-info-timeout-zero.out" 2>"$cfg_tmp/invalid-tool-info-timeout-zero.err"; then
+  fail "zero tool info timeout unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_TIMEOUT: 0' "$cfg_tmp/invalid-tool-info-timeout-zero.err" || fail "zero tool info timeout diagnostic"
+grep -q 'positive integer' "$cfg_tmp/invalid-tool-info-timeout-zero.err" || fail "zero tool info timeout expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-info-timeout-zero.out" || fail "zero tool info timeout emitted tools"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "zero tool info timeout dispatched provider request"
+# Valid timeouts keep their semantics: unset and empty keep the documented
+# default, and a positive value is accepted without clamping. All bounded
+# dry-run payloads with no provider dispatch.
+env -u LMLINE_TOOL_INFO_TIMEOUT LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-timeout-unset.out" 2>"$cfg_tmp/valid-tool-info-timeout-unset.err" || fail "unset tool info timeout rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-timeout-unset.out" || fail "unset tool info timeout payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT= "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-timeout-empty.out" 2>"$cfg_tmp/valid-tool-info-timeout-empty.err" || fail "empty tool info timeout rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-timeout-empty.out" || fail "empty tool info timeout payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=1 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-timeout-one.out" 2>"$cfg_tmp/valid-tool-info-timeout-one.err" || fail "positive tool info timeout rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-timeout-one.out" || fail "positive tool info timeout payload"
+
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"
 cat >"$fake_bin/curl" <<'EOF'
