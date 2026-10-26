@@ -64,6 +64,12 @@ fpath+=("$HOME/.config/lmline/completions")
 
 ## Requirements
 
+Bundled executable launchers:
+
+```text
+/usr/bin/env with -S and -0 (shebang splitting and NUL-delimited output)
+```
+
 Interactive integration:
 
 ```text
@@ -76,6 +82,14 @@ Bundled engine:
 curl 7.55+
 jq
 ```
+
+Supported invocation: run the executables directly (`./lmline/lmline`,
+`./lmline/engine`, `./lmline/validate`, including via an installed symlink) so
+the `#!/usr/bin/env -S bash -p` shebang starts protected Bash before
+`BASH_ENV`/`ENV`, function import, or script code. An explicit `bash -p
+lmline/...` is also protected, provided it selects Bash 4.2 or newer; it skips
+the `env -S` shebang. Do not invoke with unprotected `bash lmline/...`: that
+bypasses the shebang, so startup hooks run before the later protected re-exec.
 
 <details>
 <summary>Optional commands used when available</summary>

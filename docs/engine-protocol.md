@@ -105,9 +105,12 @@ Frontends only parse, display, and insert.
 
 ### Validation process boundary
 
-Engine and CLI entry points bootstrap into the **current Bash** (`$BASH -p`),
-not a fixed system Bash; Bash 4.2+ remains required. Public policy validation
-helpers entered from a sourced interactive frontend use the same clean child.
+Engine and CLI entry points start protected (`#!/usr/bin/env -S bash -p`) when
+invoked directly as executables, and otherwise bootstrap into the **current
+Bash** (`$BASH -p`); never a fixed system Bash. Bash 4.2+ remains required, and
+`/usr/bin/env` must support `-S` (shebang splitting) and `-0` (NUL-delimited
+output). Public policy validation helpers entered from a sourced interactive
+frontend use the same clean child.
 Copilot enters one child for the entire request/candidate batch, including
 syntax, availability and risk annotation, rather than one child per candidate.
 The engine validates all candidates inside its clean process. Every
@@ -118,13 +121,16 @@ type inspection on data words, never candidate text or resolved executables.
 
 `-p` suppresses imported functions, including functions named `read`, `builtin`
 and `bash`. Its other startup effects are intentional here: `BASH_ENV`/`ENV`
-are not sourced by the clean child, and environment-provided `SHELLOPTS`,
+are not sourced by the protected child, and environment-provided `SHELLOPTS`,
 `BASHOPTS`, `CDPATH` and `GLOBIGNORE` do not set its shell state. Ordinary
 environment variables (including PATH and provider configuration) remain;
 this is not an `env -i` sandbox. Validation uses lmline's explicit configuration,
-not caller shell-option/startup customizations. Inherited function bodies may
-already exist in Bash's ordinary export environment, but lmline never lists,
-serializes or evaluates them to transport metadata.
+not caller shell-option/startup customizations. A protected entry never imports
+inherited function bodies; it recovers only their names opaquely from
+`/usr/bin/env -0` records in non-exported local storage (export attributes are
+cleared before assignment, bodies are never sourced/evaluated or forwarded to
+validator input, argv, metadata, logs, provider payload, or exported scratch
+data, and the env producer's completion is checked explicitly).
 
 Direct PATH-prefix availability probes use the current `$BASH` with `-p -c`,
 not a `bash` executable selected through PATH. The candidate PATH value, command
@@ -152,13 +158,24 @@ This boundary assumes a trusted installed Bash, trusted PATH/configuration,
 and a trusted interactive shell: lmline's own functions/internal variables,
 builtins and special variables must not be tampered with or disabled, and shell
 hooks/traps must be trusted. Sourcing frontend/configuration files is trusted
-initialization outside this candidate-validation boundary. The initial interpreter for an executable entry
-point starts normally before the bootstrap; its startup files/`BASH_ENV` and
-environment-provided options must therefore be trusted too. The clean child
-suppresses those startup effects; the bootstrap does not retroactively sandbox
-the invoking shell or its startup. A direct invocation already using `bash -p`
-must supply the two names-only transports if it needs caller-function visibility;
-without metadata those bindings fail closed. Unsupported/dynamic nested-shell
+initialization outside this candidate-validation boundary. A directly invoked
+executable entry point (`./lmline/lmline`, `./lmline/engine`,
+`./lmline/validate`, including via an installed symlink) starts protected
+before `BASH_ENV`/`ENV`, function import, or script code, so its startup
+effects are already suppressed. An explicit unprotected `bash lmline/...`
+bypasses the shebang and starts normally before the bootstrap; its startup
+files/`BASH_ENV` and environment-provided options must therefore be trusted
+too, and the late re-exec into `bash -p` does not undo hooks that already ran.
+The clean child suppresses those startup effects; the bootstrap does not
+retroactively sandbox the invoking shell or its startup. A supported executable
+invocation through the protected shebang automatically recovers exported
+function names opaquely from the environment when `LMLINE_EXPORTED_FUNCTIONS`
+is absent; unexported caller names remain unavailable unless supplied in
+`LMLINE_SHELL_FUNCTIONS`. Explicit `bash -p lmline/...` also starts protected
+and auto-recovers exported names, but skips the shebang and requires the caller
+to select Bash 4.2+; unexported names still need `LMLINE_SHELL_FUNCTIONS`.
+Plain unprotected `bash lmline/...` is unsupported for the boundary guarantee.
+Unsupported/dynamic nested-shell
 forms remain outside the bounded literal nested-script model. Caller-function
 metadata does not widen that model: substitutions in unsupported eval, trap or
 shell-c arguments stay opaque to availability analysis. Subsequent commands

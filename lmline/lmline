@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S bash -p
 # Bootstrap only: special-builtin precedence prevents caller-function dispatch
 # before the clean boundary. Resolve installed links before sourcing neighbors.
 if [[ ! -o privileged ]]; then
@@ -35,10 +35,27 @@ if [[ ! -o privileged ]]; then
   exit $?
 fi
 __LMLINE_VALIDATION_ISOLATED=1
+# Protected direct invocation (`/usr/bin/env -S bash -p` shebang) starts privileged
+# before BASH_ENV/ENV, function import, or script code. An explicit unprotected
+# `bash lmline/lmline` bypasses the shebang and re-enters through the bootstrap
+# above; it cannot undo startup hooks that already ran.
+__lmline_privileged_dir=${__lmline_entry_path%/*}
+[[ $__lmline_privileged_dir != "$__lmline_entry_path" ]] || __lmline_privileged_dir=.
+# shellcheck source=lmline/validation-boundary.bash
+source "$__lmline_privileged_dir/validation-boundary.bash" || exit 1
+unset __lmline_privileged_dir
 # shellcheck disable=SC2031 # Capture the frontend transport before child validation.
 __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
 # shellcheck disable=SC2031 # Capture the export transport before child validation.
 __LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
+# shellcheck disable=SC2031 # Check whether the frontend set the export transport.
+if [[ -z ${LMLINE_EXPORTED_FUNCTIONS+x} ]]; then
+  __lmline_inherited_exported=
+  export -n __lmline_inherited_exported 2>/dev/null || true
+  __lmline_inherited_exported=$(__lmline_collect_inherited_exported_functions) || exit 1
+  __LMLINE_EXPORTED_FUNCTIONS=$__lmline_inherited_exported
+  unset __lmline_inherited_exported
+fi
 export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS
 unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
 set -euo pipefail

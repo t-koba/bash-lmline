@@ -21,24 +21,79 @@ __lmline_collect_shell_functions() (
   :
 )
 
+# Inherited exported-function names for a protected (`bash -p`) entry.
+# A protected startup never imports function bodies, so `declare -Fx` is
+# empty there. This collector instead reads `/usr/bin/env -0` records
+# opaquely into non-exported local scratch solely to emit names: it never
+# sources/evaluates record values or candidate text, and never forwards
+# bodies to validator input, argv, metadata, logs, provider payload, or
+# exported scratch data. Export attributes on scratch are cleared before
+# assignment (a plain `local` retains an inherited export attribute and would
+# leak an assigned sentinel to children), the env producer's completion is
+# checked explicitly, and descriptors/children are cleaned up.
+__lmline_collect_inherited_exported_functions() (
+  POSIXLY_CORRECT=1
+  unset -f command || exit 1
+  command builtin local entry name_part name fd producer
+  command builtin export -n entry || exit 1
+  command builtin export -n name_part || exit 1
+  command builtin export -n name || exit 1
+  command builtin export -n fd || exit 1
+  command builtin export -n producer || exit 1
+  command builtin exec {fd}< <(command /usr/bin/env -0) || exit 1
+  producer=$!
+  while IFS= command builtin read -r -d '' entry <&"$fd"; do
+    case "$entry" in
+      *=*) ;;
+      *) continue ;;
+    esac
+    name_part=${entry%%=*}
+    case "$name_part" in
+      BASH_FUNC_*%%)
+        name=${name_part#BASH_FUNC_}
+        name=${name%\%\%}
+        ;;
+      *)
+        # Legacy bash (4.2-4.3) exports functions as NAME=() {...}.
+        # Opaque prefix check only; the body is never evaluated.
+        case "$entry" in
+          "$name_part="'()'* ) name=$name_part ;;
+          *) continue ;;
+        esac
+        ;;
+    esac
+    [[ -n $name ]] || continue
+    [[ $name =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || continue
+    command builtin printf '%s\n' "$name"
+  done
+  command builtin exec {fd}<&- || exit 1
+  command builtin wait "$producer" || exit 1
+  :
+)
+
 __lmline_collect_exported_functions() (
   POSIXLY_CORRECT=1
-  (
-    unset -f command || exit 1
-    while IFS= command builtin read -r declaration; do
-      name=${declaration##* }
-      [[ $name =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || continue
-      command builtin printf '%s\n' "$name"
-    done < <(command builtin declare -Fx)
-  ) || exit 1
-  (
-    unset -f builtin || exit 1
-    while IFS= builtin read -r declaration; do
-      name=${declaration##* }
-      if [[ $name == command ]]; then builtin printf '%s\n' "$name"; fi
-    done < <(builtin declare -Fx)
-  ) || exit 1
-  :
+  if [[ -o privileged ]]; then
+    __lmline_collect_inherited_exported_functions || exit 1
+    :
+  else
+    (
+      unset -f command || exit 1
+      while IFS= command builtin read -r declaration; do
+        name=${declaration##* }
+        [[ $name =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || continue
+        command builtin printf '%s\n' "$name"
+      done < <(command builtin declare -Fx)
+    ) || exit 1
+    (
+      unset -f builtin || exit 1
+      while IFS= builtin read -r declaration; do
+        name=${declaration##* }
+        if [[ $name == command ]]; then builtin printf '%s\n' "$name"; fi
+      done < <(builtin declare -Fx)
+    ) || exit 1
+    :
+  fi
 )
 
 __lmline_validation_run() (
