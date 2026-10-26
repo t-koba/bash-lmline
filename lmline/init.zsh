@@ -315,7 +315,7 @@ __lmline_zsh_bridge() {
   # The child passes them only on its engine command for this (zsh) target;
   # context and Copilot subprocesses never inherit them, while same-process
   # Copilot validation still sees the non-exported snapshot.
-  caller_functions=$(print -l ${(k)functions} 2>/dev/null) || caller_functions=
+  caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   bridge_env+=("LMLINE_SHELL_FUNCTIONS=${caller_functions}")
   "${bridge_command[@]}" env "${bridge_env[@]}" bash -p -c '
     __lmline_bridge_main() {
@@ -401,12 +401,17 @@ __lmline_zsh_bridge() {
   ' _ "$action" "$mode" "$line" "$point" "$async_file"
 }
 
+# Names-only caller function identity for async request keys. Hashes the same
+# caller function-name list supplied to the engine; never evaluates,
+# serializes, or forwards bodies.
 __lmline_zsh_request_key() {
-  local mode=$1 line=$2 point=$3
+  local mode=$1 line=$2 point=$3 caller_functions
+  caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
-    printf "%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$4" "$5"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM"
+    function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin)
+    printf "%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions"
 }
 
 __lmline_zsh_load_candidates_from_file() {

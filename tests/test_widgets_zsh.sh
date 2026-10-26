@@ -245,6 +245,77 @@ EOF
     [[ "$BUFFER" == "echo count-2" ]]
     [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.finished" ]]
   ' _ "$repo_dir" || fail "zsh async settings identity"
+  mkdir "$zsh_tmp/functions-change"
+  mkfifo "$zsh_tmp/functions-change/first.gate" "$zsh_tmp/functions-change/second.gate"
+  cat >"$zsh_tmp/engine-functions" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+if printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'available_helper'; then
+  name=second
+else
+  name=first
+fi
+if [[ "${LMLINE_SHELL_FUNCTIONS-}" == *body-marker* ]]; then exit 97; fi
+stop_file=$LMLINE_TEST_FUNCTIONS_DIR/$name.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf ready >"$LMLINE_TEST_FUNCTIONS_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_FUNCTIONS_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_FUNCTIONS_DIR/$name.finished"
+if [[ "$name" == second ]]; then
+  printf 'lmline-candidate: low\t-\t-\techo has-helper\n'
+else
+  printf 'lmline-candidate: low\t-\t-\techo no-helper\n'
+fi
+EOF
+  chmod +x "$zsh_tmp/engine-functions"
+  LMLINE_TEST_FUNCTIONS_DIR="$zsh_tmp/functions-change" LMLINE_CONFIG_DIR="$zsh_tmp/config-functions" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-functions" zsh -efic '
+    source "$1/lmline/init.zsh"
+    cleanup_functions_probe() {
+      for name in first second; do
+        ( exec 3<>"$LMLINE_TEST_FUNCTIONS_DIR/$name.gate"; printf "release\\n" >&3 ) 2>/dev/null || true
+      done
+      for pid in "${first_pid:-}" "${second_pid:-}"; do
+        [[ -n "$pid" ]] || continue
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+      done
+    }
+    trap cleanup_functions_probe EXIT
+    BUFFER="# helper"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first_pid=$__LMLINE_ZSH_ASYNC_PID
+    first_file=$__LMLINE_ZSH_ASYNC_FILE
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.ready" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first_pid" ]]
+    [[ "$__LMLINE_ZSH_ASYNC_FILE" == "$first_file" ]]
+    available_helper() { printf "body-marker\n" >>"$LMLINE_TEST_FUNCTIONS_DIR/body-ran"; }
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second_pid=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second_pid" != "$first_pid" ]]
+    [[ "$__LMLINE_ZSH_ASYNC_FILE" != "$first_file" ]]
+    [[ "$BUFFER" == "# helper" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.stopped" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.stopped" ]]
+    [[ ! -e "$LMLINE_TEST_FUNCTIONS_DIR/first.finished" ]]
+    ! kill -0 "$first_pid" 2>/dev/null
+    [[ ! -e "$first_file" && ! -e "$first_file.status" && ! -e "$first_file.status.err" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/second.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/second.ready" ]]
+    printf "release\\n" >"$LMLINE_TEST_FUNCTIONS_DIR/second.gate"
+    for i in {1..200}; do
+      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$second_pid" 2>/dev/null; then break; fi
+      sleep 0.05
+    done
+    [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo has-helper" ]]
+    [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/second.finished" ]]
+    [[ ! -e "$LMLINE_TEST_FUNCTIONS_DIR/body-ran" ]]
+  ' _ "$repo_dir" || fail "zsh async function identity"
   printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: synthetic zsh async failure\\n" >&2\nexit 1\n' >"$zsh_tmp/engine-async-fail"
   chmod +x "$zsh_tmp/engine-async-fail"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-async-fail" zsh -efic '

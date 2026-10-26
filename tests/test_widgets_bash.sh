@@ -406,6 +406,73 @@ LMLINE_TEST_SETTINGS_DIR="$widget_tmp/settings-change" LMLINE_CONFIG_DIR="$widge
   [[ "$READLINE_LINE" == "echo count-2" ]]
   [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-2.finished" ]]
 ' _ "$repo_dir" || fail "async settings identity"
+mkdir "$widget_tmp/functions-change"
+mkfifo "$widget_tmp/functions-change/first.gate" "$widget_tmp/functions-change/second.gate"
+cat >"$widget_tmp/engine-functions" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+if printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'available_helper'; then
+  name=second
+else
+  name=first
+fi
+if [[ "${LMLINE_SHELL_FUNCTIONS-}" == *body-marker* ]]; then exit 97; fi
+stop_file=$LMLINE_TEST_FUNCTIONS_DIR/$name.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf ready >"$LMLINE_TEST_FUNCTIONS_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_FUNCTIONS_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_FUNCTIONS_DIR/$name.finished"
+if [[ "$name" == second ]]; then
+  printf 'lmline-candidate: low\t-\t-\techo has-helper\n'
+else
+  printf 'lmline-candidate: low\t-\t-\techo no-helper\n'
+fi
+EOF
+chmod +x "$widget_tmp/engine-functions"
+LMLINE_TEST_FUNCTIONS_DIR="$widget_tmp/functions-change" LMLINE_CONFIG_DIR="$widget_tmp/config-functions" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-functions" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  cleanup_functions_probe() {
+    for name in first second; do
+      ( exec 3<>"$LMLINE_TEST_FUNCTIONS_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    for pid in "${first_pid:-}" "${second_pid:-}"; do
+      [[ -n "$pid" ]] || continue
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    done
+  }
+  trap cleanup_functions_probe EXIT
+  READLINE_LINE="# helper"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first_pid=$__LMLINE_ASYNC_PID
+  first_file=$__LMLINE_ASYNC_FILE
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first_pid" ]]
+  [[ "$__LMLINE_ASYNC_FILE" == "$first_file" ]]
+  available_helper() { printf "body-marker\n" >>"$LMLINE_TEST_FUNCTIONS_DIR/body-ran"; }
+  __lmline_generate_widget >/dev/null 2>&1
+  second_pid=$__LMLINE_ASYNC_PID
+  [[ "$second_pid" != "$first_pid" ]]
+  [[ "$__LMLINE_ASYNC_FILE" != "$first_file" ]]
+  [[ "$READLINE_LINE" == "# helper" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.stopped" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/first.stopped" ]]
+  [[ ! -e "$LMLINE_TEST_FUNCTIONS_DIR/first.finished" ]]
+  ! kill -0 "$first_pid" 2>/dev/null
+  [[ ! -e "$first_file" && ! -e "$first_file.status" && ! -e "$first_file.status.err" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/second.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/second.ready" ]]
+  printf "release\n" >"$LMLINE_TEST_FUNCTIONS_DIR/second.gate"
+  wait "$second_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo has-helper" ]]
+  [[ -s "$LMLINE_TEST_FUNCTIONS_DIR/second.finished" ]]
+  [[ ! -e "$LMLINE_TEST_FUNCTIONS_DIR/body-ran" ]]
+' _ "$repo_dir" || fail "async function identity"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: synthetic async failure\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
 LMLINE_CONFIG_DIR="$widget_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
