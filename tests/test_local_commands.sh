@@ -82,21 +82,21 @@ medium_risk_reason=$(LMLINE_TOOL_COMMAND_RUN_MAX_RISK=medium \
   || fail "the valid medium risk ceiling changed: $medium_risk_reason"
 risk_dispatch_marker="$list_tmp/risk-dispatch-marker"
 risk_dispatch_output=$(
-  export LMLINE_EXEC_BACKEND=microsandbox
-  export LMLINE_MICROSANDBOX_COMMAND=/bin/true
-  export LMLINE_TOOL_COMMAND_RUN_MAX_RISK=lo
   __lmline_run_command_capture_with_backend() {
     printf 'called:%s\n' "$1" >>"$risk_dispatch_marker"
     : >"$4"
     : >"$5"
     __LMLINE_EXEC_STATUS=0
   }
-  __lmline_tool_command_run 'printf probe >/dev/null'
+  LMLINE_EXEC_BACKEND=microsandbox \
+    LMLINE_MICROSANDBOX_COMMAND=bash \
+    LMLINE_TOOL_COMMAND_RUN_MAX_RISK=lo \
+    __lmline_tool_command_run 'printf probe >/dev/null'
 )
 grep -q '^allowed=0$' <<<"$risk_dispatch_output" \
-  || fail "an invalid risk ceiling allowed command_run"
+  || fail "an invalid risk ceiling allowed command_run: $risk_dispatch_output"
 grep -q '^reason=invalid_max_risk$' <<<"$risk_dispatch_output" \
-  || fail "an invalid risk ceiling had no diagnostic"
+  || fail "an invalid risk ceiling had no diagnostic: $risk_dispatch_output"
 [[ ! -e "$risk_dispatch_marker" ]] \
   || fail "an invalid risk ceiling dispatched a command"
 ok "invalid command-run risk ceilings fail closed"
