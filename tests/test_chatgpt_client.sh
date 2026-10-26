@@ -348,6 +348,7 @@ lock_file="$chatgpt_tmp/credentials.lock"
 for signal_case in "INT 130" "HUP 129"; do
   signal_name=${signal_case%% *}
   expected_status=${signal_case##* }
+  refreshes_before=$(grep -c '^token_grant_type=refresh_token$' "$chatgpt_tmp/mock-signalled.log" || true)
   env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
     LMLINE_CHATGPT_AUTH_URL="$mock_base" \
     LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
@@ -357,7 +358,18 @@ for signal_case in "INT 130" "HUP 129"; do
     node "$repo_dir/lmline/chatgpt-client.js" token \
     >"$chatgpt_tmp/signalled-$signal_name.out" 2>"$chatgpt_tmp/signalled-$signal_name.err" &
   signalled_pid=$!
-  sleep 0.5
+  signal_ready=0
+  for ((attempt = 0; attempt < 200; attempt++)); do
+    refreshes_now=$(grep -c '^token_grant_type=refresh_token$' "$chatgpt_tmp/mock-signalled.log" || true)
+    if (( refreshes_now > refreshes_before )); then
+      signal_ready=1
+      break
+    fi
+    if ! kill -0 "$signalled_pid" 2>/dev/null; then break; fi
+    sleep 0.05
+  done
+  [[ "$signal_ready" == 1 && -e "$lock_file" ]] \
+    || fail "the $signal_name signal test did not reach an active refresh"
   kill -"$signal_name" "$signalled_pid" 2>/dev/null || true
   signalled_status=0
   wait "$signalled_pid" 2>/dev/null || signalled_status=$?
