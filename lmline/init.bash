@@ -368,7 +368,7 @@ __lmline_async_start() {
     fi
   ) &
   __LMLINE_ASYNC_PID=$!
-  __LMLINE_ASYNC_KEY="$(__lmline_request_key "$mode" "$line"):$point"
+  __LMLINE_ASYNC_KEY="$(__lmline_request_key "$mode" "$line"):$point:${__LMLINE_SETTINGS_CKSUM:-}"
   __LMLINE_ASYNC_FILE=$async_file
   __LMLINE_ASYNC_MODE=$mode
   __LMLINE_ASYNC_POINT=$point
@@ -540,7 +540,7 @@ __lmline_complete_generation() {
 
 __lmline_generate_async_widget() {
   local original=$1 mode=$2 point=$3 async_file current_key async_status_file
-  current_key="$(__lmline_request_key "$mode" "$original"):$point"
+  current_key="$(__lmline_request_key "$mode" "$original"):$point:${__LMLINE_SETTINGS_CKSUM:-}"
 
   if [[ "$__LMLINE_ASYNC_KEY" == "$current_key" && $__LMLINE_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ASYNC_FILE

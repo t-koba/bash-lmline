@@ -405,8 +405,8 @@ __lmline_zsh_request_key() {
   local mode=$1 line=$2 point=$3
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
-    printf "%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$4"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point"
+    printf "%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$4" "$5"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM"
 }
 
 __lmline_zsh_load_candidates_from_file() {
