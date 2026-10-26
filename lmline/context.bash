@@ -617,11 +617,26 @@ __lmline_run_command_capture_with_backend() {
 }
 
 __lmline_tool_command_run() {
-  local command_line=${1-} timeout_s=${LMLINE_TOOL_COMMAND_RUN_TIMEOUT:-3}
-  local max_output=${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT:-12000}
+  local command_line=${1-} timeout_s max_output
+  local timeout_raw=${LMLINE_TOOL_COMMAND_RUN_TIMEOUT-}
+  local max_output_raw=${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT-}
   local rejection tmp status stdout_bytes stderr_bytes backend
-  [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
-  [[ "$max_output" =~ ^[1-9][0-9]*$ ]] || max_output=12000
+  if [[ -z "$timeout_raw" ]]; then
+    timeout_s=3
+  elif [[ "$timeout_raw" =~ ^[1-9][0-9]*$ ]]; then
+    timeout_s=$timeout_raw
+  else
+    printf 'allowed=0\nreason=invalid_timeout\n'
+    return 0
+  fi
+  if [[ -z "$max_output_raw" ]]; then
+    max_output=12000
+  elif [[ "$max_output_raw" =~ ^[1-9][0-9]*$ ]]; then
+    max_output=$max_output_raw
+  else
+    printf 'allowed=0\nreason=invalid_max_output\n'
+    return 0
+  fi
   if ! backend=$(__lmline_select_exec_backend); then
     printf 'allowed=0\n'
     case "$backend" in

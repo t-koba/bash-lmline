@@ -101,6 +101,94 @@ grep -q '^reason=invalid_max_risk$' <<<"$risk_dispatch_output" \
   || fail "an invalid risk ceiling dispatched a command"
 ok "invalid command-run risk ceilings fail closed"
 
+# Numeric command-run limits fail closed before dispatch: a malformed nonempty
+# timeout or max-output must not call capture or execute the candidate, while
+# valid limits and unset/empty defaults keep their behavior.
+limits_marker="$list_tmp/limits-dispatch-marker"
+limits_output=$(
+  __lmline_run_command_capture_with_backend() {
+    printf 'called:%s:%s\n' "$1" "$3" >>"$limits_marker"
+    : >"$4"
+    : >"$5"
+    __LMLINE_EXEC_STATUS=0
+  }
+  LMLINE_EXEC_BACKEND=local \
+    LMLINE_TOOL_COMMAND_RUN_TIMEOUT=1 \
+    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=64 \
+    __lmline_tool_command_run 'printf hi'
+)
+grep -q '^allowed=1$' <<<"$limits_output" \
+  || fail "valid numeric limits refused command_run: $limits_output"
+grep -q '^stdout_truncated_to_bytes=64$' <<<"$limits_output" \
+  || fail "valid max-output was not honored: $limits_output"
+grep -q '^called:local:1$' "$limits_marker" \
+  || fail "valid timeout was not passed to capture"
+ok "valid command-run numeric limits still dispatch"
+rm -f "$limits_marker"
+
+invalid_timeout_output=$(
+  __lmline_run_command_capture_with_backend() {
+    printf 'called:%s\n' "$1" >>"$limits_marker"
+    : >"$4"
+    : >"$5"
+    __LMLINE_EXEC_STATUS=0
+  }
+  LMLINE_EXEC_BACKEND=local \
+    LMLINE_TOOL_COMMAND_RUN_TIMEOUT=1x \
+    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=64 \
+    __lmline_tool_command_run 'printf hi'
+)
+grep -q '^allowed=0$' <<<"$invalid_timeout_output" \
+  || fail "an invalid timeout allowed command_run: $invalid_timeout_output"
+grep -q '^reason=invalid_timeout$' <<<"$invalid_timeout_output" \
+  || fail "an invalid timeout had no diagnostic: $invalid_timeout_output"
+[[ ! -e "$limits_marker" ]] \
+  || fail "an invalid timeout dispatched a command"
+ok "invalid command-run timeouts fail closed"
+rm -f "$limits_marker"
+
+invalid_max_output=$(
+  __lmline_run_command_capture_with_backend() {
+    printf 'called:%s\n' "$1" >>"$limits_marker"
+    : >"$4"
+    : >"$5"
+    __LMLINE_EXEC_STATUS=0
+  }
+  LMLINE_EXEC_BACKEND=local \
+    LMLINE_TOOL_COMMAND_RUN_TIMEOUT=1 \
+    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=64x \
+    __lmline_tool_command_run 'printf hi'
+)
+grep -q '^allowed=0$' <<<"$invalid_max_output" \
+  || fail "an invalid max-output allowed command_run: $invalid_max_output"
+grep -q '^reason=invalid_max_output$' <<<"$invalid_max_output" \
+  || fail "an invalid max-output had no diagnostic: $invalid_max_output"
+[[ ! -e "$limits_marker" ]] \
+  || fail "an invalid max-output dispatched a command"
+ok "invalid command-run max-outputs fail closed"
+rm -f "$limits_marker"
+
+defaults_output=$(
+  __lmline_run_command_capture_with_backend() {
+    printf 'called:%s:%s\n' "$1" "$3" >>"$limits_marker"
+    : >"$4"
+    : >"$5"
+    __LMLINE_EXEC_STATUS=0
+  }
+  LMLINE_EXEC_BACKEND=local \
+    LMLINE_TOOL_COMMAND_RUN_TIMEOUT= \
+    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT= \
+    __lmline_tool_command_run 'printf hi'
+)
+grep -q '^allowed=1$' <<<"$defaults_output" \
+  || fail "empty numeric limits refused command_run: $defaults_output"
+grep -q '^stdout_truncated_to_bytes=12000$' <<<"$defaults_output" \
+  || fail "empty numeric limits lost their defaults: $defaults_output"
+grep -q '^called:local:3$' "$limits_marker" \
+  || fail "empty timeout lost its default"
+ok "empty command-run numeric limits keep defaults"
+rm -f "$limits_marker"
+
 # The tool path reports the same answer.
 args=$(jq -cn --arg command "printf hi" '{command:$command}')
 out=$(LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \
