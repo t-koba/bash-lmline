@@ -99,3 +99,47 @@ bash -c '
 rm -rf "$untrusted_tmp"
 rm -rf "$fix_tmp"
 ok "fix widget"
+
+# Validate fix timeout configuration before selecting or dispatching an execution backend.
+timeout_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix-timeout.XXXXXX")
+bash --norc -i -c '
+  set -u
+  source "$1/lmline/init.bash"
+  __lmline_reload_settings_if_changed() { :; }
+  __lmline_select_exec_backend() { printf selected >>"$LMLINE_TEST_SELECTOR_MARKER"; printf local; }
+  __lmline_risk_level() { printf low; }
+  __lmline_run_command_capture_with_backend() {
+    printf '%s\n' "$3" >>"$LMLINE_TEST_TIMEOUT_MARKER"
+    __LMLINE_EXEC_ERROR=test
+    return 1
+  }
+  LMLINE_TEST_SELECTOR_MARKER=$2/selector
+  LMLINE_TEST_TIMEOUT_MARKER=$2/timeouts
+  export LMLINE_TEST_SELECTOR_MARKER LMLINE_TEST_TIMEOUT_MARKER
+  if LMLINE_FIX_TIMEOUT=1x __lmline_fix_run false bash 5 /bin/false 1 2>"$2/invalid.err"; then
+    exit 10
+  else
+    [[ $? == 3 ]]
+  fi
+  grep -q "invalid LMLINE_FIX_TIMEOUT; expected a positive integer" "$2/invalid.err"
+  [[ ! -e $2/selector && ! -e $2/timeouts ]]
+  for setting in unset empty one; do
+    if [[ $setting == unset ]]; then
+      unset LMLINE_FIX_TIMEOUT
+    elif [[ $setting == empty ]]; then
+      LMLINE_FIX_TIMEOUT=
+    else
+      LMLINE_FIX_TIMEOUT=1
+    fi
+    if __lmline_fix_run false bash 5 /bin/false 1 >/dev/null 2>"$2/$setting.err"; then
+      exit 11
+    else
+      [[ $? == 3 ]]
+    fi
+  done
+  printf '%s\n' 12 12 1 >"$2/expected"
+  cmp -s "$2/expected" "$2/timeouts"
+  [[ $(cat "$2/selector") == selectedselectedselected ]]
+' _ "$repo_dir" "$timeout_tmp" || fail "fix timeout validation/default/pass-through"
+rm -rf "$timeout_tmp"
+ok "fix rejects malformed timeout before backend selection and preserves valid limits"

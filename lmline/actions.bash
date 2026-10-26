@@ -404,6 +404,10 @@ __lmline_fix_run() {
   local risk timeout=${LMLINE_FIX_TIMEOUT:-12} max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
   local tmp status engine_status backend context_text caller_functions exported_functions
   __lmline_reload_settings_if_changed "${__LMLINE_CONFIG_DIR:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}}"
+  if [[ ! $timeout =~ ^[1-9][0-9]*$ ]]; then
+    printf '%sinvalid LMLINE_FIX_TIMEOUT; expected a positive integer\n' "$prefix" >&2
+    return 3
+  fi
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
   if ! backend=$(__lmline_select_exec_backend); then
