@@ -281,7 +281,7 @@ LMLINE_SPINNER	1	waiting animation
 LMLINE_SPINNER_INTERVAL	0.2	spinner refresh interval
 LMLINE_PROGRESS	1	engine progress lines
 LMLINE_PS0	🍋‍🟩	lmline status prefix
-LMLINE_FIX_TIMEOUT	12	seconds for fix command execution
+LMLINE_FIX_TIMEOUT	12	positive seconds for fix execution (maximum 2147483647)
 LMLINE_FIX_MAX_OUTPUT	12000	stdout/stderr byte limit for fix
 LMLINE_CONDENSE_LINE_BYTES	2000	per-line byte cap during output condensation
 LMLINE_CONDENSE_RESCUE_LINES	20	priority lines rescued from the omitted middle

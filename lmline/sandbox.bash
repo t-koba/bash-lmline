@@ -65,11 +65,20 @@ __lmline_select_exec_backend() {
 # available (124 on timeout, or 137 after forced termination). The fallback
 # polls in Bash and always returns 124 on timeout, including after KILL
 # following a 1s TERM grace period.
+# Keep timeout values within the range the portable Bash arithmetic loop
+# can represent on 32-bit hosts. The largest supported value is still 68 years.
+__lmline_timeout_seconds_valid() {
+  local timeout_s=${1-}
+  [[ $timeout_s =~ ^[1-9][0-9]*$ ]] || return 1
+  (( ${#timeout_s} < 10 )) ||
+    { (( ${#timeout_s} == 10 )) && [[ $timeout_s < 2147483648 ]]; }
+}
+
 # Cancellation covers the isolated job's process group, not detached processes.
 __lmline_timeout_run() {
   local timeout_s=$1
   shift
-  [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=3
+  __lmline_timeout_seconds_valid "$timeout_s" || timeout_s=3
   if command -v timeout >/dev/null 2>&1; then
     local status=0
     timeout -k 1s "$timeout_s" "$@" || status=$?

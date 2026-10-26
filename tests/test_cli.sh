@@ -1273,6 +1273,13 @@ for monitor in off on; do
     status=0
     __lmline_timeout_run 2 "$BASH" -c "echo portable-stderr >&2; exit 23" || status=$?
     [[ $status == 23 && $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 13
+    : >"$LMLINE_FAKE_SLEEP_TICKS"
+    status=0
+    __lmline_timeout_run 99999999999999999999999999999999999999999999999999999999999999999999999 sleep 10 || status=$?
+    (( status == 124 )) || exit 14
+    tick_count=0
+    while IFS= read -r _; do tick_count=$((tick_count + 1)); done <"$LMLINE_FAKE_SLEEP_TICKS"
+    (( tick_count == 4 )) || exit 15
     printf "portable-%s-ok\n" "$3"
   ' _ "$repo_dir" "$notimeout_bin" "$monitor" >"$notimeout_bin/out" 2>"$notimeout_bin/err"; then
     cat "$notimeout_bin/out" "$notimeout_bin/err" >&2

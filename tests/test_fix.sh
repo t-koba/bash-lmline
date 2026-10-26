@@ -116,18 +116,22 @@ bash --norc -i -c '
   LMLINE_TEST_SELECTOR_MARKER=$2/selector
   LMLINE_TEST_TIMEOUT_MARKER=$2/timeouts
   export LMLINE_TEST_SELECTOR_MARKER LMLINE_TEST_TIMEOUT_MARKER
-  if LMLINE_FIX_TIMEOUT=1x __lmline_fix_run false bash 5 /bin/false 1 2>"$2/invalid.err"; then
-    exit 10
-  else
-    [[ $? == 3 ]]
-  fi
-  grep -q "invalid LMLINE_FIX_TIMEOUT; expected a positive integer" "$2/invalid.err"
+  for invalid in 1x 2147483648 99999999999999999999999999999999999999999999999999999999999999999999999; do
+    if LMLINE_FIX_TIMEOUT=$invalid __lmline_fix_run false bash 5 /bin/false 1 2>"$2/invalid.err"; then
+      exit 10
+    else
+      [[ $? == 3 ]]
+    fi
+    grep -q "invalid LMLINE_FIX_TIMEOUT; expected a positive integer no greater than 2147483647" "$2/invalid.err"
+  done
   [[ ! -e $2/selector && ! -e $2/timeouts ]]
-  for setting in unset empty one; do
+  for setting in unset empty one maximum; do
     if [[ $setting == unset ]]; then
       unset LMLINE_FIX_TIMEOUT
     elif [[ $setting == empty ]]; then
       LMLINE_FIX_TIMEOUT=
+    elif [[ $setting == maximum ]]; then
+      LMLINE_FIX_TIMEOUT=2147483647
     else
       LMLINE_FIX_TIMEOUT=1
     fi
@@ -137,9 +141,9 @@ bash --norc -i -c '
       [[ $? == 3 ]]
     fi
   done
-  printf '%s\n' 12 12 1 >"$2/expected"
+  printf '%s\n' 12 12 1 2147483647 >"$2/expected"
   cmp -s "$2/expected" "$2/timeouts"
-  [[ $(cat "$2/selector") == selectedselectedselected ]]
+  [[ $(cat "$2/selector") == selectedselectedselectedselected ]]
 ' _ "$repo_dir" "$timeout_tmp" || fail "fix timeout validation/default/pass-through"
 rm -rf "$timeout_tmp"
 ok "fix rejects malformed timeout before backend selection and preserves valid limits"
