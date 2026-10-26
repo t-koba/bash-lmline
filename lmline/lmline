@@ -951,6 +951,7 @@ source_support_files() {
   source "$script_dir/sandbox.bash"
   # shellcheck source=lmline/context.bash
   source "$script_dir/context.bash"
+  __lmline_validate_tool_info_limits || exit $?
   # shellcheck source=lmline/actions.bash
   source "$script_dir/actions.bash"
 }

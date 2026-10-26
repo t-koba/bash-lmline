@@ -811,6 +811,53 @@ valid_probe_marker="$cfg_tmp/valid-probe-marker"
 valid_probe_out=$(PATH="$fake_portable_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=1 LMLINE_TEST_PROBE_MARKER="$valid_probe_marker" bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info slow-version' _ "$repo_dir")
 grep -q 'probe=--version timed_out_after=1s' <<<"$valid_probe_out" || fail "valid command-info timeout was not preserved"
 [[ -e "$valid_probe_marker.started" && ! -e "$valid_probe_marker.finished" ]] || fail "the valid command-info timeout did not bound the synthetic probe"
+# Command-info output caps fail closed before any probe or tool output: awk
+# accepts a numeric prefix, so a malformed nonempty line or byte limit (such
+# as 200000x) must be rejected before the fake executable is dispatched.
+# Unset/empty keep the documented defaults (40 lines, 240 bytes); a smaller
+# valid cap stays honored without clamping. Bounded synthetic data only, no
+# real commands or provider calls.
+invalid_lines_marker="$cfg_tmp/invalid-lines-marker"
+if PATH="$fake_portable_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=200000x LMLINE_TEST_PROBE_MARKER="$invalid_lines_marker" bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info slow-version' _ "$repo_dir" >"$cfg_tmp/invalid-command-info-lines.out" 2>"$cfg_tmp/invalid-command-info-lines.err"; then
+  fail "invalid command-info lines unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINES: 200000x' "$cfg_tmp/invalid-command-info-lines.err" || fail "invalid command-info lines diagnostic"
+[[ ! -e "$invalid_lines_marker.started" ]] || fail "invalid command-info lines dispatched the probe"
+invalid_bytes_marker="$cfg_tmp/invalid-bytes-marker"
+if PATH="$fake_portable_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINE_BYTES=200000x LMLINE_TEST_PROBE_MARKER="$invalid_bytes_marker" bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info slow-version' _ "$repo_dir" >"$cfg_tmp/invalid-command-info-bytes.out" 2>"$cfg_tmp/invalid-command-info-bytes.err"; then
+  fail "invalid command-info line bytes unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINE_BYTES: 200000x' "$cfg_tmp/invalid-command-info-bytes.err" || fail "invalid command-info line bytes diagnostic"
+[[ ! -e "$invalid_bytes_marker.started" ]] || fail "invalid command-info line bytes dispatched the probe"
+# The `lmline command-info` entry point shares the same validator: a malformed
+# limit is rejected before any command output is collected.
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=200000x "$repo_dir/lmline/lmline" command-info echo >"$cfg_tmp/invalid-cli-command-info-lines.out" 2>"$cfg_tmp/invalid-cli-command-info-lines.err"; then
+  fail "invalid CLI command-info lines unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINES: 200000x' "$cfg_tmp/invalid-cli-command-info-lines.err" || fail "invalid CLI command-info lines diagnostic"
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINE_BYTES=200000x "$repo_dir/lmline/lmline" context >"$cfg_tmp/invalid-cli-context-caps.out" 2>"$cfg_tmp/invalid-cli-context-caps.err"; then
+  fail "invalid CLI context output cap unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINE_BYTES: 200000x' "$cfg_tmp/invalid-cli-context-caps.err" || fail "invalid CLI context cap diagnostic"
+[[ ! -s "$cfg_tmp/invalid-cli-context-caps.out" ]] || fail "invalid CLI context cap emitted output"
+# Synthetic over-budget probe output stays within the documented defaults
+# (40 lines, 240 bytes per line) and within a smaller valid cap.
+cat >"$fake_portable_bin/long-version" <<'EOF'
+#!/usr/bin/env bash
+awk 'BEGIN { line = sprintf("%1000s", ""); gsub(/ /, "X", line); for (i = 1; i <= 60; i++) print line }'
+EOF
+chmod +x "$fake_portable_bin/long-version"
+probe_block_of() {
+  awk '/^BEGIN_UNTRUSTED_PROBE_OUTPUT$/ { f = 1; next } /^END_UNTRUSTED_PROBE_OUTPUT$/ { f = 0 } f'
+}
+default_caps_out=$(PATH="$fake_portable_bin:$PATH" OSTYPE=linux-gnu env -u LMLINE_TOOL_INFO_LINES -u LMLINE_TOOL_INFO_LINE_BYTES LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info long-version' _ "$repo_dir")
+default_probe_lines=$(probe_block_of <<<"$default_caps_out" | grep -c '^| ')
+[[ "$default_probe_lines" == 40 ]] || fail "default command-info caps did not bound synthetic lines to 40 (saw $default_probe_lines)"
+probe_block_of <<<"$default_caps_out" | awk '{ if (substr($0, 1, 2) != "| ") next; if (length(substr($0, 3)) > 254) exit 1 }' || fail "default command-info caps did not bound synthetic line bytes to 240"
+small_caps_out=$(PATH="$fake_portable_bin:$PATH" OSTYPE=linux-gnu LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=4 LMLINE_TOOL_INFO_LINE_BYTES=10 bash -c 'source "$1/lmline/context.bash"; __lmline_tool_command_info long-version' _ "$repo_dir")
+small_probe_lines=$(probe_block_of <<<"$small_caps_out" | grep -c '^| ')
+[[ "$small_probe_lines" == 4 ]] || fail "small command-info caps were not preserved (saw $small_probe_lines)"
+probe_block_of <<<"$small_caps_out" | awk '{ if (substr($0, 1, 2) != "| ") next; if (length(substr($0, 3)) > 24) exit 1 }' || fail "small command-info line bytes were not preserved"
 safe_text_out=$(printf '\033[31mRED\033[0m abcdefghijklmnopqrstuvwxyz\n' | bash -c 'source "$1/lmline/context.bash"; __lmline_safe_tool_text 5 10' _ "$repo_dir")
 [[ "$safe_text_out" == "RED abcdef...<truncated>" ]] || fail "safe tool text"
 safe_short_out=$(printf '%s\n' L1 L2 L3 | bash -c 'source "$1/lmline/context.bash"; __lmline_safe_tool_text 5 240' _ "$repo_dir")

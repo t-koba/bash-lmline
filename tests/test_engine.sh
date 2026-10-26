@@ -131,6 +131,52 @@ grep -q '"tools"' "$cfg_tmp/valid-tool-info-timeout-empty.out" || fail "empty to
 LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_TIMEOUT=1 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-timeout-one.out" 2>"$cfg_tmp/valid-tool-info-timeout-one.err" || fail "positive tool info timeout rejected"
 grep -q '"tools"' "$cfg_tmp/valid-tool-info-timeout-one.out" || fail "positive tool info timeout payload"
 
+# Command-info output caps fail closed before any provider request or tool
+# dispatch: awk accepts a numeric prefix, so a malformed nonempty line or byte
+# limit (such as 200000x) must not fall through and widen the untrusted tool
+# output sent to the model. Malformed values exit before the fake provider is
+# contacted (no dispatch); unset, empty, and valid positive values still build
+# dry-run payloads. Bounded checks only, no real network calls.
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=200000x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-info-lines.out" 2>"$cfg_tmp/invalid-tool-info-lines.err"; then
+  fail "invalid tool info lines unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINES: 200000x' "$cfg_tmp/invalid-tool-info-lines.err" || fail "invalid tool info lines diagnostic"
+grep -q 'positive integer' "$cfg_tmp/invalid-tool-info-lines.err" || fail "invalid tool info lines expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-info-lines.out" || fail "invalid tool info lines emitted tools"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "invalid tool info lines dispatched provider request"
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINE_BYTES=200000x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-info-line-bytes.out" 2>"$cfg_tmp/invalid-tool-info-line-bytes.err"; then
+  fail "invalid tool info line bytes unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINE_BYTES: 200000x' "$cfg_tmp/invalid-tool-info-line-bytes.err" || fail "invalid tool info line bytes diagnostic"
+grep -q 'positive integer' "$cfg_tmp/invalid-tool-info-line-bytes.err" || fail "invalid tool info line bytes expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-info-line-bytes.out" || fail "invalid tool info line bytes emitted tools"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "invalid tool info line bytes dispatched provider request"
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=0 LMLINE_TOOL_INFO_LINE_BYTES=240 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-info-lines-zero.out" 2>"$cfg_tmp/invalid-tool-info-lines-zero.err"; then
+  fail "zero tool info lines unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINES: 0' "$cfg_tmp/invalid-tool-info-lines-zero.err" || fail "zero tool info lines diagnostic"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "zero tool info lines dispatched provider request"
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=40 LMLINE_TOOL_INFO_LINE_BYTES=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-info-line-bytes-zero.out" 2>"$cfg_tmp/invalid-tool-info-line-bytes-zero.err"; then
+  fail "zero tool info line bytes unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_INFO_LINE_BYTES: 0' "$cfg_tmp/invalid-tool-info-line-bytes-zero.err" || fail "zero tool info line bytes diagnostic"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "zero tool info line bytes dispatched provider request"
+# Valid caps keep their semantics: unset and empty keep the documented
+# defaults (40 lines, 240 bytes), and positive values are accepted without
+# clamping. All bounded dry-run payloads with no provider dispatch.
+env -u LMLINE_TOOL_INFO_LINES -u LMLINE_TOOL_INFO_LINE_BYTES LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-limits-unset.out" 2>"$cfg_tmp/valid-tool-info-limits-unset.err" || fail "unset tool info limits rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-limits-unset.out" || fail "unset tool info limits payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES= LMLINE_TOOL_INFO_LINE_BYTES= "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-limits-empty.out" 2>"$cfg_tmp/valid-tool-info-limits-empty.err" || fail "empty tool info limits rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-limits-empty.out" || fail "empty tool info limits payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=4 LMLINE_TOOL_INFO_LINE_BYTES=10 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-limits-small.out" 2>"$cfg_tmp/valid-tool-info-limits-small.err" || fail "positive tool info limits rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-limits-small.out" || fail "positive tool info limits payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_INFO_LINES=007 LMLINE_TOOL_INFO_LINE_BYTES=0040 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-info-limits-zeros.out" 2>"$cfg_tmp/valid-tool-info-limits-zeros.err" || fail "leading-zero tool info limits rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-info-limits-zeros.out" || fail "leading-zero tool info limits payload"
+
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"
 cat >"$fake_bin/curl" <<'EOF'

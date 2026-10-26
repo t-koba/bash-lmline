@@ -276,9 +276,27 @@ __lmline_validate_tool_info_timeout() {
   }
 }
 
+# Output caps fail closed: awk accepts a numeric prefix (so "200000x" would
+# behave as 200000 and widen the untrusted text sent to the model), so a
+# malformed nonempty limit must be rejected before any tool output is
+# generated. Unset/empty keep the documented defaults (40 lines, 240 bytes);
+# leading zeros stay accepted and keep their numeric value.
+__lmline_validate_tool_info_limits() {
+  local lines=${LMLINE_TOOL_INFO_LINES:-40} bytes=${LMLINE_TOOL_INFO_LINE_BYTES:-240}
+  [[ "$lines" =~ ^0*[1-9][0-9]*$ ]] || {
+    printf 'lmline: invalid LMLINE_TOOL_INFO_LINES: %s (expected a positive integer)\n' "${LMLINE_TOOL_INFO_LINES-}" >&2
+    return 2
+  }
+  [[ "$bytes" =~ ^0*[1-9][0-9]*$ ]] || {
+    printf 'lmline: invalid LMLINE_TOOL_INFO_LINE_BYTES: %s (expected a positive integer)\n' "${LMLINE_TOOL_INFO_LINE_BYTES-}" >&2
+    return 2
+  }
+}
+
 __lmline_probe_command() {
   local cmd=$1 flag=$2 timeout_s=${LMLINE_TOOL_INFO_TIMEOUT:-2} max_lines=${LMLINE_TOOL_INFO_LINES:-40} max_bytes=${LMLINE_TOOL_INFO_LINE_BYTES:-240}
   __lmline_validate_tool_info_timeout || return $?
+  __lmline_validate_tool_info_limits || return $?
   local tmp status=0
   tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-probe.XXXXXX") || return 1
   __lmline_timeout_run "$timeout_s" "$cmd" "$flag" </dev/null >"$tmp" 2>&1 || status=$?
@@ -294,6 +312,7 @@ __lmline_probe_command() {
 __lmline_tool_command_info() {
   local line=${1-} word clean path kind flag count=0 max_commands=${LMLINE_MAX_PIPELINE_COMMANDS:-30}
   __lmline_validate_tool_info_timeout || return $?
+  __lmline_validate_tool_info_limits || return $?
   for word in $line; do
     [[ "$word" == -* ]] && continue
     clean=${word//[^A-Za-z0-9_.+:-]/}
