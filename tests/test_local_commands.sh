@@ -37,6 +37,38 @@ if __lmline_local_command_allowed not-in-the-list; then
 fi
 ok "a command outside the list stays refused"
 
+# An invalid backend spelling must not silently become auto/local when the
+# microsandbox command is unavailable.
+if LMLINE_EXEC_BACKEND=microsandox \
+  LMLINE_MICROSANDBOX_COMMAND="$list_tmp/missing-msb" \
+  __lmline_select_exec_backend >"$list_tmp/invalid-backend-output" 2>/dev/null; then
+  fail "an invalid execution backend selected a usable backend"
+fi
+invalid_backend_output=$(<"$list_tmp/invalid-backend-output")
+[[ "$invalid_backend_output" == invalid ]] \
+  || fail "an invalid execution backend returned no invalid-setting marker"
+ok "an invalid execution backend fails closed"
+
+# Exercise the command_run dispatch point with a harmless allowlisted command,
+# replacing the actual capture function with a marker so no command can run.
+backend_dispatch_marker="$list_tmp/backend-dispatch-marker"
+backend_dispatch_output=$(
+  export LMLINE_EXEC_BACKEND=microsandox
+  export LMLINE_MICROSANDBOX_COMMAND="$list_tmp/missing-msb"
+  __lmline_run_command_capture_with_backend() {
+    printf 'called:%s\n' "$1" >>"$backend_dispatch_marker"
+    return 0
+  }
+  __lmline_tool_command_run 'printf hi'
+)
+grep -q '^allowed=0$' <<<"$backend_dispatch_output" \
+  || fail "the command tool allowed an invalid execution backend"
+grep -q '^reason=invalid_execution_backend$' <<<"$backend_dispatch_output" \
+  || fail "the command tool did not report an invalid execution backend"
+[[ ! -e "$backend_dispatch_marker" ]] \
+  || fail "the command tool dispatched an invalid execution backend"
+ok "an invalid execution backend does not dispatch command_run"
+
 # The tool path reports the same answer.
 args=$(jq -cn --arg command "printf hi" '{command:$command}')
 out=$(LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \

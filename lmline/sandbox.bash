@@ -16,7 +16,7 @@
 __lmline_exec_backend_setting() {
   case "${LMLINE_EXEC_BACKEND:-auto}" in
     auto|local|microsandbox|off) printf '%s\n' "${LMLINE_EXEC_BACKEND:-auto}" ;;
-    *) printf 'auto\n' ;;
+    *) printf 'invalid\n'; return 1 ;;
   esac
 }
 
@@ -32,7 +32,10 @@ __lmline_microsandbox_available() {
 
 __lmline_select_exec_backend() {
   local setting
-  setting=$(__lmline_exec_backend_setting)
+  if ! setting=$(__lmline_exec_backend_setting); then
+    printf 'invalid\n'
+    return 1
+  fi
   case "$setting" in
     off)
       printf 'off\n'

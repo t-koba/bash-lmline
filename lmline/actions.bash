@@ -411,6 +411,7 @@ __lmline_fix_run() {
     case "$backend" in
       off) printf '%sfix execution disabled by LMLINE_EXEC_BACKEND=off\n' "$prefix" >&2 ;;
       microsandbox) printf '%smicrosandbox backend is unavailable; install msb, set LMLINE_MICROSANDBOX_COMMAND, or use LMLINE_EXEC_BACKEND=local\n' "$prefix" >&2 ;;
+      invalid) printf '%sinvalid LMLINE_EXEC_BACKEND; expected auto, local, microsandbox, or off\n' "$prefix" >&2 ;;
       *) printf '%sexecution backend unavailable\n' "$prefix" >&2 ;;
     esac
     return 3

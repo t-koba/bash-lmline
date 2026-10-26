@@ -623,6 +623,7 @@ __lmline_tool_command_run() {
     case "$backend" in
       off) printf 'reason=execution_disabled\n' ;;
       microsandbox) printf 'reason=microsandbox_unavailable\n' ;;
+      invalid) printf 'reason=invalid_execution_backend\n' ;;
       *) printf 'reason=execution_backend_unavailable\n' ;;
     esac
     return 0
