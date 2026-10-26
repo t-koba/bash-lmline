@@ -1272,6 +1272,7 @@ for monitor in off on; do
     [[ $out == portable-ok && $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 12
     status=0
     __lmline_timeout_run 2 "$BASH" -c "echo portable-stderr >&2; exit 23" || status=$?
+    printf '%s\n' "$status" >"$2/stderr-status"
     [[ $status == 23 && $- == "$before" && $(trap -p INT HUP TERM) == "$before_traps" ]] || exit 13
     : >"$LMLINE_FAKE_SLEEP_TICKS"
     status=0
@@ -1287,7 +1288,15 @@ for monitor in off on; do
     fail "portable timeout without GNU timeout (monitor $monitor)"
   fi
   [[ $(cat "$notimeout_bin/out") == "portable-$monitor-ok" ]] || fail "portable timeout stdout diagnostics"
-  [[ $(cat "$notimeout_bin/err") == portable-stderr ]] || fail "portable timeout stderr diagnostics"
+  if [[ $(cat "$notimeout_bin/err") != portable-stderr ]]; then
+    stderr_status=unavailable
+    IFS= read -r stderr_status <"$notimeout_bin/stderr-status" || stderr_status=unavailable
+    stderr_size=$(wc -c <"$notimeout_bin/err")
+    printf 'portable timeout stderr mismatch: monitor=%s command_status=%s bytes=%s first_256_hex:\n' \
+      "$monitor" "$stderr_status" "$stderr_size" >&2
+    od -An -tx1 -N256 -v "$notimeout_bin/err" >&2
+    fail "portable timeout stderr diagnostics (monitor $monitor)"
+  fi
 done
 rm -rf "$notimeout_bin"
 
