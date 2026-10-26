@@ -24,6 +24,7 @@ compgen() { : >"$boundary_tmp/body-ran"; }
 lmline_boundary_export() { : >"$boundary_tmp/body-ran"; }
 # shellcheck disable=SC2329
 lmline_boundary_local() { : >"$boundary_tmp/body-ran"; }
+# shellcheck disable=SC2316 # This fixture intentionally exports a function named declare.
 export -f read builtin bash declare compgen lmline_boundary_export
 
 # Fail immediately on any body execution; never retry such a path.

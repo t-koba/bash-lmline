@@ -5,6 +5,7 @@ if [[ ! -o privileged ]]; then
   POSIXLY_CORRECT=1
   __lmline_entry_dir=${BASH_SOURCE[0]%/*}
   [[ $__lmline_entry_dir != "${BASH_SOURCE[0]}" ]] || __lmline_entry_dir=.
+  # shellcheck source=lmline/validation-boundary.bash
   . "$__lmline_entry_dir/validation-boundary.bash" || exit 1
   __lmline_validation_run entry "${BASH_SOURCE[0]}" "$@"
   exit $?
@@ -25,7 +26,9 @@ fi
 # names only). Capture into a non-exported internal variable and unset the
 # transport before any subprocess, so no child process or provider request
 # inherits it. Validation reads only the snapshot.
+# shellcheck disable=SC2031 # Capture the frontend transport before child validation.
 __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+# shellcheck disable=SC2031 # Capture the export transport before child validation.
 __LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
 export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
 unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS

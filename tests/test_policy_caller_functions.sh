@@ -384,10 +384,22 @@ check_exported 'command false' ok
 check_exported 'unset -f false; command false' ok
 check_exported "bash -c 'command false'" ok
 unset -f false
-# `read` has no external fallback: env must not accept a builtin via the skip
-# list even though command can invoke it. No real read function is installed.
-check_exported 'command read' ok
-check_exported 'env read' command-not-found
+# Control the external namespace: macOS supplies a PATH executable `read`,
+# unlike Linux. With no such executable, env must not accept the builtin via
+# the skip list even though command can invoke it. Keep the child launcher
+# and env available; no real read function is installed.
+mkdir "$caller_tmp/builtin-only"
+ln -s "$BASH" "$caller_tmp/builtin-only/bash"
+ln -s "$(type -P env)" "$caller_tmp/builtin-only/env"
+PATH="$caller_tmp/builtin-only" check_exported 'command read' ok
+PATH="$caller_tmp/builtin-only" check_exported 'env read' command-not-found
+# Adding a real external fallback must allow env without invoking that file.
+cat >"$caller_tmp/builtin-only/read" <<EOF_STUB
+#!/bin/sh
+printf executed >"$caller_tmp/export-read-executed"
+EOF_STUB
+chmod +x "$caller_tmp/builtin-only/read"
+PATH="$caller_tmp/builtin-only" check_exported 'env read' ok
 cat >"$caller_tmp/lmline_export_path_probe" <<EOF_STUB
 #!/bin/sh
 touch "$caller_tmp/export-path-executed"

@@ -28,6 +28,8 @@ export path_tmp
   # shellcheck disable=SC2329
   lmline_path_function_probe() { : >"$path_tmp/probe-ran"; }
   export -f command type read lmline_path_function_probe
+  # shellcheck disable=SC2030 # The hostile environment is scoped to this probe subshell.
+  # shellcheck disable=SC2031 # This probe sets its own child-shell startup file.
   export BASH_ENV="$path_tmp/startup.bash" PATH="$path_tmp/probe-bin:$PATH"
   for literal in 1 0; do
     __lmline_word_available_under_path read /nonexistent bash "$literal" \
@@ -62,6 +64,7 @@ ok "Bash literal/opaque PATH probes use the current clean interpreter"
   # shellcheck disable=SC2329
   mapfile() { : >"$path_tmp/probe-ran"; }
   export -f type print mapfile
+  # shellcheck disable=SC2031 # This probe sets its own child-shell startup file.
   export BASH_ENV="$path_tmp/startup.bash"
   __lmline_word_available_under_path mapfile "" bash 0 || fail "CWD Bash builtin classification"
   if command -v zsh >/dev/null 2>&1; then
@@ -94,6 +97,7 @@ if command -v zsh >/dev/null 2>&1; then
   ln -s "$(command -v zsh)" "$syntax_bin/zsh"
 fi
 (
+  # shellcheck disable=SC2030,SC2031 # The controlled lookup path is local to this fixture.
   export PATH="$syntax_bin"
   for builtin_word in mapfile readarray shopt; do
     [[ ! -e "$syntax_bin/$builtin_word" ]] || fail "unexpected syntax fixture file"
@@ -109,6 +113,7 @@ fi
     # shellcheck disable=SC2329
     mapfile() { : >"$path_tmp/probe-ran"; }
     export -f mapfile
+    # shellcheck disable=SC2031 # The transport is consumed within this probe.
     export LMLINE_SHELL_FUNCTIONS=mapfile
     unset __LMLINE_CALLER_FUNCTIONS
     check_path zsh mapfile ok
@@ -124,6 +129,7 @@ printf '#!/bin/sh\n: >"%s"\n' "$path_tmp/probe-ran" > "$syntax_bin/mapfile"
 chmod +x "$syntax_bin/mapfile"
 if [[ -x "$syntax_bin/zsh" ]]; then
   (
+    # shellcheck disable=SC2030,SC2031 # The CWD fixture uses a local lookup path.
     export PATH="$syntax_bin"
     check_path zsh mapfile ok
     check_path zsh "zsh -f -c 'mapfile'" ok
@@ -246,8 +252,10 @@ for target in bash zsh; do
     continue
   fi
   orig_pwd=$PWD
+  # shellcheck disable=SC2031 # Capture the unmodified parent-shell PATH.
   orig_path=$PATH
   cd "$cwd_fixture" || fail "$target CWD fixture cd"
+  # shellcheck disable=SC2031 # `.` is intentionally added only for this CWD fixture.
   export PATH=".:$orig_path"
   # Lookup-only fixture proof: the stub resolves here through `.` ...
   command -v lmline_cwd_probe >/dev/null 2>&1 || fail "$target CWD fixture lookup"

@@ -29,12 +29,15 @@ __lmline_entry_path=$(
 if [[ ! -o privileged ]]; then
   __lmline_entry_dir=${__lmline_entry_path%/*}
   [[ $__lmline_entry_dir != "$__lmline_entry_path" ]] || __lmline_entry_dir=.
+  # shellcheck source=lmline/validation-boundary.bash
   . "$__lmline_entry_dir/validation-boundary.bash" || exit 1
   __lmline_validation_run entry "$__lmline_entry_path" "$@"
   exit $?
 fi
 __LMLINE_VALIDATION_ISOLATED=1
+# shellcheck disable=SC2031 # Capture the frontend transport before child validation.
 __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+# shellcheck disable=SC2031 # Capture the export transport before child validation.
 __LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
 export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS
 unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS

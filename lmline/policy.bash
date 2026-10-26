@@ -23,7 +23,7 @@ __lmline_word_is_policy_skip() {
   # still needs a real builtin/PATH binding after position-local functions
   # have been resolved by the scanner.
   case "$word" in
-    '[['|']]'|'{'|'}'|'!'|case|do|done|else|esac|fi|for|if|in|then|time|until|while) ;;
+    '[['|']]'|'{'|'}'|'!'|case|do|done|else|'esac'|fi|for|if|in|then|time|until|while) ;;
     *) return 1 ;;
   esac
   if [[ -z "${__LMLINE_SHELL_SYNTAX_WORDS_CACHE_SET:-}" ]]; then
@@ -1320,7 +1320,8 @@ __lmline_extract_literal_trap_words() {
 # invoked shell itself resolves (its builtins, PATH lookups and inherited
 # exported functions) count as available.
 __lmline_extract_literal_shell_c_words() {
-  local token=$1 remaining=$2 functions=${3:-} outer_shell=${4:-bash} inherited_bindings=${5-$functions} inner inner_shell words word
+  local token=$1 remaining=$2 functions=${3:-} outer_shell=${4:-bash}
+  local inherited_bindings=${5-$functions} inner inner_shell words word
   local inherited_exports=${__lmline_exported_functions-} __lmline_exported_functions="" inner_functions=""
   # The child inherits the cwd at this command position. Carry uncertainty,
   # never a candidate directory value, into its recursive availability scan.
@@ -2780,6 +2781,7 @@ __lmline_caller_functions_data() {
   if [[ -n ${__LMLINE_CALLER_FUNCTIONS-} ]]; then
     printf '%s' "$__LMLINE_CALLER_FUNCTIONS"
   else
+    # shellcheck disable=SC2031 # Read the frontend's current-process transport.
     printf '%s' "${LMLINE_SHELL_FUNCTIONS-}"
   fi
 }
@@ -2787,8 +2789,10 @@ __lmline_caller_functions_data() {
 # Snapshot both transports. Entry points do this inline before subprocesses;
 # this helper is for trusted initialization/tests, not the validation boundary.
 __lmline_snapshot_caller_functions() {
+  # shellcheck disable=SC2031 # Snapshot the caller transport in this process.
   __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
   export -n __LMLINE_CALLER_FUNCTIONS 2>/dev/null || true
+  # shellcheck disable=SC2031 # Snapshot the export transport in this process.
   __LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
   export -n __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
   unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS

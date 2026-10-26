@@ -46,7 +46,7 @@ __lmline_validation_run() (
   LMLINE_SHELL_FUNCTIONS=${__LMLINE_CALLER_FUNCTIONS-${LMLINE_SHELL_FUNCTIONS-$(__lmline_collect_shell_functions)}} || exit 1
   LMLINE_EXPORTED_FUNCTIONS=${__LMLINE_EXPORTED_FUNCTIONS-${LMLINE_EXPORTED_FUNCTIONS-$(__lmline_collect_exported_functions)}} || exit 1
   unset -f command || exit 1
-  command builtin local kind=$1 key
+  command builtin local kind="$1" key
   command builtin shift
   command builtin export LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
   # Policy settings may be shell-local in an interactive frontend. Forward
