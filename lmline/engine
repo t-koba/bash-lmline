@@ -148,6 +148,18 @@ case "$output_format" in
     ;;
 esac
 __lmline_clamp_int n "$__LMLINE_DEFAULT_N" "$__LMLINE_MAX_N"
+# Execution budgets fail closed: a malformed nonempty value must not silently
+# restore a permissive default and widen tool use. Unset/empty values already
+# became the defaults above, so only well-formed values pass here; the clamp
+# below still canonicalizes leading zeros and caps huge values.
+[[ "$LMLINE_MAX_TOOL_ROUNDS" =~ ^[0-9]+$ ]] || {
+  printf 'lmline-engine: invalid LMLINE_MAX_TOOL_ROUNDS: %s (expected a nonnegative integer)\n' "$LMLINE_MAX_TOOL_ROUNDS" >&2
+  exit 2
+}
+[[ "$LMLINE_MAX_TOOL_CALLS_PER_ROUND" =~ ^[1-9][0-9]*$ ]] || {
+  printf 'lmline-engine: invalid LMLINE_MAX_TOOL_CALLS_PER_ROUND: %s (expected a positive integer)\n' "$LMLINE_MAX_TOOL_CALLS_PER_ROUND" >&2
+  exit 2
+}
 __lmline_clamp_int LMLINE_MAX_TOOL_ROUNDS 4 0 1
 __lmline_clamp_int LMLINE_MAX_TOOL_CALLS_PER_ROUND 20
 __lmline_clamp_int LMLINE_TOOL_RESULT_SUMMARY_MIN_CHARS 12000 0 1

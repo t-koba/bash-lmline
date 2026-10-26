@@ -23,6 +23,35 @@ fi
 grep -q 'invalid LMLINE_TOOL_MODE: typo' "$cfg_tmp/invalid-tool-mode.err" || fail "invalid tool mode diagnostic"
 grep -q 'auto, openai, text, or none; off is an alias' "$cfg_tmp/invalid-tool-mode.err" || fail "invalid tool mode expected values"
 ! grep -q '"tools"' "$cfg_tmp/invalid-tool-mode.out" || fail "invalid tool mode emitted tools"
+# Execution budgets fail closed before any payload is generated: a malformed
+# nonempty round or per-round call limit must not silently restore a
+# permissive default and widen tool use. Bounded dry-run payloads only, no
+# provider or network calls.
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_MAX_TOOL_ROUNDS=0x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/invalid-tool-rounds.out" 2>"$cfg_tmp/invalid-tool-rounds.err"; then
+  fail "invalid tool rounds unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_MAX_TOOL_ROUNDS: 0x' "$cfg_tmp/invalid-tool-rounds.err" || fail "invalid tool rounds diagnostic"
+grep -q 'nonnegative integer' "$cfg_tmp/invalid-tool-rounds.err" || fail "invalid tool rounds expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-rounds.out" || fail "invalid tool rounds emitted tools"
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_MAX_TOOL_CALLS_PER_ROUND=1x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/invalid-tool-calls.out" 2>"$cfg_tmp/invalid-tool-calls.err"; then
+  fail "invalid per-round tool calls unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_MAX_TOOL_CALLS_PER_ROUND: 1x' "$cfg_tmp/invalid-tool-calls.err" || fail "invalid per-round tool calls diagnostic"
+grep -q 'positive integer' "$cfg_tmp/invalid-tool-calls.err" || fail "invalid per-round tool calls expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-calls.out" || fail "invalid per-round tool calls emitted tools"
+# Valid budgets keep their semantics: zero rounds disables further tool
+# rounds, a positive per-round limit is accepted, and empty values keep the
+# defaults. All bounded dry-run payloads with no provider dispatch.
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_MAX_TOOL_ROUNDS=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-rounds-zero.out" 2>"$cfg_tmp/valid-tool-rounds-zero.err" || fail "zero tool rounds rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-rounds-zero.out" || fail "zero tool rounds payload"
+grep -Fq 'Tool round budget: current=0 max=0.' < <(jq -r '.messages[]?.content // empty' "$cfg_tmp/valid-tool-rounds-zero.out") || fail "zero tool rounds value was not preserved"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_MAX_TOOL_CALLS_PER_ROUND=1 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-calls-one.out" 2>"$cfg_tmp/valid-tool-calls-one.err" || fail "positive per-round tool calls rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-calls-one.out" || fail "positive per-round tool calls payload"
+grep -Fq 'Tool calls per round limit: 1.' < <(jq -r '.messages[]?.content // empty' "$cfg_tmp/valid-tool-calls-one.out") || fail "positive per-round tool-call value was not preserved"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_MAX_TOOL_ROUNDS= LMLINE_MAX_TOOL_CALLS_PER_ROUND= "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-budgets-empty.out" 2>"$cfg_tmp/valid-tool-budgets-empty.err" || fail "empty tool budgets rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-budgets-empty.out" || fail "empty tool budgets payload"
+grep -Fq 'Tool round budget: current=0 max=4.' < <(jq -r '.messages[]?.content // empty' "$cfg_tmp/valid-tool-budgets-empty.out") || fail "empty tool rounds did not keep the default"
+grep -Fq 'Tool calls per round limit: 20.' < <(jq -r '.messages[]?.content // empty' "$cfg_tmp/valid-tool-budgets-empty.out") || fail "empty tool-call budget did not keep the default"
 
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"
