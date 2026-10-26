@@ -191,19 +191,116 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
   __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
-printf '#!/usr/bin/env bash\nsleep 0.3\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo slow\\n"\n' >"$widget_tmp/engine-slow"
-chmod +x "$widget_tmp/engine-slow"
-LMLINE_CONFIG_DIR="$widget_tmp/config-clean" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-slow" bash --norc -e -i -c '
-  source "$1/lmline/init.bash"
-  READLINE_LINE="# first"
-  READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-clean1.out 2>/tmp/lmline-widget-clean1.err
-  old_file=$__LMLINE_ASYNC_FILE
-  READLINE_LINE="# second"
-  READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-clean2.out 2>/tmp/lmline-widget-clean2.err
-  [[ "$old_file" != "$__LMLINE_ASYNC_FILE" ]]
-  [[ ! -e "$old_file" ]]
+# Both generations block on explicit gates; cancellation must stop the first
+# engine AND its child without releasing that gate or touching another job.
+cat >"$widget_tmp/engine-cancel" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+if [[ "$1" == child ]]; then
+  name=$2
+  exec 3<>"$LMLINE_TEST_ASYNC_DIR/$name.gate"
+  trap 'printf stopped >"$LMLINE_TEST_ASYNC_DIR/$name.child.stopped"; exit 143' TERM
+  printf "%s\n" "$$" >"$LMLINE_TEST_ASYNC_DIR/$name.child.ready"
+  IFS= read -r -t 20 -u 3 release
+  printf finished >"$LMLINE_TEST_ASYNC_DIR/$name.child.finished"
+  exit
+fi
+while (($#)); do
+  case "$1" in
+    --line-file) line_file=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+name=$(cat "$line_file")
+name=${name#\# }
+printf "%s\n" "${line_file%/*}" >"$LMLINE_TEST_ASYNC_DIR/$name.context-dir"
+trap 'wait "$child" 2>/dev/null || true; printf stopped >"$LMLINE_TEST_ASYNC_DIR/$name.engine.stopped"; exit 143' TERM
+bash "$0" child "$name" &
+child=$!
+printf "%s\n" "$$" >"$LMLINE_TEST_ASYNC_DIR/$name.engine.ready"
+wait "$child"
+printf finished >"$LMLINE_TEST_ASYNC_DIR/$name.engine.finished"
+printf "lmline-candidate: low\t-\t-\techo %s\n" "$name"
+EOF
+chmod +x "$widget_tmp/engine-cancel"
+mkdir "$widget_tmp/cancel"
+mkfifo "$widget_tmp/cancel/first.gate" "$widget_tmp/cancel/second.gate" "$widget_tmp/cancel/unrelated.gate" "$widget_tmp/cancel/timeout.gate"
+LMLINE_TEST_ASYNC_DIR="$widget_tmp/cancel" LMLINE_CONFIG_DIR="$widget_tmp/config-clean" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-cancel" bash --norc -e -i -c '
+    source "$1/lmline/init.bash"
+    set -m
+    wait_for_file() {
+      local i
+      for i in {1..200}; do
+        [[ ! -s "$1" ]] || return 0
+        sleep 0.05
+      done
+      return 1
+    }
+    cleanup_probe() {
+      # Release blocked fixtures even if an assertion fails on an unfixed build.
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/first.gate"; printf "release\n" >&3 )
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/second.gate"; printf "release\n" >&3 )
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/timeout.gate"; printf "release\n" >&3 )
+      if [[ -n "${unrelated:-}" ]]; then
+        kill "$unrelated" 2>/dev/null || true
+        wait "$unrelated" 2>/dev/null || true
+      fi
+    }
+    trap cleanup_probe EXIT
+    bash "$LMLINE_ENGINE" child unrelated &
+    unrelated=$!
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/unrelated.child.ready"
+    READLINE_LINE="# first"
+    READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    old_file=$__LMLINE_ASYNC_FILE
+    old_pid=$__LMLINE_ASYNC_PID
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.engine.ready"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.child.ready"
+    READLINE_LINE="# second"
+    READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$old_file" != "$__LMLINE_ASYNC_FILE" ]]
+    [[ "$old_pid" != "$__LMLINE_ASYNC_PID" ]]
+    [[ "$READLINE_LINE" == "# second" ]]
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.engine.stopped"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.child.stopped"
+    ! kill -0 "$old_pid" 2>/dev/null
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/first.engine.ready")" 2>/dev/null
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/first.child.ready")" 2>/dev/null
+    [[ ! -d "$(cat "$LMLINE_TEST_ASYNC_DIR/first.context-dir")" ]]
+    [[ ! -e "$LMLINE_TEST_ASYNC_DIR/first.engine.finished" ]]
+    [[ ! -e "$LMLINE_TEST_ASYNC_DIR/first.child.finished" ]]
+    [[ ! -e "$old_file" && ! -e "$old_file.status" && ! -e "$old_file.status.err" ]]
+    kill -0 "$unrelated"
+    [[ ! -e "$LMLINE_TEST_ASYNC_DIR/unrelated.child.stopped" ]]
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/second.engine.ready"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/second.child.ready"
+    printf "release\n" >"$LMLINE_TEST_ASYNC_DIR/second.gate"
+    wait "$__LMLINE_ASYNC_PID"
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$READLINE_LINE" == "echo second" ]]
+    [[ -s "$LMLINE_TEST_ASYNC_DIR/second.engine.finished" ]]
+    [[ -s "$LMLINE_TEST_ASYNC_DIR/second.child.finished" ]]
+    [[ ! -e "$old_file" && ! -e "$old_file.status" ]]
+    # Timeout uses the same cancellation path, not a supervisor-only kill.
+    READLINE_LINE="# timeout"
+    READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    timeout_file=$__LMLINE_ASYNC_FILE
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.engine.ready"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.child.ready"
+    __LMLINE_ASYNC_STARTED=1
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$READLINE_LINE" == "# timeout" && $__LMLINE_ASYNC_PID == 0 ]]
+    [[ $- == *m* ]]
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.engine.stopped"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.child.stopped"
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.engine.ready")" 2>/dev/null
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.child.ready")" 2>/dev/null
+    [[ ! -e "$timeout_file" && ! -e "$timeout_file.status" && ! -e "$timeout_file.status.err" ]]
+    [[ ! -d "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.context-dir")" ]]
+    kill -0 "$unrelated"
 ' _ "$repo_dir" || fail "async cleanup"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: synthetic async failure\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"

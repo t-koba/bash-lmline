@@ -140,6 +140,10 @@ typeset -g __LMLINE_ZSH_STATUS_LINE=
 
 __lmline_zsh_async_cleanup() {
   [[ -n "${__LMLINE_ZSH_ASYNC_FILE:-}" ]] || return 0
+  if (( __LMLINE_ZSH_ASYNC_PID > 0 )) && kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
+    kill -TERM "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
+    wait "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
+  fi
   rm -f "$__LMLINE_ZSH_ASYNC_FILE" "$__LMLINE_ZSH_ASYNC_FILE.status" "$__LMLINE_ZSH_ASYNC_FILE.status.err" "$__LMLINE_ZSH_ASYNC_FILE.tmp."*(N)
   __LMLINE_ZSH_ASYNC_FILE=
   __LMLINE_ZSH_ASYNC_PID=0
@@ -284,7 +288,11 @@ __lmline_zsh_run_bridge() {
 }
 
 __lmline_zsh_bridge() {
-  local action=$1 mode=${2-} line=${3-} point=${4-0} key declaration caller_functions
+  local action=$1 mode=${2-} line=${3-} point=${4-0} async_file=${5-} key declaration caller_functions
+  local -a bridge_command
+  # Only the background async invocation may replace its Zsh subshell.
+  bridge_command=(command)
+  [[ -z "$async_file" ]] || bridge_command=(exec)
   local -a bridge_env bridge_env_unset bridge_env_set
   # The bridge runs in Bash, but zsh session settings are often globals that
   # were never exported. Pass those values for this invocation without
@@ -309,57 +317,88 @@ __lmline_zsh_bridge() {
   # Copilot validation still sees the non-exported snapshot.
   caller_functions=$(print -l ${(k)functions} 2>/dev/null) || caller_functions=
   bridge_env+=("LMLINE_SHELL_FUNCTIONS=${caller_functions}")
-  command env "${bridge_env[@]}" bash -p -c '
-    set -u
-    set -o pipefail
-    __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
-    __LMLINE_EXPORTED_FUNCTIONS=
-    export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
-    unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
-    source "$LMLINE_DIR/context.bash"
-    source "$LMLINE_DIR/policy.bash"
-    source "$LMLINE_DIR/actions.bash"
-    case "$1" in
-      generate)
-        mode=$2
-        line=$3
-        point=$4
-        tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX")
-        trap "rm -rf \"$tmp\"" EXIT
-        engine_file="$tmp/engine"
-        status=0
-        if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
-             [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
-          __lmline_copilot_candidates "$line" "$point" zsh "$mode" >"$engine_file" || status=$?
-        else
-          printf "%s" "$line" >"$tmp/line"
-          __lmline_context_file "$tmp/context" "$line" "$mode"
-          LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" LMLINE_EXPORTED_FUNCTIONS="$__LMLINE_EXPORTED_FUNCTIONS" "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
+  "${bridge_command[@]}" env "${bridge_env[@]}" bash -p -c '
+    __lmline_bridge_main() {
+      set -u
+      set -o pipefail
+      __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+      __LMLINE_EXPORTED_FUNCTIONS=
+      export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS 2>/dev/null || true
+      unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
+      source "$LMLINE_DIR/context.bash"
+      source "$LMLINE_DIR/policy.bash"
+      source "$LMLINE_DIR/actions.bash"
+      case "$1" in
+        generate)
+          mode=$2
+          line=$3
+          point=$4
+          tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX")
+          trap "rm -rf \"$tmp\"" EXIT
+          engine_file="$tmp/engine"
+          status=0
+          if { [[ "$mode" == rewrite && "${LMLINE_REWRITE_BACKEND:-engine}" == copilot ]] ||
+               [[ "$mode" == generate && "${LMLINE_GENERATE_BACKEND:-engine}" == copilot ]]; }; then
+            __lmline_copilot_candidates "$line" "$point" zsh "$mode" >"$engine_file" || status=$?
+          else
+            printf "%s" "$line" >"$tmp/line"
+            __lmline_context_file "$tmp/context" "$line" "$mode"
+            LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" LMLINE_EXPORTED_FUNCTIONS="$__LMLINE_EXPORTED_FUNCTIONS" "$LMLINE_ENGINE" --mode "$mode" --shell zsh --cwd "$PWD" --point "$point" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT" >"$engine_file" || status=$?
+          fi
+          grep "^lmline-candidate: " "$engine_file" || true
+          if [[ "$status" == 0 && "$mode" == rewrite ]]; then
+            printf "lmline-candidate: low\t-\toriginal\t%s\n" "$line"
+          fi
+          exit "$status"
+          ;;
+        risk)
+          printf "%s\t%s\n" "$(__lmline_risk_level "$3")" "$(__lmline_risk_reason "$3")"
+          ;;
+        explain)
+          line=$3
+          point=$4
+          __lmline_print_explanation "$LMLINE_ENGINE" zsh "$line" "$point" "$LMLINE_PS0"
+          ;;
+        clip)
+          __lmline_print_clip "$LMLINE_ENGINE" zsh "" "$LMLINE_PS0"
+          ;;
+        fix)
+          line=$3
+          point=$4
+          __lmline_fix_run "$line" zsh "$point" "$LMLINE_ENGINE" "$LMLINE_CANDIDATE_COUNT" "$LMLINE_PS0"
+          ;;
+      esac
+    }
+    # Zsh cannot enable job control without a terminal. This Bash supervisor
+    # owns a worker group even there; exec preserves the tracked request PID.
+    if [[ -n "$5" ]]; then
+      async_file=$5
+      tmp_out=$async_file.tmp.$$
+      set -m 2>/dev/null
+      worker=0 cancelled=0
+      __lmline_cancel_worker() {
+        cancelled=1
+        if (( worker > 0 )); then
+          kill -TERM -- "-$worker" 2>/dev/null || true
+          wait "$worker" 2>/dev/null || true
+          exit 143
         fi
-        grep "^lmline-candidate: " "$engine_file" || true
-        if [[ "$status" == 0 && "$mode" == rewrite ]]; then
-          printf "lmline-candidate: low\t-\toriginal\t%s\n" "$line"
-        fi
-        exit "$status"
-        ;;
-      risk)
-        printf "%s\t%s\n" "$(__lmline_risk_level "$3")" "$(__lmline_risk_reason "$3")"
-        ;;
-      explain)
-        line=$3
-        point=$4
-        __lmline_print_explanation "$LMLINE_ENGINE" zsh "$line" "$point" "$LMLINE_PS0"
-        ;;
-      clip)
-        __lmline_print_clip "$LMLINE_ENGINE" zsh "" "$LMLINE_PS0"
-        ;;
-      fix)
-        line=$3
-        point=$4
-        __lmline_fix_run "$line" zsh "$point" "$LMLINE_ENGINE" "$LMLINE_CANDIDATE_COUNT" "$LMLINE_PS0"
-        ;;
-    esac
-  ' _ "$action" "$mode" "$line" "$point"
+      }
+      trap __lmline_cancel_worker TERM
+      ( set +m; __lmline_bridge_main "$@" ) >"$tmp_out" 2>"$async_file.status.err" &
+      worker=$!
+      (( cancelled == 0 )) || __lmline_cancel_worker
+      if wait "$worker" && [[ -s "$tmp_out" ]]; then
+        mv "$tmp_out" "$async_file"
+        printf "ok\n" >"$async_file.status"
+      else
+        rm -f "$tmp_out" "$async_file"
+        printf "failed\n" >"$async_file.status"
+      fi
+      exit
+    fi
+    __lmline_bridge_main "$@"
+  ' _ "$action" "$mode" "$line" "$point" "$async_file"
 }
 
 __lmline_zsh_request_key() {
@@ -377,23 +416,14 @@ __lmline_zsh_load_candidates_from_file() {
 }
 
 __lmline_zsh_async_start() {
-  local mode=$1 line=$2 point=$3 async_file=$4 async_status_file tmp_out key
+  local mode=$1 line=$2 point=$3 async_file=$4 key
   __lmline_zsh_async_cleanup
   key=$(__lmline_zsh_request_key "$mode" "$line" "$point")
-  async_status_file=$async_file.status
-  tmp_out=$async_file.tmp.$$
-  rm -f "$async_status_file" "$async_status_file.err" "$tmp_out" "$async_file"
-  (
-    if __lmline_zsh_bridge generate "$mode" "$line" "$point" >"$tmp_out" 2>"$async_status_file.err" && [[ -s "$tmp_out" ]]; then
-      mv "$tmp_out" "$async_file"
-      print -r -- ok >"$async_status_file"
-    else
-      rm -f "$tmp_out" "$async_file"
-      print -r -- failed >"$async_status_file"
-    fi
-  ) &
+  rm -f "$async_file.status" "$async_file.status.err" "$async_file"
+  __lmline_zsh_bridge generate "$mode" "$line" "$point" "$async_file" &
   __LMLINE_ZSH_ASYNC_PID=$!
-  disown $__LMLINE_ZSH_ASYNC_PID 2>/dev/null || true
+  # Keep this child waitable: cleanup must reap its supervisor before removing
+  # request files. A numeric argument to disown is a job number, not this PID.
   __LMLINE_ZSH_ASYNC_KEY=$key
   __LMLINE_ZSH_ASYNC_FILE=$async_file
   __LMLINE_ZSH_ASYNC_STARTED=$(date +%s)
@@ -422,7 +452,6 @@ __lmline_zsh_generate_async() {
     if kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
       local async_elapsed=$(( $(date +%s) - __LMLINE_ZSH_ASYNC_STARTED ))
       if (( __LMLINE_ZSH_ASYNC_STARTED > 0 && async_elapsed > ${LMLINE_ENGINE_TIMEOUT:-60} + 5 )); then
-        kill "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
         __lmline_zsh_hint "${LMLINE_PS0}[$mode] async generation timed out (${async_elapsed}s)"
         __lmline_zsh_async_cleanup
         zle redisplay 2>/dev/null || true

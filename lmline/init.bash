@@ -252,6 +252,10 @@ __lmline_call_engine_raw() {
     return "$status"
   fi
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-gen.XXXXXX") || return 1
+  if [[ "${4-}" == async ]]; then
+    # This invocation runs in the private async worker, never the caller shell.
+    trap 'rm -rf -- "${tmp:-}"; exit 143' TERM
+  fi
   line_file=$tmp/line
   context_file=$tmp/context
   printf '%s' "$line" >"$line_file"
@@ -320,6 +324,10 @@ __lmline_engine_error_hint() {
 
 __lmline_async_cleanup() {
   [[ -n "${__LMLINE_ASYNC_FILE:-}" ]] || return 0
+  if (( __LMLINE_ASYNC_PID > 0 )) && kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
+    kill -TERM "$__LMLINE_ASYNC_PID" 2>/dev/null || true
+    wait "$__LMLINE_ASYNC_PID" 2>/dev/null || true
+  fi
   rm -f "$__LMLINE_ASYNC_FILE" "$__LMLINE_ASYNC_FILE.status" "$__LMLINE_ASYNC_FILE.status.err" "$__LMLINE_ASYNC_FILE.tmp."*
   __LMLINE_ASYNC_FILE=""
   __LMLINE_ASYNC_PID=0
@@ -333,7 +341,25 @@ __lmline_async_start() {
   tmp_out=$async_file.tmp.$$
   rm -f "$async_status_file" "$tmp_out"
   (
-    if __lmline_call_engine_raw "$mode" "$line" "$point" >"$tmp_out" 2>"$async_status_file.err"; then
+    # Only the worker and its descendants enter this private process group.
+    # The supervisor stays outside it so TERM can cancel and reap the worker
+    # before cleanup removes any files. Do not change the caller's job control.
+    set -m 2>/dev/null
+    worker=0 cancelled=0
+    __lmline_cancel_worker() {
+      cancelled=1
+      if (( worker > 0 )); then
+        kill -TERM -- "-$worker" 2>/dev/null || true
+        wait "$worker" 2>/dev/null || true
+        exit 143
+      fi
+    }
+    trap __lmline_cancel_worker TERM
+    ( set +m; __lmline_call_engine_raw "$mode" "$line" "$point" async ) >"$tmp_out" 2>"$async_status_file.err" &
+    worker=$!
+    # TERM can arrive between installing the trap and assigning the child PID.
+    (( cancelled == 0 )) || __lmline_cancel_worker
+    if wait "$worker"; then
       mv "$tmp_out" "$async_file"
       printf 'ok\n' >"$async_status_file"
     else
@@ -521,7 +547,6 @@ __lmline_generate_async_widget() {
     if kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
       local async_elapsed=$(( $(date +%s) - __LMLINE_ASYNC_STARTED ))
       if (( __LMLINE_ASYNC_STARTED > 0 && async_elapsed > ${LMLINE_ENGINE_TIMEOUT:-60} + 5 )); then
-        kill "$__LMLINE_ASYNC_PID" 2>/dev/null || true
         __lmline_hint show "${LMLINE_PS0}[$mode] async generation timed out (${async_elapsed}s)"
         __lmline_async_cleanup
         return 0

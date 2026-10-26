@@ -55,6 +55,119 @@ EOF
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-2.out 2>/tmp/lmline-zsh-widget-async-2.err
     [[ "$BUFFER" == "echo zsh-widget" ]]
   ' _ "$repo_dir" || fail "zsh async widget"
+  # Both generations block on explicit gates; cancellation must stop the first
+  # engine AND its child without releasing that gate or touching another job.
+  cat >"$zsh_tmp/engine-cancel" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+if [[ "$1" == child ]]; then
+  name=$2
+  exec 3<>"$LMLINE_TEST_ASYNC_DIR/$name.gate"
+  trap 'printf stopped >"$LMLINE_TEST_ASYNC_DIR/$name.child.stopped"; exit 143' TERM
+  printf "%s\n" "$$" >"$LMLINE_TEST_ASYNC_DIR/$name.child.ready"
+  IFS= read -r -t 20 -u 3 release
+  printf finished >"$LMLINE_TEST_ASYNC_DIR/$name.child.finished"
+  exit
+fi
+while (($#)); do
+  case "$1" in
+    --line-file) line_file=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+name=$(cat "$line_file")
+name=${name#\# }
+printf "%s\n" "${line_file%/*}" >"$LMLINE_TEST_ASYNC_DIR/$name.context-dir"
+trap 'wait "$child" 2>/dev/null || true; printf stopped >"$LMLINE_TEST_ASYNC_DIR/$name.engine.stopped"; exit 143' TERM
+bash "$0" child "$name" &
+child=$!
+printf "%s\n" "$$" >"$LMLINE_TEST_ASYNC_DIR/$name.engine.ready"
+wait "$child"
+printf finished >"$LMLINE_TEST_ASYNC_DIR/$name.engine.finished"
+printf "lmline-candidate: low\t-\t-\techo %s\n" "$name"
+EOF
+  chmod +x "$zsh_tmp/engine-cancel"
+  mkdir "$zsh_tmp/cancel"
+  mkfifo "$zsh_tmp/cancel/first.gate" "$zsh_tmp/cancel/second.gate" "$zsh_tmp/cancel/unrelated.gate" "$zsh_tmp/cancel/timeout.gate"
+  LMLINE_TEST_ASYNC_DIR="$zsh_tmp/cancel" LMLINE_CONFIG_DIR="$zsh_tmp/config-clean" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-cancel" zsh -efic '
+    source "$1/lmline/init.zsh"
+    wait_for_file() {
+      local i
+      for i in {1..200}; do
+        [[ ! -s "$1" ]] || return 0
+        sleep 0.05
+      done
+      return 1
+    }
+    cleanup_probe() {
+      # Release blocked fixtures even if an assertion fails on an unfixed build.
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/first.gate"; printf "release\n" >&3 )
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/second.gate"; printf "release\n" >&3 )
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/timeout.gate"; printf "release\n" >&3 )
+      if [[ -n "${unrelated:-}" ]]; then
+        kill "$unrelated" 2>/dev/null || true
+        wait "$unrelated" 2>/dev/null || true
+      fi
+    }
+    trap cleanup_probe EXIT
+    bash "$LMLINE_ENGINE" child unrelated &
+    unrelated=$!
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/unrelated.child.ready"
+    BUFFER="# first"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    old_file=$__LMLINE_ZSH_ASYNC_FILE
+    old_pid=$__LMLINE_ZSH_ASYNC_PID
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.engine.ready"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.child.ready"
+    BUFFER="# second"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$old_file" != "$__LMLINE_ZSH_ASYNC_FILE" ]]
+    [[ "$old_pid" != "$__LMLINE_ZSH_ASYNC_PID" ]]
+    [[ "$BUFFER" == "# second" ]]
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.engine.stopped"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/first.child.stopped"
+    ! kill -0 "$old_pid" 2>/dev/null
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/first.engine.ready")" 2>/dev/null
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/first.child.ready")" 2>/dev/null
+    [[ ! -d "$(cat "$LMLINE_TEST_ASYNC_DIR/first.context-dir")" ]]
+    [[ ! -e "$LMLINE_TEST_ASYNC_DIR/first.engine.finished" ]]
+    [[ ! -e "$LMLINE_TEST_ASYNC_DIR/first.child.finished" ]]
+    [[ ! -e "$old_file" && ! -e "$old_file.status" && ! -e "$old_file.status.err" ]]
+    kill -0 "$unrelated"
+    [[ ! -e "$LMLINE_TEST_ASYNC_DIR/unrelated.child.stopped" ]]
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/second.engine.ready"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/second.child.ready"
+    printf "release\n" >"$LMLINE_TEST_ASYNC_DIR/second.gate"
+    for i in {1..200}; do
+      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then break; fi
+      sleep 0.05
+    done
+    [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo second" ]]
+    [[ -s "$LMLINE_TEST_ASYNC_DIR/second.engine.finished" ]]
+    [[ -s "$LMLINE_TEST_ASYNC_DIR/second.child.finished" ]]
+    [[ ! -e "$old_file" && ! -e "$old_file.status" ]]
+    # Timeout uses the same cancellation path, not a supervisor-only kill.
+    BUFFER="# timeout"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    timeout_file=$__LMLINE_ZSH_ASYNC_FILE
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.engine.ready"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.child.ready"
+    __LMLINE_ZSH_ASYNC_STARTED=1
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "# timeout" && $__LMLINE_ZSH_ASYNC_PID == 0 ]]
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.engine.stopped"
+    wait_for_file "$LMLINE_TEST_ASYNC_DIR/timeout.child.stopped"
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.engine.ready")" 2>/dev/null
+    ! kill -0 "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.child.ready")" 2>/dev/null
+    [[ ! -e "$timeout_file" && ! -e "$timeout_file.status" && ! -e "$timeout_file.status.err" ]]
+    [[ ! -d "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.context-dir")" ]]
+    kill -0 "$unrelated"
+  ' _ "$repo_dir" || fail "zsh async cleanup"
   printf '#!/usr/bin/env bash\npoint=0\nwhile (($#)); do case "$1" in --point) point=$2; shift 2;; *) shift;; esac; done\nsleep 0.3\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo point-%%s\\n" "$point"\n' >"$zsh_tmp/engine-cursor"
   chmod +x "$zsh_tmp/engine-cursor"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-cursor" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-cursor" zsh -efic '
