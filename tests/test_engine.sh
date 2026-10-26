@@ -15,6 +15,14 @@ if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode unknown 
   fail "invalid mode unexpectedly accepted"
 fi
 grep -q 'invalid --mode: unknown' /tmp/lmline-invalid-mode.err || fail "invalid mode rejection"
+# An unrecognized tool mode is a typo, not an implicit opt-in to tools: it
+# must fail closed before any payload is generated.
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_MODE=typo "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/invalid-tool-mode.out" 2>"$cfg_tmp/invalid-tool-mode.err"; then
+  fail "invalid tool mode unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_MODE: typo' "$cfg_tmp/invalid-tool-mode.err" || fail "invalid tool mode diagnostic"
+grep -q 'auto, openai, text, or none; off is an alias' "$cfg_tmp/invalid-tool-mode.err" || fail "invalid tool mode expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-mode.out" || fail "invalid tool mode emitted tools"
 
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"

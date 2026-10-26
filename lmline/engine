@@ -178,7 +178,10 @@ __lmline_clamp_int LMLINE_CLIP_MAX_TOKENS "$__LMLINE_DEFAULT_CLIP_MAX_TOKENS"
 case "$LMLINE_TOOL_MODE" in
   none|off) LMLINE_TOOL_MODE=none ;;
   openai|text|auto) ;;
-  *) LMLINE_TOOL_MODE=auto ;;
+  *)
+    printf 'lmline-engine: invalid LMLINE_TOOL_MODE: %s (expected auto, openai, text, or none; off is an alias)\n' "$LMLINE_TOOL_MODE" >&2
+    exit 2
+    ;;
 esac
 if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   case "$LMLINE_TOOL_MODE" in
