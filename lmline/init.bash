@@ -348,7 +348,7 @@ __lmline_async_cleanup() {
 }
 
 __lmline_async_start() {
-  local mode=$1 line=$2 point=$3 async_file=$4 async_status_file tmp_out function_names_key
+  local mode=$1 line=$2 point=$3 async_file=$4 request_key=${5-} async_status_file tmp_out
   __lmline_async_cleanup
   async_status_file=$async_file.status
   tmp_out=$async_file.tmp.$$
@@ -381,10 +381,10 @@ __lmline_async_start() {
     fi
   ) &
   __LMLINE_ASYNC_PID=$!
-  if function_names_key=$(__lmline_async_function_names_key); then
-    __LMLINE_ASYNC_KEY="$(__lmline_request_key "$mode" "$line"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}"
-  else
+  if [[ "$request_key" == function-context-unavailable ]]; then
     __LMLINE_ASYNC_KEY="function-context-unavailable:$__LMLINE_ASYNC_PID"
+  else
+    __LMLINE_ASYNC_KEY=$request_key
   fi
   __LMLINE_ASYNC_FILE=$async_file
   __LMLINE_ASYNC_MODE=$mode
@@ -598,7 +598,7 @@ __lmline_generate_async_widget() {
     __lmline_hint final "${LMLINE_PS0}async temp file failed"
     return 0
   }
-  __lmline_async_start "$mode" "$original" "$point" "$async_file"
+  __lmline_async_start "$mode" "$original" "$point" "$async_file" "$current_key"
   __lmline_hint show "${LMLINE_PS0}[$mode] generating in background; press the same key to insert when ready"
 }
 

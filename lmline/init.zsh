@@ -421,15 +421,18 @@ __lmline_zsh_load_candidates_from_file() {
 }
 
 __lmline_zsh_async_start() {
-  local mode=$1 line=$2 point=$3 async_file=$4 key
+  local mode=$1 line=$2 point=$3 async_file=$4 key=${5-}
   __lmline_zsh_async_cleanup
-  key=$(__lmline_zsh_request_key "$mode" "$line" "$point")
   rm -f "$async_file.status" "$async_file.status.err" "$async_file"
   __lmline_zsh_bridge generate "$mode" "$line" "$point" "$async_file" &
   __LMLINE_ZSH_ASYNC_PID=$!
   # Keep this child waitable: cleanup must reap its supervisor before removing
   # request files. A numeric argument to disown is a job number, not this PID.
-  __LMLINE_ZSH_ASYNC_KEY=$key
+  if [[ -n "$key" ]]; then
+    __LMLINE_ZSH_ASYNC_KEY=$key
+  else
+    __LMLINE_ZSH_ASYNC_KEY="request-key-unavailable:$__LMLINE_ZSH_ASYNC_PID"
+  fi
   __LMLINE_ZSH_ASYNC_FILE=$async_file
   __LMLINE_ZSH_ASYNC_STARTED=$(date +%s)
   __LMLINE_ZSH_ASYNC_NOTIFIED=0
@@ -491,7 +494,7 @@ __lmline_zsh_generate_async() {
     zle redisplay 2>/dev/null || true
     return 0
   }
-  __lmline_zsh_async_start "$mode" "$original" "$point" "$async_file"
+  __lmline_zsh_async_start "$mode" "$original" "$point" "$async_file" "$current_key"
   __lmline_zsh_hint "${LMLINE_PS0}[$mode] generating in background; press the same key to insert when ready"
   zle redisplay 2>/dev/null || true
 }
