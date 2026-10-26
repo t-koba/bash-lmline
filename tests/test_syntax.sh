@@ -3,7 +3,7 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: shipped Bash, Node, and Zsh code remains syntactically valid.
 
-for file in "$repo_dir"/lmline/*.bash "$repo_dir"/lmline/completions/lmline.bash "$repo_dir"/lmline/engine "$repo_dir"/lmline/lmline "$repo_dir"/install.sh; do
+for file in "$repo_dir"/lmline/*.bash "$repo_dir"/lmline/completions/lmline.bash "$repo_dir"/lmline/engine "$repo_dir"/lmline/lmline "$repo_dir"/lmline/validate "$repo_dir"/install.sh; do
   bash -n "$file" || fail "bash -n $file"
 done
 ok "bash syntax"
