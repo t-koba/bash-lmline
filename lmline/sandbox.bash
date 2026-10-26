@@ -70,8 +70,11 @@ __lmline_select_exec_backend() {
 __lmline_timeout_seconds_valid() {
   local timeout_s=${1-}
   [[ $timeout_s =~ ^[1-9][0-9]*$ ]] || return 1
-  (( ${#timeout_s} < 10 )) ||
-    { (( ${#timeout_s} == 10 )) && [[ $timeout_s < 2147483648 ]]; }
+  (( ${#timeout_s} < 10 )) && return 0
+  (( ${#timeout_s} == 10 )) || return 1
+  # Equal-width decimal strings compare safely without shell arithmetic overflow.
+  # shellcheck disable=SC2071
+  [[ $timeout_s < 2147483648 ]]
 }
 
 # Cancellation covers the isolated job's process group, not detached processes.

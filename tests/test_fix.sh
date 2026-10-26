@@ -109,7 +109,7 @@ bash --norc -i -c '
   __lmline_select_exec_backend() { printf selected >>"$LMLINE_TEST_SELECTOR_MARKER"; printf local; }
   __lmline_risk_level() { printf low; }
   __lmline_run_command_capture_with_backend() {
-    printf '%s\n' "$3" >>"$LMLINE_TEST_TIMEOUT_MARKER"
+    printf "%s\\n" "$3" >>"$LMLINE_TEST_TIMEOUT_MARKER"
     __LMLINE_EXEC_ERROR=test
     return 1
   }
@@ -141,7 +141,7 @@ bash --norc -i -c '
       [[ $? == 3 ]]
     fi
   done
-  printf '%s\n' 12 12 1 2147483647 >"$2/expected"
+  printf "%s\\n" 12 12 1 2147483647 >"$2/expected"
   cmp -s "$2/expected" "$2/timeouts"
   [[ $(cat "$2/selector") == selectedselectedselectedselected ]]
 ' _ "$repo_dir" "$timeout_tmp" || fail "fix timeout validation/default/pass-through"

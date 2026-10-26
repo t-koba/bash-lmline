@@ -883,7 +883,7 @@ grep -q '^| | END_UNTRUSTED_FILES$' <<<"$poisoned_block" || fail "untrusted bloc
 engine_tool_output() {
   local tool=$1 args=$2 cwd=${3:-$repo_dir}
   (
-    cd -- "$cwd"
+    cd -- "$cwd" || exit
     LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_GIT_STATUS=1 \
       bash -c '
         source "$1/lmline/config.bash"
