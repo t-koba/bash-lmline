@@ -102,6 +102,25 @@ printf '%s\n' "$long_in" >"$cond_tmp/large"
 __lmline_condense_file "$cond_tmp/large" 2000
 grep -q '\.\.\.\[omitted' "$cond_tmp/large" || fail "large file condensed in place"
 
+# Fix output caps remain effective for valid nonnegative settings on synthetic
+# output, including zero and a very small cap.
+printf '%050000d\n' 0 >"$cond_tmp/fix-output-original"
+fix_output_bytes=$(wc -c <"$cond_tmp/fix-output-original" | tr -d ' ')
+for cap in 0 8 08 12000; do
+  cp "$cond_tmp/fix-output-original" "$cond_tmp/fix-output-$cap"
+  __lmline_condense_file "$cond_tmp/fix-output-$cap" "$cap"
+  condensed_bytes=$(wc -c <"$cond_tmp/fix-output-$cap" | tr -d ' ')
+  (( condensed_bytes < fix_output_bytes )) || fail "fix output cap $cap condenses synthetic output"
+  case "$cap" in
+    0|8|08)
+      (( condensed_bytes <= 100 )) || fail "small fix output cap $cap bounds synthetic output (got $condensed_bytes bytes)"
+      ;;
+    *)
+      (( condensed_bytes <= cap )) || fail "fix output cap $cap bounds synthetic output (got $condensed_bytes bytes)"
+      ;;
+  esac
+done
+
 # File condensation propagates resolver errors and leaves the source intact.
 printf '%s\n' "$long_in" >"$cond_tmp/invalid-config-large"
 cp "$cond_tmp/invalid-config-large" "$cond_tmp/invalid-config-expected"

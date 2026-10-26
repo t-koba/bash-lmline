@@ -143,3 +143,53 @@ bash --norc -i -c '
 ' _ "$repo_dir" "$timeout_tmp" || fail "fix timeout validation/default/pass-through"
 rm -rf "$timeout_tmp"
 ok "fix rejects malformed timeout before backend selection and preserves valid limits"
+
+# Validate fix output caps before selecting or dispatching an execution backend.
+cap_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix-output-cap.XXXXXX")
+bash --norc -i -c '
+  set -u
+  source "$1/lmline/init.bash"
+  __lmline_reload_settings_if_changed() { :; }
+  __lmline_select_exec_backend() { printf selected >>"$LMLINE_TEST_SELECTOR_MARKER"; printf local; }
+  __lmline_risk_level() { printf low; }
+  __lmline_run_command_capture_with_backend() {
+    printf dispatched >>"$LMLINE_TEST_BACKEND_MARKER"
+    __LMLINE_EXEC_STATUS=0
+  }
+  __lmline_condense_file() { printf "%s\n" "$2" >>"$LMLINE_TEST_CAPS"; }
+  LMLINE_TEST_SELECTOR_MARKER=$2/selector
+  LMLINE_TEST_BACKEND_MARKER=$2/backend
+  LMLINE_TEST_CAPS=$2/caps
+  export LMLINE_TEST_SELECTOR_MARKER LMLINE_TEST_BACKEND_MARKER LMLINE_TEST_CAPS
+  if LMLINE_FIX_MAX_OUTPUT=200000x __lmline_fix_run false bash 5 /bin/false 1 2>"$2/invalid.err"; then
+    exit 10
+  else
+    [[ $? == 3 ]]
+  fi
+  grep -q "invalid LMLINE_FIX_MAX_OUTPUT; expected a nonnegative integer" "$2/invalid.err"
+  [[ ! -e $2/selector && ! -e $2/backend ]]
+  for setting in unset empty zero eight leading_zero; do
+    if [[ $setting == unset ]]; then
+      unset LMLINE_FIX_MAX_OUTPUT
+    elif [[ $setting == empty ]]; then
+      LMLINE_FIX_MAX_OUTPUT=
+    elif [[ $setting == zero ]]; then
+      LMLINE_FIX_MAX_OUTPUT=0
+    elif [[ $setting == leading_zero ]]; then
+      LMLINE_FIX_MAX_OUTPUT=08
+    else
+      LMLINE_FIX_MAX_OUTPUT=8
+    fi
+    if __lmline_fix_run false bash 5 /bin/false 1 >/dev/null 2>"$2/$setting.err"; then
+      exit 11
+    else
+      [[ $? == 3 ]]
+    fi
+  done
+  printf "12000\n12000\n12000\n12000\n0\n0\n8\n8\n08\n08\n" >"$2/expected"
+  cmp -s "$2/expected" "$2/caps"
+  [[ $(cat "$2/selector") == selectedselectedselectedselectedselected ]]
+  [[ $(cat "$2/backend") == dispatcheddispatcheddispatcheddispatcheddispatched ]]
+' _ "$repo_dir" "$cap_tmp" || fail "fix output cap validation/default/pass-through"
+rm -rf "$cap_tmp"
+ok "fix rejects malformed output caps before backend selection and preserves valid caps"

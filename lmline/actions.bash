@@ -408,6 +408,10 @@ __lmline_fix_run() {
     printf '%sinvalid LMLINE_FIX_TIMEOUT; expected a positive integer\n' "$prefix" >&2
     return 3
   fi
+  if [[ ! $max_output =~ ^[0-9]+$ ]]; then
+    printf '%sinvalid LMLINE_FIX_MAX_OUTPUT; expected a nonnegative integer\n' "$prefix" >&2
+    return 3
+  fi
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
   if ! backend=$(__lmline_select_exec_backend); then

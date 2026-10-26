@@ -954,6 +954,9 @@ __lmline_condense_text() {
 # survives alongside the tail.
 __lmline_condense_file() {
   local file=$1 max=${2:-12000} size patterns_file
+  [[ $max =~ ^[0-9]+$ ]] || return 1
+  max=${max#"${max%%[!0]*}"}
+  [[ -n $max ]] || max=0
   # The configuration is resolved first: a broken patterns file is a broken
   # configuration, and it must fail the caller even when there is nothing to
   # condense.
