@@ -69,6 +69,38 @@ grep -q '^reason=invalid_execution_backend$' <<<"$backend_dispatch_output" \
   || fail "the command tool dispatched an invalid execution backend"
 ok "an invalid execution backend does not dispatch command_run"
 
+# The risk ceiling is a restriction: a typo must not authorize medium-risk
+# sandbox command_run. Use a capture recorder so no command executes.
+export LMLINE_RISK_PATTERNS_FILE="$repo_dir/lmline/defaults/risk_patterns.tsv"
+low_risk_reason=$(LMLINE_TOOL_COMMAND_RUN_MAX_RISK=low \
+  __lmline_command_run_sandbox_rejection_reason 'printf probe >/dev/null')
+[[ "$low_risk_reason" == risk_above_max:medium ]] \
+  || fail "the valid low risk ceiling changed: $low_risk_reason"
+medium_risk_reason=$(LMLINE_TOOL_COMMAND_RUN_MAX_RISK=medium \
+  __lmline_command_run_sandbox_rejection_reason 'printf probe >/dev/null')
+[[ "$medium_risk_reason" == ok ]] \
+  || fail "the valid medium risk ceiling changed: $medium_risk_reason"
+risk_dispatch_marker="$list_tmp/risk-dispatch-marker"
+risk_dispatch_output=$(
+  export LMLINE_EXEC_BACKEND=microsandbox
+  export LMLINE_MICROSANDBOX_COMMAND=/bin/true
+  export LMLINE_TOOL_COMMAND_RUN_MAX_RISK=lo
+  __lmline_run_command_capture_with_backend() {
+    printf 'called:%s\n' "$1" >>"$risk_dispatch_marker"
+    : >"$4"
+    : >"$5"
+    __LMLINE_EXEC_STATUS=0
+  }
+  __lmline_tool_command_run 'printf probe >/dev/null'
+)
+grep -q '^allowed=0$' <<<"$risk_dispatch_output" \
+  || fail "an invalid risk ceiling allowed command_run"
+grep -q '^reason=invalid_max_risk$' <<<"$risk_dispatch_output" \
+  || fail "an invalid risk ceiling had no diagnostic"
+[[ ! -e "$risk_dispatch_marker" ]] \
+  || fail "an invalid risk ceiling dispatched a command"
+ok "invalid command-run risk ceilings fail closed"
+
 # The tool path reports the same answer.
 args=$(jq -cn --arg command "printf hi" '{command:$command}')
 out=$(LMLINE_EXEC_BACKEND=local LMLINE_TOOL_COMMAND_RUN=1 LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT=100 \

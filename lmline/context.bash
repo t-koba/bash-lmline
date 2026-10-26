@@ -533,7 +533,7 @@ __lmline_risk_within_max() {
     low) [[ "$risk" == low ]] ;;
     medium) [[ "$risk" == low || "$risk" == medium ]] ;;
     high) [[ "$risk" == low || "$risk" == medium || "$risk" == high ]] ;;
-    *) [[ "$risk" == low || "$risk" == medium ]] ;;
+    *) return 1 ;;
   esac
 }
 
@@ -573,6 +573,10 @@ __lmline_command_run_local_rejection_reason() {
 
 __lmline_command_run_sandbox_rejection_reason() {
   local command_line=$1 max_risk=${LMLINE_TOOL_COMMAND_RUN_MAX_RISK:-medium} risk common
+  case "$max_risk" in
+    low|medium|high) ;;
+    *) printf 'invalid_max_risk\n'; return 0 ;;
+  esac
   common=$(__lmline_command_run_common_rejection_reason "$command_line")
   [[ "$common" == ok ]] || { printf '%s\n' "$common"; return 0; }
   __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
