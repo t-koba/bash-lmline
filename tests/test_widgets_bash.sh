@@ -302,6 +302,57 @@ LMLINE_TEST_ASYNC_DIR="$widget_tmp/cancel" LMLINE_CONFIG_DIR="$widget_tmp/config
     [[ ! -d "$(cat "$LMLINE_TEST_ASYNC_DIR/timeout.context-dir")" ]]
     kill -0 "$unrelated"
 ' _ "$repo_dir" || fail "async cleanup"
+mkdir "$widget_tmp/cursor"
+mkfifo "$widget_tmp/cursor/point-0.gate" "$widget_tmp/cursor/point-3.gate"
+cat >"$widget_tmp/engine-cursor" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+point=0
+while (($#)); do case "$1" in --point) point=$2; shift 2;; *) shift;; esac; done
+stop_file=$LMLINE_TEST_CURSOR_DIR/point-$point.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf '%s\n' "$point" >"$LMLINE_TEST_CURSOR_DIR/point-$point.ready"
+exec 3<>"$LMLINE_TEST_CURSOR_DIR/point-$point.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_CURSOR_DIR/point-$point.finished"
+printf 'lmline-candidate: low\t-\t-\techo point-%s\n' "$point"
+EOF
+chmod +x "$widget_tmp/engine-cursor"
+LMLINE_TEST_CURSOR_DIR="$widget_tmp/cursor" LMLINE_CONFIG_DIR="$widget_tmp/config-cursor" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-cursor" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  cleanup_cursor_probe() {
+    for point in 0 3; do
+      ( exec 3<>"$LMLINE_TEST_CURSOR_DIR/point-$point.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    for pid in "${first_pid:-}" "${second_pid:-}"; do
+      [[ -n "$pid" ]] || continue
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    done
+  }
+  trap cleanup_cursor_probe EXIT
+  READLINE_LINE="echo cursor"
+  READLINE_POINT=0
+  __lmline_generate_widget >/dev/null 2>&1
+  first_pid=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.ready" ]]
+  READLINE_POINT=3
+  __lmline_generate_widget >/dev/null 2>&1
+  second_pid=$__LMLINE_ASYNC_PID
+  [[ "$second_pid" != "$first_pid" ]]
+  [[ "$READLINE_LINE" == "echo cursor" ]]
+  [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.stopped" ]]
+  [[ ! -e "$LMLINE_TEST_CURSOR_DIR/point-0.finished" ]]
+  ! kill -0 "$first_pid" 2>/dev/null
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.ready" ]]
+  printf "release\n" >"$LMLINE_TEST_CURSOR_DIR/point-3.gate"
+  wait "$second_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo point-3" ]]
+  [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.finished" ]]
+' _ "$repo_dir" || fail "async cursor identity"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: synthetic async failure\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
 LMLINE_CONFIG_DIR="$widget_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
