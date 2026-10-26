@@ -79,11 +79,11 @@ ok "inherited collector is names-only without import or leak"
 # 4. Exported scratch-variable attack: caller-exported scratch names must not
 # change the result or leak raw records to children.
 (
-  export entry=ATTACKER_SENTINEL
-  export name_part=ATTACKER
-  export value=ATTACKER
-  export fd=ATTACKER
-  export producer=ATTACKER
+  # These exported names deliberately collide with child-local scratch; the
+  # values must reach the protected collector to exercise that boundary.
+  # shellcheck disable=SC2031
+  export entry=ATTACKER_SENTINEL name_part=ATTACKER value=ATTACKER \
+    fd=ATTACKER producer=ATTACKER
   # shellcheck disable=SC2329
   lmline_iso_scratch() { :; }
   export -f lmline_iso_scratch

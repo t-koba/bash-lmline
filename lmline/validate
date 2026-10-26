@@ -8,8 +8,13 @@
 __LMLINE_VALIDATE_DIR=${BASH_SOURCE[0]%/*}
 # shellcheck source=lmline/validation-boundary.bash
 source "$__LMLINE_VALIDATE_DIR/validation-boundary.bash" || exit 2
+# These inherited transport values are read in the parent; collector
+# subshell assignments intentionally do not replace them.
+# shellcheck disable=SC2031
 __LMLINE_CALLER_FUNCTIONS=${LMLINE_SHELL_FUNCTIONS-}
+# shellcheck disable=SC2031
 __LMLINE_EXPORTED_FUNCTIONS=${LMLINE_EXPORTED_FUNCTIONS-}
+# shellcheck disable=SC2031
 if [[ -z ${LMLINE_EXPORTED_FUNCTIONS+x} ]]; then
   __lmline_inherited_exported=
   export -n __lmline_inherited_exported 2>/dev/null || true
@@ -20,17 +25,20 @@ fi
 export -n __LMLINE_CALLER_FUNCTIONS __LMLINE_EXPORTED_FUNCTIONS
 unset LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
 __LMLINE_VALIDATION_ISOLATED=1
+# shellcheck source=lmline/policy.bash
 source "${BASH_SOURCE[0]%/*}/policy.bash"
 case $1 in
   candidate) shift; __lmline_candidate_rejection_reason "$@" ;;
   valid-candidates) shift; __lmline_valid_candidates "$@" ;;
   copilot-request)
     shift
+    # shellcheck source=lmline/actions.bash
     source "$__LMLINE_POLICY_DIR/actions.bash"
     __lmline_copilot_candidates "$@"
     ;;
   copilot)
     shift
+    # shellcheck source=lmline/actions.bash
     source "$__LMLINE_POLICY_DIR/actions.bash"
     __lmline_copilot_filter_candidates "$@"
     ;;
