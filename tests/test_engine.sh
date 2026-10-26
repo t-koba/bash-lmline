@@ -53,6 +53,52 @@ grep -q '"tools"' "$cfg_tmp/valid-tool-budgets-empty.out" || fail "empty tool bu
 grep -Fq 'Tool round budget: current=0 max=4.' < <(jq -r '.messages[]?.content // empty' "$cfg_tmp/valid-tool-budgets-empty.out") || fail "empty tool rounds did not keep the default"
 grep -Fq 'Tool calls per round limit: 20.' < <(jq -r '.messages[]?.content // empty' "$cfg_tmp/valid-tool-budgets-empty.out") || fail "empty tool-call budget did not keep the default"
 
+# Tool-result byte budgets fail closed before any provider request or tool
+# execution: a malformed nonempty cap must not silently widen the untrusted
+# tool output sent to the model. Malformed values exit before the fake
+# provider is contacted (no dispatch); unset, empty, and valid values still
+# build dry-run payloads. Bounded checks only, no real network calls.
+result_fake_bin="$cfg_tmp/result-fake-bin"
+mkdir -p "$result_fake_bin"
+cat >"$result_fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0
+[[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1))
+printf '%s\n' "$count" >"$state"
+echo "unexpected provider dispatch" >&2
+exit 9
+EOF
+chmod +x "$result_fake_bin/curl"
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_RESULT_MAX_BYTES=200000x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-result-bytes.out" 2>"$cfg_tmp/invalid-tool-result-bytes.err"; then
+  fail "invalid tool result bytes unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_RESULT_MAX_BYTES: 200000x' "$cfg_tmp/invalid-tool-result-bytes.err" || fail "invalid tool result bytes diagnostic"
+grep -q 'nonnegative integer' "$cfg_tmp/invalid-tool-result-bytes.err" || fail "invalid tool result bytes expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-result-bytes.out" || fail "invalid tool result bytes emitted tools"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "invalid tool result bytes dispatched provider request"
+printf '0\n' >"$cfg_tmp/result-fake-curl-state"
+if PATH="$result_fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/result-fake-curl-state" LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_RESULT_MAX_BYTES=x "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/invalid-tool-result-bytes-noprefix.out" 2>"$cfg_tmp/invalid-tool-result-bytes-noprefix.err"; then
+  fail "prefix-less tool result bytes unexpectedly accepted"
+fi
+grep -q 'invalid LMLINE_TOOL_RESULT_MAX_BYTES: x' "$cfg_tmp/invalid-tool-result-bytes-noprefix.err" || fail "prefix-less tool result bytes diagnostic"
+grep -q 'nonnegative integer' "$cfg_tmp/invalid-tool-result-bytes-noprefix.err" || fail "prefix-less tool result bytes expected values"
+! grep -q '"tools"' "$cfg_tmp/invalid-tool-result-bytes-noprefix.out" || fail "prefix-less tool result bytes emitted tools"
+[[ $(cat "$cfg_tmp/result-fake-curl-state") == 0 ]] || fail "prefix-less tool result bytes dispatched provider request"
+# Valid caps keep their semantics: unset and empty keep the default, zero is
+# accepted, and a positive value is accepted. All bounded dry-run payloads
+# with no provider dispatch.
+env -u LMLINE_TOOL_RESULT_MAX_BYTES LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-result-bytes-unset.out" 2>"$cfg_tmp/valid-tool-result-bytes-unset.err" || fail "unset tool result bytes rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-result-bytes-unset.out" || fail "unset tool result bytes payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_RESULT_MAX_BYTES= "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-result-bytes-empty.out" 2>"$cfg_tmp/valid-tool-result-bytes-empty.err" || fail "empty tool result bytes rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-result-bytes-empty.out" || fail "empty tool result bytes payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_RESULT_MAX_BYTES=0 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-result-bytes-zero.out" 2>"$cfg_tmp/valid-tool-result-bytes-zero.err" || fail "zero tool result bytes rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-result-bytes-zero.out" || fail "zero tool result bytes payload"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_RESULT_MAX_BYTES=100 "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/valid-tool-result-bytes-small.out" 2>"$cfg_tmp/valid-tool-result-bytes-small.err" || fail "positive tool result bytes rejected"
+grep -q '"tools"' "$cfg_tmp/valid-tool-result-bytes-small.out" || fail "positive tool result bytes payload"
+
 fake_bin="$cfg_tmp/fake-bin"
 mkdir -p "$fake_bin"
 cat >"$fake_bin/curl" <<'EOF'

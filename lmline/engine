@@ -94,6 +94,7 @@ __lmline_http_retries_explicit=0
 : "${LMLINE_TOOL_RESULT_SUMMARIZE:=0}"
 : "${LMLINE_TOOL_RESULT_SUMMARY_MIN_CHARS:=12000}"
 : "${LMLINE_TOOL_RESULT_SUMMARY_MAX_TOKENS:=300}"
+: "${LMLINE_TOOL_RESULT_MAX_BYTES:=8000}"
 : "${LMLINE_HTTP_RETRIES:=1}"
 : "${LMLINE_RETRY_DELAY:=1}"
 : "${LMLINE_CACHE_TTL:=600}"
@@ -158,6 +159,10 @@ __lmline_clamp_int n "$__LMLINE_DEFAULT_N" "$__LMLINE_MAX_N"
 }
 [[ "$LMLINE_MAX_TOOL_CALLS_PER_ROUND" =~ ^[1-9][0-9]*$ ]] || {
   printf 'lmline-engine: invalid LMLINE_MAX_TOOL_CALLS_PER_ROUND: %s (expected a positive integer)\n' "$LMLINE_MAX_TOOL_CALLS_PER_ROUND" >&2
+  exit 2
+}
+[[ "$LMLINE_TOOL_RESULT_MAX_BYTES" =~ ^[0-9]+$ ]] || {
+  printf 'lmline-engine: invalid LMLINE_TOOL_RESULT_MAX_BYTES: %s (expected a nonnegative integer)\n' "$LMLINE_TOOL_RESULT_MAX_BYTES" >&2
   exit 2
 }
 __lmline_clamp_int LMLINE_MAX_TOOL_ROUNDS 4 0 1

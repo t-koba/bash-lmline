@@ -37,6 +37,19 @@ grep -q '\.\.\.\[omitted [0-9]* lines' <<<"$long_out" || fail "omission marker"
 out_bytes=$(LC_ALL=C printf '%s' "$long_out" | wc -c | tr -d ' ')
 (( out_bytes <= 2200 )) || fail "budget respected (got $out_bytes bytes)"
 
+# Tool-result byte caps bound untrusted output sent to the model: a large
+# synthetic input condensed at the documented default stays within budget,
+# while a smaller cap keeps less. Deterministic sizes only.
+cap_in=$(for i in $(seq 1 1200); do printf 'synthetic tool output line %04d with padding text abcdefghij\n' "$i"; done)
+cap_default_out=$(printf '%s\n' "$cap_in" | __lmline_condense_text 8000 "$patterns")
+cap_default_bytes=$(LC_ALL=C printf '%s' "$cap_default_out" | wc -c | tr -d ' ')
+(( cap_default_bytes <= 8800 )) || fail "default tool-result cap bounds output (got $cap_default_bytes bytes)"
+grep -q '\.\.\.\[omitted [0-9]* lines' <<<"$cap_default_out" || fail "default tool-result cap omission marker"
+cap_small_out=$(printf '%s\n' "$cap_in" | __lmline_condense_text 1000 "$patterns")
+cap_small_bytes=$(LC_ALL=C printf '%s' "$cap_small_out" | wc -c | tr -d ' ')
+(( cap_small_bytes <= 1200 )) || fail "small tool-result cap bounds output (got $cap_small_bytes bytes)"
+(( cap_small_bytes < cap_default_bytes )) || fail "smaller cap keeps less output"
+
 # Priority lines (errors) in the omitted middle are rescued.
 mixed_in=$(
   for i in $(seq 1 60); do printf 'boring output line %s aaaaaaaaaaaaaaaaaaaaaaaa\n' "$i"; done
