@@ -151,7 +151,8 @@ grep -q '^usage: lmline sandbox run' <<<"$help_sandbox" || fail "help sandbox ru
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe --help | grep -q '^usage: lmline config describe KEY' || fail "config describe help"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" endpoint add --help | grep -q '^usage: lmline endpoint add' || fail "endpoint add help"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" model refresh --help | grep -q '^usage: lmline model refresh' || fail "model refresh help"
-LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" history show --help | grep -q '^usage: lmline history show' || fail "history show help"
+history_show_help=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" history show --help) || fail "history show help command"
+grep -q '^usage: lmline history show' <<<"$history_show_help" || fail "history show help"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" debug trace --help | grep -q '^usage: lmline debug trace' || fail "debug trace help"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate --help | grep -q '^usage: lmline payload MODE' || fail "payload mode help"
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" help definitely-not-a-lmline-topic >/tmp/lmline-help-bad.out 2>/tmp/lmline-help-bad.err; then
