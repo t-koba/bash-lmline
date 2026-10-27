@@ -79,12 +79,8 @@ ok "CWD builtin classification is target-shell aware and function-free"
 
 check_path() {
   local target=$1 candidate=$2 expected=$3 actual
-  if [[ "$target" == zsh ]]; then
-    zsh -f -n -c "$candidate" || fail "invalid zsh fixture: $candidate"
-  else
-    bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
-  fi
   actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  [[ "$actual" != shell-syntax ]] || fail "invalid $target fixture: $candidate"
   [[ "$actual" == "$expected" ]] || fail "$target PATH policy: $actual, expected $expected: $candidate"
 }
 
@@ -221,17 +217,13 @@ done
 
 # A relative inherited PATH entry resolves against the current directory, so
 # a direct directory change before a bare external that currently resolves
-# only through such an entry is unreliable and fails closed. Syntax-only:
-# candidates go only to `bash -n`/`zsh -f -n` and the validator, the inert
-# stub is used only for `command -v` lookups and never runs.
+# only through such an entry is unreliable and fails closed. The validator's
+# syntax-only target-shell parser checks each candidate; the inert stub is used
+# only for `command -v` lookups and never runs.
 check_cwd() {
   local target=$1 candidate=$2 expected=$3 actual
-  if [[ "$target" == zsh ]]; then
-    zsh -f -n -c "$candidate" || fail "invalid zsh fixture: $candidate"
-  else
-    bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
-  fi
   actual=$(__lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  [[ "$actual" != shell-syntax ]] || fail "invalid $target fixture: $candidate"
   [[ "$actual" == "$expected" ]] || fail "$target CWD policy: $actual, expected $expected: $candidate"
 }
 

@@ -15,12 +15,10 @@ check_caller() {
   local target=$1 candidate=$2 expected=$3 caller_list=$4 actual
   if [[ "$target" == zsh ]]; then
     command -v zsh >/dev/null 2>&1 || return 0
-    zsh -f -n -c "$candidate" || fail "invalid zsh fixture: $candidate"
-  else
-    bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
   fi
   unset __LMLINE_CALLER_FUNCTIONS
   actual=$(LMLINE_SHELL_FUNCTIONS="$caller_list" __LMLINE_VALIDATION_ISOLATED=1 __lmline_candidate_rejection_reason "$candidate" rewrite "$target")
+  [[ "$actual" != shell-syntax ]] || fail "invalid $target fixture: $candidate"
   [[ "$actual" == "$expected" ]] || fail "$target caller functions: $actual, expected $expected: $candidate (list: $caller_list)"
 }
 

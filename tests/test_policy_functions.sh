@@ -11,12 +11,8 @@ trap 'rm -rf "$function_tmp"' EXIT
 
 check_function() {
   local target=$1 candidate=$2 expected=$3 actual
-  if [[ "$target" == zsh ]]; then
-    zsh -f -n -c "$candidate" || fail "invalid zsh fixture: $candidate"
-  else
-    bash -n -c "$candidate" || fail "invalid bash fixture: $candidate"
-  fi
   actual=$(__lmline_test_candidate_rejection_reason "$candidate" rewrite "$target")
+  [[ "$actual" != shell-syntax ]] || fail "invalid $target fixture: $candidate"
   [[ "$actual" == "$expected" ]] || fail "$target function policy: $actual, expected $expected: $candidate"
 }
 
