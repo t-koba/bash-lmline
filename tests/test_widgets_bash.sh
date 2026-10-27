@@ -893,7 +893,8 @@ printf finished >"$LMLINE_TEST_CWD_DIR/$name.finished"
 printf 'lmline-candidate: low\t-\t-\techo cwd-%s\n' "$name"
 EOF
 chmod +x "$widget_tmp/engine-cwd"
-LMLINE_TEST_CWD_DIR="$widget_tmp/cwd-change" LMLINE_CONFIG_DIR="$widget_tmp/config-cwd" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-cwd" bash --norc -e -i -c '
+cwd_change_dir=$(cd "$widget_tmp/cwd-change" && pwd -P)
+LMLINE_TEST_CWD_DIR="$cwd_change_dir" LMLINE_CONFIG_DIR="$widget_tmp/config-cwd" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-cwd" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   LMLINE_INCLUDE_GIT_CONTEXT=0
   LMLINE_INCLUDE_PROJECT_CONTEXT=0
