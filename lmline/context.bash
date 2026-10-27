@@ -824,14 +824,14 @@ __lmline_project_markers_key() (
 
 # Both context and identity use exactly the same marker-list parsing.
 __lmline_project_markers_scan() {
-  local file=$1 mode=$2 line type marker
+  local file=$1 marker_mode=$2 line type marker
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" || "$line" == \#* ]] && continue
     IFS=$'\t' read -r type marker <<<"$line"
     [[ -n "$type" && -n "$marker" ]] || continue
     if [[ -e "$marker" ]]; then
-      if [[ "$mode" == presence ]]; then printf '1'; else printf '%s\n' "$type"; fi
-    elif [[ "$mode" == presence ]]; then
+      if [[ "$marker_mode" == presence ]]; then printf '1'; else printf '%s\n' "$type"; fi
+    elif [[ "$marker_mode" == presence ]]; then
       printf '0'
     fi
     :
@@ -1147,7 +1147,7 @@ __lmline_rank_by_query() {
 __lmline_context_file() {
   local out=$1
   local line=${2-}
-  local mode=${3:-generate}
+  local render_mode=${3:-generate}
   local suggested_commands available_tools
   {
     if __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; then
@@ -1184,7 +1184,7 @@ __lmline_context_file() {
 
     # explain/clip answer questions about existing text and do not generate
     # commands, so the suggested-commands list is dead weight there.
-    case "$mode" in
+    case "$render_mode" in
       explain|clip) ;;
       *)
         suggested_commands=$(__lmline_collect_suggested_commands) || return 1
@@ -1269,7 +1269,7 @@ __lmline_path_key() (
 
 __lmline_request_key() (
   set -o pipefail
-  local mode=$1 line=$2 physical_cwd_key=
+  local request_mode=$1 line=$2 physical_cwd_key=
   # Match the rendered pwd -P bytes without exposing the path in the key.
   if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
     physical_cwd_key=$(pwd -P 2>/dev/null | __lmline_hash_stdin) || return 1
@@ -1277,7 +1277,7 @@ __lmline_request_key() (
   fi
   {
     printf 'prompt_version=%s\n' "${LMLINE_PROMPT_VERSION:-3}"
-    printf 'mode=%s\n' "$mode"
+    printf 'mode=%s\n' "$request_mode"
     printf 'line=%s\n' "$line"
     printf 'pwd=%s\n' "$PWD"
     if [[ -n "$physical_cwd_key" ]]; then
