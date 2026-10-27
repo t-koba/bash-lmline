@@ -1128,6 +1128,47 @@ __lmline_context_file() {
   } >"$out"
 }
 
+# Hash shell-local inputs used when constructing the initial context file.
+# Keep this list aligned with __lmline_context_file and its direct helpers; the
+# exported environment is already covered by the async settings key.
+__lmline_context_settings_key() (
+  set -o pipefail
+  local name
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  {
+    for name in \
+      LMLINE_INCLUDE_SHELL_CONTEXT \
+      LMLINE_INCLUDE_PROJECT_CONTEXT \
+      LMLINE_INCLUDE_CWD_CONTEXT \
+      LMLINE_INCLUDE_GIT_CONTEXT \
+      LMLINE_INCLUDE_SUGGESTED_COMMANDS \
+      LMLINE_TOOL_MODE \
+      LMLINE_TOOL_COMMAND_EXISTS \
+      LMLINE_TOOL_COMMANDS \
+      LMLINE_TOOL_COMMAND_INFO \
+      LMLINE_TOOL_FILES \
+      LMLINE_TOOL_GIT_STATUS \
+      LMLINE_TOOL_FILE_EXCERPT \
+      LMLINE_TOOL_COMMAND_RUN \
+      LMLINE_TOOL_GIT_STATUS_LINES \
+      LMLINE_TOOL_INFO_LINE_BYTES \
+      LMLINE_SUGGESTED_COMMANDS_FILE \
+      LMLINE_SUGGESTED_COMMANDS_LIMIT \
+      LMLINE_PROJECT_MARKERS_FILE \
+      LMLINE_USER_RULES_DIR \
+      LMLINE_DEFAULTS_DIR; do
+      printf '%s\0' "$name"
+      if [[ -v $name ]]; then
+        printf 'set\0%s\0' "${!name}"
+      else
+        printf 'unset\0'
+      fi
+    done
+  } | __lmline_hash_stdin
+)
+
 __lmline_hash_stdin() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum | awk '{print $1}'

@@ -492,6 +492,19 @@ LMLINE_TEST_MODEL_DIR="$widget_tmp/model-change" LMLINE_CONFIG_DIR="$widget_tmp/
   LMLINE_TEST_UNEXPORTED=two
   [[ "$key_a" == "$(__lmline_async_settings_key)" ]]
   unset LMLINE_TEST_UNEXPORTED
+  export -n LMLINE_INCLUDE_SHELL_CONTEXT LMLINE_USER_RULES_DIR
+  LMLINE_INCLUDE_SHELL_CONTEXT=0
+  LMLINE_USER_RULES_DIR=context-path-marker
+  context_key=$(__lmline_context_settings_key)
+  [[ -n "$context_key" && "$context_key" != *context-path-marker* ]]
+  LMLINE_INCLUDE_SHELL_CONTEXT=1
+  [[ "$context_key" != "$(__lmline_context_settings_key)" ]]
+  LMLINE_TEST_UNEXPORTED=one
+  context_key=$(__lmline_context_settings_key)
+  LMLINE_TEST_UNEXPORTED=two
+  [[ "$context_key" == "$(__lmline_context_settings_key)" ]]
+  unset LMLINE_TEST_UNEXPORTED
+  ( __lmline_hash_stdin() { return 1; }; ! __lmline_context_settings_key >/dev/null )
 
   cleanup_model_probe() {
     for model in model-one model-two; do
@@ -526,6 +539,65 @@ LMLINE_TEST_MODEL_DIR="$widget_tmp/model-change" LMLINE_CONFIG_DIR="$widget_tmp/
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$READLINE_LINE" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
 ' _ "$repo_dir" || fail "bash async live model identity"
+mkdir "$widget_tmp/context-change"
+mkfifo "$widget_tmp/context-change/off.gate" "$widget_tmp/context-change/on.gate"
+cat >"$widget_tmp/engine-context" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+context=
+while (($#)); do
+  case $1 in
+    --context-file) context=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if grep -q '^## shell$' "$context"; then name=on; else name=off; fi
+stop_file=$LMLINE_TEST_CONTEXT_DIR/$name.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf ready >"$LMLINE_TEST_CONTEXT_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_CONTEXT_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_CONTEXT_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\techo shell-%s\n' "$name"
+EOF
+chmod +x "$widget_tmp/engine-context"
+LMLINE_TEST_CONTEXT_DIR="$widget_tmp/context-change" LMLINE_CONFIG_DIR="$widget_tmp/config-context" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-context" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  export -n LMLINE_INCLUDE_SHELL_CONTEXT
+  LMLINE_INCLUDE_SHELL_CONTEXT=0
+  cleanup_context_probe() {
+    for name in off on; do
+      ( exec 3<>"$LMLINE_TEST_CONTEXT_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    for pid in "${first_pid:-}" "${second_pid:-}"; do
+      [[ -n "$pid" ]] || continue
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    done
+  }
+  trap cleanup_context_probe EXIT
+  READLINE_LINE="# context"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first_pid=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_CONTEXT_DIR/off.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_CONTEXT_DIR/off.ready" ]]
+  LMLINE_INCLUDE_SHELL_CONTEXT=1
+  __lmline_generate_widget >/dev/null 2>&1
+  second_pid=$__LMLINE_ASYNC_PID
+  [[ "$second_pid" != "$first_pid" ]]
+  [[ -s "$LMLINE_TEST_CONTEXT_DIR/off.stopped" && ! -e "$LMLINE_TEST_CONTEXT_DIR/off.finished" ]]
+  ! kill -0 "$first_pid" 2>/dev/null
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_CONTEXT_DIR/on.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_CONTEXT_DIR/on.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$second_pid" ]]
+  printf "release\n" >"$LMLINE_TEST_CONTEXT_DIR/on.gate"
+  wait "$second_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo shell-on" && -s "$LMLINE_TEST_CONTEXT_DIR/on.finished" ]]
+  [[ ! -e "$LMLINE_TEST_CONTEXT_DIR/off.finished" ]]
+' _ "$repo_dir" || fail "bash async shell-local context identity"
 mkdir "$widget_tmp/engine-change"
 mkfifo "$widget_tmp/engine-change/engine-one.gate" "$widget_tmp/engine-change/engine-two.gate"
 cat >"$widget_tmp/engine-change/engine-one" <<'EOF'
