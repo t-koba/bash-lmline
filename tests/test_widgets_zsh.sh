@@ -259,6 +259,91 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo point-3" ]]
   ' _ "$repo_dir" || fail "zsh async cursor identity"
+  # Same-path marker replacement cancels pending work and refreshes context.
+  mkdir "$zsh_tmp/markers" "$zsh_tmp/markers/rules" "$zsh_tmp/markers/defaults" "$zsh_tmp/markers/fail-bin"
+  mkdir "$zsh_tmp/markers/privacy-bin"
+  cat >"$zsh_tmp/markers/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+if (($#)) || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_PROJECT_MARKERS_FILE|BASH_FUNC_lmline_marker_privacy%%)='; then
+  printf leaked >"$LMLINE_TEST_MARKERS_DIR/leak"
+fi
+printf checked >"$LMLINE_TEST_MARKERS_DIR/checked"
+exec cksum
+EOF
+  chmod +x "$zsh_tmp/markers/privacy-bin/sha256sum"
+  touch "$zsh_tmp/markers/one.marker" "$zsh_tmp/markers/two.marker"
+  printf 'one\tone.marker\n' >"$zsh_tmp/markers/list"
+  printf 'two\ttwo.marker\n' >"$zsh_tmp/markers/rules/project_markers.tsv"
+  printf 'default\tone.marker\n' >"$zsh_tmp/markers/defaults/project_markers.tsv"
+  printf '#!/bin/sh\nexit 1\n' >"$zsh_tmp/markers/fail-bin/sha256sum"
+  chmod +x "$zsh_tmp/markers/fail-bin/sha256sum"
+  mkfifo "$zsh_tmp/markers/one.gate" "$zsh_tmp/markers/two.gate"
+  cat >"$zsh_tmp/engine-markers" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+if grep -qx one "$context"; then name=one; else grep -qx two "$context"; name=two; fi
+trap 'printf stopped >"$LMLINE_TEST_MARKERS_DIR/$name.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_MARKERS_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_MARKERS_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$name"
+EOF
+  chmod +x "$zsh_tmp/engine-markers"
+  LMLINE_TEST_MARKERS_DIR="$zsh_tmp/markers" LMLINE_CONFIG_DIR="$zsh_tmp/config-markers" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-markers" zsh -efic '
+    source "$1/lmline/init.zsh"
+    cd "$LMLINE_TEST_MARKERS_DIR"
+    cleanup_markers_probe() {
+      for n in one two; do ( exec 3<>"$LMLINE_TEST_MARKERS_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+      __lmline_zsh_async_cleanup
+    }
+    trap cleanup_markers_probe EXIT
+    typeset -g LMLINE_USER_RULES_DIR=$PWD/rules LMLINE_DEFAULTS_DIR=$PWD/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
+    typeset +x LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE
+    ( PATH="$PWD/privacy-bin:$PATH"; __lmline_zsh_project_markers_key >/dev/null )
+    [[ -s checked && ! -e leak ]]
+    key=$(__lmline_zsh_project_markers_key)
+    [[ "$key" != *one* && "$key" != *"$PWD"* ]]
+    unset LMLINE_PROJECT_MARKERS_FILE
+    user_key=$(__lmline_zsh_project_markers_key)
+    [[ "$key" != "$user_key" ]]
+    rm rules/project_markers.tsv
+    [[ "$user_key" != "$(__lmline_zsh_project_markers_key)" ]]
+    typeset -g LMLINE_DEFAULTS_DIR=$1/lmline/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
+    ( PATH="$PWD/fail-bin:$PATH"; ! __lmline_zsh_project_markers_key >/dev/null )
+    ( typeset -g LMLINE_PROJECT_MARKERS_FILE=$PWD/missing; ! __lmline_zsh_project_markers_key >/dev/null )
+    mkfifo fifo
+    ( typeset -g LMLINE_PROJECT_MARKERS_FILE=$PWD/fifo; ! __lmline_zsh_project_markers_key >/dev/null )
+    ( typeset -g LMLINE_INCLUDE_PROJECT_CONTEXT=off LMLINE_PROJECT_MARKERS_FILE=$PWD/missing
+      [[ "$(__lmline_zsh_project_markers_key)" == disabled ]]
+      PATH="$PWD/fail-bin:$PATH"
+      [[ "$(__lmline_zsh_project_markers_key)" == disabled ]]
+    )
+    BUFFER="# markers"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first=$__LMLINE_ZSH_ASYNC_PID
+    for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done
+    [[ -s one.ready ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first" ]]
+    printf "two\ttwo.marker\n" >list
+    [[ "$key" != "$(__lmline_zsh_project_markers_key)" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second" != "$first" && -s one.stopped && "$BUFFER" == "# markers" ]]
+    for i in {1..200}; do [[ -s two.ready ]] && break; sleep 0.05; done
+    [[ -s two.ready ]]
+    printf "release\n" >two.gate
+    wait "$second"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo two" ]]
+    __lmline_zsh_project_markers_key() { return 1; }
+    BUFFER="# markers"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first=$__LMLINE_ZSH_ASYNC_PID
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
+  ' _ "$repo_dir" || fail "zsh project-marker content identity"
   # The same unexported resolver settings must select the bridge list.
   mkdir "$zsh_tmp/suggested" "$zsh_tmp/suggested/rules"
   mkdir "$zsh_tmp/suggested/privacy-bin"

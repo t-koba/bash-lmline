@@ -401,6 +401,91 @@ LMLINE_TEST_CURSOR_DIR="$widget_tmp/cursor" LMLINE_CONFIG_DIR="$widget_tmp/confi
   [[ "$READLINE_LINE" == "echo point-3" ]]
   [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.finished" ]]
 ' _ "$repo_dir" || fail "async cursor identity"
+# Project marker bytes at the same path are part of pending identity.
+mkdir "$widget_tmp/markers" "$widget_tmp/markers/rules" "$widget_tmp/markers/defaults"
+mkdir "$widget_tmp/markers/privacy-bin"
+cat >"$widget_tmp/markers/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+if (($#)) || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_PROJECT_MARKERS_FILE|BASH_FUNC_lmline_marker_privacy%%)='; then
+  printf leaked >"$LMLINE_TEST_MARKERS_DIR/leak"
+fi
+printf checked >"$LMLINE_TEST_MARKERS_DIR/checked"
+exec cksum
+EOF
+chmod +x "$widget_tmp/markers/privacy-bin/sha256sum"
+touch "$widget_tmp/markers/one.marker" "$widget_tmp/markers/two.marker"
+printf 'one\tone.marker\n' >"$widget_tmp/markers/list"
+printf 'two\ttwo.marker\n' >"$widget_tmp/markers/rules/project_markers.tsv"
+printf 'default\tone.marker\n' >"$widget_tmp/markers/defaults/project_markers.tsv"
+mkfifo "$widget_tmp/markers/one.gate" "$widget_tmp/markers/two.gate"
+cat >"$widget_tmp/engine-markers" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+if grep -qx one "$context"; then name=one; else grep -qx two "$context"; name=two; fi
+trap 'printf stopped >"$LMLINE_TEST_MARKERS_DIR/$name.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_MARKERS_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_MARKERS_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$name"
+EOF
+chmod +x "$widget_tmp/engine-markers"
+LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/config-markers" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-markers" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  cd "$LMLINE_TEST_MARKERS_DIR"
+  trap '\''for n in one two; do ( exec 3<>"$LMLINE_TEST_MARKERS_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done; __lmline_async_cleanup'\'' EXIT
+  LMLINE_USER_RULES_DIR=$PWD/rules LMLINE_DEFAULTS_DIR=$PWD/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
+  export LMLINE_PROJECT_MARKERS_FILE
+  lmline_marker_privacy() { : private_body; }
+  export -f lmline_marker_privacy
+  ( PATH="$PWD/privacy-bin:$PATH"; __lmline_project_markers_key >/dev/null )
+  [[ -s checked && ! -e leak ]]
+  unset -f lmline_marker_privacy
+  key=$(__lmline_project_markers_key)
+  [[ "$key" != *one* && "$key" != *"$PWD"* ]]
+  unset LMLINE_PROJECT_MARKERS_FILE
+  user_key=$(__lmline_project_markers_key)
+  [[ "$key" != "$user_key" ]]
+  rm rules/project_markers.tsv
+  [[ "$user_key" != "$(__lmline_project_markers_key)" ]]
+  LMLINE_DEFAULTS_DIR=$1/lmline/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
+  ( __lmline_resolve_data_file() { return 1; }; ! __lmline_project_markers_key >/dev/null )
+  ( __lmline_hash_stdin() { return 1; }; ! __lmline_project_markers_key >/dev/null )
+  ( __lmline_hash_stdin() { return 0; }; ! __lmline_project_markers_key >/dev/null )
+  ( LMLINE_PROJECT_MARKERS_FILE=$PWD/missing; ! __lmline_project_markers_key >/dev/null )
+  mkfifo fifo
+  ( LMLINE_PROJECT_MARKERS_FILE=$PWD/fifo; ! __lmline_project_markers_key >/dev/null )
+  ( LMLINE_INCLUDE_PROJECT_CONTEXT=off LMLINE_PROJECT_MARKERS_FILE=$PWD/missing
+    __lmline_resolve_data_file() { return 1; }
+    __lmline_hash_stdin() { return 1; }
+    [[ "$(__lmline_project_markers_key)" == disabled ]]
+  )
+  READLINE_LINE="# markers"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done
+  [[ -s one.ready ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first" ]]
+  printf "two\ttwo.marker\n" >list
+  [[ "$key" != "$(__lmline_project_markers_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  second=$__LMLINE_ASYNC_PID
+  [[ "$second" != "$first" && -s one.stopped && "$READLINE_LINE" == "# markers" ]]
+  for i in {1..200}; do [[ -s two.ready ]] && break; sleep 0.05; done
+  [[ -s two.ready ]]
+  printf "release\n" >two.gate
+  wait "$second"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo two" ]]
+  # An unavailable identity cannot reuse a pending request.
+  __lmline_project_markers_key() { return 1; }
+  READLINE_LINE="# markers"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first=$__LMLINE_ASYNC_PID
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" != "$first" ]]
+' _ "$repo_dir" || fail "bash project-marker content identity"
 # Replacing a list at the same path invalidates both pending and ready work.
 mkdir "$widget_tmp/suggested"
 mkdir "$widget_tmp/suggested/privacy-bin"

@@ -772,16 +772,40 @@ __lmline_collect_files() {
     sed -n '1,10000p' || true
 }
 
+__lmline_project_markers_file() {
+  __lmline_resolve_data_file project_markers \
+    "${LMLINE_PROJECT_MARKERS_FILE:-}" \
+    "$LMLINE_USER_RULES_DIR/project_markers.tsv" \
+    "$LMLINE_DEFAULTS_DIR/project_markers.tsv"
+}
+
+# Only the selected file's bytes matter; never pass its path to the digest.
+__lmline_project_markers_key() (
+  set -o pipefail
+  local file digest name
+  __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT || { printf disabled; return 0; }
+  file=$(__lmline_project_markers_file 2>/dev/null) || return 1
+  [[ -f "$file" && -r "$file" ]] || return 1
+  for name in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT; do
+    if [[ -v $name ]]; then
+      export -n -- "$name" 2>/dev/null || return 1
+    fi
+  done
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
+  [[ -n "$digest" ]] || return 1
+  printf '%s' "$digest"
+)
+
 __lmline_project_type() {
   local file line type marker result
   if [[ "${__LMLINE_PROJECT_TYPE_PWD:-}" == "$PWD" && -n "${__LMLINE_PROJECT_TYPE_CACHE+x}" ]]; then
     printf '%s\n' "$__LMLINE_PROJECT_TYPE_CACHE"
     return 0
   fi
-  file=$(__lmline_resolve_data_file project_markers \
-    "${LMLINE_PROJECT_MARKERS_FILE:-}" \
-    "$LMLINE_USER_RULES_DIR/project_markers.tsv" \
-    "$LMLINE_DEFAULTS_DIR/project_markers.tsv") || return 1
+  file=$(__lmline_project_markers_file) || return 1
   result=$(
     {
       while IFS= read -r line || [[ -n "$line" ]]; do
