@@ -1084,6 +1084,66 @@ LMLINE_TEST_CONTEXT_DIR="$widget_tmp/context-change" LMLINE_CONFIG_DIR="$widget_
   [[ "$READLINE_LINE" == "echo shell-on" && -s "$LMLINE_TEST_CONTEXT_DIR/on.finished" ]]
   [[ ! -e "$LMLINE_TEST_CONTEXT_DIR/off.finished" ]]
 ' _ "$repo_dir" || fail "bash async shell-local context identity"
+# Only nocasematch changes while each real async request is pending.
+mkdir "$widget_tmp/context-nocasematch"
+for value in FaLsE false; do
+  mkdir "$widget_tmp/context-nocasematch/$value"
+  mkfifo "$widget_tmp/context-nocasematch/$value/on.gate" "$widget_tmp/context-nocasematch/$value/off.gate"
+done
+LMLINE_TEST_CONTEXT_DIR="$widget_tmp/context-nocasematch" LMLINE_CONFIG_DIR="$widget_tmp/config-nocasematch" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-context" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
+  LMLINE_INCLUDE_PROJECT_CONTEXT=0
+  LMLINE_INCLUDE_CWD_CONTEXT=0
+  LMLINE_INCLUDE_GIT_CONTEXT=0
+  export -n LMLINE_INCLUDE_SHELL_CONTEXT
+  base=$LMLINE_TEST_CONTEXT_DIR
+  cleanup_nocasematch_probe() {
+    for value in FaLsE false; do
+      for name in off on; do
+        ( exec 3<>"$base/$value/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+      done
+    done
+    __lmline_async_cleanup
+  }
+  trap cleanup_nocasematch_probe EXIT
+  for value in FaLsE false; do
+    LMLINE_TEST_CONTEXT_DIR=$base/$value
+    LMLINE_INCLUDE_SHELL_CONTEXT=$value
+    shopt -u nocasematch
+    name=on; [ "$value" != false ] || name=off
+    __lmline_context_file "$LMLINE_TEST_CONTEXT_DIR/before.context" "# context" generate
+    if [ "$name" = on ]; then
+      __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT
+      grep -q "^## shell$" "$LMLINE_TEST_CONTEXT_DIR/before.context"
+    else
+      ! __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT
+      ! grep -q "^## shell$" "$LMLINE_TEST_CONTEXT_DIR/before.context"
+    fi
+    key=$(__lmline_request_key generate "# context")
+    [[ -n "$key" ]]
+    READLINE_LINE="# context"; READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    first=$__LMLINE_ASYNC_PID; first_key=$__LMLINE_ASYNC_KEY
+    [[ "$first" -gt 0 && -n "$first_key" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_CONTEXT_DIR/$name.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_CONTEXT_DIR/$name.ready" ]]
+    for option in -s -u; do
+      shopt "$option" nocasematch
+      __lmline_context_file "$LMLINE_TEST_CONTEXT_DIR/after.context" "# context" generate
+      cmp -s "$LMLINE_TEST_CONTEXT_DIR/before.context" "$LMLINE_TEST_CONTEXT_DIR/after.context"
+      [[ "$key" == "$(__lmline_request_key generate "# context")" ]]
+      if [ "$name" = off ]; then ! __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; fi
+      __lmline_generate_widget >/dev/null 2>&1
+      [[ "$__LMLINE_ASYNC_PID" == "$first" && "$__LMLINE_ASYNC_KEY" == "$first_key" && "$READLINE_LINE" == "# context" ]]
+      [[ ! -e "$LMLINE_TEST_CONTEXT_DIR/$name.stopped" && ! -e "$LMLINE_TEST_CONTEXT_DIR/$name.finished" ]]
+    done
+    printf "release\n" >"$LMLINE_TEST_CONTEXT_DIR/$name.gate"
+    wait "$first"
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$READLINE_LINE" == "echo shell-$name" && -s "$LMLINE_TEST_CONTEXT_DIR/$name.finished" ]]
+  done
+' _ "$repo_dir" || fail "bash nocasematch-independent context toggle"
 mkdir "$widget_tmp/engine-change"
 mkfifo "$widget_tmp/engine-change/engine-one.gate" "$widget_tmp/engine-change/engine-two.gate"
 cat >"$widget_tmp/engine-change/engine-one" <<'EOF'

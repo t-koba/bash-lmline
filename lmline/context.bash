@@ -43,10 +43,14 @@ __lmline_context_enabled() {
   else
     value=$default
   fi
-  case "$value" in
-    0|false|FALSE|off|OFF|no|NO) return 1 ;;
-    *) return 0 ;;
-  esac
+  # Unlike case/[[ == ]], exact test comparisons ignore Bash nocasematch.
+  if builtin test "$value" = 0 || builtin test "$value" = false ||
+     builtin test "$value" = FALSE || builtin test "$value" = off ||
+     builtin test "$value" = OFF || builtin test "$value" = no ||
+     builtin test "$value" = NO; then
+    return 1
+  fi
+  return 0
 }
 
 __lmline_collect_all_commands() {
