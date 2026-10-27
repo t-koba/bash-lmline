@@ -19,7 +19,7 @@ EOF
   mkdir "$zsh_tmp/hash-bin"
   for cmd in bash cksum cut; do ln -s "$(command -v "$cmd")" "$zsh_tmp/hash-bin/$cmd"; done
   mkdir "$zsh_tmp/fail-hash-bin"
-  for cmd in bash; do ln -s "$(command -v "$cmd")" "$zsh_tmp/fail-hash-bin/$cmd"; done
+  ln -s "$(command -v bash)" "$zsh_tmp/fail-hash-bin/bash"
   printf '#!/bin/sh\nprintf "bad digest\\n"\nexit 1\n' >"$zsh_tmp/fail-hash-bin/cksum"
   chmod +x "$zsh_tmp/fail-hash-bin/cksum"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-hash" zsh -efic '
