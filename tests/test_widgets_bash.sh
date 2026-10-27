@@ -54,6 +54,21 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
   starts=0
   __lmline_generate_async_widget input generate 0
   [[ $starts == 1 && -n "$__LMLINE_ASYNC_KEY" ]]
+  (
+    __lmline_request_key() { printf partial; return 1; }
+    __lmline_generate_async_widget input generate 0
+    [[ $starts == 2 && -z "$__LMLINE_ASYNC_KEY" ]]
+    __lmline_generate_async_widget input generate 0
+    [[ $starts == 3 && -z "$__LMLINE_ASYNC_KEY" ]]
+  )
+  (
+    LMLINE_INCLUDE_CWD_CONTEXT=1
+    pwd() { return 1; }
+    failed=$(__lmline_request_key generate input) && exit 1
+    [[ -z "$failed" ]]
+    LMLINE_INCLUDE_CWD_CONTEXT=0
+    [[ -n "$(__lmline_request_key generate input)" ]]
+  )
   export PATH="$2/fail-sort-bin:$PATH"
   command -v cksum >/dev/null
   ! __lmline_async_settings_key >/dev/null
@@ -855,6 +870,81 @@ LMLINE_TEST_MODEL_DIR="$widget_tmp/model-change" LMLINE_CONFIG_DIR="$widget_tmp/
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$READLINE_LINE" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
 ' _ "$repo_dir" || fail "bash async live model identity"
+# A rename changes physical context without changing the shell logical PWD.
+mkdir "$widget_tmp/cwd-change" "$widget_tmp/cwd-change/before"
+mkfifo "$widget_tmp/cwd-change/before.gate" "$widget_tmp/cwd-change/after.gate" "$widget_tmp/cwd-change/off.gate"
+cat >"$widget_tmp/engine-cwd" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+context=
+while (($#)); do
+  case $1 in --context-file) context=$2; shift 2 ;; *) shift ;; esac
+done
+if ! grep -q '^## cwd$' "$context"; then name=off
+elif grep -Fxq "$LMLINE_TEST_CWD_DIR/before" "$context"; then name=before
+elif grep -Fxq "$LMLINE_TEST_CWD_DIR/after" "$context"; then name=after
+else exit 98
+fi
+trap 'printf stopped >"$LMLINE_TEST_CWD_DIR/$name.stopped"; exit 143' TERM
+exec 3<>"$LMLINE_TEST_CWD_DIR/$name.gate"
+printf ready >"$LMLINE_TEST_CWD_DIR/$name.ready"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_CWD_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\techo cwd-%s\n' "$name"
+EOF
+chmod +x "$widget_tmp/engine-cwd"
+LMLINE_TEST_CWD_DIR="$widget_tmp/cwd-change" LMLINE_CONFIG_DIR="$widget_tmp/config-cwd" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-cwd" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  LMLINE_INCLUDE_GIT_CONTEXT=0
+  LMLINE_INCLUDE_PROJECT_CONTEXT=0
+  cleanup_cwd_probe() {
+    for name in before after off; do
+      ( exec 3<>"$LMLINE_TEST_CWD_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    __lmline_async_cleanup
+  }
+  trap cleanup_cwd_probe EXIT
+  cd "$LMLINE_TEST_CWD_DIR/before"
+  for enabled in 0 1; do
+    export -n LMLINE_INCLUDE_CWD_CONTEXT
+    LMLINE_INCLUDE_CWD_CONTEXT=$enabled
+    logical=$PWD
+    physical=$(pwd -P)
+    key=$(__lmline_request_key generate "# cwd")
+    [[ -n "$key" && "$key" != *"$logical"* && "$key" != *"$physical"* ]]
+    READLINE_LINE="# cwd"; READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    first_pid=$__LMLINE_ASYNC_PID
+    name=off; [[ "$enabled" == 0 ]] || name=before
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]]
+    mv "$LMLINE_TEST_CWD_DIR/before" "$LMLINE_TEST_CWD_DIR/after"
+    [[ "$PWD" == "$logical" && "$(pwd -P)" != "$physical" ]]
+    if [[ "$enabled" == 1 ]]; then
+      [[ "$key" != "$(__lmline_request_key generate "# cwd")" ]]
+    else
+      [[ "$key" == "$(__lmline_request_key generate "# cwd")" ]]
+    fi
+    __lmline_generate_widget >/dev/null 2>&1
+    second_pid=$__LMLINE_ASYNC_PID
+    [[ "$READLINE_LINE" == "# cwd" ]]
+    if [[ "$enabled" == 1 ]]; then
+      [[ "$second_pid" != "$first_pid" && -s "$LMLINE_TEST_CWD_DIR/before.stopped" ]]
+      [[ ! -e "$LMLINE_TEST_CWD_DIR/before.finished" ]]
+      ! kill -0 "$first_pid" 2>/dev/null
+      name=after
+    else
+      [[ "$second_pid" == "$first_pid" ]]
+    fi
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]]
+    printf "release\n" >"$LMLINE_TEST_CWD_DIR/$name.gate"
+    wait "$second_pid"
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$READLINE_LINE" == "echo cwd-$name" ]]
+    mv "$LMLINE_TEST_CWD_DIR/after" "$LMLINE_TEST_CWD_DIR/before"
+  done
+' _ "$repo_dir" || fail "bash async physical cwd identity"
 mkdir "$widget_tmp/context-change"
 mkfifo "$widget_tmp/context-change/off.gate" "$widget_tmp/context-change/on.gate"
 cat >"$widget_tmp/engine-context" <<'EOF'

@@ -22,6 +22,8 @@ EOF
   ln -s "$(command -v bash)" "$zsh_tmp/fail-hash-bin/bash"
   printf '#!/bin/sh\nprintf "bad digest\\n"\nexit 1\n' >"$zsh_tmp/fail-hash-bin/cksum"
   chmod +x "$zsh_tmp/fail-hash-bin/cksum"
+  mkdir "$zsh_tmp/fail-request"
+  printf 'source "%s/lmline/context.bash"\n__lmline_request_key() { printf partial; return 1; }\n' "$repo_dir" >"$zsh_tmp/fail-request/context.bash"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-hash" zsh -efic '
     source "$1/lmline/init.zsh"
     (
@@ -44,6 +46,11 @@ EOF
       [[ "$unset_key" != "$empty_key" && "$value_key" != "$newline_key" ]]
     )
     ( export PATH="$2/fail-hash-bin"; ! __lmline_zsh_settings_key >/dev/null )
+    (
+      LMLINE_DIR=$2/fail-request
+      failed=$(__lmline_zsh_request_key generate input 0) && exit 1
+      [[ -z "$failed" ]]
+    )
     __lmline_zsh_settings_key() { return 1; }
     __lmline_zsh_hint() { :; }
     __lmline_zsh_async_start() { rm -f "$4"; __LMLINE_ZSH_ASYNC_KEY=$5; __LMLINE_ZSH_ASYNC_PID=$$; (( ++starts )); }
@@ -667,6 +674,80 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
   ' _ "$repo_dir" || fail "zsh async live model identity"
+  # A rename changes physical context without changing the shell logical PWD.
+  mkdir "$zsh_tmp/cwd-change" "$zsh_tmp/cwd-change/before"
+  mkfifo "$zsh_tmp/cwd-change/before.gate" "$zsh_tmp/cwd-change/after.gate" "$zsh_tmp/cwd-change/off.gate"
+  cat >"$zsh_tmp/engine-cwd" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+context=
+while (($#)); do
+  case $1 in --context-file) context=$2; shift 2 ;; *) shift ;; esac
+done
+if ! grep -q '^## cwd$' "$context"; then name=off
+elif grep -Fxq "$LMLINE_TEST_CWD_DIR/before" "$context"; then name=before
+elif grep -Fxq "$LMLINE_TEST_CWD_DIR/after" "$context"; then name=after
+else exit 98
+fi
+trap 'printf stopped >"$LMLINE_TEST_CWD_DIR/$name.stopped"; exit 143' TERM
+exec 3<>"$LMLINE_TEST_CWD_DIR/$name.gate"
+printf ready >"$LMLINE_TEST_CWD_DIR/$name.ready"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_CWD_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\techo cwd-%s\n' "$name"
+EOF
+  chmod +x "$zsh_tmp/engine-cwd"
+  LMLINE_TEST_CWD_DIR="$zsh_tmp/cwd-change" LMLINE_CONFIG_DIR="$zsh_tmp/config-cwd" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$zsh_tmp/engine-cwd" zsh -efic '
+    source "$1/lmline/init.zsh"
+    LMLINE_INCLUDE_GIT_CONTEXT=0
+    LMLINE_INCLUDE_PROJECT_CONTEXT=0
+    cleanup_cwd_probe() {
+      for name in before after off; do
+        ( exec 3<>"$LMLINE_TEST_CWD_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+      done
+      __lmline_zsh_async_cleanup
+    }
+    trap cleanup_cwd_probe EXIT
+    cd "$LMLINE_TEST_CWD_DIR/before"
+    for enabled in 0 1; do
+      typeset -g +x LMLINE_INCLUDE_CWD_CONTEXT=$enabled
+      logical=$PWD
+      physical=$(pwd -P)
+      key=$(__lmline_zsh_request_key generate "# cwd" 5)
+      [[ -n "$key" && "$key" != *"$logical"* && "$key" != *"$physical"* ]]
+      BUFFER="# cwd"; CURSOR=${#BUFFER}
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      first_pid=$__LMLINE_ZSH_ASYNC_PID
+      name=off; [[ "$enabled" == 0 ]] || name=before
+      for i in {1..200}; do [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]] && break; sleep 0.05; done
+      [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]]
+      mv "$LMLINE_TEST_CWD_DIR/before" "$LMLINE_TEST_CWD_DIR/after"
+      [[ "$PWD" == "$logical" && "$(pwd -P)" != "$physical" ]]
+      if [[ "$enabled" == 1 ]]; then
+        [[ "$key" != "$(__lmline_zsh_request_key generate "# cwd" 5)" ]]
+      else
+        [[ "$key" == "$(__lmline_zsh_request_key generate "# cwd" 5)" ]]
+      fi
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      second_pid=$__LMLINE_ZSH_ASYNC_PID
+      [[ "$BUFFER" == "# cwd" ]]
+      if [[ "$enabled" == 1 ]]; then
+        [[ "$second_pid" != "$first_pid" && -s "$LMLINE_TEST_CWD_DIR/before.stopped" ]]
+        [[ ! -e "$LMLINE_TEST_CWD_DIR/before.finished" ]]
+        ! kill -0 "$first_pid" 2>/dev/null
+        name=after
+      else
+        [[ "$second_pid" == "$first_pid" ]]
+      fi
+      for i in {1..200}; do [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]] && break; sleep 0.05; done
+      [[ -s "$LMLINE_TEST_CWD_DIR/$name.ready" ]]
+      printf "release\n" >"$LMLINE_TEST_CWD_DIR/$name.gate"
+      wait "$second_pid"
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      [[ "$BUFFER" == "echo cwd-$name" ]]
+      mv "$LMLINE_TEST_CWD_DIR/after" "$LMLINE_TEST_CWD_DIR/before"
+    done
+  ' _ "$repo_dir" || fail "zsh async physical cwd identity"
   # Shell-local engine changes must cancel pending work, not reuse its result.
   mkdir "$zsh_tmp/engine-change"
   mkfifo "$zsh_tmp/engine-change/engine-one.gate" "$zsh_tmp/engine-change/engine-two.gate"

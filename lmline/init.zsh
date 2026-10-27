@@ -502,17 +502,36 @@ __lmline_zsh_path_key() {
 # caller function-name list supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
 __lmline_zsh_request_key() {
-  local mode=$1 line=$2 point=$3 caller_functions settings_key suggested_key project_key git_key path_key
+  local mode=$1 line=$2 point=$3 caller_functions settings_key suggested_key project_key git_key path_key key declaration
+  setopt localoptions pipefail
   settings_key=$(__lmline_zsh_settings_key) && [[ -n "$settings_key" ]] || return 1
   suggested_key=$(__lmline_zsh_suggested_commands_key) && [[ -n "$suggested_key" ]] || return 1
   project_key=$(__lmline_zsh_project_markers_key) && [[ -n "$project_key" ]] || return 1
   git_key=$(__lmline_zsh_git_context_key) && [[ -n "$git_key" ]] || return 1
   path_key=$(__lmline_zsh_path_key) && [[ -n "$path_key" ]] || return 1
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
-  LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
-    source "$1/context.bash"
-    function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin)
-    printf "%s:%s:%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5" "$7" "$8"
+  {
+    # Bash may reset inherited PWD after a rename; retain the caller logical
+    # input privately, independently of the physical-CWD fingerprint.
+    printf 'PWD\0%s\0' "$PWD"
+    key=LMLINE_INCLUDE_CWD_CONTEXT
+    if [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]]; then
+      declaration=$(typeset -p "$key" 2>/dev/null) || return 1
+      if [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]]; then
+        printf '%s\0%s\0' "$key" "${(P)key}"
+      fi
+    fi
+  } | LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
+    set -o pipefail
+    unset LMLINE_INCLUDE_CWD_CONTEXT
+    while IFS= read -r -d "" key && IFS= read -r -d "" value; do
+      printf -v "$key" "%s" "$value"
+    done
+    source "$1/context.bash" || exit 1
+    function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin) || exit 1
+    request_key=$(__lmline_request_key "$2" "$3") || exit 1
+    [[ -n "$request_key" && -n "$function_key" ]] || exit 1
+    printf "%s:%s:%s:%s:%s:%s\n" "$request_key" "$function_key" "$4" "$5" "$7" "$8"
   ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key:$suggested_key:$project_key:$git_key:$path_key"
 }
 

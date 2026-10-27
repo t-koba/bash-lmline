@@ -603,9 +603,9 @@ __lmline_complete_generation() {
 }
 
 __lmline_generate_async_widget() {
-  local original=$1 mode=$2 point=$3 async_file current_key async_status_file function_names_key settings_key frontend_key context_key suggested_key project_key git_key path_key
-  if function_names_key=$(__lmline_async_function_names_key) && settings_key=$(__lmline_async_settings_key) && [[ -n "$settings_key" ]] && frontend_key=$(__lmline_async_frontend_key "$mode") && context_key=$(__lmline_context_settings_key) && [[ -n "$context_key" ]] && suggested_key=$(__lmline_suggested_commands_key) && [[ -n "$suggested_key" ]] && project_key=$(__lmline_project_markers_key) && [[ -n "$project_key" ]] && git_key=$(__lmline_git_context_key) && [[ -n "$git_key" ]] && path_key=$(__lmline_path_key) && [[ -n "$path_key" ]]; then
-    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}:$settings_key:$frontend_key:$context_key:$suggested_key:$project_key:$git_key:$path_key"
+  local original=$1 mode=$2 point=$3 async_file current_key async_status_file request_key function_names_key settings_key frontend_key context_key suggested_key project_key git_key path_key
+  if function_names_key=$(__lmline_async_function_names_key) && settings_key=$(__lmline_async_settings_key) && [[ -n "$settings_key" ]] && frontend_key=$(__lmline_async_frontend_key "$mode") && context_key=$(__lmline_context_settings_key) && [[ -n "$context_key" ]] && suggested_key=$(__lmline_suggested_commands_key) && [[ -n "$suggested_key" ]] && project_key=$(__lmline_project_markers_key) && [[ -n "$project_key" ]] && git_key=$(__lmline_git_context_key) && [[ -n "$git_key" ]] && path_key=$(__lmline_path_key) && [[ -n "$path_key" ]] && request_key=$(__lmline_request_key "$mode" "$original") && [[ -n "$request_key" ]]; then
+    current_key="$request_key:$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}:$settings_key:$frontend_key:$context_key:$suggested_key:$project_key:$git_key:$path_key"
   else
     current_key=
   fi

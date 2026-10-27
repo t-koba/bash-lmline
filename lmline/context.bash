@@ -1267,15 +1267,23 @@ __lmline_path_key() (
   printf '%s' "$digest"
 )
 
-__lmline_request_key() {
-  local mode=$1
-  local line=$2
+__lmline_request_key() (
+  set -o pipefail
+  local mode=$1 line=$2 physical_cwd_key=
+  # Match the rendered pwd -P bytes without exposing the path in the key.
+  if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
+    physical_cwd_key=$(pwd -P 2>/dev/null | __lmline_hash_stdin) || return 1
+    [[ -n "$physical_cwd_key" ]] || return 1
+  fi
   {
     printf 'prompt_version=%s\n' "${LMLINE_PROMPT_VERSION:-3}"
     printf 'mode=%s\n' "$mode"
     printf 'line=%s\n' "$line"
     printf 'pwd=%s\n' "$PWD"
+    if [[ -n "$physical_cwd_key" ]]; then
+      printf 'physical_cwd=%s\n' "$physical_cwd_key"
+    fi
     printf 'bash=%s\n' "${BASH_VERSION-}"
     printf 'ostype=%s\n' "${OSTYPE-}"
   } | __lmline_hash_stdin
-}
+)
