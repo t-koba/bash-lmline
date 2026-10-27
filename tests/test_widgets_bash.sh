@@ -391,6 +391,90 @@ LMLINE_TEST_CURSOR_DIR="$widget_tmp/cursor" LMLINE_CONFIG_DIR="$widget_tmp/confi
   [[ "$READLINE_LINE" == "echo point-3" ]]
   [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.finished" ]]
 ' _ "$repo_dir" || fail "async cursor identity"
+# Replacing a list at the same path invalidates both pending and ready work.
+mkdir "$widget_tmp/suggested"
+mkdir "$widget_tmp/suggested/privacy-bin"
+cat >"$widget_tmp/suggested/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+if (($#)) || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
+  printf leaked >"$LMLINE_TEST_SUGGESTED_DIR/leak"
+fi
+printf checked >"$LMLINE_TEST_SUGGESTED_DIR/checked"
+exec cksum
+EOF
+chmod +x "$widget_tmp/suggested/privacy-bin/sha256sum"
+mkfifo "$widget_tmp/suggested/printf.gate" "$widget_tmp/suggested/sleep.gate"
+printf 'printf\n' >"$widget_tmp/suggested/list"
+cat >"$widget_tmp/engine-suggested" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+if grep -qx printf "$context"; then command_name=printf; else grep -qx sleep "$context"; command_name=sleep; fi
+trap 'printf stopped >"$LMLINE_TEST_SUGGESTED_DIR/$command_name.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_SUGGESTED_DIR/$command_name.ready"
+exec 3<>"$LMLINE_TEST_SUGGESTED_DIR/$command_name.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$command_name"
+EOF
+chmod +x "$widget_tmp/engine-suggested"
+LMLINE_TEST_SUGGESTED_DIR="$widget_tmp/suggested" LMLINE_CONFIG_DIR="$widget_tmp/config-suggested" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-suggested" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/list
+  export LMLINE_SUGGESTED_COMMANDS_FILE
+  cleanup_suggested_probe() {
+    for n in printf sleep; do ( exec 3<>"$LMLINE_TEST_SUGGESTED_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+    __lmline_async_cleanup
+  }
+  trap cleanup_suggested_probe EXIT
+  lmline_privacy_probe() { : private_function_body; }
+  export -f lmline_privacy_probe
+  ( PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"; __lmline_suggested_commands_key >/dev/null )
+  [[ -s "$LMLINE_TEST_SUGGESTED_DIR/checked" && ! -e "$LMLINE_TEST_SUGGESTED_DIR/leak" ]]
+  unset -f lmline_privacy_probe
+  key=$(__lmline_suggested_commands_key)
+  [[ "$key" != *printf* && "$key" != *"$LMLINE_SUGGESTED_COMMANDS_FILE"* ]]
+  mkfifo "$LMLINE_TEST_SUGGESTED_DIR/list-fifo"
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/list-fifo
+  printf "find\n" >"$LMLINE_SUGGESTED_COMMANDS_FILE" & fifo_writer=$!
+  if __lmline_suggested_commands_key >/dev/null 2>&1; then
+    kill "$fifo_writer" 2>/dev/null || true
+    wait "$fifo_writer" 2>/dev/null || true
+    exit 1
+  fi
+  kill "$fifo_writer" 2>/dev/null || true
+  wait "$fifo_writer" 2>/dev/null || true
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/list
+  READLINE_LINE="# list"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first_pid=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]]
+  printf "sleep \n" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+  [[ "$key" != "$(__lmline_suggested_commands_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  second_pid=$__LMLINE_ASYNC_PID
+  [[ "$first_pid" != "$second_pid" && "$READLINE_LINE" == "# list" && -s "$LMLINE_TEST_SUGGESTED_DIR/printf.stopped" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/sleep.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_SUGGESTED_DIR/sleep.ready" ]]
+  printf "release\n" >"$LMLINE_TEST_SUGGESTED_DIR/sleep.gate"
+  wait "$second_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo sleep" ]]
+  READLINE_LINE="# list"; READLINE_POINT=${#READLINE_LINE}
+  printf "printf\n" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" != "$second_pid" && "$READLINE_LINE" == "# list" ]]
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
+  ! __lmline_suggested_commands_key >/dev/null
+  third_pid=$__LMLINE_ASYNC_PID
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" != "$third_pid" && "$READLINE_LINE" == "# list" ]]
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/list
+  ( __lmline_hash_stdin() { return 1; }; ! __lmline_suggested_commands_key >/dev/null )
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
+  LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
+  [[ "$(__lmline_suggested_commands_key)" == disabled ]]
+' _ "$repo_dir" || fail "bash suggested-command content identity"
 mkdir "$widget_tmp/settings-change"
 mkdir "$widget_tmp/settings-change/config"
 printf 'export LMLINE_CANDIDATE_COUNT=1\n' >"$widget_tmp/settings-change/config/settings.bash"

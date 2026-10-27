@@ -215,6 +215,82 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo point-3" ]]
   ' _ "$repo_dir" || fail "zsh async cursor identity"
+  # The same unexported resolver settings must select the bridge list.
+  mkdir "$zsh_tmp/suggested" "$zsh_tmp/suggested/rules"
+  mkdir "$zsh_tmp/suggested/privacy-bin"
+  cat >"$zsh_tmp/suggested/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+if (($#)) || env | grep -Eq '^(LMLINE_USER_RULES_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
+  printf leaked >"$LMLINE_TEST_SUGGESTED_DIR/leak"
+fi
+printf checked >"$LMLINE_TEST_SUGGESTED_DIR/checked"
+exec cksum
+EOF
+  chmod +x "$zsh_tmp/suggested/privacy-bin/sha256sum"
+  mkfifo "$zsh_tmp/suggested/printf.gate" "$zsh_tmp/suggested/sleep.gate"
+  printf 'printf\n' >"$zsh_tmp/suggested/rules/suggested_commands.txt"
+  mkdir "$zsh_tmp/suggested/fail-bin"
+  printf '#!/bin/sh\nprintf "bad digest\\n"\nexit 1\n' >"$zsh_tmp/suggested/fail-bin/sha256sum"
+  chmod +x "$zsh_tmp/suggested/fail-bin/sha256sum"
+  cat >"$zsh_tmp/engine-suggested" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+if grep -qx printf "$context"; then command_name=printf; else grep -qx sleep "$context"; command_name=sleep; fi
+trap 'printf stopped >"$LMLINE_TEST_SUGGESTED_DIR/$command_name.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_SUGGESTED_DIR/$command_name.ready"
+exec 3<>"$LMLINE_TEST_SUGGESTED_DIR/$command_name.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$command_name"
+EOF
+  chmod +x "$zsh_tmp/engine-suggested"
+  LMLINE_TEST_SUGGESTED_DIR="$zsh_tmp/suggested" LMLINE_CONFIG_DIR="$zsh_tmp/config-suggested" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-suggested" zsh -efic '
+    source "$1/lmline/init.zsh"
+    typeset -g LMLINE_USER_RULES_DIR=$LMLINE_TEST_SUGGESTED_DIR/rules
+    unset LMLINE_SUGGESTED_COMMANDS_FILE
+    cleanup_suggested_probe() {
+      for n in printf sleep; do ( exec 3<>"$LMLINE_TEST_SUGGESTED_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+      __lmline_zsh_async_cleanup
+    }
+    trap cleanup_suggested_probe EXIT
+    typeset +x LMLINE_USER_RULES_DIR
+    ( PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"; __lmline_zsh_suggested_commands_key >/dev/null )
+    [[ -s "$LMLINE_TEST_SUGGESTED_DIR/checked" && ! -e "$LMLINE_TEST_SUGGESTED_DIR/leak" ]]
+    key=$(__lmline_zsh_suggested_commands_key)
+    [[ "$key" != *printf* && "$key" != *"$LMLINE_USER_RULES_DIR"* ]]
+    ( setopt nounset; __lmline_zsh_suggested_commands_key ) >"$LMLINE_TEST_SUGGESTED_DIR/nounset.out" 2>"$LMLINE_TEST_SUGGESTED_DIR/nounset.err"
+    [[ -s "$LMLINE_TEST_SUGGESTED_DIR/nounset.out" && ! -s "$LMLINE_TEST_SUGGESTED_DIR/nounset.err" ]]
+    BUFFER="# list"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first_pid=$__LMLINE_ZSH_ASYNC_PID
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]]
+    printf "sleep \n" >"$LMLINE_USER_RULES_DIR/suggested_commands.txt"
+    [[ "$key" != "$(__lmline_zsh_suggested_commands_key)" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second_pid=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$first_pid" != "$second_pid" && "$BUFFER" == "# list" && -s "$LMLINE_TEST_SUGGESTED_DIR/printf.stopped" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/sleep.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_SUGGESTED_DIR/sleep.ready" ]]
+    printf "release\n" >"$LMLINE_TEST_SUGGESTED_DIR/sleep.gate"
+    wait "$second_pid"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo sleep" ]]
+    BUFFER="# list"; CURSOR=${#BUFFER}
+    printf "printf\n" >"$LMLINE_USER_RULES_DIR/suggested_commands.txt"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$second_pid" && "$BUFFER" == "# list" ]]
+    typeset -g LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
+    ! __lmline_zsh_suggested_commands_key >/dev/null
+    third_pid=$__LMLINE_ZSH_ASYNC_PID
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$third_pid" && "$BUFFER" == "# list" ]]
+    unset LMLINE_SUGGESTED_COMMANDS_FILE
+    ( PATH="$LMLINE_TEST_SUGGESTED_DIR/fail-bin:$PATH"; ! __lmline_zsh_suggested_commands_key >/dev/null )
+    typeset -g LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
+    typeset -g LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
+    [[ "$(__lmline_zsh_suggested_commands_key)" == disabled ]]
+  ' _ "$repo_dir" || fail "zsh suggested-command content identity"
   mkdir "$zsh_tmp/settings-change"
   mkdir "$zsh_tmp/settings-change/config"
   printf 'export LMLINE_CANDIDATE_COUNT=1\n' >"$zsh_tmp/settings-change/config/settings.bash"

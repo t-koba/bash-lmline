@@ -424,18 +424,41 @@ __lmline_zsh_settings_key() {
   '
 }
 
+# Stream only the resolver inputs, using the bridge's global-scalar selection.
+# The Bash child removes inherited values before accepting the framed settings.
+__lmline_zsh_suggested_commands_key() {
+  local key declaration
+  setopt localoptions pipefail
+  {
+    for key in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS; do
+      [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]] || continue
+      declaration=$(typeset -p "$key" 2>/dev/null) || continue
+      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
+      printf '%s\0%s\0' "$key" "${(P)key}"
+    done
+  } | bash -p -c '
+    unset LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS
+    while IFS= read -r -d "" key && IFS= read -r -d "" value; do
+      printf -v "$key" "%s" "$value"
+    done
+    source "$1/context.bash" || exit 1
+    __lmline_suggested_commands_key
+  ' _ "$LMLINE_DIR"
+}
+
 # Names-only caller function identity for async request keys. Hashes the same
 # caller function-name list supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
 __lmline_zsh_request_key() {
-  local mode=$1 line=$2 point=$3 caller_functions settings_key
+  local mode=$1 line=$2 point=$3 caller_functions settings_key suggested_key
   settings_key=$(__lmline_zsh_settings_key) && [[ -n "$settings_key" ]] || return 1
+  suggested_key=$(__lmline_zsh_suggested_commands_key) && [[ -n "$suggested_key" ]] || return 1
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
     function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin)
     printf "%s:%s:%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5" "$7" "$8"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key:$suggested_key"
 }
 
 __lmline_zsh_load_candidates_from_file() {

@@ -61,13 +61,39 @@ __lmline_collect_all_commands() {
     sort -u || true
 }
 
+__lmline_suggested_commands_file() {
+  __lmline_resolve_data_file suggested_commands \
+    "${LMLINE_SUGGESTED_COMMANDS_FILE:-}" \
+    "$LMLINE_USER_RULES_DIR/suggested_commands.txt" \
+    "$LMLINE_DEFAULTS_DIR/suggested_commands.txt"
+}
+
+# Fingerprint bytes, not metadata or rendered context. Keep the path out of
+# hashing arguments/output, stream file bytes on stdin, and exclude function bodies.
+__lmline_suggested_commands_key() (
+  set -o pipefail
+  local file digest name
+  __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || { printf disabled; return 0; }
+  file=$(__lmline_suggested_commands_file 2>/dev/null) || return 1
+  # Widget identity is computed synchronously; never open a FIFO/device here.
+  [[ -f "$file" && -r "$file" ]] || return 1
+  for name in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS; do
+    if [[ -v $name ]]; then
+      export -n -- "$name" 2>/dev/null || return 1
+    fi
+  done
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
+  [[ -n "$digest" ]] || return 1
+  printf '%s' "$digest"
+)
+
 __lmline_collect_suggested_commands() {
   local c file commands
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || return 0
-  file=$(__lmline_resolve_data_file suggested_commands \
-    "${LMLINE_SUGGESTED_COMMANDS_FILE:-}" \
-    "$LMLINE_USER_RULES_DIR/suggested_commands.txt" \
-    "$LMLINE_DEFAULTS_DIR/suggested_commands.txt") || return 1
+  file=$(__lmline_suggested_commands_file) || return 1
   if [[ "${__LMLINE_SUGGESTED_COMMANDS_FILE_CACHE:-}" == "$file" ]]; then
     printf '%s\n' "$__LMLINE_SUGGESTED_COMMANDS_CACHE"
     return 0
