@@ -344,6 +344,66 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
   ' _ "$repo_dir" || fail "zsh project-marker content identity"
+  # Git root and branch, but not working-tree status, determine pending identity.
+  mkdir "$zsh_tmp/git-probe" "$zsh_tmp/git-probe/repo"
+  git -C "$zsh_tmp/git-probe/repo" init -q
+  git -C "$zsh_tmp/git-probe/repo" symbolic-ref HEAD refs/heads/one
+  mkfifo "$zsh_tmp/git-probe/one.gate" "$zsh_tmp/git-probe/two.gate"
+  cat >"$zsh_tmp/engine-git" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+if grep -qx '| branch=one' "$context"; then name=one; else grep -qx '| branch=two' "$context"; name=two; fi
+trap 'printf stopped >"$LMLINE_TEST_GIT_DIR/$name.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_GIT_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_GIT_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$name"
+EOF
+  chmod +x "$zsh_tmp/engine-git"
+  LMLINE_TEST_GIT_DIR="$zsh_tmp/git-probe" LMLINE_CONFIG_DIR="$zsh_tmp/config-git" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-git" zsh -efic '
+    source "$1/lmline/init.zsh"
+    cd "$LMLINE_TEST_GIT_DIR/repo"
+    cleanup_git_probe() {
+      for n in one two; do ( exec 3<>"$LMLINE_TEST_GIT_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+      __lmline_zsh_async_cleanup
+    }
+    trap cleanup_git_probe EXIT
+    typeset -g LMLINE_INCLUDE_GIT_CONTEXT=off
+    typeset +x LMLINE_INCLUDE_GIT_CONTEXT
+    [[ "$(__lmline_zsh_git_context_key)" == disabled ]]
+    typeset -g LMLINE_INCLUDE_GIT_CONTEXT=1
+    ( cd "$LMLINE_TEST_GIT_DIR"; [[ "$(__lmline_zsh_git_context_key)" == absent ]] )
+    key=$(__lmline_zsh_git_context_key)
+    [[ "$key" != *one* && "$key" != *"$PWD"* ]]
+    touch untracked
+    [[ "$key" == "$(__lmline_zsh_git_context_key)" ]]
+    BUFFER="# git"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first=$__LMLINE_ZSH_ASYNC_PID
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_GIT_DIR/one.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_GIT_DIR/one.ready" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first" ]]
+    git branch -m two
+    [[ "$key" != "$(__lmline_zsh_git_context_key)" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second" != "$first" && -s "$LMLINE_TEST_GIT_DIR/one.stopped" && "$BUFFER" == "# git" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_GIT_DIR/two.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_GIT_DIR/two.ready" ]]
+    printf "release\n" >"$LMLINE_TEST_GIT_DIR/two.gate"
+    wait "$second"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo two" ]]
+    __lmline_zsh_git_context_key() { return 1; }
+    BUFFER="# git"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first=$__LMLINE_ZSH_ASYNC_PID
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
+  ' _ "$repo_dir" || fail "zsh git context identity"
+
   # The same unexported resolver settings must select the bridge list.
   mkdir "$zsh_tmp/suggested" "$zsh_tmp/suggested/rules"
   mkdir "$zsh_tmp/suggested/privacy-bin"

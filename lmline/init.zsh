@@ -467,6 +467,25 @@ __lmline_zsh_project_markers_key() {
   ' _ "$LMLINE_DIR"
 }
 
+# Select the Git toggle exactly as the context bridge selects global scalars.
+__lmline_zsh_git_context_key() {
+  local key=LMLINE_INCLUDE_GIT_CONTEXT declaration
+  setopt localoptions pipefail
+  {
+    if [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]]; then
+      declaration=$(typeset -p "$key" 2>/dev/null) || return 1
+      if [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]]; then
+        printf '%s\0' "${(P)key}"
+      fi
+    fi
+  } | bash -p -c '
+    unset LMLINE_INCLUDE_GIT_CONTEXT
+    if IFS= read -r -d "" value; then LMLINE_INCLUDE_GIT_CONTEXT=$value; fi
+    source "$1/context.bash" || exit 1
+    __lmline_git_context_key
+  ' _ "$LMLINE_DIR"
+}
+
 # Frame PATH in the caller shell and stream it to the shared hash helper.
 __lmline_zsh_path_key() {
   local digest
@@ -483,17 +502,18 @@ __lmline_zsh_path_key() {
 # caller function-name list supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
 __lmline_zsh_request_key() {
-  local mode=$1 line=$2 point=$3 caller_functions settings_key suggested_key project_key path_key
+  local mode=$1 line=$2 point=$3 caller_functions settings_key suggested_key project_key git_key path_key
   settings_key=$(__lmline_zsh_settings_key) && [[ -n "$settings_key" ]] || return 1
   suggested_key=$(__lmline_zsh_suggested_commands_key) && [[ -n "$suggested_key" ]] || return 1
   project_key=$(__lmline_zsh_project_markers_key) && [[ -n "$project_key" ]] || return 1
+  git_key=$(__lmline_zsh_git_context_key) && [[ -n "$git_key" ]] || return 1
   path_key=$(__lmline_zsh_path_key) && [[ -n "$path_key" ]] || return 1
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
     function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin)
     printf "%s:%s:%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5" "$7" "$8"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key:$suggested_key:$project_key:$path_key"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key:$suggested_key:$project_key:$git_key:$path_key"
 }
 
 __lmline_zsh_load_candidates_from_file() {

@@ -486,6 +486,92 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$__LMLINE_ASYNC_PID" != "$first" ]]
 ' _ "$repo_dir" || fail "bash project-marker content identity"
+# Git root and branch, but not working-tree status, determine pending identity.
+mkdir "$widget_tmp/git-probe" "$widget_tmp/git-probe/repo" "$widget_tmp/git-probe/privacy-bin"
+cat >"$widget_tmp/git-probe/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+if (($#)) || env | grep -Eq '^(__lmline_git_root|__lmline_git_branch|BASH_FUNC_lmline_git_privacy%%)='; then
+  printf leaked >"$LMLINE_TEST_GIT_DIR/leak"
+fi
+printf checked >"$LMLINE_TEST_GIT_DIR/checked"
+exec cksum
+EOF
+chmod +x "$widget_tmp/git-probe/privacy-bin/sha256sum"
+git -C "$widget_tmp/git-probe/repo" init -q
+git -C "$widget_tmp/git-probe/repo" symbolic-ref HEAD refs/heads/one
+mkfifo "$widget_tmp/git-probe/one.gate" "$widget_tmp/git-probe/two.gate"
+cat >"$widget_tmp/engine-git" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+if grep -qx '| branch=one' "$context"; then name=one; else grep -qx '| branch=two' "$context"; name=two; fi
+trap 'printf stopped >"$LMLINE_TEST_GIT_DIR/$name.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_GIT_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_GIT_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$name"
+EOF
+chmod +x "$widget_tmp/engine-git"
+LMLINE_TEST_GIT_DIR="$widget_tmp/git-probe" LMLINE_CONFIG_DIR="$widget_tmp/config-git" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-git" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  cd "$LMLINE_TEST_GIT_DIR/repo"
+  cleanup_git_probe() {
+    for n in one two; do ( exec 3<>"$LMLINE_TEST_GIT_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+    __lmline_async_cleanup
+  }
+  trap cleanup_git_probe EXIT
+  ( LMLINE_INCLUDE_GIT_CONTEXT=off
+    git() { printf called >"$LMLINE_TEST_GIT_DIR/git-called"; return 1; }
+    [[ "$(__lmline_git_context_key)" == disabled && ! -e "$LMLINE_TEST_GIT_DIR/git-called" ]]
+  )
+  ( PATH=/nonexistent; [[ "$(__lmline_git_context_key)" == absent ]] )
+  ( cd "$LMLINE_TEST_GIT_DIR"; [[ "$(__lmline_git_context_key)" == absent ]] )
+  ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 0;; *) return 1;; esac; }; ! __lmline_git_context_key >/dev/null )
+  ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 0;; "rev-parse --show-toplevel") printf root;; *) return 1;; esac; }; ! __lmline_git_context_key >/dev/null )
+  ( __lmline_hash_stdin() { return 1; }; ! __lmline_git_context_key >/dev/null )
+  ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 0;; "rev-parse --show-toplevel") printf root;; "branch --show-current") return 0;; esac; }; [[ -n "$(__lmline_git_context_key)" ]] )
+  ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 1;; *) return 1;; esac; }; [[ "$(__lmline_git_context_key)" == absent ]] )
+  ( __lmline_hash_stdin() { return 0; }; ! __lmline_git_context_key >/dev/null )
+  ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 0;; "rev-parse --show-toplevel") printf "%s" "$test_root";; "branch --show-current") printf "%s" "$test_branch";; esac; }
+    test_root=a; test_branch=bc; framed=$(__lmline_git_context_key)
+    test_root=b; test_branch=bc; [[ "$framed" != "$(__lmline_git_context_key)" ]]
+    test_root=ab; test_branch=c; [[ "$framed" != "$(__lmline_git_context_key)" ]]
+  )
+  ( export __lmline_git_root=old __lmline_git_branch=old
+    lmline_git_privacy() { :; }; export -f lmline_git_privacy
+    PATH="$LMLINE_TEST_GIT_DIR/privacy-bin:$PATH"; __lmline_git_context_key >/dev/null
+    [[ -s "$LMLINE_TEST_GIT_DIR/checked" && ! -e "$LMLINE_TEST_GIT_DIR/leak" ]]
+  )
+  key=$(__lmline_git_context_key)
+  [[ "$key" != *one* && "$key" != *"$PWD"* ]]
+  touch untracked
+  [[ "$key" == "$(__lmline_git_context_key)" ]]
+  READLINE_LINE="# git"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_GIT_DIR/one.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_GIT_DIR/one.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first" ]]
+  git branch -m two
+  [[ "$key" != "$(__lmline_git_context_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  second=$__LMLINE_ASYNC_PID
+  [[ "$second" != "$first" && -s "$LMLINE_TEST_GIT_DIR/one.stopped" && "$READLINE_LINE" == "# git" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_GIT_DIR/two.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_GIT_DIR/two.ready" ]]
+  printf "release\n" >"$LMLINE_TEST_GIT_DIR/two.gate"
+  wait "$second"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo two" ]]
+  __lmline_git_context_key() { return 1; }
+  READLINE_LINE="# git"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first=$__LMLINE_ASYNC_PID
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" != "$first" ]]
+' _ "$repo_dir" || fail "bash git context identity"
+
 # Replacing a list at the same path invalidates both pending and ready work.
 mkdir "$widget_tmp/suggested"
 mkdir "$widget_tmp/suggested/privacy-bin"

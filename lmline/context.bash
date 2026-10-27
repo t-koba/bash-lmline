@@ -90,6 +90,27 @@ __lmline_suggested_commands_key() (
   printf '%s' "$digest"
 )
 
+# Fingerprint exactly the Git fields rendered by the initial context. A missing
+# block is stable; once its gate succeeds, query and digest failures fail closed.
+__lmline_git_context_key() (
+  set -o pipefail
+  unset __lmline_git_root __lmline_git_branch || return 1
+  local __lmline_git_root __lmline_git_branch digest name
+  __lmline_context_enabled LMLINE_INCLUDE_GIT_CONTEXT || { printf disabled; return 0; }
+  if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf absent
+    return 0
+  fi
+  __lmline_git_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  __lmline_git_branch=$(git branch --show-current 2>/dev/null) || return 1
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  digest=$(printf '%s\0%s\0' "$__lmline_git_root" "$__lmline_git_branch" | __lmline_hash_stdin 2>/dev/null) || return 1
+  [[ -n "$digest" ]] || return 1
+  printf 'git:%s' "$digest"
+)
+
 __lmline_collect_suggested_commands() {
   local c file commands
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || return 0
