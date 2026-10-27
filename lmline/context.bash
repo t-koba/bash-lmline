@@ -68,11 +68,12 @@ __lmline_suggested_commands_file() {
     "$LMLINE_DEFAULTS_DIR/suggested_commands.txt"
 }
 
-# Fingerprint bytes, not metadata or rendered context. Keep the path out of
-# hashing arguments/output, stream file bytes on stdin, and exclude function bodies.
+# Fingerprint file bytes and freshly collected command membership, not metadata.
+# Stream private inputs on stdin, keep paths out of hashing arguments/output,
+# and exclude function bodies.
 __lmline_suggested_commands_key() (
   set -o pipefail
-  local file digest name
+  local file digest membership_digest name
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || { printf disabled; return 0; }
   file=$(__lmline_suggested_commands_file 2>/dev/null) || return 1
   # Widget identity is computed synchronously; never open a FIFO/device here.
@@ -87,7 +88,14 @@ __lmline_suggested_commands_key() (
   done < <(compgen -A function)
   digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
   [[ -n "$digest" ]] || return 1
-  printf '%s' "$digest"
+  # The async background worker does not expand caller aliases. Match that
+  # visibility only in this private key-helper subshell; preserve rendering.
+  shopt -u expand_aliases || return 1
+  # The renderer's path-only cache cannot establish availability freshness.
+  unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE || return 1
+  membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+  [[ -n "$membership_digest" ]] || return 1
+  printf '%s:%s' "$digest" "$membership_digest"
 )
 
 # Fingerprint exactly the Git fields rendered by the initial context. A missing
@@ -112,7 +120,7 @@ __lmline_git_context_key() (
 )
 
 __lmline_collect_suggested_commands() {
-  local c file commands
+  local c file commands collect_status=0
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || return 0
   file=$(__lmline_suggested_commands_file) || return 1
   if [[ "${__LMLINE_SUGGESTED_COMMANDS_FILE_CACHE:-}" == "$file" ]]; then
@@ -121,9 +129,10 @@ __lmline_collect_suggested_commands() {
   fi
   commands=$(
     while IFS= read -r c; do
-      command -v "$c" >/dev/null 2>&1 && printf '%s\n' "$c"
+      if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; fi
     done < <(__lmline_read_list_file "$file") | sort -u
-  )
+  ) || collect_status=$?
+  (( collect_status == 0 )) || return 1
   __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE=$file
   __LMLINE_SUGGESTED_COMMANDS_CACHE=$commands
   printf '%s\n' "$commands"

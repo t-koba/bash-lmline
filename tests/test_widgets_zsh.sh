@@ -536,6 +536,59 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
   ' _ "$repo_dir" || fail "zsh suggested-command content identity"
+  # Availability changes inside an existing PATH directory invalidate pending work.
+  mkdir "$zsh_tmp/availability" "$zsh_tmp/availability/bin"
+  printf 'lmline-availability-external\n' >"$zsh_tmp/availability/list"
+  for phase in absent external; do mkfifo "$zsh_tmp/availability/$phase.gate"; done
+  cat >"$zsh_tmp/engine-availability" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+phase=absent
+if grep -qx lmline-availability-external "$context"; then phase=external; fi
+grep -x lmline-availability-external "$context" >"$LMLINE_TEST_AVAILABILITY_DIR/$phase.members" || true
+trap 'printf stopped >"$LMLINE_TEST_AVAILABILITY_DIR/$phase.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_AVAILABILITY_DIR/$phase.ready"
+exec 3<>"$LMLINE_TEST_AVAILABILITY_DIR/$phase.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$phase"
+EOF
+  chmod +x "$zsh_tmp/engine-availability"
+  LMLINE_TEST_AVAILABILITY_DIR="$zsh_tmp/availability" LMLINE_CONFIG_DIR="$zsh_tmp/config-availability" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-availability" zsh -efic '
+    source "$1/lmline/init.zsh"
+    typeset -g LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_AVAILABILITY_DIR/list
+    export PATH="$LMLINE_TEST_AVAILABILITY_DIR/bin:$PATH"
+    cleanup_availability_probe() {
+      for phase in absent external; do ( exec 3<>"$LMLINE_TEST_AVAILABILITY_DIR/$phase.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+      __lmline_zsh_async_cleanup
+    }
+    trap cleanup_availability_probe EXIT
+    initial_path=$PATH
+    list_bytes=$(cksum <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+    key=$(__lmline_zsh_suggested_commands_key)
+    [[ -n "$key" && "$key" != *lmline-availability* && "$key" != *"$LMLINE_SUGGESTED_COMMANDS_FILE"* ]]
+    BUFFER="# availability"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first=$__LMLINE_ZSH_ASYNC_PID; first_key=$__LMLINE_ZSH_ASYNC_KEY
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.ready" && ! -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.members" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first" ]]
+    printf "#!/bin/sh\nexit 0\n" >"$LMLINE_TEST_AVAILABILITY_DIR/bin/lmline-availability-external"
+    chmod +x "$LMLINE_TEST_AVAILABILITY_DIR/bin/lmline-availability-external"
+    [[ "$PATH" == "$initial_path" && "$(cksum <"$LMLINE_SUGGESTED_COMMANDS_FILE")" == "$list_bytes" ]]
+    [[ "$key" != "$(__lmline_zsh_suggested_commands_key)" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second" != "$first" && "$__LMLINE_ZSH_ASYNC_KEY" != "$first_key" && "$BUFFER" == "# availability" && -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.stopped" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]]
+    [[ "$(cat "$LMLINE_TEST_AVAILABILITY_DIR/external.members")" == lmline-availability-external ]]
+    printf "release\n" >"$LMLINE_TEST_AVAILABILITY_DIR/external.gate"
+    wait "$second"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo external" ]]
+  ' _ "$repo_dir" || fail "zsh suggested-command availability identity"
   mkdir "$zsh_tmp/settings-change"
   mkdir "$zsh_tmp/settings-change/config"
   printf 'export LMLINE_CANDIDATE_COUNT=1\n' >"$zsh_tmp/settings-change/config/settings.bash"

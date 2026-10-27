@@ -722,6 +722,85 @@ LMLINE_TEST_SUGGESTED_DIR="$widget_tmp/suggested" LMLINE_CONFIG_DIR="$widget_tmp
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$__LMLINE_ASYNC_PID" != "$failed_pid" && "$READLINE_LINE" == "# list" ]]
 ' _ "$repo_dir" || fail "bash suggested-command content identity"
+# Availability changes inside an existing PATH directory invalidate pending work.
+mkdir "$widget_tmp/availability" "$widget_tmp/availability/bin"
+printf 'lmline-availability-external\nlmline-availability-alias\n' >"$widget_tmp/availability/list"
+for phase in absent external; do mkfifo "$widget_tmp/availability/$phase.gate"; done
+cat >"$widget_tmp/engine-availability" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
+phase=absent
+if grep -qx lmline-availability-external "$context"; then phase=external; fi
+grep -E '^lmline-availability-(external|alias)$' "$context" >"$LMLINE_TEST_AVAILABILITY_DIR/$phase.members" || true
+trap 'printf stopped >"$LMLINE_TEST_AVAILABILITY_DIR/$phase.stopped"; exit 143' TERM
+printf ready >"$LMLINE_TEST_AVAILABILITY_DIR/$phase.ready"
+exec 3<>"$LMLINE_TEST_AVAILABILITY_DIR/$phase.gate"
+IFS= read -r -t 20 -u 3 release
+printf 'lmline-candidate: low\t-\t-\techo %s\n' "$phase"
+EOF
+chmod +x "$widget_tmp/engine-availability"
+LMLINE_TEST_AVAILABILITY_DIR="$widget_tmp/availability" LMLINE_CONFIG_DIR="$widget_tmp/config-availability" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-availability" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_AVAILABILITY_DIR/list
+  export PATH="$LMLINE_TEST_AVAILABILITY_DIR/bin:$PATH"
+  cleanup_availability_probe() {
+    for phase in absent external; do ( exec 3<>"$LMLINE_TEST_AVAILABILITY_DIR/$phase.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+    __lmline_async_cleanup
+  }
+  trap cleanup_availability_probe EXIT
+  initial_path=$PATH
+  list_bytes=$(cksum <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+  key=$(__lmline_suggested_commands_key)
+  [[ -n "$key" && "$key" != *lmline-availability* && "$key" != *"$LMLINE_SUGGESTED_COMMANDS_FILE"* ]]
+  # A populated renderer cache must not influence the availability fingerprint.
+  ( __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE=$LMLINE_SUGGESTED_COMMANDS_FILE
+    __LMLINE_SUGGESTED_COMMANDS_CACHE=lmline-availability-external
+    [[ "$key" == "$(__lmline_suggested_commands_key)" ]] )
+  ( __lmline_collect_suggested_commands() { return 1; }; ! __lmline_suggested_commands_key >/dev/null )
+  ( __lmline_hash_stdin() { return 0; }; ! __lmline_suggested_commands_key >/dev/null )
+  # The file digest can succeed while the membership digest is empty.
+  ( __lmline_hash_stdin() {
+      local first second
+      IFS= read -r first || :
+      if IFS= read -r second; then printf file-digest; fi
+    }; ! __lmline_suggested_commands_key >/dev/null )
+  READLINE_LINE="# availability"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first=$__LMLINE_ASYNC_PID; first_key=$__LMLINE_ASYNC_KEY
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.ready" && ! -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.members" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first" ]]
+  printf "#!/bin/sh\nexit 0\n" >"$LMLINE_TEST_AVAILABILITY_DIR/bin/lmline-availability-external"
+  chmod +x "$LMLINE_TEST_AVAILABILITY_DIR/bin/lmline-availability-external"
+  [[ "$PATH" == "$initial_path" && "$(cksum <"$LMLINE_SUGGESTED_COMMANDS_FILE")" == "$list_bytes" ]]
+  [[ "$key" != "$(__lmline_suggested_commands_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  second=$__LMLINE_ASYNC_PID
+  [[ "$second" != "$first" && "$__LMLINE_ASYNC_KEY" != "$first_key" && "$READLINE_LINE" == "# availability" && -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.stopped" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]]
+  [[ "$(cat "$LMLINE_TEST_AVAILABILITY_DIR/external.members")" == lmline-availability-external ]]
+  # Caller aliases remain visible to foreground context rendering, but do not
+  # invalidate an async key whose background worker cannot see them.
+  key=$(__lmline_suggested_commands_key)
+  first=$second; first_key=$__LMLINE_ASYNC_KEY
+  alias lmline-availability-alias=true
+  alias lmline-availability-alias >/dev/null && shopt -q expand_aliases
+  ( __lmline_context_file "$LMLINE_TEST_AVAILABILITY_DIR/foreground.context" "# availability" generate )
+  grep -qx lmline-availability-alias "$LMLINE_TEST_AVAILABILITY_DIR/foreground.context"
+  [[ "$PATH" == "$initial_path" && "$(cksum <"$LMLINE_SUGGESTED_COMMANDS_FILE")" == "$list_bytes" ]]
+  [[ "$key" == "$(__lmline_suggested_commands_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first" && "$__LMLINE_ASYNC_KEY" == "$first_key" && "$READLINE_LINE" == "# availability" ]]
+  [[ ! -s "$LMLINE_TEST_AVAILABILITY_DIR/external.stopped" ]]
+  [[ "$(cat "$LMLINE_TEST_AVAILABILITY_DIR/external.members")" == lmline-availability-external ]]
+  printf "release\n" >"$LMLINE_TEST_AVAILABILITY_DIR/external.gate"
+  wait "$first"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo external" ]]
+' _ "$repo_dir" || fail "bash suggested-command availability identity"
 mkdir "$widget_tmp/settings-change"
 mkdir "$widget_tmp/settings-change/config"
 printf 'export LMLINE_CANDIDATE_COUNT=1\n' >"$widget_tmp/settings-change/config/settings.bash"
