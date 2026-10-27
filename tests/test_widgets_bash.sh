@@ -14,6 +14,33 @@ fi
 printf 'lmline-candidate: low\tno matching risk rule\t-\tlmline/widget-function-probe\n'
 EOF
 chmod +x "$widget_tmp/engine-function"
+# Exercise the portable digest and ensure failed identities never match a job.
+mkdir "$widget_tmp/hash-bin"
+for cmd in bash sort cksum cut; do ln -s "$(command -v "$cmd")" "$widget_tmp/hash-bin/$cmd"; done
+mkdir "$widget_tmp/fail-hash-bin"
+for cmd in bash sort; do ln -s "$(command -v "$cmd")" "$widget_tmp/fail-hash-bin/$cmd"; done
+printf '#!/bin/sh\nprintf "bad digest\\n"\nexit 1\n' >"$widget_tmp/fail-hash-bin/cksum"
+chmod +x "$widget_tmp/fail-hash-bin/cksum"
+LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  (
+    export PATH="$2/hash-bin" LMLINE_MODEL=first
+    a=$(__lmline_async_settings_key)
+    [[ "$a" =~ ^[0-9]+[[:space:]][0-9]+$ ]]
+    [[ "$a" == "$(__lmline_async_settings_key)" ]]
+    export LMLINE_MODEL=second
+    [[ "$a" != "$(__lmline_async_settings_key)" ]]
+  )
+  ( export PATH="$2/fail-hash-bin"; ! __lmline_async_settings_key >/dev/null )
+  __lmline_async_settings_key() { return 1; }
+  __lmline_hint() { :; }
+  __lmline_async_cleanup() { :; }
+  __lmline_async_start() { rm -f "$4"; __LMLINE_ASYNC_KEY=$5; __LMLINE_ASYNC_PID=$$; starts=$((starts + 1)); }
+  starts=0
+  __lmline_generate_async_widget input generate 0
+  __lmline_generate_async_widget input generate 0
+  [[ $starts == 2 && -z "$__LMLINE_ASYNC_KEY" ]]
+' _ "$repo_dir" "$widget_tmp" || fail "bash portable settings hash and failed identity"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"
@@ -416,6 +443,78 @@ LMLINE_TEST_SETTINGS_DIR="$widget_tmp/settings-change" LMLINE_CONFIG_DIR="$widge
   [[ "$READLINE_LINE" == "echo count-3" ]]
   [[ -s "$LMLINE_TEST_SETTINGS_DIR/count-3.finished" ]]
 ' _ "$repo_dir" || fail "async candidate-count identity"
+mkdir "$widget_tmp/model-change"
+mkfifo "$widget_tmp/model-change/model-one.gate" "$widget_tmp/model-change/model-two.gate"
+cat >"$widget_tmp/engine-model" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+model=$LMLINE_MODEL
+stop_file=$LMLINE_TEST_MODEL_DIR/$model.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf ready >"$LMLINE_TEST_MODEL_DIR/$model.ready"
+exec 3<>"$LMLINE_TEST_MODEL_DIR/$model.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_MODEL_DIR/$model.finished"
+printf 'lmline-candidate: low\t-\t-\techo from-%s\n' "$model"
+EOF
+chmod +x "$widget_tmp/engine-model"
+LMLINE_TEST_MODEL_DIR="$widget_tmp/model-change" LMLINE_CONFIG_DIR="$widget_tmp/config-model" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-model" LMLINE_MODEL=model-one bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  # Framing distinguishes embedded newlines, empty/unset values, and settings
+  # that the engine actually inherits; overwritten name transports are ignored.
+  export LMLINE_TEST_A="$(printf "one\nLMLINE_TEST_B=two")"
+  key_a=$(__lmline_async_settings_key)
+  export LMLINE_TEST_A=one LMLINE_TEST_B=two
+  key_b=$(__lmline_async_settings_key)
+  [[ "$key_a" != "$key_b" && "$key_a" != *one* ]]
+  LMLINE_TEST_B=
+  key_empty=$(__lmline_async_settings_key)
+  unset LMLINE_TEST_B
+  [[ "$key_empty" != "$(__lmline_async_settings_key)" ]]
+  export LMLINE_SHELL_FUNCTIONS=ignored LMLINE_EXPORTED_FUNCTIONS=ignored
+  key_a=$(__lmline_async_settings_key)
+  LMLINE_SHELL_FUNCTIONS=changed LMLINE_EXPORTED_FUNCTIONS=changed
+  [[ "$key_a" == "$(__lmline_async_settings_key)" ]]
+  unset LMLINE_TEST_A LMLINE_SHELL_FUNCTIONS LMLINE_EXPORTED_FUNCTIONS
+  LMLINE_TEST_UNEXPORTED=one
+  key_a=$(__lmline_async_settings_key)
+  LMLINE_TEST_UNEXPORTED=two
+  [[ "$key_a" == "$(__lmline_async_settings_key)" ]]
+  unset LMLINE_TEST_UNEXPORTED
+
+  cleanup_model_probe() {
+    for model in model-one model-two; do
+      ( exec 3<>"$LMLINE_TEST_MODEL_DIR/$model.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    for pid in "${first_pid:-}" "${second_pid:-}"; do
+      [[ -n "$pid" ]] || continue
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    done
+  }
+  trap cleanup_model_probe EXIT
+  READLINE_LINE="# model"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first_pid=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_MODEL_DIR/model-one.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_MODEL_DIR/model-one.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first_pid" ]]
+  LMLINE_MODEL=model-two
+  __lmline_generate_widget >/dev/null 2>&1
+  second_pid=$__LMLINE_ASYNC_PID
+  [[ "$second_pid" != "$first_pid" ]]
+  [[ -s "$LMLINE_TEST_MODEL_DIR/model-one.stopped" && ! -e "$LMLINE_TEST_MODEL_DIR/model-one.finished" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_MODEL_DIR/model-two.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_MODEL_DIR/model-two.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$second_pid" ]]
+  printf "release\n" >"$LMLINE_TEST_MODEL_DIR/model-two.gate"
+  wait "$second_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
+' _ "$repo_dir" || fail "bash async live model identity"
 mkdir "$widget_tmp/functions-change"
 mkfifo "$widget_tmp/functions-change/first.gate" "$widget_tmp/functions-change/second.gate"
 cat >"$widget_tmp/engine-functions" <<'EOF'

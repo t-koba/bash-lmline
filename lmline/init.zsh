@@ -401,17 +401,41 @@ __lmline_zsh_bridge() {
   ' _ "$action" "$mode" "$line" "$point" "$async_file"
 }
 
+# Match the bridge's global scalar selection, with NUL-framed names and
+# values streamed to a digest rather than placed in arguments or the key.
+__lmline_zsh_settings_key() {
+  local key declaration
+  setopt localoptions pipefail
+  {
+    for key in ${(ok)parameters}; do
+      [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
+      [[ "$key" == LMLINE_SHELL_FUNCTIONS || "$key" == LMLINE_EXPORTED_FUNCTIONS ]] && continue
+      [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
+      declaration=$(typeset -p "$key" 2>/dev/null) || continue
+      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
+      printf '%s\0%s\0' "$key" "${(P)key}"
+    done
+  } | bash -p -c '
+    set -o pipefail
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d " " -f 1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d " " -f 1
+    elif command -v cksum >/dev/null 2>&1; then cksum
+    else exit 1; fi
+  '
+}
+
 # Names-only caller function identity for async request keys. Hashes the same
 # caller function-name list supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
 __lmline_zsh_request_key() {
-  local mode=$1 line=$2 point=$3 caller_functions
+  local mode=$1 line=$2 point=$3 caller_functions settings_key
+  settings_key=$(__lmline_zsh_settings_key) && [[ -n "$settings_key" ]] || return 1
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     source "$1/context.bash"
     function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin)
-    printf "%s:%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5" "$7"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}"
+    printf "%s:%s:%s:%s:%s:%s\n" "$( __lmline_request_key "$2" "$3" )" "$function_key" "$4" "$5" "$7" "$8"
+  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key"
 }
 
 __lmline_zsh_load_candidates_from_file() {
@@ -453,9 +477,9 @@ __lmline_zsh_async_prompt_check() {
 
 __lmline_zsh_generate_async() {
   local original=$1 mode=$2 point=$3 async_file current_key async_status_file err_msg
-  current_key=$(__lmline_zsh_request_key "$mode" "$original" "$point")
+  current_key=$(__lmline_zsh_request_key "$mode" "$original" "$point") || current_key=
 
-  if [[ "$__LMLINE_ZSH_ASYNC_KEY" == "$current_key" && $__LMLINE_ZSH_ASYNC_PID -gt 0 ]]; then
+  if [[ -n "$current_key" && "$__LMLINE_ZSH_ASYNC_KEY" == "$current_key" && $__LMLINE_ZSH_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ZSH_ASYNC_FILE
     if kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
       local async_elapsed=$(( $(date +%s) - __LMLINE_ZSH_ASYNC_STARTED ))

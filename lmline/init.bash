@@ -335,6 +335,33 @@ __lmline_async_function_names_key() {
   printf '%s' "$names_hash"
 }
 
+# Hash the environment as inherited by a fresh engine process. NUL framing
+# preserves empty values and newlines without exposing settings in arguments.
+__lmline_async_settings_key() (
+  # Do not carry exported function bodies into the fingerprint subprocess.
+  local name
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  bash -p -c '
+    set -o pipefail
+    if command -v sha256sum >/dev/null 2>&1; then hash=sha256sum
+    elif command -v shasum >/dev/null 2>&1; then hash=shasum
+    elif command -v cksum >/dev/null 2>&1; then hash=cksum
+    else exit 1; fi
+    {
+      while IFS= read -r key; do
+        case "$key" in LMLINE_SHELL_FUNCTIONS|LMLINE_EXPORTED_FUNCTIONS) continue;; esac
+        printf "%s\0%s\0" "$key" "${!key}"
+      done < <(compgen -v LMLINE_ | LC_ALL=C sort)
+    } | case $hash in
+      sha256sum) sha256sum | cut -d " " -f 1;;
+      shasum) shasum -a 256 | cut -d " " -f 1;;
+      cksum) cksum;;
+    esac
+  '
+)
+
 __lmline_async_cleanup() {
   [[ -n "${__LMLINE_ASYNC_FILE:-}" ]] || return 0
   if (( __LMLINE_ASYNC_PID > 0 )) && kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
@@ -556,14 +583,14 @@ __lmline_complete_generation() {
 }
 
 __lmline_generate_async_widget() {
-  local original=$1 mode=$2 point=$3 async_file current_key async_status_file function_names_key
-  if function_names_key=$(__lmline_async_function_names_key); then
-    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}"
+  local original=$1 mode=$2 point=$3 async_file current_key async_status_file function_names_key settings_key
+  if function_names_key=$(__lmline_async_function_names_key) && settings_key=$(__lmline_async_settings_key) && [[ -n "$settings_key" ]]; then
+    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}:$settings_key"
   else
-    current_key=function-context-unavailable
+    current_key=
   fi
 
-  if [[ "$__LMLINE_ASYNC_KEY" == "$current_key" && $__LMLINE_ASYNC_PID -gt 0 ]]; then
+  if [[ -n "$current_key" && "$__LMLINE_ASYNC_KEY" == "$current_key" && $__LMLINE_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ASYNC_FILE
     if kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
       local async_elapsed=$(( $(date +%s) - __LMLINE_ASYNC_STARTED ))
