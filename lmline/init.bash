@@ -349,11 +349,13 @@ __lmline_async_settings_key() (
     elif command -v shasum >/dev/null 2>&1; then hash=shasum
     elif command -v cksum >/dev/null 2>&1; then hash=cksum
     else exit 1; fi
+    keys=$(compgen -v LMLINE_ | LC_ALL=C sort) || exit 1
+    [[ -n "$keys" ]] || exit 1
     {
       while IFS= read -r key; do
         case "$key" in LMLINE_SHELL_FUNCTIONS|LMLINE_EXPORTED_FUNCTIONS) continue;; esac
         printf "%s\0%s\0" "$key" "${!key}"
-      done < <(compgen -v LMLINE_ | LC_ALL=C sort)
+      done <<< "$keys"
     } | case $hash in
       sha256sum) sha256sum | cut -d " " -f 1;;
       shasum) shasum -a 256 | cut -d " " -f 1;;

@@ -21,6 +21,9 @@ mkdir "$widget_tmp/fail-hash-bin"
 for cmd in bash sort; do ln -s "$(command -v "$cmd")" "$widget_tmp/fail-hash-bin/$cmd"; done
 printf '#!/bin/sh\nprintf "bad digest\\n"\nexit 1\n' >"$widget_tmp/fail-hash-bin/cksum"
 chmod +x "$widget_tmp/fail-hash-bin/cksum"
+mkdir "$widget_tmp/fail-sort-bin"
+printf '#!/bin/sh\nprintf "LMLINE_MODEL\\n"\nexit 1\n' >"$widget_tmp/fail-sort-bin/sort"
+chmod +x "$widget_tmp/fail-sort-bin/sort"
 LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   (
@@ -32,14 +35,20 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
     [[ "$a" != "$(__lmline_async_settings_key)" ]]
   )
   ( export PATH="$2/fail-hash-bin"; ! __lmline_async_settings_key >/dev/null )
-  __lmline_async_settings_key() { return 1; }
+  __lmline_async_function_names_key() { printf names; }
   __lmline_hint() { :; }
   __lmline_async_cleanup() { :; }
   __lmline_async_start() { rm -f "$4"; __LMLINE_ASYNC_KEY=$5; __LMLINE_ASYNC_PID=$$; starts=$((starts + 1)); }
   starts=0
   __lmline_generate_async_widget input generate 0
+  [[ $starts == 1 && -n "$__LMLINE_ASYNC_KEY" ]]
+  export PATH="$2/fail-sort-bin:$PATH"
+  command -v cksum >/dev/null
+  ! __lmline_async_settings_key >/dev/null
   __lmline_generate_async_widget input generate 0
   [[ $starts == 2 && -z "$__LMLINE_ASYNC_KEY" ]]
+  __lmline_generate_async_widget input generate 0
+  [[ $starts == 3 && -z "$__LMLINE_ASYNC_KEY" ]]
 ' _ "$repo_dir" "$widget_tmp" || fail "bash portable settings hash and failed identity"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
