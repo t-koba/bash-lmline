@@ -800,10 +800,10 @@ __lmline_project_markers_file() {
     "$LMLINE_DEFAULTS_DIR/project_markers.tsv"
 }
 
-# Only the selected file's bytes matter; never pass its path to the digest.
+# Hash the selected file and the presence of its parsed markers privately.
 __lmline_project_markers_key() (
   set -o pipefail
-  local file digest name
+  local file digest presence name
   __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT || { printf disabled; return 0; }
   file=$(__lmline_project_markers_file 2>/dev/null) || return 1
   [[ -f "$file" && -r "$file" ]] || return 1
@@ -817,31 +817,33 @@ __lmline_project_markers_key() (
   done < <(compgen -A function)
   digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
   [[ -n "$digest" ]] || return 1
-  printf '%s' "$digest"
+  presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+  [[ -n "$presence" ]] || return 1
+  printf '%s:%s' "$digest" "$presence"
 )
 
-__lmline_project_type() {
-  local file line type marker result
-  if [[ "${__LMLINE_PROJECT_TYPE_PWD:-}" == "$PWD" && -n "${__LMLINE_PROJECT_TYPE_CACHE+x}" ]]; then
-    printf '%s\n' "$__LMLINE_PROJECT_TYPE_CACHE"
-    return 0
-  fi
-  file=$(__lmline_project_markers_file) || return 1
-  result=$(
-    {
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" || "$line" == \#* ]] && continue
-        IFS=$'\t' read -r type marker <<<"$line"
-        [[ -n "$type" && -n "$marker" ]] || continue
-        [[ -e "$marker" ]] && printf '%s\n' "$type"
-      done <"$file"
-      true
-    }
-  )
-  __LMLINE_PROJECT_TYPE_PWD=$PWD
-  __LMLINE_PROJECT_TYPE_CACHE=$result
-  printf '%s\n' "$result"
+# Both context and identity use exactly the same marker-list parsing.
+__lmline_project_markers_scan() {
+  local file=$1 mode=$2 line type marker
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    IFS=$'\t' read -r type marker <<<"$line"
+    [[ -n "$type" && -n "$marker" ]] || continue
+    if [[ -e "$marker" ]]; then
+      if [[ "$mode" == presence ]]; then printf '1'; else printf '%s\n' "$type"; fi
+    elif [[ "$mode" == presence ]]; then
+      printf '0'
+    fi
+    :
+  done <"$file" || return 1
   return 0
+}
+
+__lmline_project_type() {
+  local file result
+  file=$(__lmline_project_markers_file) || return 1
+  result=$(__lmline_project_markers_scan "$file" types || true)
+  printf '%s\n' "$result"
 }
 
 __lmline_command_summary() {

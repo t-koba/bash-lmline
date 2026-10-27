@@ -576,7 +576,16 @@ bash -c '
   (cd "$project_tmp" && touch Cargo.toml && __lmline_project_type | grep -q rust)
   marker_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-marker.XXXXXX")
   printf "custom\t.marker\n" >"$marker_tmp/project_markers.tsv"
-  (cd "$marker_tmp" && touch .marker && LMLINE_USER_RULES_DIR="$marker_tmp"; __lmline_project_type | grep -q custom)
+  (cd "$marker_tmp"; LMLINE_USER_RULES_DIR="$marker_tmp"
+    __lmline_project_type >result
+    ! grep -q custom result
+    touch .marker
+    __lmline_project_type >result
+    grep -qx custom result
+    rm .marker
+    __lmline_project_type >result
+    ! grep -q custom result
+  )
   rm -rf "$marker_tmp"
   rm -rf "$project_tmp"
 ' _ "$repo_dir" || fail "policy/context"

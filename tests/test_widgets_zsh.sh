@@ -277,12 +277,12 @@ EOF
   printf 'default\tone.marker\n' >"$zsh_tmp/markers/defaults/project_markers.tsv"
   printf '#!/bin/sh\nexit 1\n' >"$zsh_tmp/markers/fail-bin/sha256sum"
   chmod +x "$zsh_tmp/markers/fail-bin/sha256sum"
-  mkfifo "$zsh_tmp/markers/one.gate" "$zsh_tmp/markers/two.gate"
+  mkfifo "$zsh_tmp/markers/one.gate" "$zsh_tmp/markers/two.gate" "$zsh_tmp/markers/absent.gate"
   cat >"$zsh_tmp/engine-markers" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
-if grep -qx one "$context"; then name=one; else grep -qx two "$context"; name=two; fi
+if grep -qx one "$context"; then name=one; elif grep -qx two "$context"; then name=two; else name=absent; fi
 trap 'printf stopped >"$LMLINE_TEST_MARKERS_DIR/$name.stopped"; exit 143' TERM
 printf ready >"$LMLINE_TEST_MARKERS_DIR/$name.ready"
 exec 3<>"$LMLINE_TEST_MARKERS_DIR/$name.gate"
@@ -294,7 +294,7 @@ EOF
     source "$1/lmline/init.zsh"
     cd "$LMLINE_TEST_MARKERS_DIR"
     cleanup_markers_probe() {
-      for n in one two; do ( exec 3<>"$LMLINE_TEST_MARKERS_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
+      for n in one two absent; do ( exec 3<>"$LMLINE_TEST_MARKERS_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done
       __lmline_zsh_async_cleanup
     }
     trap cleanup_markers_probe EXIT
@@ -337,6 +337,29 @@ EOF
     wait "$second"
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo two" ]]
+    # Change only marker presence while the absent-context request is pending.
+    printf "one\tone.marker\n" >list
+    rm one.marker one.ready one.stopped two.ready
+    key=$(__lmline_zsh_project_markers_key)
+    BUFFER="# markers"; CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first=$__LMLINE_ZSH_ASYNC_PID
+    for i in {1..200}; do [[ -s absent.ready ]] && break; sleep 0.05; done
+    [[ -s absent.ready ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first" ]]
+    touch one.marker
+    [[ "$key" != "$(__lmline_zsh_project_markers_key)" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second" != "$first" && -s absent.stopped && "$BUFFER" == "# markers" ]]
+    ! kill -0 "$first" 2>/dev/null
+    for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done
+    [[ -s one.ready ]]
+    printf "release\n" >one.gate
+    wait "$second"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo one" ]]
     __lmline_zsh_project_markers_key() { return 1; }
     BUFFER="# markers"; CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/dev/null 2>&1

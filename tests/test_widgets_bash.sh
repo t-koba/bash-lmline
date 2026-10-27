@@ -417,12 +417,12 @@ touch "$widget_tmp/markers/one.marker" "$widget_tmp/markers/two.marker"
 printf 'one\tone.marker\n' >"$widget_tmp/markers/list"
 printf 'two\ttwo.marker\n' >"$widget_tmp/markers/rules/project_markers.tsv"
 printf 'default\tone.marker\n' >"$widget_tmp/markers/defaults/project_markers.tsv"
-mkfifo "$widget_tmp/markers/one.gate" "$widget_tmp/markers/two.gate"
+mkfifo "$widget_tmp/markers/one.gate" "$widget_tmp/markers/two.gate" "$widget_tmp/markers/absent.gate"
 cat >"$widget_tmp/engine-markers" <<'EOF'
 #!/usr/bin/env bash
 set -eu
 while (($#)); do case "$1" in --context-file) context=$2; shift 2;; *) shift;; esac; done
-if grep -qx one "$context"; then name=one; else grep -qx two "$context"; name=two; fi
+if grep -qx one "$context"; then name=one; elif grep -qx two "$context"; then name=two; else name=absent; fi
 trap 'printf stopped >"$LMLINE_TEST_MARKERS_DIR/$name.stopped"; exit 143' TERM
 printf ready >"$LMLINE_TEST_MARKERS_DIR/$name.ready"
 exec 3<>"$LMLINE_TEST_MARKERS_DIR/$name.gate"
@@ -433,7 +433,7 @@ chmod +x "$widget_tmp/engine-markers"
 LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/config-markers" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-markers" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   cd "$LMLINE_TEST_MARKERS_DIR"
-  trap '\''for n in one two; do ( exec 3<>"$LMLINE_TEST_MARKERS_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done; __lmline_async_cleanup'\'' EXIT
+  trap '\''for n in one two absent; do ( exec 3<>"$LMLINE_TEST_MARKERS_DIR/$n.gate"; printf "release\n" >&3 ) 2>/dev/null || true; done; __lmline_async_cleanup'\'' EXIT
   LMLINE_USER_RULES_DIR=$PWD/rules LMLINE_DEFAULTS_DIR=$PWD/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
   export LMLINE_PROJECT_MARKERS_FILE
   lmline_marker_privacy() { : private_body; }
@@ -452,6 +452,7 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
   ( __lmline_resolve_data_file() { return 1; }; ! __lmline_project_markers_key >/dev/null )
   ( __lmline_hash_stdin() { return 1; }; ! __lmline_project_markers_key >/dev/null )
   ( __lmline_hash_stdin() { return 0; }; ! __lmline_project_markers_key >/dev/null )
+  ( __lmline_project_markers_scan() { return 1; }; ! __lmline_project_markers_key >/dev/null )
   ( LMLINE_PROJECT_MARKERS_FILE=$PWD/missing; ! __lmline_project_markers_key >/dev/null )
   mkfifo fifo
   ( LMLINE_PROJECT_MARKERS_FILE=$PWD/fifo; ! __lmline_project_markers_key >/dev/null )
@@ -478,6 +479,29 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
   wait "$second"
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$READLINE_LINE" == "echo two" ]]
+  # Change only marker presence while the absent-context request is pending.
+  printf "one\tone.marker\n" >list
+  rm one.marker one.ready one.stopped two.ready
+  key=$(__lmline_project_markers_key)
+  READLINE_LINE="# markers"; READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s absent.ready ]] && break; sleep 0.05; done
+  [[ -s absent.ready ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first" ]]
+  touch one.marker
+  [[ "$key" != "$(__lmline_project_markers_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  second=$__LMLINE_ASYNC_PID
+  [[ "$second" != "$first" && -s absent.stopped && "$READLINE_LINE" == "# markers" ]]
+  ! kill -0 "$first" 2>/dev/null
+  for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done
+  [[ -s one.ready ]]
+  printf "release\n" >one.gate
+  wait "$second"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo one" ]]
   # An unavailable identity cannot reuse a pending request.
   __lmline_project_markers_key() { return 1; }
   READLINE_LINE="# markers"; READLINE_POINT=${#READLINE_LINE}
