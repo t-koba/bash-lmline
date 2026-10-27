@@ -1205,6 +1205,21 @@ __lmline_hash_stdin() {
   fi
 }
 
+# Fingerprint PATH with explicit set/unset framing, without putting it in a key.
+__lmline_path_key() (
+  set -o pipefail
+  local digest name
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  digest=$(
+    { if [[ -v PATH ]]; then printf 'set\0%s\0' "$PATH"; else printf 'unset\0'; fi; } |
+      __lmline_hash_stdin 2>/dev/null
+  ) || return 1
+  [[ -n "$digest" ]] || return 1
+  printf '%s' "$digest"
+)
+
 __lmline_request_key() {
   local mode=$1
   local line=$2

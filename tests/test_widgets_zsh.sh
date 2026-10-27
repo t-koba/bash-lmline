@@ -32,6 +32,17 @@ EOF
       export LMLINE_MODEL=second
       [[ "$a" != "$(__lmline_zsh_settings_key)" ]]
     )
+    # Preserve unset, empty, and trailing newline distinctions in the stream.
+    (
+      saved_path=$PATH
+      bash_bin=$(command -v bash)
+      bash() { PATH=$saved_path command "$bash_bin" "$@"; }
+      unset PATH; unset_key=$(__lmline_zsh_path_key)
+      PATH=; empty_key=$(__lmline_zsh_path_key)
+      PATH="value"; value_key=$(__lmline_zsh_path_key)
+      PATH=$'"'"'value\n'"'"'; newline_key=$(__lmline_zsh_path_key)
+      [[ "$unset_key" != "$empty_key" && "$value_key" != "$newline_key" ]]
+    )
     ( export PATH="$2/fail-hash-bin"; ! __lmline_zsh_settings_key >/dev/null )
     __lmline_zsh_settings_key() { return 1; }
     __lmline_zsh_hint() { :; }
@@ -265,6 +276,20 @@ EOF
     first_pid=$__LMLINE_ZSH_ASYNC_PID
     for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]] && break; sleep 0.05; done
     [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]]
+    # An unchanged PATH reuses pending work; a byte change cancels it.
+    path_key=$(__lmline_zsh_path_key)
+    [[ "$path_key" != *"$PATH"* ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first_pid" ]]
+    rm -f "$LMLINE_TEST_SUGGESTED_DIR/printf.ready"
+    export PATH="$LMLINE_TEST_SUGGESTED_DIR:$PATH"
+    [[ "$path_key" != "$(__lmline_zsh_path_key)" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    path_pid=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$first_pid" != "$path_pid" && "$BUFFER" == "# list" && -s "$LMLINE_TEST_SUGGESTED_DIR/printf.stopped" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]]
+    first_pid=$path_pid
     printf "sleep \n" >"$LMLINE_USER_RULES_DIR/suggested_commands.txt"
     [[ "$key" != "$(__lmline_zsh_suggested_commands_key)" ]]
     lmline-zsh-generate-widget >/dev/null 2>&1
@@ -287,9 +312,21 @@ EOF
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$third_pid" && "$BUFFER" == "# list" ]]
     unset LMLINE_SUGGESTED_COMMANDS_FILE
     ( PATH="$LMLINE_TEST_SUGGESTED_DIR/fail-bin:$PATH"; ! __lmline_zsh_suggested_commands_key >/dev/null )
+    ( PATH="$LMLINE_TEST_SUGGESTED_DIR/fail-bin:$PATH"; ! __lmline_zsh_path_key >/dev/null )
     typeset -g LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
     typeset -g LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
     [[ "$(__lmline_zsh_suggested_commands_key)" == disabled ]]
+    # Failure or empty output from the PATH digest must never reuse pending work.
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ -n "$__LMLINE_ZSH_ASYNC_KEY" && "$__LMLINE_ZSH_ASYNC_KEY" != function-context-unavailable ]]
+    __lmline_zsh_path_key() { return 1; }
+    failed_pid=$__LMLINE_ZSH_ASYNC_PID
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
+    __lmline_zsh_path_key() { return 0; }
+    failed_pid=$__LMLINE_ZSH_ASYNC_PID
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
   ' _ "$repo_dir" || fail "zsh suggested-command content identity"
   mkdir "$zsh_tmp/settings-change"
   mkdir "$zsh_tmp/settings-change/config"

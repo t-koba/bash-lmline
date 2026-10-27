@@ -36,6 +36,16 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
     frontend=$(__lmline_async_frontend_key generate)
     [[ "$frontend" =~ ^[0-9]+$ && "$frontend" == "$(__lmline_async_frontend_key generate)" ]]
   )
+  # Hash framing distinguishes unset, empty, and trailing newlines.
+  (
+    saved_path=$PATH
+    __lmline_hash_stdin() { PATH=$saved_path command cksum; }
+    unset PATH; unset_key=$(__lmline_path_key)
+    PATH=; empty_key=$(__lmline_path_key)
+    PATH="value"; value_key=$(__lmline_path_key)
+    PATH=$'"'"'value\n'"'"'; newline_key=$(__lmline_path_key)
+    [[ "$unset_key" != "$empty_key" && "$value_key" != "$newline_key" ]]
+  )
   ( export PATH="$2/fail-hash-bin"; ! __lmline_async_settings_key >/dev/null )
   __lmline_async_function_names_key() { printf names; }
   __lmline_hint() { :; }
@@ -431,6 +441,8 @@ LMLINE_TEST_SUGGESTED_DIR="$widget_tmp/suggested" LMLINE_CONFIG_DIR="$widget_tmp
   ( PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"; __lmline_suggested_commands_key >/dev/null )
   [[ -s "$LMLINE_TEST_SUGGESTED_DIR/checked" && ! -e "$LMLINE_TEST_SUGGESTED_DIR/leak" ]]
   unset -f lmline_privacy_probe
+  ( __lmline_hash_stdin() { return 1; }; ! __lmline_path_key >/dev/null )
+  ( __lmline_hash_stdin() { return 0; }; ! __lmline_path_key >/dev/null )
   key=$(__lmline_suggested_commands_key)
   [[ "$key" != *printf* && "$key" != *"$LMLINE_SUGGESTED_COMMANDS_FILE"* ]]
   mkfifo "$LMLINE_TEST_SUGGESTED_DIR/list-fifo"
@@ -449,6 +461,20 @@ LMLINE_TEST_SUGGESTED_DIR="$widget_tmp/suggested" LMLINE_CONFIG_DIR="$widget_tmp
   first_pid=$__LMLINE_ASYNC_PID
   for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]] && break; sleep 0.05; done
   [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]]
+  # An unchanged PATH reuses pending work; a byte change cancels it.
+  path_key=$(__lmline_path_key)
+  [[ "$path_key" != *"$PATH"* ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first_pid" ]]
+  rm -f "$LMLINE_TEST_SUGGESTED_DIR/printf.ready"
+  export PATH="$LMLINE_TEST_SUGGESTED_DIR:$PATH"
+  [[ "$path_key" != "$(__lmline_path_key)" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  path_pid=$__LMLINE_ASYNC_PID
+  [[ "$first_pid" != "$path_pid" && "$READLINE_LINE" == "# list" && -s "$LMLINE_TEST_SUGGESTED_DIR/printf.stopped" ]]
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_SUGGESTED_DIR/printf.ready" ]]
+  first_pid=$path_pid
   printf "sleep \n" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
   [[ "$key" != "$(__lmline_suggested_commands_key)" ]]
   __lmline_generate_widget >/dev/null 2>&1
@@ -474,6 +500,17 @@ LMLINE_TEST_SUGGESTED_DIR="$widget_tmp/suggested" LMLINE_CONFIG_DIR="$widget_tmp
   LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
   LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
   [[ "$(__lmline_suggested_commands_key)" == disabled ]]
+  # Failure or empty output from the PATH digest must never reuse pending work.
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ -n "$__LMLINE_ASYNC_KEY" && "$__LMLINE_ASYNC_KEY" != function-context-unavailable ]]
+  __lmline_path_key() { return 1; }
+  failed_pid=$__LMLINE_ASYNC_PID
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" != "$failed_pid" && "$READLINE_LINE" == "# list" ]]
+  __lmline_path_key() { return 0; }
+  failed_pid=$__LMLINE_ASYNC_PID
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" != "$failed_pid" && "$READLINE_LINE" == "# list" ]]
 ' _ "$repo_dir" || fail "bash suggested-command content identity"
 mkdir "$widget_tmp/settings-change"
 mkdir "$widget_tmp/settings-change/config"
