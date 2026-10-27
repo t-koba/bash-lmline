@@ -364,6 +364,24 @@ __lmline_async_settings_key() (
   '
 )
 
+# Include front-end selections that may be shell-local, without exposing them.
+__lmline_async_frontend_key() (
+  set -o pipefail
+  local backend digest name
+  # Hashing subprocesses must not inherit exported function bodies.
+  while IFS= read -r name; do
+    export -nf -- "$name" 2>/dev/null || return 1
+  done < <(compgen -A function)
+  case $1 in
+    generate) backend=${LMLINE_GENERATE_BACKEND:-engine} ;;
+    rewrite) backend=${LMLINE_REWRITE_BACKEND:-engine} ;;
+    *) return 1 ;;
+  esac
+  digest=$(printf '%s\0%s\0' "${LMLINE_ENGINE-}" "$backend" | __lmline_hash_stdin 2>/dev/null) || return 1
+  [[ -n "$digest" ]] || return 1
+  printf '%s' "$digest"
+)
+
 __lmline_async_cleanup() {
   [[ -n "${__LMLINE_ASYNC_FILE:-}" ]] || return 0
   if (( __LMLINE_ASYNC_PID > 0 )) && kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
@@ -585,9 +603,9 @@ __lmline_complete_generation() {
 }
 
 __lmline_generate_async_widget() {
-  local original=$1 mode=$2 point=$3 async_file current_key async_status_file function_names_key settings_key
-  if function_names_key=$(__lmline_async_function_names_key) && settings_key=$(__lmline_async_settings_key) && [[ -n "$settings_key" ]]; then
-    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}:$settings_key"
+  local original=$1 mode=$2 point=$3 async_file current_key async_status_file function_names_key settings_key frontend_key
+  if function_names_key=$(__lmline_async_function_names_key) && settings_key=$(__lmline_async_settings_key) && [[ -n "$settings_key" ]] && frontend_key=$(__lmline_async_frontend_key "$mode"); then
+    current_key="$(__lmline_request_key "$mode" "$original"):$function_names_key:$point:${__LMLINE_SETTINGS_CKSUM:-}:${LMLINE_CANDIDATE_COUNT-}:$settings_key:$frontend_key"
   else
     current_key=
   fi

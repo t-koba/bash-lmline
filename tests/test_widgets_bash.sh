@@ -16,7 +16,7 @@ EOF
 chmod +x "$widget_tmp/engine-function"
 # Exercise the portable digest and ensure failed identities never match a job.
 mkdir "$widget_tmp/hash-bin"
-for cmd in bash sort cksum cut; do ln -s "$(command -v "$cmd")" "$widget_tmp/hash-bin/$cmd"; done
+for cmd in bash sort cksum cut awk; do ln -s "$(command -v "$cmd")" "$widget_tmp/hash-bin/$cmd"; done
 mkdir "$widget_tmp/fail-hash-bin"
 for cmd in bash sort; do ln -s "$(command -v "$cmd")" "$widget_tmp/fail-hash-bin/$cmd"; done
 printf '#!/bin/sh\nprintf "bad digest\\n"\nexit 1\n' >"$widget_tmp/fail-hash-bin/cksum"
@@ -33,6 +33,8 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
     [[ "$a" == "$(__lmline_async_settings_key)" ]]
     export LMLINE_MODEL=second
     [[ "$a" != "$(__lmline_async_settings_key)" ]]
+    frontend=$(__lmline_async_frontend_key generate)
+    [[ "$frontend" =~ ^[0-9]+$ && "$frontend" == "$(__lmline_async_frontend_key generate)" ]]
   )
   ( export PATH="$2/fail-hash-bin"; ! __lmline_async_settings_key >/dev/null )
   __lmline_async_function_names_key() { printf names; }
@@ -524,6 +526,78 @@ LMLINE_TEST_MODEL_DIR="$widget_tmp/model-change" LMLINE_CONFIG_DIR="$widget_tmp/
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$READLINE_LINE" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
 ' _ "$repo_dir" || fail "bash async live model identity"
+mkdir "$widget_tmp/engine-change"
+mkfifo "$widget_tmp/engine-change/engine-one.gate" "$widget_tmp/engine-change/engine-two.gate"
+cat >"$widget_tmp/engine-change/engine-one" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+name=${0##*/}
+stop_file=$LMLINE_TEST_ENGINE_DIR/$name.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf ready >"$LMLINE_TEST_ENGINE_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_ENGINE_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_ENGINE_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\techo from-%s\n' "$name"
+EOF
+cp "$widget_tmp/engine-change/engine-one" "$widget_tmp/engine-change/engine-two"
+chmod +x "$widget_tmp/engine-change/engine-one" "$widget_tmp/engine-change/engine-two"
+LMLINE_TEST_ENGINE_DIR="$widget_tmp/engine-change" LMLINE_CONFIG_DIR="$widget_tmp/config-engine-change" LMLINE_ASYNC=1 bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  export -n LMLINE_ENGINE LMLINE_GENERATE_BACKEND LMLINE_REWRITE_BACKEND
+  LMLINE_ENGINE=$LMLINE_TEST_ENGINE_DIR/engine-one
+  LMLINE_GENERATE_BACKEND=engine LMLINE_REWRITE_BACKEND=engine
+  key=$(__lmline_async_frontend_key generate)
+  [[ "$key" != *"$LMLINE_ENGINE"* ]]
+  LMLINE_GENERATE_BACKEND=copilot
+  [[ "$key" != "$(__lmline_async_frontend_key generate)" ]]
+  LMLINE_GENERATE_BACKEND=
+  [[ "$key" == "$(__lmline_async_frontend_key generate)" ]]
+  unset LMLINE_GENERATE_BACKEND
+  [[ "$key" == "$(__lmline_async_frontend_key generate)" ]]
+  LMLINE_REWRITE_BACKEND=copilot
+  [[ "$key" == "$(__lmline_async_frontend_key generate)" ]]
+  rewrite_key=$(__lmline_async_frontend_key rewrite)
+  LMLINE_REWRITE_BACKEND=engine
+  [[ "$rewrite_key" != "$(__lmline_async_frontend_key rewrite)" ]]
+  ( __lmline_hash_stdin() { printf bad; return 1; }; ! __lmline_async_frontend_key generate >/dev/null )
+  ( __lmline_hash_stdin() { :; }; ! __lmline_async_frontend_key generate >/dev/null )
+
+  cleanup_engine_probe() {
+    for name in engine-one engine-two; do
+      ( exec 3<>"$LMLINE_TEST_ENGINE_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    for pid in "${first_pid:-}" "${second_pid:-}"; do
+      [[ -n "$pid" ]] || continue
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    done
+  }
+  trap cleanup_engine_probe EXIT
+  READLINE_LINE="# engine"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  first_pid=$__LMLINE_ASYNC_PID
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-one.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-one.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$first_pid" ]]
+  LMLINE_ENGINE=$LMLINE_TEST_ENGINE_DIR/engine-two
+  __lmline_generate_widget >/dev/null 2>&1
+  second_pid=$__LMLINE_ASYNC_PID
+  [[ "$second_pid" != "$first_pid" ]]
+  [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-one.stopped" && ! -e "$LMLINE_TEST_ENGINE_DIR/engine-one.finished" ]]
+  ! kill -0 "$first_pid" 2>/dev/null
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-two.ready" ]] && break; sleep 0.05; done
+  [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-two.ready" ]]
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$__LMLINE_ASYNC_PID" == "$second_pid" ]]
+  printf "release\n" >"$LMLINE_TEST_ENGINE_DIR/engine-two.gate"
+  wait "$second_pid"
+  __lmline_generate_widget >/dev/null 2>&1
+  [[ "$READLINE_LINE" == "echo from-engine-two" && -s "$LMLINE_TEST_ENGINE_DIR/engine-two.finished" ]]
+  [[ ! -e "$LMLINE_TEST_ENGINE_DIR/engine-one.finished" ]]
+' _ "$repo_dir" || fail "bash async shell-local engine identity"
 mkdir "$widget_tmp/functions-change"
 mkfifo "$widget_tmp/functions-change/first.gate" "$widget_tmp/functions-change/second.gate"
 cat >"$widget_tmp/engine-functions" <<'EOF'
