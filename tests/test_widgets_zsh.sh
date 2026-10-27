@@ -353,6 +353,64 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
   ' _ "$repo_dir" || fail "zsh async live model identity"
+  # Shell-local engine changes must cancel pending work, not reuse its result.
+  mkdir "$zsh_tmp/engine-change"
+  mkfifo "$zsh_tmp/engine-change/engine-one.gate" "$zsh_tmp/engine-change/engine-two.gate"
+  cat >"$zsh_tmp/engine-change/engine-one" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+name=${0##*/}
+stop_file=$LMLINE_TEST_ENGINE_DIR/$name.stopped
+trap 'printf stopped >"$stop_file"; exit 143' TERM
+printf ready >"$LMLINE_TEST_ENGINE_DIR/$name.ready"
+exec 3<>"$LMLINE_TEST_ENGINE_DIR/$name.gate"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_ENGINE_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\techo from-%s\n' "$name"
+EOF
+  cp "$zsh_tmp/engine-change/engine-one" "$zsh_tmp/engine-change/engine-two"
+  chmod +x "$zsh_tmp/engine-change/engine-one" "$zsh_tmp/engine-change/engine-two"
+  env -u LMLINE_ENGINE LMLINE_TEST_ENGINE_DIR="$zsh_tmp/engine-change" LMLINE_CONFIG_DIR="$zsh_tmp/config-engine-change" LMLINE_ASYNC=1 zsh -efic '
+    source "$1/lmline/init.zsh"
+    typeset -g +x LMLINE_ENGINE
+    LMLINE_ENGINE=$LMLINE_TEST_ENGINE_DIR/engine-one
+    [[ "${parameters[LMLINE_ENGINE]}" == scalar ]]
+    cleanup_engine_probe() {
+      for name in engine-one engine-two; do
+        ( exec 3<>"$LMLINE_TEST_ENGINE_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+      done
+      for pid in "${first_pid:-}" "${second_pid:-}"; do
+        [[ -n "$pid" ]] || continue
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+      done
+    }
+    trap cleanup_engine_probe EXIT
+    BUFFER="# engine"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    first_pid=$__LMLINE_ZSH_ASYNC_PID
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-one.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-one.ready" && "$BUFFER" == "# engine" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first_pid" ]]
+    LMLINE_ENGINE=$LMLINE_TEST_ENGINE_DIR/engine-two
+    [[ "${parameters[LMLINE_ENGINE]}" == scalar ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    second_pid=$__LMLINE_ZSH_ASYNC_PID
+    [[ "$second_pid" != "$first_pid" && "$BUFFER" == "# engine" ]]
+    [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-one.stopped" && ! -e "$LMLINE_TEST_ENGINE_DIR/engine-one.finished" ]]
+    ! kill -0 "$first_pid" 2>/dev/null
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-two.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_ENGINE_DIR/engine-two.ready" ]]
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$__LMLINE_ZSH_ASYNC_PID" == "$second_pid" && "$BUFFER" == "# engine" ]]
+    printf "release\n" >"$LMLINE_TEST_ENGINE_DIR/engine-two.gate"
+    wait "$second_pid"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "echo from-engine-two" && -s "$LMLINE_TEST_ENGINE_DIR/engine-two.finished" ]]
+    [[ ! -e "$LMLINE_TEST_ENGINE_DIR/engine-one.finished" ]]
+  ' _ "$repo_dir" || fail "zsh async shell-local engine identity"
   mkdir "$zsh_tmp/functions-change"
   mkfifo "$zsh_tmp/functions-change/first.gate" "$zsh_tmp/functions-change/second.gate"
   cat >"$zsh_tmp/engine-functions" <<'EOF'
