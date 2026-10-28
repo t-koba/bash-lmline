@@ -323,7 +323,8 @@ __lmline_print_clip() {
   [[ "$max_output" =~ ^[1-9][0-9]*$ ]] || max_output=65536
   output_bytes=$(LC_ALL=C printf '%s' "$engine_output" | wc -c | tr -d ' ')
   if (( output_bytes > max_output )); then
-    printf '%s\n' "$engine_output" | LC_ALL=C cut -c "1-$max_output"
+    # Set the byte locale before expanding the substring, without changing the caller.
+    (LC_ALL=C; printf '%s\n' "${engine_output:0:max_output}")
     printf '\n%sclip-output-truncated original_bytes=%s max_bytes=%s\n' "$prefix" "$output_bytes" "$max_output"
     return 0
   fi
@@ -392,7 +393,8 @@ __lmline_print_explanation() {
   max_output=${LMLINE_EXPLAIN_MAX_OUTPUT_BYTES:-65536}
   output_bytes=$(LC_ALL=C printf '%s' "$engine_output" | wc -c | tr -d ' ')
   if (( output_bytes > max_output )); then
-    printf '%s\n' "$engine_output" | LC_ALL=C cut -c "1-$max_output"
+    # Set the byte locale before expanding the substring, without changing the caller.
+    (LC_ALL=C; printf '%s\n' "${engine_output:0:max_output}")
     printf '\n%sexplanation-truncated original_bytes=%s max_bytes=%s\n' "$prefix" "$output_bytes" "$max_output"
     return 0
   fi

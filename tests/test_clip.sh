@@ -106,6 +106,50 @@ grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
 clip_provider_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_dir/engine" "$repo_dir/lmline/lmline" clip --provider fake "原因は？")
 grep -q 'clipboard provider=fake' <<<"$clip_provider_out" || fail "clip one-shot provider"
+# Buffered clip and explain share the answer-body byte budget, not a per-line
+# width. Compare everything after metadata so headings/status/notices are not
+# counted as answer bytes (and runtime metadata cannot leak into the body).
+cat >"$clip_test_dir/engine-limits" <<'EOF'
+#!/usr/bin/env bash
+printf 'lmline-meta: model=limit-model tokens=10 prompt=7 completion=3\n' >&2
+printf 'lmline-status: m=limit-model; tok=7/3/10\n' >&2
+printf '%s\n' "$LMLINE_TEST_ANSWER"
+EOF
+chmod +x "$clip_test_dir/engine-limits"
+for action in clip explain; do
+  if [[ "$action" == clip ]]; then
+    limit_setting=LMLINE_CLIP_MAX_OUTPUT_BYTES
+    heading='model response:'
+    notice=clip-output-truncated
+  else
+    limit_setting=LMLINE_EXPLAIN_MAX_OUTPUT_BYTES
+    heading='model explanation:'
+    notice=explanation-truncated
+  fi
+  for limit_case in multiline below exact bytes; do
+    limit=8
+    original_bytes=
+    case "$limit_case" in
+      multiline) answer=$'abcd\nefgh\nijkl'; expected=$'abcd\nefg'; original_bytes=14 ;;
+      below) answer=$'abc\ndef'; expected=$answer ;;
+      exact) answer=$'abcd\nefg'; expected=$answer ;;
+      # Three UTF-8 e-acute characters, then a newline and ASCII. The
+      # three-byte prefix deliberately ends inside a multibyte character.
+      bytes) answer=$'\303\251\303\251\303\251\nTAIL'; expected=$'\303\251\303'; limit=3; original_bytes=11 ;;
+    esac
+    if [[ -n "$original_bytes" ]]; then
+      expected+=$'\n\n'"[lm] $notice original_bytes=$original_bytes max_bytes=$limit"
+    fi
+    limit_out=$(env "$limit_setting=$limit" LMLINE_STREAM=0 \
+      LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_PS0='[lm] ' \
+      LMLINE_ENGINE="$clip_test_dir/engine-limits" LMLINE_TEST_ANSWER="$answer" \
+      "$repo_dir/lmline/lmline" "$action" 'echo hi') || fail "$action $limit_case status"
+    [[ "$limit_out" == *"[lm] $heading"* ]] || fail "$action $limit_case heading"
+    status_line=$'[lm] m=limit-model; tok=7/3/10\n'
+    [[ "$limit_out" == *"$status_line"* ]] || fail "$action $limit_case metadata/status"
+    [[ "${limit_out#*"$status_line"}" == "$expected" ]] || fail "$action $limit_case answer byte prefix"
+  done
+done
 install_clip_dir="$cfg_tmp/install-clip"
 mkdir -p "$install_clip_dir/bin" "$install_clip_dir/config" "$install_clip_dir/homebin"
 cat >"$install_clip_dir/homebin/pbpaste" <<'EOF'
