@@ -24,6 +24,16 @@ chmod +x "$widget_tmp/fail-hash-bin/cksum"
 mkdir "$widget_tmp/fail-sort-bin"
 printf '#!/bin/sh\nprintf "LMLINE_MODEL\\n"\nexit 1\n' >"$widget_tmp/fail-sort-bin/sort"
 chmod +x "$widget_tmp/fail-sort-bin/sort"
+mkdir -p "$widget_tmp/function-names/privacy-bin"
+cat >"$widget_tmp/function-names/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+if (($#)) || env | grep -q 'lmline_function_hash_privacy_probe'; then
+  printf leaked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+fi
+printf checked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/checked"
+exec cksum
+EOF
+chmod +x "$widget_tmp/function-names/privacy-bin/sha256sum"
 LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   (
@@ -77,6 +87,31 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
   __lmline_generate_async_widget input generate 0
   [[ $starts == 3 && -z "$__LMLINE_ASYNC_KEY" ]]
 ' _ "$repo_dir" "$widget_tmp" || fail "bash portable settings hash and failed identity"
+LMLINE_CONFIG_DIR="$widget_tmp/function-names/config" \
+  LMLINE_TEST_FUNCTION_NAMES_DIR="$widget_tmp/function-names" \
+  PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  lmline_function_hash_privacy_probe() { :; }
+  export -f lmline_function_hash_privacy_probe
+  first=$(__lmline_async_function_names_key)
+  [[ -n "$first" ]]
+  declare -Fx lmline_function_hash_privacy_probe >/dev/null
+  lmline_function_hash_privacy_probe() { printf changed; }
+  export -f lmline_function_hash_privacy_probe
+  same_names=$(__lmline_async_function_names_key)
+  [[ "$first" == "$same_names" ]]
+  declare -Fx lmline_function_hash_privacy_probe >/dev/null
+  export -nf -- lmline_function_hash_privacy_probe
+  different_export_state=$(__lmline_async_function_names_key)
+  [[ "$first" != "$different_export_state" ]]
+  [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+  [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+  saved_hash=$(declare -f __lmline_hash_stdin)
+  __lmline_hash_stdin() { return 1; }
+  if __lmline_async_function_names_key >/dev/null 2>&1; then exit 1; fi
+  eval "$saved_hash"
+' _ "$repo_dir" || fail "async function identity hides bodies from hash subprocesses"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"

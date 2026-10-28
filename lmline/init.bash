@@ -325,15 +325,22 @@ __lmline_engine_error_hint() {
 # Names-only function identity for async request keys. Hashes the same shell
 # and exported function-name lists supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
-__lmline_async_function_names_key() {
-  local shell_functions exported_functions names_hash
+__lmline_async_function_names_key() (
+  local shell_functions exported_functions names_hash name
   shell_functions=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
   exported_functions=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
+  # Keep exported bodies out of the external hash process environment. The
+  # exact name lists are already captured, and this private subshell leaves the
+  # caller's exported functions untouched.
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    export -nf -- "$name" 2>/dev/null || return 1
+  done <<< "$shell_functions"
   names_hash=$(printf 'shell-functions\n%s\nexported-functions\n%s\n' \
     "$shell_functions" "$exported_functions" | __lmline_hash_stdin 2>/dev/null) || return 1
   [[ -n "$names_hash" ]] || return 1
   printf '%s' "$names_hash"
-}
+)
 
 # Hash the environment as inherited by a fresh engine process. NUL framing
 # preserves empty values and newlines without exposing settings in arguments.
