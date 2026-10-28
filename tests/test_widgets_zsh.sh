@@ -24,8 +24,20 @@ EOF
   chmod +x "$zsh_tmp/fail-hash-bin/cksum"
   mkdir "$zsh_tmp/fail-request"
   printf 'source "%s/lmline/context.bash"\n__lmline_request_key() { printf partial; return 1; }\n' "$repo_dir" >"$zsh_tmp/fail-request/context.bash"
+  # The request bridge loads context without the Bash widget or policy first.
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-context" bash --norc -ec '
+    source "$1/lmline/context.bash"
+    ! declare -F __lmline_collect_shell_functions >/dev/null
+    key=$(__lmline_request_key generate input)
+    [[ -n "$key" ]]
+    expected=$(source "$1/lmline/policy.bash"; __lmline_request_key generate input)
+    [[ "$key" == "$expected" ]]
+    ! declare -F __lmline_collect_shell_functions >/dev/null
+  ' _ "$repo_dir" || fail "context-only request key loads policy privately"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-hash" zsh -efic '
     source "$1/lmline/init.zsh"
+    request_key=$(__lmline_zsh_request_key generate input 0)
+    [[ -n "$request_key" && "$request_key" == "$(__lmline_zsh_request_key generate input 0)" ]]
     (
       export PATH="$2/hash-bin" LMLINE_MODEL=first
       a=$(__lmline_zsh_settings_key)

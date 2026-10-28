@@ -1328,6 +1328,9 @@ __lmline_request_key() (
   # dispatches caller read/compgen/command/builtin/type/declare. An exported
   # caller type() can spoof a builtin probe and an exported declare() then
   # suppresses enumeration, so never trust type/declare here.
+  # The Zsh bridge loads context alone; load the collector before taking
+  # the snapshot so policy helpers are included too.
+  __lmline_require_policy_support || return 1
   shell_functions=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
   # Sanitize only the hash side of each pipeline: input producers may need
   # exported helpers in child shells. Keep their lookup and environment intact.
