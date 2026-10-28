@@ -1086,9 +1086,9 @@ LMLINE_TEST_CONTEXT_DIR="$widget_tmp/context-change" LMLINE_CONFIG_DIR="$widget_
 ' _ "$repo_dir" || fail "bash async shell-local context identity"
 # Only nocasematch changes while each real async request is pending.
 mkdir "$widget_tmp/context-nocasematch"
-for value in FaLsE false; do
-  mkdir "$widget_tmp/context-nocasematch/$value"
-  mkfifo "$widget_tmp/context-nocasematch/$value/on.gate" "$widget_tmp/context-nocasematch/$value/off.gate"
+for context_case in mixed lower; do
+  mkdir "$widget_tmp/context-nocasematch/$context_case"
+  mkfifo "$widget_tmp/context-nocasematch/$context_case/on.gate" "$widget_tmp/context-nocasematch/$context_case/off.gate"
 done
 LMLINE_TEST_CONTEXT_DIR="$widget_tmp/context-nocasematch" LMLINE_CONFIG_DIR="$widget_tmp/config-nocasematch" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-context" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
@@ -1099,19 +1099,25 @@ LMLINE_TEST_CONTEXT_DIR="$widget_tmp/context-nocasematch" LMLINE_CONFIG_DIR="$wi
   export -n LMLINE_INCLUDE_SHELL_CONTEXT
   base=$LMLINE_TEST_CONTEXT_DIR
   cleanup_nocasematch_probe() {
-    for value in FaLsE false; do
+    for context_case in mixed lower; do
       for name in off on; do
-        ( exec 3<>"$base/$value/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+        ( exec 3<>"$base/$context_case/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
       done
     done
     __lmline_async_cleanup
   }
   trap cleanup_nocasematch_probe EXIT
-  for value in FaLsE false; do
-    LMLINE_TEST_CONTEXT_DIR=$base/$value
-    LMLINE_INCLUDE_SHELL_CONTEXT=$value
+  for context_case in mixed lower; do
     shopt -u nocasematch
-    name=on; [ "$value" != false ] || name=off
+    if [[ "$context_case" == mixed ]]; then
+      value=FaLsE
+      name=on
+    else
+      value=false
+      name=off
+    fi
+    LMLINE_TEST_CONTEXT_DIR=$base/$context_case
+    LMLINE_INCLUDE_SHELL_CONTEXT=$value
     __lmline_context_file "$LMLINE_TEST_CONTEXT_DIR/before.context" "# context" generate
     if [ "$name" = on ]; then
       __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT
