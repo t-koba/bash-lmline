@@ -326,7 +326,7 @@ __lmline_engine_error_hint() {
 # and exported function-name lists supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
 __lmline_async_function_names_key() (
-  local shell_functions exported_functions names_hash name
+  local shell_functions exported_functions names_hash name functions_remaining
   shell_functions=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
   exported_functions=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   # Keep exported bodies out of the external hash process environment. The
@@ -336,14 +336,21 @@ __lmline_async_function_names_key() (
   # Avoid assigning POSIXLY_CORRECT when POSIX mode is already enabled: the
   # caller may have made it readonly.
   __lmline_unexport_function() { \export -nf -- "$@"; }
-  while IFS= read -r name; do
-    [[ -n "$name" ]] || continue
+  functions_remaining=$shell_functions
+  while [[ -n $functions_remaining ]]; do
+    name=${functions_remaining%%$'\n'*}
+    if [[ $functions_remaining == *$'\n'* ]]; then
+      functions_remaining=${functions_remaining#*$'\n'}
+    else
+      functions_remaining=
+    fi
+    [[ -n $name ]] || continue
     if [[ -o posix ]]; then
       __lmline_unexport_function "$name" 2>/dev/null || return 1
     else
       POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
     fi
-  done <<< "$shell_functions"
+  done
   names_hash=$(printf 'shell-functions\n%s\nexported-functions\n%s\n' \
     "$shell_functions" "$exported_functions" | __lmline_hash_stdin 2>/dev/null) || return 1
   [[ -n "$names_hash" ]] || return 1
@@ -359,13 +366,22 @@ __lmline_async_settings_key() (
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
-  while IFS= read -r name; do
+  local functions_remaining
+  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  while [[ -n $functions_remaining ]]; do
+    name=${functions_remaining%%$'\n'*}
+    if [[ $functions_remaining == *$'\n'* ]]; then
+      functions_remaining=${functions_remaining#*$'\n'}
+    else
+      functions_remaining=
+    fi
+    [[ -n $name ]] || continue
     if [[ -o posix ]]; then
       __lmline_unexport_function "$name" 2>/dev/null || return 1
     else
       POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
     fi
-  done < <(compgen -A function)
+  done
   bash -p -c '
     set -o pipefail
     if command -v sha256sum >/dev/null 2>&1; then hash=sha256sum
@@ -396,13 +412,22 @@ __lmline_async_frontend_key() (
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
-  while IFS= read -r name; do
+  local functions_remaining
+  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  while [[ -n $functions_remaining ]]; do
+    name=${functions_remaining%%$'\n'*}
+    if [[ $functions_remaining == *$'\n'* ]]; then
+      functions_remaining=${functions_remaining#*$'\n'}
+    else
+      functions_remaining=
+    fi
+    [[ -n $name ]] || continue
     if [[ -o posix ]]; then
       __lmline_unexport_function "$name" 2>/dev/null || return 1
     else
       POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
     fi
-  done < <(compgen -A function)
+  done
   case $1 in
     generate) backend=${LMLINE_GENERATE_BACKEND:-engine} ;;
     rewrite) backend=${LMLINE_REWRITE_BACKEND:-engine} ;;

@@ -269,6 +269,75 @@ LMLINE_CONFIG_DIR="$widget_tmp/request-key-collisions/config" \
   done
 ' _ "$repo_dir" || fail "request identity resists read/compgen collisions"
 git -c init.defaultBranch=main init -q "$widget_tmp/function-names/git"
+# Exercise every sibling identity with read/compgen shadows. Suppress only
+# sanitizer reads, not the file/context parsing needed to reach the hashers.
+# The non-shell fake hasher above records booleans, never names or input bytes.
+LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
+  LMLINE_TEST_REQUEST_KEY_DIR="$widget_tmp/sibling-key-collisions" \
+  PATH="$widget_tmp/request-key/privacy-bin:$PATH" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  mkdir -p "$LMLINE_TEST_REQUEST_KEY_DIR"
+  cd "$2/function-names/git"
+  lmline_sibling_hash_privacy_probe() { :; }
+  helpers=(__lmline_async_function_names_key __lmline_async_settings_key
+    __lmline_async_frontend_key __lmline_context_settings_key
+    __lmline_suggested_commands_key __lmline_project_markers_key
+    __lmline_git_context_key __lmline_path_key)
+  for shadow in read compgen; do
+    case $shadow in
+      read)
+        read() {
+          if [[ $# == 2 && $1 == -r && $2 == name ]]; then
+            case ${FUNCNAME[1]} in *__key) return 1;; esac
+          fi
+          builtin read "$@"
+        } ;;
+      compgen) compgen() { return 0; } ;;
+    esac
+    expected_keys=()
+    for helper in "${helpers[@]}"; do
+      key=$("$helper" generate)
+      [[ -n "$key" && $key != disabled && $key != absent ]]
+      expected_keys+=("$key")
+    done
+    export -f "$shadow" lmline_sibling_hash_privacy_probe
+    before=$(__lmline_collect_exported_functions)
+    before_options=$(set +o)
+    # Export status is itself a function-name input. Independently frame the
+    # captured lists and sanitize just this reference hasher, not its inputs.
+    shell_functions=$(__lmline_collect_shell_functions)
+    exported_functions=$(__lmline_collect_exported_functions)
+    expected_keys[0]=$(printf "shell-functions\n%s\nexported-functions\n%s\n" \
+      "$shell_functions" "$exported_functions" | (
+        POSIXLY_CORRECT=1
+        \export -nf "$shadow" lmline_sibling_hash_privacy_probe
+        __lmline_hash_stdin
+      ))
+    for i in "${!helpers[@]}"; do
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      key=$("${helpers[i]}" generate)
+      [[ "$key" == "${expected_keys[i]}" ]]
+      [[ "$before" == "$(__lmline_collect_exported_functions)" ]]
+      [[ "$before_options" == "$(set +o)" ]]
+      declare -F "$shadow" >/dev/null
+      declare -Fx lmline_sibling_hash_privacy_probe >/dev/null
+      [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+      # A failed names-only snapshot must not hash or establish an identity.
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      (
+        __lmline_collect_shell_functions() { return 1; }
+        failed=$("${helpers[i]}" generate) && exit 1
+        [[ -z "$failed" ]]
+        [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+        [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+      )
+    done
+    unset -f "$shadow"
+    export -nf lmline_sibling_hash_privacy_probe
+  done
+' _ "$repo_dir" "$widget_tmp" || fail "sibling identities resist read/compgen collisions"
 # Special-builtin lookup must not depend on caller export/builtin/command
 # functions. Keep every assertion boolean-only, including the fake hasher.
 LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
