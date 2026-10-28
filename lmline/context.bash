@@ -88,10 +88,15 @@ __lmline_suggested_commands_key() (
     fi
   done
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
   [[ -n "$digest" ]] || return 1
@@ -119,10 +124,15 @@ __lmline_git_context_key() (
   __lmline_git_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
   __lmline_git_branch=$(git branch --show-current 2>/dev/null) || return 1
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   digest=$(printf '%s\0%s\0' "$__lmline_git_root" "$__lmline_git_branch" | __lmline_hash_stdin 2>/dev/null) || return 1
   [[ -n "$digest" ]] || return 1
@@ -832,10 +842,15 @@ __lmline_project_markers_key() (
     fi
   done
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
   [[ -n "$digest" ]] || return 1
@@ -1230,10 +1245,15 @@ __lmline_context_settings_key() (
   set -o pipefail
   local name
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   {
     for name in \
@@ -1282,10 +1302,15 @@ __lmline_path_key() (
   set -o pipefail
   local digest name
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   digest=$(
     { if [[ -v PATH ]]; then printf 'set\0%s\0' "$PATH"; else printf 'unset\0'; fi; } |

@@ -6,7 +6,8 @@ __LMLINE_BOUNDARY_DIR=${BASH_SOURCE[0]%/*}
 # builtin `unset`. No caller function, even `builtin`/`command`, is dispatched.
 # All changes stay in a subshell; interactive options/functions are untouched.
 __lmline_collect_shell_functions() (
-  POSIXLY_CORRECT=1
+  # Already-POSIX callers may have made POSIXLY_CORRECT readonly.
+  [[ -o posix ]] || POSIXLY_CORRECT=1
   (
     unset -f command || exit 1
     command builtin compgen -A function
@@ -32,7 +33,8 @@ __lmline_collect_shell_functions() (
 # leak an assigned sentinel to children), the env producer's completion is
 # checked explicitly, and descriptors/children are cleaned up.
 __lmline_collect_inherited_exported_functions() (
-  POSIXLY_CORRECT=1
+  # Already-POSIX callers may have made POSIXLY_CORRECT readonly.
+  [[ -o posix ]] || POSIXLY_CORRECT=1
   unset -f command || exit 1
   command builtin local entry name_part name fd producer
   command builtin export -n entry || exit 1
@@ -72,7 +74,8 @@ __lmline_collect_inherited_exported_functions() (
 )
 
 __lmline_collect_exported_functions() (
-  POSIXLY_CORRECT=1
+  # Already-POSIX callers may have made POSIXLY_CORRECT readonly.
+  [[ -o posix ]] || POSIXLY_CORRECT=1
   if [[ -o privileged ]]; then
     __lmline_collect_inherited_exported_functions || exit 1
     :

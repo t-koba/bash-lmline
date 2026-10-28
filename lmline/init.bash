@@ -333,10 +333,16 @@ __lmline_async_function_names_key() (
   # exact name lists are already captured, and this private subshell leaves the
   # caller's exported functions untouched. Define the helper after capture
   # to preserve the exact name inputs; POSIX mode selects the special builtin.
+  # Avoid assigning POSIXLY_CORRECT when POSIX mode is already enabled: the
+  # caller may have made it readonly.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done <<< "$shell_functions"
   names_hash=$(printf 'shell-functions\n%s\nexported-functions\n%s\n' \
     "$shell_functions" "$exported_functions" | __lmline_hash_stdin 2>/dev/null) || return 1
@@ -350,10 +356,15 @@ __lmline_async_settings_key() (
   # Do not carry exported function bodies into the fingerprint subprocess.
   local name
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   bash -p -c '
     set -o pipefail
@@ -382,10 +393,15 @@ __lmline_async_frontend_key() (
   local backend digest name
   # Hashing subprocesses must not inherit exported function bodies.
   # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides.
+  # builtin take precedence over caller function overrides. An already-POSIX
+  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    if [[ -o posix ]]; then
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
+    fi
   done < <(compgen -A function)
   case $1 in
     generate) backend=${LMLINE_GENERATE_BACKEND:-engine} ;;

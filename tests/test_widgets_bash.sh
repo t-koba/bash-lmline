@@ -116,6 +116,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config" \
   if __lmline_async_function_names_key >/dev/null 2>&1; then exit 1; fi
   eval "$saved_hash"
 ' _ "$repo_dir" || fail "async function identity hides bodies from hash subprocesses"
+git -c init.defaultBranch=main init -q "$widget_tmp/function-names/git"
 # Special-builtin lookup must not depend on caller export/builtin/command
 # functions. Keep every assertion boolean-only, including the fake hasher.
 LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
@@ -162,6 +163,61 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
     [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
   ); done
+  # Compare every affected key in an already-POSIX shell with its mutable
+  # reference, including the environment inherited by the fake hash process.
+  for state in readonly readonly-exported readonly-privileged; do (
+    cd "$LMLINE_TEST_FUNCTION_NAMES_DIR/git"
+    # Context gates use builtin test: a failing collision keeps their enabled
+    # branches reachable while still detecting accidental builtin dispatch.
+    builtin() { return 1; }
+    [[ $state != readonly-privileged ]] || set -p
+    POSIXLY_CORRECT=1
+    [[ $state != readonly-exported ]] || declare -x POSIXLY_CORRECT
+    LMLINE_TEST_EXPECT_POSIX=:
+    [[ $state != readonly-exported ]] || LMLINE_TEST_EXPECT_POSIX=x:1
+    declare -x LMLINE_TEST_EXPECT_POSIX
+    helpers=(__lmline_async_function_names_key __lmline_async_settings_key
+      __lmline_async_frontend_key __lmline_context_settings_key
+      __lmline_suggested_commands_key __lmline_project_markers_key
+      __lmline_git_context_key __lmline_path_key)
+    # The protected-shell variant only adds the inherited-name collector.
+    [[ $state != readonly-privileged ]] || helpers=(__lmline_async_function_names_key)
+    state_exported_functions=$(__lmline_collect_exported_functions)
+    expected_keys=()
+    for helper in "${helpers[@]}"; do
+      key=$("$helper" generate)
+      [[ -n "$key" && $key != disabled && $key != absent ]]
+      expected_keys+=("$key")
+    done
+    [[ $state == readonly-privileged || ${expected_keys[0]} == "$expected" ]]
+    readonly POSIXLY_CORRECT
+    [[ -o posix ]]
+    before=$(declare -p POSIXLY_CORRECT; set +o)
+    for i in "${!helpers[@]}"; do
+      key=$("${helpers[i]}" generate)
+      [[ "$key" == "${expected_keys[i]}" ]]
+    done
+    after=$(declare -p POSIXLY_CORRECT; set +o)
+    [[ "$before" == "$after" ]]
+    [[ "$state_exported_functions" == "$(__lmline_collect_exported_functions)" ]]
+    [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+    [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+  ); done
+  # A readonly-but-unset variable is a distinct non-POSIX state. It cannot
+  # enable special-builtin precedence by assignment, so keep failing closed.
+  (
+    unset POSIXLY_CORRECT
+    set +o posix
+    readonly POSIXLY_CORRECT
+    [[ ! -o posix && ! -v POSIXLY_CORRECT ]]
+    before=$(declare -p POSIXLY_CORRECT; set +o)
+    ! __lmline_async_function_names_key >/dev/null 2>&1
+    ! __lmline_async_frontend_key generate >/dev/null 2>&1
+    ! __lmline_path_key >/dev/null 2>&1
+    after=$(declare -p POSIXLY_CORRECT; set +o)
+    [[ "$before" == "$after" ]]
+    [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+  )
   # One helper from each remaining source file exercises the same private
   # unexport path with the collision functions still active.
   [[ -n "$(__lmline_async_frontend_key generate)" ]]
