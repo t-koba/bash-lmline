@@ -783,7 +783,8 @@ EOF
     if cmp -s plain-context nl-context; then [[ "$plain" == "$nl_key" ]]; else [[ "$plain" != "$nl_key" ]]; fi
     rm -f calls
     for enabled in 0 1; do
-      export LMLINE_INCLUDE_SHELL_CONTEXT=$enabled
+      typeset -g +x LMLINE_INCLUDE_SHELL_CONTEXT=$enabled
+      [[ "${parameters[LMLINE_INCLUDE_SHELL_CONTEXT]}" == scalar ]]
       printf "private-uname-one\n" >output
       rm -f calls
       key=$(__lmline_zsh_request_key generate "# uname" 7)

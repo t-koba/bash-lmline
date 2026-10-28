@@ -514,16 +514,16 @@ __lmline_zsh_request_key() {
     # Bash may reset inherited PWD after a rename; retain the caller logical
     # input privately, independently of the physical-CWD fingerprint.
     printf 'PWD\0%s\0' "$PWD"
-    key=LMLINE_INCLUDE_CWD_CONTEXT
-    if [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]]; then
+    # Match the bridge's global-scalar selection for context toggles.
+    for key in LMLINE_INCLUDE_CWD_CONTEXT LMLINE_INCLUDE_SHELL_CONTEXT; do
+      [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]] || continue
       declaration=$(typeset -p "$key" 2>/dev/null) || return 1
-      if [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]]; then
-        printf '%s\0%s\0' "$key" "${(P)key}"
-      fi
-    fi
+      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
+      printf '%s\0%s\0' "$key" "${(P)key}"
+    done
   } | LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
     set -o pipefail
-    unset LMLINE_INCLUDE_CWD_CONTEXT
+    unset LMLINE_INCLUDE_CWD_CONTEXT LMLINE_INCLUDE_SHELL_CONTEXT
     while IFS= read -r -d "" key && IFS= read -r -d "" value; do
       printf -v "$key" "%s" "$value"
     done
