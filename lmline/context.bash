@@ -1322,10 +1322,43 @@ __lmline_path_key() (
 
 __lmline_request_key() (
   set -o pipefail
-  local request_mode=$1 line=$2 physical_cwd_key= uname_key=
+  local request_mode=$1 line=$2 physical_cwd_key= uname_key= shell_functions=
+  # Keep bodies out of hash subprocesses without changing caller definitions
+  # or lookup semantics. Use the hardened names-only collector, which never
+  # dispatches caller read/compgen/command/builtin/type/declare. An exported
+  # caller type() can spoof a builtin probe and an exported declare() then
+  # suppresses enumeration, so never trust type/declare here.
+  shell_functions=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  # Sanitize only the hash side of each pipeline: input producers may need
+  # exported helpers in child shells. Keep their lookup and environment intact.
+  __lmline_request_hash_stdin() (
+    local shell_functions=$shell_functions name record
+    # POSIX mode makes the special builtin take precedence over caller
+    # export/builtin/command functions. Do not assign an already-readonly
+    # POSIXLY_CORRECT or change the environment seen by the hash implementation.
+    __lmline_request_unexport_functions() {
+      while [[ -n $shell_functions ]]; do
+        record=${shell_functions%%$'\n'*}
+        if [[ $shell_functions == *$'\n'* ]]; then
+          shell_functions=${shell_functions#*$'\n'}
+        else
+          shell_functions=
+        fi
+        [[ -n $record ]] || continue
+        name=$record
+        \export -nf -- "$name" 2>/dev/null || return 1
+      done
+    }
+    if [[ -o posix ]]; then
+      __lmline_request_unexport_functions || return 1
+    else
+      POSIXLY_CORRECT=1 __lmline_request_unexport_functions || return 1
+    fi
+    __lmline_hash_stdin
+  )
   # Match the rendered pwd -P bytes without exposing the path in the key.
   if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
-    physical_cwd_key=$(pwd -P 2>/dev/null | __lmline_hash_stdin) || return 1
+    physical_cwd_key=$(pwd -P 2>/dev/null | __lmline_request_hash_stdin) || return 1
     [[ -n "$physical_cwd_key" ]] || return 1
   fi
   # Hash exactly the renderer's `uname=` contribution with the same
@@ -1336,9 +1369,9 @@ __lmline_request_key() (
   # identity.
   if __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; then
     if command -v uname >/dev/null 2>&1; then
-      uname_key=$(uname -a 2>/dev/null | sed 's/^/uname=/' 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+      uname_key=$(uname -a 2>/dev/null | sed 's/^/uname=/' 2>/dev/null | __lmline_request_hash_stdin 2>/dev/null) || return 1
     else
-      uname_key=$(printf '' 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+      uname_key=$(printf '' 2>/dev/null | __lmline_request_hash_stdin 2>/dev/null) || return 1
     fi
     [[ -n "$uname_key" ]] || return 1
   fi
@@ -1355,5 +1388,5 @@ __lmline_request_key() (
     fi
     printf 'bash=%s\n' "${BASH_VERSION-}"
     printf 'ostype=%s\n' "${OSTYPE-}"
-  } | __lmline_hash_stdin
+  } | __lmline_request_hash_stdin
 )

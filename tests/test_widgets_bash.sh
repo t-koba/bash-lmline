@@ -116,6 +116,158 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config" \
   if __lmline_async_function_names_key >/dev/null 2>&1; then exit 1; fi
   eval "$saved_hash"
 ' _ "$repo_dir" || fail "async function identity hides bodies from hash subprocesses"
+# Use a non-shell hasher so inherited function entries reach the environment
+# check unchanged. Only boolean markers leave the process, never input data.
+mkdir -p "$widget_tmp/request-key/privacy-bin"
+cat >"$widget_tmp/request-key/privacy-bin/sha256sum" <<'EOF'
+#!/usr/bin/env python3
+import hashlib
+import os
+import sys
+from pathlib import Path
+
+root = Path(os.environ["LMLINE_TEST_REQUEST_KEY_DIR"])
+if len(sys.argv) != 1 or any(key.startswith("BASH_FUNC_") for key in os.environ):
+    (root / "leak").touch()
+with (root / "checked").open("a") as checked:
+    checked.write("1")
+print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())
+EOF
+chmod +x "$widget_tmp/request-key/privacy-bin/sha256sum"
+LMLINE_CONFIG_DIR="$widget_tmp/request-key/config" \
+  LMLINE_TEST_REQUEST_KEY_DIR="$widget_tmp/request-key" \
+  PATH="$widget_tmp/request-key/privacy-bin:$PATH" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  lmline_request_hash_privacy_probe() { :; }
+  export -f lmline_request_hash_privacy_probe
+  # Positive control: the fake hasher must really see inherited entries.
+  printf "" | sha256sum >/dev/null
+  [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+  rm "$LMLINE_TEST_REQUEST_KEY_DIR/leak"
+  export -nf lmline_request_hash_privacy_probe
+  for LMLINE_INCLUDE_CWD_CONTEXT in 0 1; do
+    for LMLINE_INCLUDE_SHELL_CONTEXT in 0 1; do
+      plain=$(__lmline_request_key generate input)
+      [[ -n "$plain" ]]
+      export -f lmline_request_hash_privacy_probe
+      before=$(__lmline_collect_exported_functions)
+      private=$(__lmline_request_key generate input)
+      [[ -n "$private" && "$private" == "$plain" ]]
+      [[ "$before" == "$(__lmline_collect_exported_functions)" ]]
+      declare -Fx lmline_request_hash_privacy_probe >/dev/null
+      export -nf lmline_request_hash_privacy_probe
+      [[ "$plain" == "$(__lmline_request_key generate input)" ]]
+      [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+      # A failed hasher must not establish a reusable identity.
+      (
+        __lmline_hash_stdin() { return 1; }
+        failed=$(__lmline_request_key generate input) && exit 1
+        [[ -z "$failed" ]]
+      )
+    done
+  done
+  # Input producers keep their exported helpers: uname may invoke a child
+  # Bash to produce the same bytes as a direct implementation. Only hash
+  # processes are sanitized, and all observations remain boolean-only.
+  LMLINE_INCLUDE_CWD_CONTEXT=1
+  LMLINE_INCLUDE_SHELL_CONTEXT=1
+  lmline_request_uname_helper() { printf "request-key-uname\n"; }
+  export -f lmline_request_uname_helper
+  uname() { printf "request-key-uname\n"; }
+  direct=$(__lmline_request_key generate input)
+  [[ -n "$direct" ]]
+  uname() { bash -c lmline_request_uname_helper; }
+  before=$(__lmline_collect_exported_functions)
+  definitions=$(declare -f uname lmline_request_uname_helper)
+  child=$(__lmline_request_key generate input)
+  [[ -n "$child" && "$child" == "$direct" ]]
+  [[ "$before" == "$(__lmline_collect_exported_functions)" ]]
+  [[ "$definitions" == "$(declare -f uname lmline_request_uname_helper)" ]]
+  declare -Fx lmline_request_uname_helper >/dev/null
+  [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+  [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+  unset -f uname lmline_request_uname_helper
+  # Exported type/declare shadows must not bypass the scrub. An exported
+  # caller type() can spoof a builtin probe and an exported declare() then
+  # suppresses enumeration; the hardened collector never dispatches either.
+  for LMLINE_INCLUDE_CWD_CONTEXT in 0 1; do
+    for LMLINE_INCLUDE_SHELL_CONTEXT in 0 1; do
+      plain=$(__lmline_request_key generate input)
+      [[ -n "$plain" ]]
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      type() { printf builtin; }
+      declare() { :; }
+      export -f type declare
+      export -f lmline_request_hash_privacy_probe
+      before=$(__lmline_collect_exported_functions)
+      private_type_declare=$(__lmline_request_key generate input)
+      [[ -n "$private_type_declare" && "$private_type_declare" == "$plain" ]]
+      [[ "$before" == "$(__lmline_collect_exported_functions)" ]]
+      builtin declare -Fx lmline_request_hash_privacy_probe >/dev/null
+      builtin declare -F type >/dev/null
+      builtin declare -F declare >/dev/null
+      [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+      unset -f type declare
+      export -nf lmline_request_hash_privacy_probe
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      [[ "$plain" == "$(__lmline_request_key generate input)" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+    done
+  done
+' _ "$repo_dir" || fail "request identity hides bodies from hash subprocesses"
+# Caller read/compgen shadows must not bypass the request-key scrub. A failing
+# read or an empty compgen previously left bodies exported while still
+# returning a key. Keep every assertion boolean-only, including the fake hasher.
+LMLINE_CONFIG_DIR="$widget_tmp/request-key-collisions/config" \
+  LMLINE_TEST_REQUEST_KEY_DIR="$widget_tmp/request-key-collisions" \
+  PATH="$widget_tmp/request-key/privacy-bin:$PATH" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  mkdir -p "$LMLINE_TEST_REQUEST_KEY_DIR"
+  lmline_request_hash_privacy_probe() { :; }
+  export -f lmline_request_hash_privacy_probe
+  export -nf lmline_request_hash_privacy_probe
+  for LMLINE_INCLUDE_CWD_CONTEXT in 0 1; do
+    for LMLINE_INCLUDE_SHELL_CONTEXT in 0 1; do
+      plain=$(__lmline_request_key generate input)
+      [[ -n "$plain" ]]
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      read() { return 1; }
+      export -f read
+      export -f lmline_request_hash_privacy_probe
+      before=$(__lmline_collect_exported_functions)
+      private_read=$(__lmline_request_key generate input)
+      [[ -n "$private_read" && "$private_read" == "$plain" ]]
+      [[ "$before" == "$(__lmline_collect_exported_functions)" ]]
+      declare -Fx lmline_request_hash_privacy_probe >/dev/null
+      declare -F read >/dev/null
+      [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+      unset -f read
+      export -nf lmline_request_hash_privacy_probe
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      compgen() { return 0; }
+      export -f compgen
+      export -f lmline_request_hash_privacy_probe
+      before=$(__lmline_collect_exported_functions)
+      private_compgen=$(__lmline_request_key generate input)
+      [[ -n "$private_compgen" && "$private_compgen" == "$plain" ]]
+      [[ "$before" == "$(__lmline_collect_exported_functions)" ]]
+      declare -Fx lmline_request_hash_privacy_probe >/dev/null
+      declare -F compgen >/dev/null
+      [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+      unset -f compgen
+      export -nf lmline_request_hash_privacy_probe
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      [[ "$plain" == "$(__lmline_request_key generate input)" ]]
+      [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+    done
+  done
+' _ "$repo_dir" || fail "request identity resists read/compgen collisions"
 git -c init.defaultBranch=main init -q "$widget_tmp/function-names/git"
 # Special-builtin lookup must not depend on caller export/builtin/command
 # functions. Keep every assertion boolean-only, including the fake hasher.
@@ -179,7 +331,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     helpers=(__lmline_async_function_names_key __lmline_async_settings_key
       __lmline_async_frontend_key __lmline_context_settings_key
       __lmline_suggested_commands_key __lmline_project_markers_key
-      __lmline_git_context_key __lmline_path_key)
+      __lmline_git_context_key __lmline_path_key __lmline_request_key)
     # The protected-shell variant only adds the inherited-name collector.
     [[ $state != readonly-privileged ]] || helpers=(__lmline_async_function_names_key)
     state_exported_functions=$(__lmline_collect_exported_functions)
@@ -214,6 +366,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     ! __lmline_async_function_names_key >/dev/null 2>&1
     ! __lmline_async_frontend_key generate >/dev/null 2>&1
     ! __lmline_path_key >/dev/null 2>&1
+    ! __lmline_request_key generate input >/dev/null 2>&1
     after=$(declare -p POSIXLY_CORRECT; set +o)
     [[ "$before" == "$after" ]]
     [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
@@ -1178,6 +1331,25 @@ LMLINE_TEST_UNAME_DIR="$widget_tmp/uname-change" LMLINE_CONFIG_DIR="$widget_tmp/
     plain=$(__lmline_request_key generate "# uname")
     __lmline_context_file plain-context "# uname" generate
     grep -Fxq "uname=private-uname-one" plain-context
+    # A nonempty uname makes the availability override observable in both
+    # the rendered bytes and the key. Sanitization must not remove command
+    # or change lookup mode before the renderer-equivalent gate runs.
+    (
+      command() {
+        if [[ "$*" == "-v uname" ]]; then return 1; fi
+        builtin command "$@"
+      }
+      export -f command
+      before=$(declare -f command; declare -Fx command; set +o)
+      absent=$(__lmline_request_key generate "# uname")
+      [[ -n "$absent" && "$absent" == "$empty" && "$absent" != "$plain" ]]
+      after=$(declare -f command; declare -Fx command; set +o)
+      [[ "$before" == "$after" ]]
+      __lmline_context_file absent-context "# uname" generate
+      ! grep -q "^uname=" absent-context
+      cmp -s empty-context absent-context
+      ! cmp -s plain-context absent-context
+    )
     printf "private-uname-one\n" >output
     nl_key=$(__lmline_request_key generate "# uname")
     __lmline_context_file nl-context "# uname" generate
