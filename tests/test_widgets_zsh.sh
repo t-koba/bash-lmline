@@ -34,6 +34,22 @@ EOF
     [[ "$key" == "$expected" ]]
     ! declare -F __lmline_collect_shell_functions >/dev/null
   ' _ "$repo_dir" || fail "context-only request key loads policy privately"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-context-declare" bash --norc -ec '
+    source "$1/lmline/context.bash"
+    declare() { return 0; }
+    export -f declare
+    before_options=$-
+    before_exports=$(builtin declare -Fx)
+    ! builtin declare -F __lmline_collect_shell_functions >/dev/null
+    key=$(__lmline_request_key generate input)
+    [[ -n "$key" ]]
+    expected=$(source "$1/lmline/policy.bash"; __lmline_request_key generate input)
+    [[ "$key" == "$expected" ]]
+    ! builtin declare -F __lmline_collect_shell_functions >/dev/null
+    [[ $- == "$before_options" ]]
+    [[ $(builtin declare -Fx) == "$before_exports" ]]
+    declare
+  ' _ "$repo_dir" || fail "context-only request key ignores exported declare shadow"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-hash" zsh -efic '
     source "$1/lmline/init.zsh"
     request_key=$(__lmline_zsh_request_key generate input 0)

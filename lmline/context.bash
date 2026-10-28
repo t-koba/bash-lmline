@@ -540,7 +540,12 @@ __lmline_local_command_allowed() {
 }
 
 __lmline_require_policy_support() {
-  if ! declare -F __lmline_risk_level >/dev/null 2>&1; then
+  # Probe privately through real builtins, not caller function shadows.
+  if ! (
+    [[ -o posix ]] || POSIXLY_CORRECT=1
+    unset -f command || exit 1
+    command builtin declare -F __lmline_risk_level
+  ) >/dev/null 2>&1; then
     # shellcheck source=lmline/policy.bash
     source "$__LMLINE_CONTEXT_DIR/policy.bash"
   fi
