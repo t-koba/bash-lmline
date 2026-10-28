@@ -264,7 +264,20 @@ if [[ "$1" == child ]]; then
   exec 3<>"$LMLINE_TEST_ASYNC_DIR/$name.gate"
   trap 'printf stopped >"$LMLINE_TEST_ASYNC_DIR/$name.child.stopped"; exit 143' TERM
   printf "%s\n" "$$" >"$LMLINE_TEST_ASYNC_DIR/$name.child.ready"
-  IFS= read -r -t 20 -u 3 release
+  if [[ "$name" == unrelated ]]; then
+    # This fixture must outlive the whole cancellation check; re-arm the same
+    # bounded read after its timeout until explicit cleanup.
+    while :; do
+      if IFS= read -r -t 20 -u 3 release; then
+        break
+      else
+        read_status=$?
+        (( read_status > 128 )) || exit "$read_status"
+      fi
+    done
+  else
+    IFS= read -r -t 20 -u 3 release
+  fi
   printf finished >"$LMLINE_TEST_ASYNC_DIR/$name.child.finished"
   exit
 fi
