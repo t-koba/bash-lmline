@@ -331,10 +331,12 @@ __lmline_async_function_names_key() (
   exported_functions=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   # Keep exported bodies out of the external hash process environment. The
   # exact name lists are already captured, and this private subshell leaves the
-  # caller's exported functions untouched.
+  # caller's exported functions untouched. Define the helper after capture
+  # to preserve the exact name inputs; POSIX mode selects the special builtin.
+  __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    export -nf -- "$name" 2>/dev/null || return 1
+    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
   done <<< "$shell_functions"
   names_hash=$(printf 'shell-functions\n%s\nexported-functions\n%s\n' \
     "$shell_functions" "$exported_functions" | __lmline_hash_stdin 2>/dev/null) || return 1
@@ -347,8 +349,11 @@ __lmline_async_function_names_key() (
 __lmline_async_settings_key() (
   # Do not carry exported function bodies into the fingerprint subprocess.
   local name
+  # Private to this key helper's subshell. POSIX mode makes the special
+  # builtin take precedence over caller function overrides.
+  __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    export -nf -- "$name" 2>/dev/null || return 1
+    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
   done < <(compgen -A function)
   bash -p -c '
     set -o pipefail
@@ -376,8 +381,11 @@ __lmline_async_frontend_key() (
   set -o pipefail
   local backend digest name
   # Hashing subprocesses must not inherit exported function bodies.
+  # Private to this key helper's subshell. POSIX mode makes the special
+  # builtin take precedence over caller function overrides.
+  __lmline_unexport_function() { \export -nf -- "$@"; }
   while IFS= read -r name; do
-    export -nf -- "$name" 2>/dev/null || return 1
+    POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
   done < <(compgen -A function)
   case $1 in
     generate) backend=${LMLINE_GENERATE_BACKEND:-engine} ;;

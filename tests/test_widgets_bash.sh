@@ -27,8 +27,12 @@ chmod +x "$widget_tmp/fail-sort-bin/sort"
 mkdir -p "$widget_tmp/function-names/privacy-bin"
 cat >"$widget_tmp/function-names/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if (($#)) || env | grep -q 'lmline_function_hash_privacy_probe'; then
+if (($#)) || env | grep -q '^BASH_FUNC_'; then
   printf leaked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+fi
+if [[ ${LMLINE_TEST_EXPECT_POSIX+x} &&
+      ${POSIXLY_CORRECT+x}:${POSIXLY_CORRECT-} != "$LMLINE_TEST_EXPECT_POSIX" ]]; then
+  printf changed >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/checked"
 exec cksum
@@ -112,6 +116,59 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config" \
   if __lmline_async_function_names_key >/dev/null 2>&1; then exit 1; fi
   eval "$saved_hash"
 ' _ "$repo_dir" || fail "async function identity hides bodies from hash subprocesses"
+# Special-builtin lookup must not depend on caller export/builtin/command
+# functions. Keep every assertion boolean-only, including the fake hasher.
+LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
+  LMLINE_TEST_FUNCTION_NAMES_DIR="$widget_tmp/function-names" \
+  PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  lmline_function_hash_privacy_probe() { :; }
+  export -f lmline_function_hash_privacy_probe
+  # A shadowed export silently doing nothing reproduces the original leak;
+  # builtin/command shadows must not be dispatched either.
+  export() { :; }
+  builtin() { :; }
+  command() { :; }
+  declare -fx export builtin command
+  shell_functions=$(__lmline_collect_shell_functions)
+  exported_functions=$(__lmline_collect_exported_functions)
+  # Independent reference for the exact lists and framing.
+  expected=$(
+    POSIXLY_CORRECT=1
+    \export -nf lmline_function_hash_privacy_probe export builtin command
+    printf "shell-functions\\n%s\\nexported-functions\\n%s\\n" \
+      "$shell_functions" "$exported_functions" | cksum
+  )
+  expected=${expected%% *}
+  for state in unset value exported posix; do (
+    unset POSIXLY_CORRECT
+    set +o posix
+    case $state in
+      value) POSIXLY_CORRECT=original ;;
+      exported) declare -x POSIXLY_CORRECT=original ;;
+      posix) set -o posix ;;
+    esac
+    before=$(declare -p POSIXLY_CORRECT 2>/dev/null || :; set +o)
+    # Check the state seen by an external hash process, not just the outer
+    # shell (key helpers themselves already run in subshells).
+    LMLINE_TEST_EXPECT_POSIX=:
+    [[ $state != exported ]] || LMLINE_TEST_EXPECT_POSIX=x:original
+    declare -x LMLINE_TEST_EXPECT_POSIX
+    [[ "$(__lmline_async_function_names_key)" == "$expected" ]]
+    after=$(declare -p POSIXLY_CORRECT 2>/dev/null || :; set +o)
+    [[ "$before" == "$after" ]]
+    [[ "$exported_functions" == "$(__lmline_collect_exported_functions)" ]]
+    [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+    [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+  ); done
+  # One helper from each remaining source file exercises the same private
+  # unexport path with the collision functions still active.
+  [[ -n "$(__lmline_async_frontend_key generate)" ]]
+  [[ -n "$(__lmline_path_key)" ]]
+  [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+  [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+' _ "$repo_dir" || fail "async identity sanitization resists builtin name collisions"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"
