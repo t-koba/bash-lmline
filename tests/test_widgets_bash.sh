@@ -1001,7 +1001,7 @@ LMLINE_TEST_UNAME_DIR="$widget_tmp/uname-change" LMLINE_CONFIG_DIR="$widget_tmp/
     : >output
     empty=$(__lmline_request_key generate "# uname")
     __lmline_context_file empty-context "# uname" generate
-    ! grep -q '^uname=' empty-context
+    ! grep -q "^uname=" empty-context
     (
       command() {
         if [[ "$*" == "-v uname" ]]; then return 1; fi
@@ -1010,17 +1010,17 @@ LMLINE_TEST_UNAME_DIR="$widget_tmp/uname-change" LMLINE_CONFIG_DIR="$widget_tmp/
       absent=$(__lmline_request_key generate "# uname")
       [[ -n "$absent" && "$absent" == "$empty" ]]
       __lmline_context_file absent-context "# uname" generate
-      ! grep -q '^uname=' absent-context
+      ! grep -q "^uname=" absent-context
       cmp -s empty-context absent-context
     )
     printf "private-uname-one" >output
     plain=$(__lmline_request_key generate "# uname")
     __lmline_context_file plain-context "# uname" generate
-    grep -Fxq 'uname=private-uname-one' plain-context
+    grep -Fxq "uname=private-uname-one" plain-context
     printf "private-uname-one\n" >output
     nl_key=$(__lmline_request_key generate "# uname")
     __lmline_context_file nl-context "# uname" generate
-    grep -Fxq 'uname=private-uname-one' nl-context
+    grep -Fxq "uname=private-uname-one" nl-context
     if cmp -s plain-context nl-context; then [[ "$plain" == "$nl_key" ]]; else [[ "$plain" != "$nl_key" ]]; fi
     touch fail
     ! __lmline_request_key generate "# uname" >failed-key
