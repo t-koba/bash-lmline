@@ -1001,6 +1001,15 @@ explain_brief.txt explain_normal.txt explain_detailed.txt
 The user line is always sent because it is the request being completed or
 rewritten. Other user-environment context is controlled by settings.
 
+In Zsh, the async identity bridge invokes local Bash hash utilities. If Zsh
+inherits Bash-exported function entries (`BASH_FUNC_*`), those entries can be
+visible to these local processes. This is process-environment exposure only:
+function bodies are not included in prompts or sent to the provider. The bridge
+does not currently filter these entries. To limit exposure, avoid exporting Bash
+functions into the environment used to start lmline from Zsh. In the parent Bash,
+`export -n -f function_name` removes a function’s export attribute without
+removing the function from that shell.
+
 Default context collection includes:
 
 ```text
