@@ -949,6 +949,133 @@ LMLINE_TEST_MODEL_DIR="$widget_tmp/model-change" LMLINE_CONFIG_DIR="$widget_tmp/
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$READLINE_LINE" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
 ' _ "$repo_dir" || fail "bash async live model identity"
+# Only private uname output changes: PATH and the shim remain unchanged.
+mkdir "$widget_tmp/uname-change" "$widget_tmp/uname-change/bin"
+mkfifo "$widget_tmp/uname-change/one.gate" "$widget_tmp/uname-change/two.gate" "$widget_tmp/uname-change/off.gate"
+cat >"$widget_tmp/uname-change/bin/uname" <<'EOF'
+#!/bin/sh
+[ "$#" = 1 ] && [ "$1" = -a ] || exit 97
+printf invoked >>"$LMLINE_TEST_UNAME_DIR/calls"
+cat "$LMLINE_TEST_UNAME_DIR/output"
+[ ! -e "$LMLINE_TEST_UNAME_DIR/fail" ]
+EOF
+cat >"$widget_tmp/engine-uname" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+context=
+while (($#)); do
+  case $1 in --context-file) context=$2; shift 2 ;; *) shift ;; esac
+done
+if ! grep -q '^## shell$' "$context"; then name=off
+elif grep -Fxq 'uname=private-uname-one' "$context"; then name=one
+elif grep -Fxq 'uname=private-uname-two' "$context"; then name=two
+else exit 98
+fi
+trap 'printf stopped >"$LMLINE_TEST_UNAME_DIR/$name.stopped"; exit 143' TERM
+exec 3<>"$LMLINE_TEST_UNAME_DIR/$name.gate"
+printf ready >"$LMLINE_TEST_UNAME_DIR/$name.ready"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_UNAME_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\ttouch uname-candidate-executed # %s\n' "$name"
+EOF
+chmod +x "$widget_tmp/uname-change/bin/uname" "$widget_tmp/engine-uname"
+LMLINE_TEST_UNAME_DIR="$widget_tmp/uname-change" LMLINE_CONFIG_DIR="$widget_tmp/config-uname" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$widget_tmp/engine-uname" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  export PATH="$LMLINE_TEST_UNAME_DIR/bin:$PATH"
+  export LMLINE_INCLUDE_CWD_CONTEXT=0 LMLINE_INCLUDE_GIT_CONTEXT=0
+  export LMLINE_INCLUDE_PROJECT_CONTEXT=0 LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
+  export LMLINE_TOOL_MODE=none
+  cleanup_uname_probe() {
+    for name in one two off; do
+      ( exec 3<>"$LMLINE_TEST_UNAME_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+    done
+    __lmline_async_cleanup
+  }
+  trap cleanup_uname_probe EXIT
+  cd "$LMLINE_TEST_UNAME_DIR"
+  # Unavailable and available-empty contribute no bytes. For newline
+  # variants, require key equality to track the rendered context bytes.
+  # Collection and digest failures fail closed.
+  (
+    export LMLINE_INCLUDE_SHELL_CONTEXT=1
+    : >output
+    empty=$(__lmline_request_key generate "# uname")
+    __lmline_context_file empty-context "# uname" generate
+    ! grep -q '^uname=' empty-context
+    (
+      command() {
+        if [[ "$*" == "-v uname" ]]; then return 1; fi
+        builtin command "$@"
+      }
+      absent=$(__lmline_request_key generate "# uname")
+      [[ -n "$absent" && "$absent" == "$empty" ]]
+      __lmline_context_file absent-context "# uname" generate
+      ! grep -q '^uname=' absent-context
+      cmp -s empty-context absent-context
+    )
+    printf "private-uname-one" >output
+    plain=$(__lmline_request_key generate "# uname")
+    __lmline_context_file plain-context "# uname" generate
+    grep -Fxq 'uname=private-uname-one' plain-context
+    printf "private-uname-one\n" >output
+    nl_key=$(__lmline_request_key generate "# uname")
+    __lmline_context_file nl-context "# uname" generate
+    grep -Fxq 'uname=private-uname-one' nl-context
+    if cmp -s plain-context nl-context; then [[ "$plain" == "$nl_key" ]]; else [[ "$plain" != "$nl_key" ]]; fi
+    touch fail
+    ! __lmline_request_key generate "# uname" >failed-key
+    [[ ! -s failed-key ]]
+    rm fail
+    (
+      __lmline_hash_stdin() { cat >/dev/null; printf partial; return 1; }
+      ! __lmline_request_key generate "# uname" >failed-key
+      [[ ! -s failed-key ]]
+    )
+    (
+      __lmline_hash_stdin() { cat >/dev/null; }
+      ! __lmline_request_key generate "# uname" >failed-key
+      [[ ! -s failed-key ]]
+    )
+  )
+  for enabled in 0 1; do
+    export LMLINE_INCLUDE_SHELL_CONTEXT=$enabled
+    printf "private-uname-one\n" >output
+    rm -f calls
+    key=$(__lmline_request_key generate "# uname")
+    [[ -n "$key" && "$key" != *private-uname-one* && "$key" != *"$LMLINE_TEST_UNAME_DIR"* ]]
+    READLINE_LINE="# uname"; READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    first_pid=$__LMLINE_ASYNC_PID
+    name=off; [[ "$enabled" == 0 ]] || name=one
+    for i in {1..200}; do [[ -s "$name.ready" ]] && break; sleep 0.05; done
+    [[ -s "$name.ready" ]]
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$__LMLINE_ASYNC_PID" == "$first_pid" ]]
+    printf "private-uname-two\n" >output
+    if [[ "$enabled" == 1 ]]; then
+      [[ "$key" != "$(__lmline_request_key generate "# uname")" ]]
+    else
+      [[ "$key" == "$(__lmline_request_key generate "# uname")" && ! -e calls ]]
+    fi
+    __lmline_generate_widget >/dev/null 2>&1
+    second_pid=$__LMLINE_ASYNC_PID
+    [[ "$READLINE_LINE" == "# uname" && ! -e uname-candidate-executed ]]
+    if [[ "$enabled" == 1 ]]; then
+      [[ "$second_pid" != "$first_pid" && -s one.stopped && ! -e one.finished ]]
+      ! kill -0 "$first_pid" 2>/dev/null
+      name=two
+    else
+      [[ "$second_pid" == "$first_pid" && ! -e calls ]]
+    fi
+    for i in {1..200}; do [[ -s "$name.ready" ]] && break; sleep 0.05; done
+    [[ -s "$name.ready" ]]
+    printf "release\n" >"$name.gate"
+    wait "$second_pid"
+    __lmline_generate_widget >/dev/null 2>&1
+    [[ "$READLINE_LINE" == "touch uname-candidate-executed # $name" && ! -e uname-candidate-executed ]]
+    [[ "$enabled" == 1 || ! -e calls ]]
+  done
+' _ "$repo_dir" || fail "bash async uname context identity"
 # A rename changes physical context without changing the shell logical PWD.
 mkdir "$widget_tmp/cwd-change" "$widget_tmp/cwd-change/before"
 mkfifo "$widget_tmp/cwd-change/before.gate" "$widget_tmp/cwd-change/after.gate" "$widget_tmp/cwd-change/off.gate"

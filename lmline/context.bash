@@ -1282,11 +1282,25 @@ __lmline_path_key() (
 
 __lmline_request_key() (
   set -o pipefail
-  local request_mode=$1 line=$2 physical_cwd_key=
+  local request_mode=$1 line=$2 physical_cwd_key= uname_key=
   # Match the rendered pwd -P bytes without exposing the path in the key.
   if __lmline_context_enabled LMLINE_INCLUDE_CWD_CONTEXT; then
     physical_cwd_key=$(pwd -P 2>/dev/null | __lmline_hash_stdin) || return 1
     [[ -n "$physical_cwd_key" ]] || return 1
+  fi
+  # Hash exactly the renderer's `uname=` contribution with the same
+  # availability gate and `uname -a | sed 's/^/uname=/'` pipeline. Preserve
+  # the bytes that pipeline actually emits. An unavailable command or
+  # available-empty output contributes no bytes, so both hash the same empty
+  # input. A present command/pipeline/hash failure cannot establish a reusable
+  # identity.
+  if __lmline_context_enabled LMLINE_INCLUDE_SHELL_CONTEXT; then
+    if command -v uname >/dev/null 2>&1; then
+      uname_key=$(uname -a 2>/dev/null | sed 's/^/uname=/' 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+    else
+      uname_key=$(printf '' 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+    fi
+    [[ -n "$uname_key" ]] || return 1
   fi
   {
     printf 'prompt_version=%s\n' "${LMLINE_PROMPT_VERSION:-3}"
@@ -1295,6 +1309,9 @@ __lmline_request_key() (
     printf 'pwd=%s\n' "$PWD"
     if [[ -n "$physical_cwd_key" ]]; then
       printf 'physical_cwd=%s\n' "$physical_cwd_key"
+    fi
+    if [[ -n "$uname_key" ]]; then
+      printf 'uname=%s\n' "$uname_key"
     fi
     printf 'bash=%s\n' "${BASH_VERSION-}"
     printf 'ostype=%s\n' "${OSTYPE-}"

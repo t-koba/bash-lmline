@@ -727,6 +727,100 @@ EOF
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo from-model-two" && -s "$LMLINE_TEST_MODEL_DIR/model-two.finished" ]]
   ' _ "$repo_dir" || fail "zsh async live model identity"
+  # Only private uname output changes: PATH and the shim remain unchanged.
+  mkdir "$zsh_tmp/uname-change" "$zsh_tmp/uname-change/bin"
+  mkfifo "$zsh_tmp/uname-change/one.gate" "$zsh_tmp/uname-change/two.gate" "$zsh_tmp/uname-change/off.gate"
+  cat >"$zsh_tmp/uname-change/bin/uname" <<'EOF'
+#!/bin/sh
+[ "$#" = 1 ] && [ "$1" = -a ] || exit 97
+printf invoked >>"$LMLINE_TEST_UNAME_DIR/calls"
+cat "$LMLINE_TEST_UNAME_DIR/output"
+[ ! -e "$LMLINE_TEST_UNAME_DIR/fail" ]
+EOF
+  cat >"$zsh_tmp/engine-uname" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+context=
+while (($#)); do
+  case $1 in --context-file) context=$2; shift 2 ;; *) shift ;; esac
+done
+if ! grep -q '^## shell$' "$context"; then name=off
+elif grep -Fxq 'uname=private-uname-one' "$context"; then name=one
+elif grep -Fxq 'uname=private-uname-two' "$context"; then name=two
+else exit 98
+fi
+trap 'printf stopped >"$LMLINE_TEST_UNAME_DIR/$name.stopped"; exit 143' TERM
+exec 3<>"$LMLINE_TEST_UNAME_DIR/$name.gate"
+printf ready >"$LMLINE_TEST_UNAME_DIR/$name.ready"
+IFS= read -r -t 20 -u 3 release
+printf finished >"$LMLINE_TEST_UNAME_DIR/$name.finished"
+printf 'lmline-candidate: low\t-\t-\ttouch uname-candidate-executed # %s\n' "$name"
+EOF
+  chmod +x "$zsh_tmp/uname-change/bin/uname" "$zsh_tmp/engine-uname"
+  LMLINE_TEST_UNAME_DIR="$zsh_tmp/uname-change" LMLINE_CONFIG_DIR="$zsh_tmp/config-uname" LMLINE_ASYNC=1 LMLINE_STATUS_MODE=silent LMLINE_ENGINE="$zsh_tmp/engine-uname" zsh -efic '
+    source "$1/lmline/init.zsh"
+    export PATH="$LMLINE_TEST_UNAME_DIR/bin:$PATH"
+    export LMLINE_INCLUDE_CWD_CONTEXT=0 LMLINE_INCLUDE_GIT_CONTEXT=0
+    export LMLINE_INCLUDE_PROJECT_CONTEXT=0 LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
+    export LMLINE_TOOL_MODE=none
+    cleanup_uname_probe() {
+      for name in one two off; do
+        ( exec 3<>"$LMLINE_TEST_UNAME_DIR/$name.gate"; printf "release\n" >&3 ) 2>/dev/null || true
+      done
+      __lmline_zsh_async_cleanup
+    }
+    trap cleanup_uname_probe EXIT
+    cd "$LMLINE_TEST_UNAME_DIR"
+    # Key equivalence must match the actual context produced by sed,
+    # regardless of platform-specific final-line handling.
+    export LMLINE_INCLUDE_SHELL_CONTEXT=1
+    printf "private-uname-one" >output
+    plain=$(__lmline_zsh_request_key generate "# uname" 7)
+    bash -c "source \"\$1/lmline/context.bash\"; __lmline_context_file \"\$2\" \"# uname\" generate" _ "$1" plain-context
+    printf "private-uname-one\n" >output
+    nl_key=$(__lmline_zsh_request_key generate "# uname" 7)
+    bash -c "source \"\$1/lmline/context.bash\"; __lmline_context_file \"\$2\" \"# uname\" generate" _ "$1" nl-context
+    if cmp -s plain-context nl-context; then [[ "$plain" == "$nl_key" ]]; else [[ "$plain" != "$nl_key" ]]; fi
+    rm -f calls
+    for enabled in 0 1; do
+      export LMLINE_INCLUDE_SHELL_CONTEXT=$enabled
+      printf "private-uname-one\n" >output
+      rm -f calls
+      key=$(__lmline_zsh_request_key generate "# uname" 7)
+      [[ -n "$key" && "$key" != *private-uname-one* && "$key" != *"$LMLINE_TEST_UNAME_DIR"* ]]
+      BUFFER="# uname"; CURSOR=${#BUFFER}
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      first_pid=$__LMLINE_ZSH_ASYNC_PID
+      name=off; [[ "$enabled" == 0 ]] || name=one
+      for i in {1..200}; do [[ -s "$name.ready" ]] && break; sleep 0.05; done
+      [[ -s "$name.ready" ]]
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first_pid" ]]
+      printf "private-uname-two\n" >output
+      if [[ "$enabled" == 1 ]]; then
+        [[ "$key" != "$(__lmline_zsh_request_key generate "# uname" 7)" ]]
+      else
+        [[ "$key" == "$(__lmline_zsh_request_key generate "# uname" 7)" && ! -e calls ]]
+      fi
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      second_pid=$__LMLINE_ZSH_ASYNC_PID
+      [[ "$BUFFER" == "# uname" && ! -e uname-candidate-executed ]]
+      if [[ "$enabled" == 1 ]]; then
+        [[ "$second_pid" != "$first_pid" && -s one.stopped && ! -e one.finished ]]
+        ! kill -0 "$first_pid" 2>/dev/null
+        name=two
+      else
+        [[ "$second_pid" == "$first_pid" && ! -e calls ]]
+      fi
+      for i in {1..200}; do [[ -s "$name.ready" ]] && break; sleep 0.05; done
+      [[ -s "$name.ready" ]]
+      printf "release\n" >"$name.gate"
+      wait "$second_pid"
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      [[ "$BUFFER" == "touch uname-candidate-executed # $name" && ! -e uname-candidate-executed ]]
+      [[ "$enabled" == 1 || ! -e calls ]]
+    done
+  ' _ "$repo_dir" || fail "zsh async uname context identity"
   # A rename changes physical context without changing the shell logical PWD.
   mkdir "$zsh_tmp/cwd-change" "$zsh_tmp/cwd-change/before"
   mkfifo "$zsh_tmp/cwd-change/before.gate" "$zsh_tmp/cwd-change/after.gate" "$zsh_tmp/cwd-change/off.gate"
