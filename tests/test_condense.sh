@@ -38,6 +38,20 @@ grep -q '\.\.\.\[omitted [0-9]* lines' <<<"$long_out" || fail "omission marker"
 out_bytes=$(wc -c <"$cond_tmp/long" | tr -d ' ')
 (( out_bytes <= 2000 )) || fail "budget respected (got $out_bytes bytes)"
 
+# A nonmatching input uses the shorter marker and keeps both ends within a
+# small budget even though priority patterns are configured.
+nonpriority_in=$(for i in $(seq 1 30); do printf 'line%02d\n' "$i"; done)
+printf '%s\n' "$nonpriority_in" | \
+  LMLINE_CONDENSE_LINE_BYTES=2000 LMLINE_CONDENSE_RESCUE_LINES=20 \
+  __lmline_condense_text 64 "$patterns" >"$cond_tmp/nonpriority"
+nonpriority_out_bytes=$(wc -c <"$cond_tmp/nonpriority" | tr -d ' ')
+(( nonpriority_out_bytes <= 64 )) || fail "nonpriority marker budget"
+grep -Fxq 'line01' "$cond_tmp/nonpriority" || fail "nonpriority head retained"
+grep -Fxq 'line30' "$cond_tmp/nonpriority" || fail "nonpriority tail retained"
+if grep -q 'notable lines kept below' "$cond_tmp/nonpriority"; then
+  fail "nonpriority marker uses ordinary wording"
+fi
+
 # Tool-result byte caps bound untrusted output sent to the model: a large
 # synthetic input condensed at the documented default stays within budget,
 # while a smaller cap keeps less. Deterministic sizes only.

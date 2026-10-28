@@ -1059,15 +1059,13 @@ __lmline_condense_text() {
         all_lines += cnt[i]; all_bytes += (length(raw[i]) + 1) * cnt[i]
       }
       if (total <= max) { for (i = 1; i <= n; i++) print ren[i]; exit }
-      # Reserve the largest possible marker before allocating line budgets.
-      # Counts only shrink as lines are kept. Tiny budgets may emit nothing.
+      # Reserve the ordinary marker. Charge the longer rescue wording only
+      # against the rescue budget if a priority line actually fits.
       reserve = length(marker(all_lines, all_bytes, 0))
       if (reserve > max) exit
-      if (np > 0 && rescue_max > 0) {
-        notable_reserve = length(marker(all_lines, all_bytes, 1))
-        if (notable_reserve <= max) reserve = notable_reserve
-        else rescue_max = 0
-      }
+      notable_extra = 0
+      if (np > 0 && rescue_max > 0)
+        notable_extra = length(marker(all_lines, all_bytes, 1)) - reserve
       available = max - reserve
       head_budget = int(available * 60 / 100); tail_budget = int(available * 25 / 100)
       rescue_budget = available - head_budget - tail_budget
@@ -1077,6 +1075,9 @@ __lmline_condense_text() {
         if (used + l > head_budget) break
         used += l; head_end = i
       }
+      # Whole-line boundaries can leave part of the head share unused; let
+      # the tail use that space rather than losing a retainable final line.
+      tail_budget += head_budget - used
       used = 0; tail_start = n + 1
       for (i = n; i > head_end; i--) {
         l = length(ren[i]) + 1
@@ -1089,7 +1090,7 @@ __lmline_condense_text() {
         for (p = 1; p <= np; p++) if (low ~ pats[p]) { hit = 1; break }
         if (!hit) continue
         l = length(ren[i]) + 1
-        if (used + l > rescue_budget) break
+        if (used + l + notable_extra > rescue_budget) break
         used += l; rescued[++nrescued] = ren[i]; kept[i] = 1
       }
       om_lines = 0; om_bytes = 0
