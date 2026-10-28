@@ -1012,8 +1012,8 @@ __lmline_condense_patterns_file() {
     "$LMLINE_DEFAULTS_DIR/condense_priority_patterns.txt"
 }
 
-# Condenses stdin to roughly max_bytes for model consumption. Unlike a blunt
-# head or tail cut it keeps both the head and the tail of the output, folds
+# Condenses stdin to at most max_bytes, including annotations and newlines.
+# Unlike a blunt cut it keeps the head and tail when space permits, folds
 # consecutive duplicate lines into one annotated line, rescues priority lines
 # (errors, warnings; condense_priority_patterns.txt) from the omitted middle,
 # and only cuts at line boundaries so UTF-8 sequences stay intact.
@@ -1031,6 +1031,10 @@ __lmline_condense_text() {
         break
       }
       return t
+    }
+    function marker(lines, bytes, notable) {
+      return sprintf("...[omitted %d lines, ~%d bytes%s]...\n", lines, bytes,
+                     notable ? "; notable lines kept below" : "")
     }
     BEGIN {
       cont_bytes = ""; lead_bytes = ""
@@ -1052,10 +1056,21 @@ __lmline_condense_text() {
       for (i = 1; i <= n; i++) {
         ren[i] = (cnt[i] > 1) ? raw[i] " (repeated " cnt[i] "x)" : raw[i]
         total += length(ren[i]) + 1
+        all_lines += cnt[i]; all_bytes += (length(raw[i]) + 1) * cnt[i]
       }
       if (total <= max) { for (i = 1; i <= n; i++) print ren[i]; exit }
-      head_budget = int(max * 60 / 100); tail_budget = int(max * 25 / 100)
-      rescue_budget = max - head_budget - tail_budget
+      # Reserve the largest possible marker before allocating line budgets.
+      # Counts only shrink as lines are kept. Tiny budgets may emit nothing.
+      reserve = length(marker(all_lines, all_bytes, 0))
+      if (reserve > max) exit
+      if (np > 0 && rescue_max > 0) {
+        notable_reserve = length(marker(all_lines, all_bytes, 1))
+        if (notable_reserve <= max) reserve = notable_reserve
+        else rescue_max = 0
+      }
+      available = max - reserve
+      head_budget = int(available * 60 / 100); tail_budget = int(available * 25 / 100)
+      rescue_budget = available - head_budget - tail_budget
       used = 0; head_end = 0
       for (i = 1; i <= n; i++) {
         l = length(ren[i]) + 1
@@ -1083,12 +1098,8 @@ __lmline_condense_text() {
         om_lines += cnt[i]; om_bytes += (length(raw[i]) + 1) * cnt[i]
       }
       for (i = 1; i <= head_end; i++) print ren[i]
-      if (nrescued > 0) {
-        printf "...[omitted %d lines, ~%d bytes; notable lines kept below]...\n", om_lines, om_bytes
-        for (i = 1; i <= nrescued; i++) print rescued[i]
-      } else {
-        printf "...[omitted %d lines, ~%d bytes]...\n", om_lines, om_bytes
-      }
+      printf "%s", marker(om_lines, om_bytes, nrescued > 0)
+      for (i = 1; i <= nrescued; i++) print rescued[i]
       for (i = tail_start; i <= n; i++) print ren[i]
     }
   ' in_patterns=1 "$patterns_file" in_patterns=0 -

@@ -30,24 +30,27 @@ short_out=$(printf 'line one\nline two\n' | __lmline_condense_text 1000 "$patter
 
 # Long input keeps head and tail with an omission marker in between.
 long_in=$(for i in $(seq 1 200); do printf 'filler line number %s with some padding text\n' "$i"; done)
-long_out=$(printf '%s\n' "$long_in" | __lmline_condense_text 2000 "$patterns")
+printf '%s\n' "$long_in" | __lmline_condense_text 2000 "$patterns" >"$cond_tmp/long"
+long_out=$(cat "$cond_tmp/long")
 grep -q 'filler line number 1 ' <<<"$long_out" || fail "head preserved"
 grep -q 'filler line number 200 ' <<<"$long_out" || fail "tail preserved"
 grep -q '\.\.\.\[omitted [0-9]* lines' <<<"$long_out" || fail "omission marker"
-out_bytes=$(LC_ALL=C printf '%s' "$long_out" | wc -c | tr -d ' ')
-(( out_bytes <= 2200 )) || fail "budget respected (got $out_bytes bytes)"
+out_bytes=$(wc -c <"$cond_tmp/long" | tr -d ' ')
+(( out_bytes <= 2000 )) || fail "budget respected (got $out_bytes bytes)"
 
 # Tool-result byte caps bound untrusted output sent to the model: a large
 # synthetic input condensed at the documented default stays within budget,
 # while a smaller cap keeps less. Deterministic sizes only.
 cap_in=$(for i in $(seq 1 1200); do printf 'synthetic tool output line %04d with padding text abcdefghij\n' "$i"; done)
-cap_default_out=$(printf '%s\n' "$cap_in" | __lmline_condense_text 8000 "$patterns")
-cap_default_bytes=$(LC_ALL=C printf '%s' "$cap_default_out" | wc -c | tr -d ' ')
-(( cap_default_bytes <= 8800 )) || fail "default tool-result cap bounds output (got $cap_default_bytes bytes)"
+printf '%s\n' "$cap_in" | __lmline_condense_text 8000 "$patterns" >"$cond_tmp/tool-default"
+cap_default_out=$(cat "$cond_tmp/tool-default")
+cap_default_bytes=$(wc -c <"$cond_tmp/tool-default" | tr -d ' ')
+(( cap_default_bytes <= 8000 )) || fail "default tool-result cap bounds output (got $cap_default_bytes bytes)"
 grep -q '\.\.\.\[omitted [0-9]* lines' <<<"$cap_default_out" || fail "default tool-result cap omission marker"
-cap_small_out=$(printf '%s\n' "$cap_in" | __lmline_condense_text 1000 "$patterns")
-cap_small_bytes=$(LC_ALL=C printf '%s' "$cap_small_out" | wc -c | tr -d ' ')
-(( cap_small_bytes <= 1200 )) || fail "small tool-result cap bounds output (got $cap_small_bytes bytes)"
+printf '%s\n' "$cap_in" | __lmline_condense_text 1000 "$patterns" >"$cond_tmp/tool-small"
+cap_small_out=$(cat "$cond_tmp/tool-small")
+cap_small_bytes=$(wc -c <"$cond_tmp/tool-small" | tr -d ' ')
+(( cap_small_bytes <= 1000 )) || fail "small tool-result cap bounds output (got $cap_small_bytes bytes)"
 (( cap_small_bytes < cap_default_bytes )) || fail "smaller cap keeps less output"
 
 # Priority lines (errors) in the omitted middle are rescued.
@@ -94,6 +97,46 @@ utf8_out=$(printf '%s\n' "$utf8_line" | LMLINE_CONDENSE_LINE_BYTES=100 __lmline_
 printf '%s' "$utf8_out" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 || fail "utf-8 boundary cut"
 grep -q '<line truncated>' <<<"$utf8_out" || fail "line truncation marker"
 
+# Every emitted byte counts, including separators, repeated-line annotations,
+# line-truncation annotations and the longer priority-rescue marker.
+printf '%s\n' "$mixed_in" | __lmline_condense_text 1500 "$patterns" >"$cond_tmp/priority"
+(( $(wc -c <"$cond_tmp/priority") <= 1500 )) || fail "priority marker budget"
+grep -q 'notable lines kept below' "$cond_tmp/priority" || fail "priority marker retained"
+for fixture in duplicate utf8; do
+  if [[ "$fixture" == duplicate ]]; then
+    printf '%s\n' "$dup_in" >"$cond_tmp/boundary-input"
+  else
+    printf '%s\n' "$utf8_line" >"$cond_tmp/boundary-input"
+  fi
+  LMLINE_CONDENSE_LINE_BYTES=100 __lmline_condense_text 5000 "$patterns" \
+    <"$cond_tmp/boundary-input" >"$cond_tmp/boundary-expected"
+  exact=$(wc -c <"$cond_tmp/boundary-expected" | tr -d ' ')
+  for cap in 0 1 2 3 8 32 64 "$((exact - 1))" "$exact" "$((exact + 1))"; do
+    LMLINE_CONDENSE_LINE_BYTES=100 __lmline_condense_text "$cap" "$patterns" \
+      <"$cond_tmp/boundary-input" >"$cond_tmp/boundary-output"
+    (( $(wc -c <"$cond_tmp/boundary-output") <= cap )) || fail "$fixture strict boundary $cap"
+    iconv -f UTF-8 -t UTF-8 <"$cond_tmp/boundary-output" >/dev/null 2>&1 || fail "$fixture boundary UTF-8"
+    if (( cap >= exact )); then
+      cmp -s "$cond_tmp/boundary-output" "$cond_tmp/boundary-expected" || fail "$fixture exact fit"
+    fi
+  done
+done
+
+# A full marker fits exactly, including its newline; below that it is omitted.
+printf '%0100d\n' 0 >"$cond_tmp/marker-input"
+printf '...[omitted 1 lines, ~101 bytes]...\n' >"$cond_tmp/marker-expected"
+marker_bytes=$(wc -c <"$cond_tmp/marker-expected" | tr -d ' ')
+for cap in "$((marker_bytes - 1))" "$marker_bytes" "$((marker_bytes + 1))"; do
+  LMLINE_CONDENSE_LINE_BYTES=0 __lmline_condense_text "$cap" "$empty_patterns_file" \
+    <"$cond_tmp/marker-input" >"$cond_tmp/marker-output"
+  (( $(wc -c <"$cond_tmp/marker-output") <= cap )) || fail "marker strict boundary"
+  if (( cap < marker_bytes )); then
+    [[ ! -s "$cond_tmp/marker-output" ]] || fail "undersized marker omitted"
+  else
+    cmp -s "$cond_tmp/marker-output" "$cond_tmp/marker-expected" || fail "complete marker fits"
+  fi
+done
+
 # In-place file condensation only rewrites files over budget.
 printf 'small file\n' >"$cond_tmp/small"
 __lmline_condense_file "$cond_tmp/small" 1000
@@ -111,14 +154,7 @@ for cap in 0 8 08 12000; do
   __lmline_condense_file "$cond_tmp/fix-output-$cap" "$cap"
   condensed_bytes=$(wc -c <"$cond_tmp/fix-output-$cap" | tr -d ' ')
   (( condensed_bytes < fix_output_bytes )) || fail "fix output cap $cap condenses synthetic output"
-  case "$cap" in
-    0|8|08)
-      (( condensed_bytes <= 100 )) || fail "small fix output cap $cap bounds synthetic output (got $condensed_bytes bytes)"
-      ;;
-    *)
-      (( condensed_bytes <= cap )) || fail "fix output cap $cap bounds synthetic output (got $condensed_bytes bytes)"
-      ;;
-  esac
+  (( condensed_bytes <= 10#$cap )) || fail "fix output cap $cap bounds synthetic output"
 done
 
 # File condensation propagates resolver errors and leaves the source intact.

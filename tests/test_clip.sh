@@ -106,6 +106,50 @@ grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
 clip_provider_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_dir/engine" "$repo_dir/lmline/lmline" clip --provider fake "原因は？")
 grep -q 'clipboard provider=fake' <<<"$clip_provider_out" || fail "clip one-shot provider"
+# Measure only the clipboard section delivered to the engine, never its text.
+# Count the exact raw section after the header; tail preserves an unterminated
+# final line without adding a byte.
+cat >"$clip_test_dir/engine-input-limit" <<'EOF'
+#!/usr/bin/env bash
+line_file=
+while (($#)); do
+  case "$1" in
+    --line-file) line_file=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+header_line=$(LC_ALL=C awk '
+  /^Pasted terminal or clipboard text:$/ { print NR; found = 1; exit }
+  END { if (!found) exit 1 }
+' "$line_file")
+tail -n +"$((header_line + 1))" "$line_file" | wc -c | tr -d '[:space:]' >"${LMLINE_TEST_INPUT_BYTES:?}"
+EOF
+chmod +x "$clip_test_dir/engine-input-limit"
+LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_CLIP_MAX_INPUT_BYTES=8 \
+  LMLINE_ENGINE="$clip_test_dir/engine-input-limit" \
+  LMLINE_TEST_INPUT_BYTES="$clip_test_dir/input-bytes" \
+  "$repo_dir/lmline/lmline" clip 'analyze' >"$clip_test_dir/input-limit-output" \
+  2>"$clip_test_dir/input-limit-error" || fail "small clipboard input cap status"
+[[ -s "$clip_test_dir/input-bytes" ]] || fail "small clipboard input cap reaches engine"
+input_bytes=$(cat "$clip_test_dir/input-bytes")
+[[ "$input_bytes" =~ ^[0-9]+$ ]] || fail "clipboard section byte measurement"
+(( input_bytes <= 8 )) || fail "clipboard section strict byte budget"
+# An exact-fit one-byte body must remain one byte after the request is written.
+cat >"$clip_test_dir/one-byte-provider" <<'EOF'
+#!/usr/bin/env bash
+printf x
+EOF
+chmod +x "$clip_test_dir/one-byte-provider"
+printf 'fake\t%s\n' "$clip_test_dir/one-byte-provider" >"$clip_test_dir/one-byte-providers.tsv"
+LMLINE_CONFIG_DIR="$clip_test_dir/config" \
+  LMLINE_CLIPBOARD_PROVIDERS_FILE="$clip_test_dir/one-byte-providers.tsv" \
+  LMLINE_CLIP_MAX_INPUT_BYTES=1 \
+  LMLINE_ENGINE="$clip_test_dir/engine-input-limit" \
+  LMLINE_TEST_INPUT_BYTES="$clip_test_dir/one-byte-input-bytes" \
+  "$repo_dir/lmline/lmline" clip --provider fake analyze \
+  >"$clip_test_dir/one-byte-output" 2>"$clip_test_dir/one-byte-error" || fail "one-byte clipboard input cap status"
+[[ $(cat "$clip_test_dir/one-byte-input-bytes") == 1 ]] || fail "one-byte clipboard exact fit"
+
 # Buffered clip and explain share the answer-body byte budget, not a per-line
 # width. Compare everything after metadata so headings/status/notices are not
 # counted as answer bytes (and runtime metadata cannot leak into the body).

@@ -1199,7 +1199,7 @@ Captured output that exceeds its byte budget (fix-mode stdout/stderr,
 `command_run` tool results, clipboard text, long command help) is condensed
 instead of being cut at an arbitrary byte:
 
-- the head and the tail of the output are both kept
+- the head and the tail of the output are both kept when space permits
 - consecutive duplicate lines fold into one line annotated `(repeated Nx)`
 - lines matching `condense_priority_patterns.txt` (errors, warnings,
   tracebacks) are rescued from the omitted middle
@@ -1207,8 +1207,13 @@ instead of being cut at an arbitrary byte:
 
 An omitted region is marked with a line like
 `...[omitted 120 lines, ~9000 bytes]...`. These markers (and `(repeated Nx)`)
-are inserted locally; they are not part of the original output. Budgets are
-controlled by the existing `LMLINE_FIX_MAX_OUTPUT`,
+are inserted locally; they are not part of the original output. The condensed
+body never exceeds its byte budget, including markers, annotations and line
+separators. Head/tail retention and priority rescue are best-effort within that
+budget; if even an omission marker cannot fit, the body may be empty. For
+clipboard input, the budget applies to the redacted clipboard body, not the
+question or surrounding request metadata. Budgets are controlled by the existing
+`LMLINE_FIX_MAX_OUTPUT`,
 `LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT`, and `LMLINE_CLIP_MAX_INPUT_BYTES`
 settings, plus `LMLINE_CONDENSE_LINE_BYTES` (per-line cap),
 `LMLINE_CONDENSE_RESCUE_LINES` (max rescued lines), and
