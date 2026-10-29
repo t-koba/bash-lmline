@@ -114,10 +114,40 @@ __lmline_warn_bad_json() {
   printf 'lmline-progress: warning: provider returned unparseable JSON (%s)\n' "$1" >&2
 }
 
+__lmline_display_model_label() {
+  local model=$1 display_model=
+  model=${model//$'\t'/ }
+  model=${model//$'\n'/ }
+  if declare -F __lmline_display_answer >/dev/null 2>&1; then
+    display_model=$(printf '%s\n' "$model" | __lmline_display_answer 2>/dev/null) || display_model=
+  fi
+  display_model=${display_model//$'\n'/ }
+  [[ -n "${display_model//[[:space:]]/}" ]] || display_model=unknown-model
+  printf '%s' "$display_model"
+}
+
+__lmline_display_encoded_model_label() {
+  local encoded=$1 display_model=
+  if declare -F __lmline_display_answer >/dev/null 2>&1; then
+    display_model=$(
+      set -o pipefail
+      printf '%s\n' "$encoded" |
+        jq -Rr '@base64d' 2>/dev/null |
+        tr '\011' ' ' |
+        __lmline_display_answer 2>/dev/null
+    ) || display_model=
+  fi
+  display_model=${display_model//$'\n'/ }
+  [[ -n "${display_model//[[:space:]]/}" ]] || display_model=unknown-model
+  printf '%s' "$display_model"
+}
+
 __lmline_record_usage() {
   local response=$1 model prompt completion total
   jq -e . "$response" >/dev/null 2>&1 || return 0
-  model=$(jq -r '.model // empty' "$response")
+  # Encode the provider label so arbitrary bytes remain intact in its TSV
+  # field without shifting the numeric usage columns.
+  model=$(jq -r 'if .model == null or .model == "" then "-" else ("b64:" + ((.model | tostring) | @base64)) end' "$response")
   prompt=$(jq -r '.usage.prompt_tokens // .usage.input_tokens // 0' "$response")
   completion=$(jq -r '.usage.completion_tokens // .usage.output_tokens // 0' "$response")
   total=$(jq -r '.usage.total_tokens // ((.usage.prompt_tokens // .usage.input_tokens // 0) + (.usage.completion_tokens // .usage.output_tokens // 0)) // 0' "$response")
@@ -237,7 +267,12 @@ __lmline_usage_summary() {
     END { printf "%s\t%d\t%d\t%d\n", (model == "" ? "-" : model), prompt, completion, total }
   ' "$usage_file" 2>/dev/null || printf -- '-\t0\t0\t0\n')
   IFS=$'\t' read -r usage_model usage_prompt usage_completion usage_total <<<"$summary"
-  [[ "$usage_model" != - && -n "$usage_model" ]] || usage_model=$LMLINE_MODEL
+  if [[ "$usage_model" == b64:* ]]; then
+    usage_model=$(__lmline_display_encoded_model_label "${usage_model#b64:}")
+  else
+    [[ "$usage_model" != - && -n "$usage_model" ]] || usage_model=$LMLINE_MODEL
+    usage_model=$(__lmline_display_model_label "$usage_model")
+  fi
 }
 
 __lmline_emit_meta() {
