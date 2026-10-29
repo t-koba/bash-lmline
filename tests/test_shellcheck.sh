@@ -123,13 +123,13 @@ __lmline_shellcheck_write_record() {
 }
 
 __lmline_shellcheck_record_sample() {
-  local label=$1 phase=$2 pid=$3 elapsed=$4 wait_status=$5 exit_status=$6 signal_candidate=$7 diagnostics_file=$8
+  local label=$1 phase=$2 pid=$3 elapsed=$4 wait_status=$5 exit_status=$6 signal_candidate=$7 diagnostics_file=$8 manifest_input_count=$9
   local rss child_rss child_count tree process_peak child_peak available total current limit cgroup_peak oom oom_kill
   read -r rss child_rss child_count tree process_peak child_peak < <(__lmline_shellcheck_tree_rss "$pid")
   read -r available total < <(__lmline_shellcheck_memory_kib)
   read -r current limit cgroup_peak oom oom_kill < <(__lmline_shellcheck_cgroup_memory "$pid")
   __lmline_shellcheck_write_record "$diagnostics_file" \
-    "label=$label phase=$phase elapsed_s=$elapsed process_rss_kib=$rss process_peak_rss_kib=$process_peak child_rss_kib=$child_rss child_peak_rss_kib=$child_peak child_count=$child_count rss_tree_kib=$tree available_ram_kib=$available total_ram_kib=$total cgroup_current_bytes=$current cgroup_limit_bytes=$limit cgroup_peak_bytes=$cgroup_peak cgroup_oom=$oom cgroup_oom_kill=$oom_kill wait_status=$wait_status exit_status=$exit_status signal_candidate=$signal_candidate"
+    "label=$label phase=$phase manifest_input_count=$manifest_input_count elapsed_s=$elapsed process_rss_kib=$rss process_peak_rss_kib=$process_peak child_rss_kib=$child_rss child_peak_rss_kib=$child_peak child_count=$child_count rss_tree_kib=$tree available_ram_kib=$available total_ram_kib=$total cgroup_current_bytes=$current cgroup_limit_bytes=$limit cgroup_peak_bytes=$cgroup_peak cgroup_oom=$oom cgroup_oom_kill=$oom_kill wait_status=$wait_status exit_status=$exit_status signal_candidate=$signal_candidate"
 }
 
 __lmline_shellcheck_process_running() {
@@ -152,21 +152,24 @@ __lmline_shellcheck_run_monitored() {
   if [[ ! "$interval" =~ ^[1-9][0-9]*$ || ! "$sample_cap" =~ ^[1-9][0-9]*$ || $# -eq 0 ]]; then
     return 2
   fi
-  local pid started elapsed next_sample sample_count=0 cap_logged=0 status exit_status signal_candidate
+  local pid started elapsed next_sample sample_count=0 cap_logged=0 status exit_status signal_candidate manifest_input_count=na
+  if [[ "${1##*/}" == shellcheck && $# -ge 3 && "$2" == -s && "$3" == bash ]]; then
+    manifest_input_count=$(( $# - 3 ))
+  fi
   "$@" &
   pid=$!
   started=$SECONDS
   next_sample=$interval
-  __lmline_shellcheck_record_sample "$label" start "$pid" 0 running na na "$diagnostics_file"
+  __lmline_shellcheck_record_sample "$label" start "$pid" 0 running na na "$diagnostics_file" "$manifest_input_count"
   while __lmline_shellcheck_process_running "$pid"; do
     sleep 1
     elapsed=$((SECONDS - started))
     if ((elapsed >= next_sample)); then
       if ((sample_count < sample_cap)); then
         sample_count=$((sample_count + 1))
-        __lmline_shellcheck_record_sample "$label" progress "$pid" "$elapsed" running na na "$diagnostics_file"
+        __lmline_shellcheck_record_sample "$label" progress "$pid" "$elapsed" running na na "$diagnostics_file" "$manifest_input_count"
       elif ((cap_logged == 0)); then
-        __lmline_shellcheck_write_record "$diagnostics_file" "label=$label phase=sample_cap elapsed_s=$elapsed sample_cap=$sample_cap"
+        __lmline_shellcheck_write_record "$diagnostics_file" "label=$label phase=sample_cap manifest_input_count=$manifest_input_count elapsed_s=$elapsed sample_cap=$sample_cap"
         cap_logged=1
       fi
       next_sample=$((next_sample + interval))
@@ -186,12 +189,12 @@ __lmline_shellcheck_run_monitored() {
     signal_candidate=na
   fi
   # Bash's wait status cannot distinguish a signal from an explicit 128+N exit.
-  __lmline_shellcheck_record_sample "$label" final "$pid" "$elapsed" "$status" "$exit_status" "$signal_candidate" "$diagnostics_file"
+  __lmline_shellcheck_record_sample "$label" final "$pid" "$elapsed" "$status" "$exit_status" "$signal_candidate" "$diagnostics_file" "$manifest_input_count"
   return "$status"
 }
 
 __lmline_shellcheck_monitor_self_test() {
-  local test_dir output_file diagnostics_file pid_file status progress_count attempt monitor_pid monitored_pid saw_cap=0 procfs_available=0
+  local test_dir output_file diagnostics_file pid_file fake_shellcheck status progress_count attempt monitor_pid monitored_pid saw_cap=0 procfs_available=0
   test_dir=$(mktemp -d) || fail "could not create ShellCheck monitor test directory"
   output_file="$test_dir/output"
   diagnostics_file="$test_dir/diagnostics"
@@ -261,6 +264,18 @@ __lmline_shellcheck_monitor_self_test() {
   if [[ "$status" != 5 ]] || ! grep -q 'label=artifact-test phase=final .*wait_status=5 exit_status=5 signal_candidate=na' "$diagnostics_file"; then
     rm -rf "$test_dir"
     fail "ShellCheck monitor did not retain its bounded diagnostic file"
+  fi
+  fake_shellcheck="$test_dir/shellcheck"
+  printf '#!/bin/sh\nexit 0\n' > "$fake_shellcheck"
+  chmod +x "$fake_shellcheck"
+  if __lmline_shellcheck_run_monitored count-test 1 1 '' "$fake_shellcheck" -s bash input-one input-two input-three > "$output_file" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" != 0 ]] || ! grep -q 'label=count-test phase=final .*manifest_input_count=3 ' "$output_file"; then
+    rm -rf "$test_dir"
+    fail "ShellCheck monitor did not record manifest input count"
   fi
   rm -rf "$test_dir"
   ok "shellcheck resource monitor"
