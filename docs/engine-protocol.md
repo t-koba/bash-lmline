@@ -63,8 +63,10 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
   the fourth and final field).
 
 Candidates are validated and deduplicated by the engine before emission.
-Validation rejects multiline text, control characters, syntax invalid for the
-target shell (checked with `bash -p -n` or `zsh -f -n`),
+The Bash and Zsh widgets also reject C1 candidates before selection or insertion,
+without rewriting safe UTF-8, user input, or raw internal traces.
+Validation rejects multiline text, control characters (including UTF-8-encoded
+Unicode C1 U+0080–U+009F), syntax invalid for the target shell (checked with `bash -p -n` or `zsh -f -n`),
 environment-assignment-only command segments, selected direct directory file
 operands, and command words unavailable in the target shell. The frontend for
 the target shell passes its own shell-function names (names only, never bodies)

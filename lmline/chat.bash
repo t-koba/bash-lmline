@@ -1630,6 +1630,11 @@ __lmline_emit_candidates() {
       continue
     fi
     raw_candidate=$candidate
+    # Reject before truncation can discard a control or turn it into a comment.
+    if __lmline_has_c1_control "$candidate"; then
+      printf 'invalid:control-character\t%s\n' "$candidate" >>"$rejected_file"
+      continue
+    fi
     truncated=0
     if __lmline_candidate_truncated "$candidate"; then
       candidate=$(__lmline_truncate_candidate "$candidate")

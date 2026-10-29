@@ -211,6 +211,9 @@ __lmline_zsh_meta_status() {
 # engine owns validation and risk classification.
 __lmline_zsh_set_candidates() {
   local output=$1 payload risk reason flags candidate rest
+  # Zsh needs byte matching as well as the C locale; restore options on return.
+  setopt localoptions nomultibyte
+  local LC_ALL=C
   __LMLINE_ZSH_CANDIDATES=()
   __LMLINE_ZSH_RISKS=()
   __LMLINE_ZSH_REASONS=()
@@ -222,6 +225,8 @@ __lmline_zsh_set_candidates() {
     reason=${rest%%$'\t'*}; rest=${rest#*$'\t'}
     flags=${rest%%$'\t'*}; candidate=${rest#*$'\t'}
     [[ -n "$candidate" ]] || continue
+    # C1 is C2 80..9F in UTF-8; bare continuation bytes are not controls.
+    [[ "$candidate" != *$'\302'[$'\200'-$'\237']* ]] || continue
     [[ "$candidate" != *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]] || continue
     case "$risk" in
       high|medium|low) ;;

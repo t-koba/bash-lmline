@@ -129,6 +129,13 @@ __lmline_truncated_comment_candidate() {
   printf '%s' "$cmd" | LC_ALL=C cut -c "1-$body_len"
 }
 
+# Match Unicode C1 codepoints, not continuation bytes in ordinary UTF-8.
+# Keep byte matching local so validation never changes the caller's locale.
+__lmline_has_c1_control() {
+  local LC_ALL=C
+  [[ "$1" == *$'\302'[$'\200'-$'\237']* ]]
+}
+
 __lmline_valid_candidates() {
   if [[ ${__LMLINE_VALIDATION_ISOLATED-} != 1 ]]; then
     __lmline_validation_run valid-candidates "$@"
@@ -136,6 +143,7 @@ __lmline_valid_candidates() {
   fi
   local candidate reason
   while IFS= read -r candidate; do
+    __lmline_has_c1_control "$candidate" && continue
     if __lmline_candidate_truncated "$candidate"; then
       candidate=$(__lmline_truncate_candidate "$candidate")
       reason=$(__lmline_candidate_rejection_reason "$candidate")
@@ -160,7 +168,7 @@ __lmline_candidate_rejection_reason() {
   [[ "$cmd" != *$'\n'* ]] || { printf 'multiline'; return 0; }
   [[ "$cmd" != *$'\r'* ]] || { printf 'carriage-return'; return 0; }
   [[ ! "$cmd" =~ ^[[:space:]]*\`\`\`[[:alpha:]]*[[:space:]]*$ ]] || { printf 'markdown-fence'; return 0; }
-  if [[ "$cmd" == *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]]; then
+  if __lmline_has_c1_control "$cmd" || [[ "$cmd" == *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]]; then
     printf 'control-character'
     return 0
   fi

@@ -154,6 +154,7 @@ __lmline_engine_meta_status() {
 # a control-character defense and dedupe.
 __lmline_parse_candidates() {
   local payload risk reason flags candidate existing seen
+  local LC_ALL=C
   __LMLINE_CANDIDATES=()
   __LMLINE_CANDIDATE_RISKS=()
   __LMLINE_CANDIDATE_REASONS=()
@@ -163,6 +164,8 @@ __lmline_parse_candidates() {
     payload=${payload#lmline-candidate: }
     IFS=$'\t' read -r risk reason flags candidate <<<"$payload"
     [[ -n "$candidate" ]] || continue
+    # C1 is C2 80..9F in UTF-8; bare continuation bytes are not controls.
+    [[ "$candidate" != *$'\302'[$'\200'-$'\237']* ]] || continue
     [[ "$candidate" != *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]] || continue
     case "$risk" in
       high|medium|low) ;;
