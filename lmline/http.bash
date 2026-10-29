@@ -32,13 +32,14 @@ __lmline_http_get() {
 
 # Maps raw engine/curl error text to a short actionable user message.
 __lmline_engine_error_message() {
-  local prefix=$1 error=$2
+  local prefix=$1 error=$2 display_error
   case "$error" in
     *timed\ out*|*timeout*|*Operation\ timed\ out*|*"status 124"*)
       printf '%srequest timed out (%ss; set LMLINE_ENGINE_TIMEOUT to increase)\n' "$prefix" "${LMLINE_ENGINE_TIMEOUT:-60}"
       ;;
     lmline-engine:\ no\ valid\ candidate:*)
-      printf '%s%s\n' "$prefix" "${error#lmline-engine: }"
+      display_error=$(printf '%s\n' "${error#lmline-engine: }" | __lmline_display_answer 2>/dev/null) || display_error=
+      printf '%s%s\n' "$prefix" "$display_error"
       ;;
     *401*|*Unauthorized*|*invalid*api*key*|*authentication*)
       if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
@@ -58,7 +59,10 @@ __lmline_engine_error_message() {
       printf '%sconnection failed; try: lmline doctor --check-api\n' "$prefix"
       ;;
     *)
-      printf '%sengine failed: %s (try: lmline doctor --check-api)\n' "$prefix" "$error"
+      # Classify raw text above; render only the untrusted display detail.
+      # A missing/failed renderer must never fall back to raw terminal output.
+      display_error=$(printf '%s\n' "$error" | __lmline_display_answer 2>/dev/null) || display_error=
+      printf '%sengine failed: %s (try: lmline doctor --check-api)\n' "$prefix" "$display_error"
       ;;
   esac
 }

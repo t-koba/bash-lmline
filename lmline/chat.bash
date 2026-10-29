@@ -347,7 +347,7 @@ __lmline_chatgpt_failure_hint() {
 }
 
 __lmline_report_request_failure() {
-  local http_code=$1 content_type=${2-} response=$3 detail hint= detail_lower=
+  local http_code=$1 content_type=${2-} response=$3 detail display_detail hint= detail_lower=
   detail=$(__lmline_response_error_detail "$response" "$content_type")
   if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
     hint=$(__lmline_chatgpt_failure_hint "$http_code" "$detail")
@@ -375,7 +375,10 @@ __lmline_report_request_failure() {
   fi
   [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
   if [[ -n "$detail" ]]; then
-    printf 'lmline-engine: request failed: HTTP %s: %s%s\n' "$http_code" "$detail" "$hint" >&2
+    # Keep extraction, byte capping and hint classification raw; sanitize only
+    # the terminal-facing detail, not trusted framing or recovery hints.
+    display_detail=$(printf '%s\n' "$detail" | __lmline_display_answer 2>/dev/null) || display_detail=
+    printf 'lmline-engine: request failed: HTTP %s: %s%s\n' "$http_code" "$display_detail" "$hint" >&2
   else
     printf 'lmline-engine: request failed: HTTP %s%s\n' "$http_code" "$hint" >&2
   fi
