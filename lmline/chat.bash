@@ -182,6 +182,7 @@ __lmline_normalize_response() {
 }
 
 __lmline_tool_short_name() {
+  local display_name=
   case "$1" in
     command_exists) printf 'command-exists' ;;
     command_info) printf 'command-info' ;;
@@ -190,7 +191,16 @@ __lmline_tool_short_name() {
     git_status) printf 'git-status' ;;
     file_excerpt) printf 'file-excerpt' ;;
     command_run) printf 'command-run' ;;
-    *) printf '%s' "$1" ;;
+    *)
+      # Unknown names are provider-controlled. This value is used only for
+      # progress and status labels; keep the original name for dispatch,
+      # protocol messages, and traces.
+      if declare -F __lmline_display_answer >/dev/null 2>&1; then
+        display_name=$(printf '%s\n' "$1" | __lmline_display_answer 2>/dev/null) || display_name=
+      fi
+      display_name=${display_name//$'\n'/ }
+      printf '%s' "${display_name:-unknown-tool}"
+      ;;
   esac
 }
 
