@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# shellcheck source=tests/lib.sh
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/lmline-catalog-display.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+raw_model=$'provider_\302\23552;c;payload\302\234suffix'
+raw_start=$'\302\235'
+raw_end=$'\302\234'
+unicode_model='unicode-模型'
+config_dir=$work/config
+lmline=$repo_dir/lmline/lmline
+mkdir -p "$config_dir"
+LMLINE_CONFIG_DIR="$config_dir" "$lmline" endpoint add catalog https://catalog.example/v1 >/dev/null
+printf 'catalog\t%s\t\t\t\tchat\ncatalog\tordinary-model\t\t\t\tchat\ncatalog\t%s\t\t\t\tchat\n' "$raw_model" "$unicode_model" >"$config_dir/models.tsv"
+
+model_list=$(LMLINE_CONFIG_DIR="$config_dir" "$lmline" model list catalog)
+expected_list=$'catalog\tprovider_suffix\t\t\t\tchat\ncatalog\tordinary-model\t\t\t\tchat\ncatalog\tunicode-模型\t\t\t\tchat'
+[[ "$model_list" == "$expected_list" ]] || fail 'human model list sanitizes only the catalog ID and preserves ordinary names'
+[[ "$model_list" != *"$raw_start"* && "$model_list" != *"$raw_end"* ]] || fail 'human model list contains no C1 bytes'
+unknown_model=$'provider_\302\23552;c;payload\302\234missing'
+if LMLINE_CONFIG_DIR="$config_dir" "$lmline" use catalog "$unknown_model" >/dev/null 2>"$work/unknown-use.err"; then
+  fail 'unknown model selection is rejected'
+fi
+unknown_use_error=$(cat "$work/unknown-use.err")
+[[ "$unknown_use_error" == *'unknown model for catalog: provider_missing'* ]] || fail 'unknown model errors use a safe display label'
+[[ "$unknown_use_error" != *"$raw_start"* && "$unknown_use_error" != *"$raw_end"* ]] || fail 'unknown model selection error contains no raw C1 bytes'
+if LMLINE_CONFIG_DIR="$config_dir" "$lmline" model remove catalog "$unknown_model" >/dev/null 2>"$work/unknown-remove.err"; then
+  fail 'unknown model removal is rejected'
+fi
+unknown_remove_error=$(cat "$work/unknown-remove.err")
+[[ "$unknown_remove_error" == *'unknown model for catalog: provider_missing'* ]] || fail 'unknown model removal errors use a safe display label'
+[[ "$unknown_remove_error" != *"$raw_start"* && "$unknown_remove_error" != *"$raw_end"* ]] || fail 'unknown model removal error contains no raw C1 bytes'
+
+# The default model-candidate output is display-safe; shell integrations opt in
+# to the lossless machine transport explicitly.
+completion_display=$(LMLINE_CONFIG_DIR="$config_dir" "$lmline" complete models catalog)
+[[ "$completion_display" == $'provider_suffix\nordinary-model\nunicode-模型' ]] || fail 'default completion output uses safe model labels'
+[[ "$completion_display" != *"$raw_start"* && "$completion_display" != *"$raw_end"* ]] || fail 'default completion output contains no raw C1 bytes'
+completion_raw=$(LMLINE_CONFIG_DIR="$config_dir" "$lmline" complete models --raw catalog)
+grep -Fxq "$raw_model" <<<"$completion_raw" || fail 'machine completion transport preserves the raw ID'
+grep -Fxq 'ordinary-model' <<<"$completion_raw" || fail 'machine completion transport preserves ordinary IDs'
+grep -Fxq "$unicode_model" <<<"$completion_raw" || fail 'machine completion transport preserves Unicode IDs'
+printf 'missing-endpoint\t%s\t\t\t\tchat\n' "$raw_model" >>"$config_dir/models.tsv"
+
+# Selection and status matching continue to use the exact raw identifier.
+if LMLINE_CONFIG_DIR="$config_dir" "$lmline" use catalog >/dev/null 2>"$work/use.err"; then
+  fail 'ambiguous model selection requires an explicit ID'
+fi
+use_error=$(cat "$work/use.err")
+[[ "$use_error" != *"$raw_start"* && "$use_error" != *"$raw_end"* ]] || fail 'model-choice guidance contains no raw C1 bytes'
+LC_ALL=C printf -v quoted_model '%q' "$raw_model"
+[[ "$use_error" == *"lmline use catalog $quoted_model"* ]] || fail 'model-choice guidance uses a reversible shell word'
+LC_ALL=C printf -v quoted_unicode '%q' "$unicode_model"
+[[ "$use_error" == *"lmline use catalog $quoted_unicode"* ]] || fail 'Unicode model-choice guidance uses a reversible shell word'
+LMLINE_CONFIG_DIR="$config_dir" "$lmline" use catalog "$raw_model" >/dev/null
+saved_model=$(
+  # shellcheck disable=SC1090
+  source "$config_dir/settings.bash"
+  printf '%s' "$LMLINE_MODEL"
+)
+[[ "$saved_model" == "$raw_model" ]] || fail 'explicit selection stores the exact raw catalog ID'
+current_out=$(LMLINE_CONFIG_DIR="$config_dir" "$lmline" current)
+[[ "$current_out" == *$'model=provider_suffix\n'* && "$current_out" == *'profile_status=matched'* ]] || fail 'current status displays safely while matching the raw ID'
+[[ "$current_out" != *"$raw_start"* && "$current_out" != *"$raw_end"* ]] || fail 'current output contains no raw C1 bytes'
+doctor_out=$(LMLINE_CONFIG_DIR="$config_dir" "$lmline" doctor)
+[[ "$doctor_out" == *$'model=provider_suffix\n'* ]] || fail 'doctor displays the selected model safely'
+[[ "$doctor_out" != *"$raw_start"* && "$doctor_out" != *"$raw_end"* ]] || fail 'doctor output contains no raw C1 bytes'
+[[ "$doctor_out" == *'model references unknown endpoint: missing-endpoint/provider_suffix'* ]] || fail 'doctor profile checks safely display an orphaned catalog ID'
+
+# Refresh/removal summaries and cached status/meta use the same safe display label.
+mkdir -p "$work/bin"
+cat >"$work/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+printf '{"data":[{"id":"ordinary-model"}]}\n'
+CURL
+chmod +x "$work/bin/curl"
+PATH="$work/bin:$PATH" LMLINE_CONFIG_DIR="$config_dir" "$lmline" model refresh catalog >"$work/refresh.out" 2>"$work/refresh.err" || fail 'catalog refresh with a removed C1 model succeeds'
+refresh_error=$(cat "$work/refresh.err")
+[[ "$refresh_error" == *'removed models: provider_suffix'* ]] || fail 'refresh summary displays a sanitized removed ID'
+[[ "$refresh_error" == *'selected model provider_suffix is no longer served'* ]] || fail 'removed-selection warning displays a sanitized ID'
+[[ "$refresh_error" != *"$raw_start"* && "$refresh_error" != *"$raw_end"* ]] || fail 'refresh output contains no raw C1 bytes'
+
+# Cache hits display the configured catalog ID through the metadata sanitizer.
+# shellcheck source=lmline/context.bash
+source "$repo_dir/lmline/context.bash"
+# shellcheck source=lmline/chat.bash
+source "$repo_dir/lmline/chat.bash"
+mode=explain
+output_format=plain
+cache_file=$work/cache
+printf 'cached response' >"$cache_file"
+LMLINE_MODEL=$raw_model
+__lmline_cache_emit >"$work/cache.out" 2>"$work/cache.err"
+[[ $(cat "$work/cache.out") == 'cached response' ]] || fail 'cache hit still emits its response'
+cache_error=$(cat "$work/cache.err")
+[[ "$cache_error" == $'lmline-meta: model=provider_suffix tokens=cached tools=none time=0s\nlmline-status: m=provider_suffix; cached' ]] || fail 'cached status and metadata display a safe model label'
+[[ "$cache_error" != *"$raw_start"* && "$cache_error" != *"$raw_end"* ]] || fail 'cached metadata contains no raw C1 bytes'
+
+# Each shipped completion adapter inserts an encoded shell word which evaluates
+# to the exact raw ID; only booleans are reported from these interactive PTYs.
+python3 - "$repo_dir" "$work" <<'PY'
+import os, pty, select, signal, sys, tempfile, time
+repo, work = sys.argv[1:]
+raw = 'provider_\u009d52;c;payload\u009csuffix'
+unicode = 'unicode-\u30e2\u30c7\u30eb'
+needle_start = b'\xc2\x9d'
+needle_end = b'\xc2\x9c'
+bindir = os.path.join(work, 'completion-bin')
+os.makedirs(bindir, exist_ok=True)
+fake = os.path.join(bindir, 'lmline')
+with open(fake, 'w', encoding='utf-8') as f:
+    f.write('''#!/usr/bin/env bash
+if [[ ${1-} == complete && ${2-} == models ]]; then
+  printf '%s\\n%s\\n%s\\n' "$LMLINE_TEST_CANDIDATE" "$LMLINE_TEST_SAFE_CANDIDATE" "$LMLINE_TEST_UNICODE_CANDIDATE"
+elif [[ ${1-} == use ]]; then
+  if [[ ${3-} == "$LMLINE_TEST_CANDIDATE" || ${3-} == "$LMLINE_TEST_SAFE_CANDIDATE" || ${3-} == "$LMLINE_TEST_UNICODE_CANDIDATE" ]]; then
+    printf 'MODEL_EXACT=true\\n'
+  else
+    printf 'MODEL_EXACT=false\\n'
+  fi
+fi
+''')
+os.chmod(fake, 0o755)
+
+for index, (shell, argv, setup, input_line) in enumerate((
+    ('bash', ['bash', '--noprofile', '--norc', '-i'],
+     'source ' + os.path.join(repo, 'lmline/completions/lmline.bash'),
+     b'lmline use catalog provider_\t'),
+    ('zsh', ['zsh', '-f', '-i'],
+     'autoload -Uz compinit; compinit -i; source ' + os.path.join(repo, 'lmline/completions/_lmline') + '; compdef _lmline lmline',
+     b'lmline use catalog provider_\t'))):
+    ready_file = os.path.join(work, 'completion-ready-' + shell + '-' + str(index))
+    try:
+        os.unlink(ready_file)
+    except FileNotFoundError:
+        pass
+    pid, fd = pty.fork()
+    if pid == 0:
+        env = os.environ.copy()
+        env['PATH'] = bindir + os.pathsep + env.get('PATH', '')
+        env['LMLINE_TEST_CANDIDATE'] = raw
+        env['LMLINE_TEST_SAFE_CANDIDATE'] = 'ordinary-model'
+        env['LMLINE_TEST_UNICODE_CANDIDATE'] = unicode
+        env['LC_ALL'] = 'C'
+        env['LMLINE_COMPLETION_READY'] = ready_file
+        env['TERM'] = 'xterm'
+        os.execvpe(shell, argv, env)
+    transcript = bytearray()
+    def drain(seconds):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and len(transcript) < 65536:
+            ready, _, _ = select.select([fd], [], [], 0.05)
+            if ready:
+                try:
+                    transcript.extend(os.read(fd, 4096))
+                except OSError:
+                    return
+    def wait_for_count(marker, count, seconds):
+        deadline = time.monotonic() + seconds
+        while transcript.count(marker) < count and time.monotonic() < deadline:
+            drain(0.05)
+        return transcript.count(marker) >= count
+    exact = False
+    safe = False
+    quoted_safe = False
+    escaped_safe = False
+    try:
+        drain(0.15)
+        setup += '; printf ready > "$LMLINE_COMPLETION_READY"'
+        os.write(fd, (setup + '\n').encode())
+        deadline = time.monotonic() + 5
+        while not os.path.exists(ready_file) and time.monotonic() < deadline:
+            drain(0.05)
+        if not os.path.exists(ready_file):
+            raise SystemExit(shell + ' completion setup timed out')
+        os.write(fd, input_line)
+        drain(0.5)
+        os.write(fd, b'\r')
+        exact = wait_for_count(b'MODEL_EXACT=true', 1, 3)
+        os.write(fd, b'lmline use catalog ordinary-\t')
+        drain(0.5)
+        os.write(fd, b'\r')
+        exact = exact and wait_for_count(b'MODEL_EXACT=true', 2, 3)
+        os.write(fd, 'lmline use catalog unicode-'.encode('utf-8') + b'\t')
+        drain(0.5)
+        os.write(fd, b'\r')
+        exact = exact and wait_for_count(b'MODEL_EXACT=true', 3, 3)
+
+        before = len(transcript)
+        os.write(fd, b'lmline use catalog "provider_\t')
+        drain(0.5)
+        quoted = transcript[before:]
+        quoted_safe = (needle_start not in quoted and needle_end not in quoted and b"$'" not in quoted)
+        os.write(fd, b'\x03')
+        drain(0.15)
+
+        before = len(transcript)
+        os.write(fd, b'lmline use catalog provider\\_\t')
+        drain(0.5)
+        escaped = transcript[before:]
+        escaped_safe = (needle_start not in escaped and needle_end not in escaped and b"$'" not in escaped)
+        os.write(fd, b'\x03')
+        drain(0.15)
+        safe = needle_start not in transcript and needle_end not in transcript
+    finally:
+        try:
+            os.write(fd, b'exit\n')
+            time.sleep(0.05)
+        except OSError:
+            pass
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    if not exact or not safe or not quoted_safe or not escaped_safe:
+        raise SystemExit(shell + ' completion safety failed (exact=' + str(exact).lower() + ', no_c1=' + str(safe).lower() + ', quoted=' + str(quoted_safe).lower() + ', escaped=' + str(escaped_safe).lower() + ')')
+PY
+
+ok 'provider catalog model IDs are terminal-safe and completion remains lossless'

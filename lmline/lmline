@@ -766,7 +766,7 @@ usage: lmline complete commands
        lmline complete settings
        lmline complete setting-values KEY
        lmline complete endpoints
-       lmline complete models [ENDPOINT]
+       lmline complete models [--raw] [ENDPOINT]
        lmline complete clipboard-providers
 
 Print completion candidates for shell integrations.
@@ -786,9 +786,10 @@ Print known values for one setting.
 EOF
       ;;
     complete:models) cat <<'EOF'
-usage: lmline complete models [ENDPOINT]
+usage: lmline complete models [--raw] [ENDPOINT]
 
-Print model completion candidates, optionally limited to one endpoint.
+Print terminal-safe model labels, optionally limited to one endpoint. The --raw
+form is reserved for shell-integration transports that must preserve the ID.
 EOF
       ;;
     history:) cat <<'EOF'
@@ -952,6 +953,42 @@ print_config_redacted() {
   sed -E \
     -e 's/^(export LMLINE_[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|PASS|KEY)=).*/\1***REDACTED***/' \
     "$file"
+}
+
+# Load the shared terminal sanitizer only on CLI paths that display model IDs.
+__lmline_load_display_support() {
+  declare -F __lmline_display_answer >/dev/null 2>&1 && return 0
+  [[ -r "$script_dir/context.bash" ]] || return 1
+  # shellcheck source=lmline/context.bash
+  source "$script_dir/context.bash" 2>/dev/null
+}
+
+# Render catalog IDs through the shared terminal sanitizer in one batch. IDs
+# are line-framed in the profile transport, so newline is not part of the key.
+__lmline_display_catalog_model_ids() {
+  local count=$# sanitized i
+  local -a display_ids=()
+  (( count > 0 )) || return 0
+  __lmline_load_display_support || return 1
+  sanitized=$(
+    printf '%s\n' "$@" | __lmline_display_answer 2>/dev/null || exit 1
+    printf '\034'
+  ) || return 1
+  sanitized=${sanitized%$'\034'}
+  mapfile -t display_ids < <(printf '%s' "$sanitized")
+  (( ${#display_ids[@]} == count )) || return 1
+  for ((i = 0; i < count; i++)); do
+    [[ -n "${display_ids[i]}" ]] || display_ids[i]=unknown-model
+  done
+  printf '%s\n' "${display_ids[@]}"
+}
+
+__lmline_display_catalog_model() {
+  local display_model
+  display_model=$(__lmline_display_catalog_model_ids "$1") || display_model=unknown-model
+  display_model=${display_model//$'\n'/ }
+  [[ -n "$display_model" ]] || display_model=unknown-model
+  printf '%s' "$display_model"
 }
 
 source_support_files() {
@@ -1192,7 +1229,7 @@ case "$cmd" in
       printf 'engine=NOT FOUND\n'
     fi
     printf 'base_url=%s\n' "${LMLINE_BASE_URL:-not-configured}"
-    printf 'model=%s\n' "${LMLINE_MODEL:-auto-discover}"
+    printf 'model=%s\n' "$( __lmline_display_catalog_model "${LMLINE_MODEL:-auto-discover}" )"
     if [[ -n "${LMLINE_API_KEY_FILE:-}" ]]; then
       printf 'auth=configured\n'
     else
@@ -1262,7 +1299,7 @@ case "$cmd" in
     fi
     if [[ -f "$endpoints_file" && -f "$models_file" ]]; then
       while IFS= read -r check_line; do
-        printf '  WARNING: model references unknown endpoint: %s\n' "$check_line"
+        printf '  WARNING: model references unknown endpoint: %s\n' "$( __lmline_display_catalog_model "$check_line" )"
         profile_issues=$((profile_issues + 1))
       done < <(awk -F '\t' '
         NR == FNR { if (NF && $1 !~ /^#/) ep[$1] = 1; next }
@@ -1533,7 +1570,7 @@ case "$cmd" in
     case "$sub" in -h|--help|'') print_cli_help model; [[ -n "$sub" ]] && exit 0 || exit 2 ;; esac
     case "$sub" in
       add) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model add; exit 0; }; with_config_lock profile_model_add "$@" ;;
-      list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model list; exit 0; }; profile_model_list "${1-}" ;;
+      list) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model list; exit 0; }; profile_model_list_display "${1-}" ;;
       refresh) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model refresh; exit 0; }; with_config_lock profile_model_refresh "${1-}" ;;
       remove) [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help model remove; exit 0; }; with_config_lock profile_model_remove "${1-}" "${2-}" ;;
       *) usage; exit 2 ;;
@@ -1580,7 +1617,14 @@ case "$cmd" in
       settings) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete settings; exit 0; }; __lmline_setting_keys ;;
       setting-values) [[ "${3-}" == -h || "${3-}" == --help || -z "${3-}" ]] && { print_cli_help complete setting-values; exit 0; }; __lmline_setting_value_candidates "${3-}" ;;
       endpoints) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete endpoints; exit 0; }; [[ -f "$endpoints_file" ]] && awk -F '\t' 'NF && $1 !~ /^#/ { print $1 }' "$endpoints_file" ;;
-      models) [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete models; exit 0; }; profile_model_list "${3-}" | awk -F '\t' '{ print $2 }' ;;
+      models)
+        [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete models; exit 0; }
+        if [[ "${3-}" == --raw ]]; then
+          profile_model_list "${4-}" | awk -F '\t' '{ print $2 }'
+        else
+          profile_model_list_display "${3-}" | awk -F '\t' '{ print $2 }'
+        fi
+        ;;
       clipboard-providers)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help complete clipboard-providers; exit 0; }
         source_support_files

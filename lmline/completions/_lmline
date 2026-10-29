@@ -3,6 +3,40 @@
 # compinit or when sourced directly (init.zsh sources it and runs compdef).
 # Dynamic values come from "lmline complete ..." at completion time.
 
+# Insert reversible shell words only in an unquoted model argument. For an
+# existing quote context, retain ordinary safe candidates but omit IDs whose
+# suffix needs encoding instead of leaking controls or breaking the quote.
+_lmline_complete_catalog_models_zsh() {
+  local cmd=$1 endpoint=$2 id suffix encoded_prefix encoded_suffix raw_word
+  local quoted_context=${compstate[quoting]-}
+  local -a candidates=()
+  raw_word=${${LBUFFER-}##*[[:space:]]}
+  if [[ $raw_word == *\\* || $raw_word == *\"* || $raw_word == *\'* ]]; then
+    quoted_context=escaped
+  fi
+  if [[ -n "$PREFIX" ]]; then
+    printf -v encoded_prefix '%q' "$PREFIX"
+    [[ "$encoded_prefix" == "$PREFIX" ]] || return 0
+  fi
+  while IFS= read -r id; do
+    [[ "$id" == "$PREFIX"* ]] || continue
+    suffix=${id#$PREFIX}
+    printf -v encoded_suffix '%q' "$suffix"
+    if [[ -n "$quoted_context" ]]; then
+      [[ "$encoded_suffix" == "$suffix" ]] || continue
+      candidates+=("$id")
+    else
+      candidates+=("$PREFIX$encoded_suffix")
+    fi
+  done < <("$cmd" complete models --raw "$endpoint" 2>/dev/null)
+  (( ${#candidates} )) || return 0
+  if [[ -n "$quoted_context" ]]; then
+    compadd -- "${candidates[@]}"
+  else
+    compadd -Q -- "${candidates[@]}"
+  fi
+}
+
 _lmline() {
   local cmd
   if command -v lmline >/dev/null 2>&1; then
@@ -34,7 +68,7 @@ _lmline() {
       ;;
     4)
       case "$words[2]:$words[3]" in
-        use:*) compadd -- "${(@f)$($cmd complete models "$words[3]" 2>/dev/null)}" ;;
+        use:*) _lmline_complete_catalog_models_zsh "$cmd" "$words[3]" ;;
         help:*) compadd -- "${(@f)$($cmd complete subcommands "$words[3]" 2>/dev/null)}" ;;
         sandbox:setup) compadd -- --name --image --workspace --root --workdir --timeout --help ;;
         sandbox:run) compadd -- --name --image --timeout --max-output --help -- ;;
@@ -49,7 +83,7 @@ _lmline() {
       ;;
     5)
       case "$words[2]:$words[3]" in
-        model:remove) compadd -- "${(@f)$($cmd complete models "$words[4]" 2>/dev/null)}" ;;
+        model:remove) _lmline_complete_catalog_models_zsh "$cmd" "$words[4]" ;;
         sandbox:setup)
           [[ "$words[4]" == --workspace ]] && compadd -- readonly writable none
           ;;

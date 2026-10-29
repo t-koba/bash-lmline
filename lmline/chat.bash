@@ -1301,6 +1301,14 @@ __lmline_cache_lookup() {
   (( now - mtime <= LMLINE_CACHE_TTL ))
 }
 
+# Cached status labels use the same terminal boundary as provider labels.
+__lmline_cache_emit_status() {
+  local display_model
+  display_model=$(__lmline_display_model_label "$LMLINE_MODEL")
+  printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$display_model" >&2
+  printf 'lmline-status: m=%s; cached\n' "$display_model" >&2
+}
+
 # Cache hits re-apply current validation and risk policy so a permissive
 # entry does not serve obsolete risk metadata after a strict policy change.
 # Annotated candidates are revalidated and reclassified; explain text has no
@@ -1326,8 +1334,7 @@ __lmline_cache_emit() {
     else
       plain_output=$(cat "$cache_file")
     fi
-    printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
-    printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
+    __lmline_cache_emit_status
     printf '%s' "$plain_output"
     return 0
   fi
@@ -1355,8 +1362,7 @@ __lmline_cache_emit() {
     valid_count=$((valid_count + 1))
   done <"$cache_file"
   (( valid_count > 0 )) || return 1
-  printf 'lmline-meta: model=%s tokens=cached tools=none time=0s\n' "$LMLINE_MODEL" >&2
-  printf 'lmline-status: m=%s; cached\n' "$LMLINE_MODEL" >&2
+  __lmline_cache_emit_status
   printf '%s' "$valid_output"
 }
 
