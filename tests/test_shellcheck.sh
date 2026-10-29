@@ -191,34 +191,41 @@ __lmline_shellcheck_run_monitored() {
 }
 
 __lmline_shellcheck_monitor_self_test() {
-  local test_dir output_file diagnostics_file release_file status progress_count attempt monitor_pid saw_cap=0
+  local test_dir output_file diagnostics_file pid_file status progress_count attempt monitor_pid monitored_pid saw_cap=0 procfs_available=0
   test_dir=$(mktemp -d) || fail "could not create ShellCheck monitor test directory"
   output_file="$test_dir/output"
   diagnostics_file="$test_dir/diagnostics"
-  release_file="$test_dir/release"
+  pid_file="$test_dir/monitored-pid"
   : > "$output_file"
   : > "$diagnostics_file"
 
-  __lmline_shellcheck_run_monitored monitor-test 1 1 '' bash -c 'while [[ ! -e "$1" ]]; do sleep 1; done; exit 7' _ "$release_file" > "$output_file" 2>&1 &
+  __lmline_shellcheck_run_monitored monitor-test 1 1 '' bash -c 'sleep 120 & child=$!; trap "kill -TERM $child 2>/dev/null || true; wait $child 2>/dev/null || true; exit 7" USR1; printf "%s\\n" "$$" > "$1"; wait "$child"; exit 7' _ "$pid_file" > "$output_file" 2>&1 &
   monitor_pid=$!
   attempt=0
   while ((attempt < 30)); do
-    if grep -q 'label=monitor-test phase=sample_cap ' "$output_file"; then
+    if [[ -s "$pid_file" ]] && grep -q 'label=monitor-test phase=sample_cap ' "$output_file"; then
       saw_cap=1
       break
     fi
     sleep 1
     attempt=$((attempt + 1))
   done
-  : > "$release_file"
   if ((saw_cap)); then
+    read -r monitored_pid < "$pid_file"
+    if [[ "$monitored_pid" =~ ^[0-9]+$ ]]; then
+      [[ -r "/proc/$monitored_pid/task/$monitored_pid/children" ]] && procfs_available=1
+      kill -USR1 "$monitored_pid" 2>/dev/null || true
+    fi
     if wait "$monitor_pid"; then
       status=0
     else
       status=$?
     fi
   else
-    kill -TERM "$monitor_pid" 2>/dev/null || true
+    if [[ -s "$pid_file" ]]; then
+      read -r monitored_pid < "$pid_file"
+      [[ "$monitored_pid" =~ ^[0-9]+$ ]] && kill -USR1 "$monitored_pid" 2>/dev/null || true
+    fi
     if wait "$monitor_pid"; then
       status=0
     else
@@ -232,9 +239,9 @@ __lmline_shellcheck_monitor_self_test() {
     rm -rf "$test_dir"
     fail "ShellCheck monitor did not preserve bounded progress and child exit status"
   fi
-  if [[ -r /proc/$$/status ]] && ! grep -Eq 'phase=progress .*process_rss_kib=[0-9]+ process_peak_rss_kib=[0-9]+ child_rss_kib=([0-9]+|na) child_peak_rss_kib=([0-9]+|na) child_count=([0-9]+|na) rss_tree_kib=([0-9]+|na)' "$output_file"; then
+  if ((procfs_available)) && ! grep -Eq 'phase=progress .*process_rss_kib=[0-9]+ process_peak_rss_kib=[0-9]+ child_rss_kib=[0-9]+ child_peak_rss_kib=[0-9]+ child_count=1 rss_tree_kib=[0-9]+' "$output_file"; then
     rm -rf "$test_dir"
-    fail "ShellCheck monitor did not sample bounded RSS metrics"
+    fail "ShellCheck monitor did not sample child RSS on procfs"
   fi
 
   if __lmline_shellcheck_run_monitored signal-test 1 1 '' bash -c 'kill -TERM "$$"' > "$output_file" 2>&1; then
