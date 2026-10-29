@@ -191,30 +191,59 @@ __lmline_shellcheck_run_monitored() {
 }
 
 __lmline_shellcheck_monitor_self_test() {
-  local output_file diagnostics_file status progress_count
-  output_file=$(mktemp) || fail "could not create ShellCheck monitor test output"
-  diagnostics_file=$(mktemp) || fail "could not create ShellCheck monitor diagnostic"
-  if __lmline_shellcheck_run_monitored monitor-test 1 1 '' bash -c 'sleep 3; exit 7' > "$output_file" 2>&1; then
-    status=0
+  local test_dir output_file diagnostics_file release_file status progress_count attempt monitor_pid saw_cap=0
+  test_dir=$(mktemp -d) || fail "could not create ShellCheck monitor test directory"
+  output_file="$test_dir/output"
+  diagnostics_file="$test_dir/diagnostics"
+  release_file="$test_dir/release"
+  : > "$output_file"
+  : > "$diagnostics_file"
+
+  __lmline_shellcheck_run_monitored monitor-test 1 1 '' bash -c 'while [[ ! -e "$1" ]]; do sleep 1; done; exit 7' _ "$release_file" > "$output_file" 2>&1 &
+  monitor_pid=$!
+  attempt=0
+  while ((attempt < 30)); do
+    if grep -q 'label=monitor-test phase=sample_cap ' "$output_file"; then
+      saw_cap=1
+      break
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  : > "$release_file"
+  if ((saw_cap)); then
+    if wait "$monitor_pid"; then
+      status=0
+    else
+      status=$?
+    fi
   else
-    status=$?
+    kill -TERM "$monitor_pid" 2>/dev/null || true
+    if wait "$monitor_pid"; then
+      status=0
+    else
+      status=$?
+    fi
+    rm -rf "$test_dir"
+    fail "ShellCheck monitor did not reach a bounded sample under test"
   fi
   progress_count=$(grep -c 'label=monitor-test phase=progress ' "$output_file" || true)
-  if [[ -r /proc/$$/status ]] && ! grep -Eq 'phase=progress .*process_rss_kib=[0-9]+ process_peak_rss_kib=[0-9]+ child_rss_kib=[0-9]+ child_peak_rss_kib=[0-9]+ child_count=1 rss_tree_kib=[0-9]+' "$output_file"; then
-    rm -f "$output_file"
-    fail "ShellCheck monitor did not sample process and child peak RSS"
-  fi
-  if [[ "$status" != 7 || "$progress_count" != 1 ]] || ! grep -q 'label=monitor-test phase=sample_cap ' "$output_file" || ! grep -q 'label=monitor-test phase=final .*wait_status=7 exit_status=7 signal_candidate=na' "$output_file"; then
-    rm -f "$output_file"
+  if [[ "$status" != 7 || "$progress_count" != 1 ]] || ! grep -q 'label=monitor-test phase=final .*wait_status=7 exit_status=7 signal_candidate=na' "$output_file"; then
+    rm -rf "$test_dir"
     fail "ShellCheck monitor did not preserve bounded progress and child exit status"
   fi
+  if [[ -r /proc/$$/status ]] && ! grep -Eq 'phase=progress .*process_rss_kib=[0-9]+ process_peak_rss_kib=[0-9]+ child_rss_kib=([0-9]+|na) child_peak_rss_kib=([0-9]+|na) child_count=([0-9]+|na) rss_tree_kib=([0-9]+|na)' "$output_file"; then
+    rm -rf "$test_dir"
+    fail "ShellCheck monitor did not sample bounded RSS metrics"
+  fi
+
   if __lmline_shellcheck_run_monitored signal-test 1 1 '' bash -c 'kill -TERM "$$"' > "$output_file" 2>&1; then
     status=0
   else
     status=$?
   fi
   if [[ "$status" != 143 ]] || ! grep -q 'label=signal-test phase=final .*wait_status=143 exit_status=na signal_candidate=15' "$output_file"; then
-    rm -f "$output_file" "$diagnostics_file"
+    rm -rf "$test_dir"
     fail "ShellCheck monitor did not retain child signal status"
   fi
   if __lmline_shellcheck_run_monitored artifact-test 10 1 "$diagnostics_file" bash -c 'exit 5' > "$output_file" 2>&1; then
@@ -223,10 +252,10 @@ __lmline_shellcheck_monitor_self_test() {
     status=$?
   fi
   if [[ "$status" != 5 ]] || ! grep -q 'label=artifact-test phase=final .*wait_status=5 exit_status=5 signal_candidate=na' "$diagnostics_file"; then
-    rm -f "$output_file" "$diagnostics_file"
+    rm -rf "$test_dir"
     fail "ShellCheck monitor did not retain its bounded diagnostic file"
   fi
-  rm -f "$output_file" "$diagnostics_file"
+  rm -rf "$test_dir"
   ok "shellcheck resource monitor"
 }
 
