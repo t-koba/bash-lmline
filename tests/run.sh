@@ -3,10 +3,8 @@
 # instead of stopping at the first failing file, and exits non-zero if any
 # file failed. Individual files fail fast internally via lib.sh fail().
 # With no arguments runs every test. With exactly --skip-shellcheck, skips
-# only test_shellcheck.sh (the full platform-invariant lint runs once on
-# Ubuntu in CI; macOS covers its pinned Darwin asset with
-# test_shellcheck.sh --provision-only plus this non-lint suite)
-# and runs everything else in the same order.
+# the full pinned lint (which runs once on Ubuntu) but still runs the bounded
+# monitor regression; macOS separately provisions the pinned Darwin asset.
 set -u
 
 skip_shellcheck=0
@@ -29,11 +27,16 @@ suite_started=$SECONDS
 
 for test_file in "$tests_dir"/test_*.sh; do
   name=$(basename "$test_file")
+  test_started=$SECONDS
   if ((skip_shellcheck)) && [[ "$name" == "test_shellcheck.sh" ]]; then
-    printf 'skip - %s: full ShellCheck lint runs once on Ubuntu (macOS covers pinned Darwin provisioning separately)\n' "$name"
+    printf 'skip - %s: full ShellCheck lint runs once on Ubuntu; run bounded monitor regression\n' "$name"
+    if ! bash "$test_file" --monitor-self-test; then
+      printf 'not ok - %s (monitor regression)\n' "$name" >&2
+      failed+=("$name")
+    fi
+    printf 'duration - %s: %ss\n' "$name" "$((SECONDS - test_started))"
     continue
   fi
-  test_started=$SECONDS
   if ! bash "$test_file"; then
     printf 'not ok - %s\n' "$name" >&2
     failed+=("$name")
