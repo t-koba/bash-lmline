@@ -93,7 +93,7 @@ safe_output "$config_description" 'config description'
 [[ "$config_description" == *$'value=endpoint_suffix\n'* ]] || fail 'config describe renders the selected endpoint safely'
 mkdir -p "$work/project"
 (
-  cd "$work/project"
+  cd "$work/project" || exit
   cli config project-set LMLINE_ACTIVE_ENDPOINT "$raw_endpoint"
   project_config=$(cli config project-get)
   safe_output "$project_config" 'project config get'
@@ -161,4 +161,41 @@ remove=$(cat "$work/remove.err")
 safe_output "$remove" 'endpoint removal'
 [[ "$remove" == *"removed endpoint $label was active"* ]] || fail 'active endpoint removal uses a safe label'
 [[ $(cli complete models --raw "$label") == first ]] || fail 'removal keeps display-colliding endpoint models'
-ok 'endpoint displays are terminal-safe while raw lookup and selection remain exact'
+
+# Selected model IDs remain raw in configuration storage but are safe in every
+# human-readable configuration view, including the shared project renderer.
+raw_model=$'model_\302\23552;c;payload\302\234suffix'
+model_label=model_suffix
+cli config set LMLINE_MODEL ordinary-model
+ordinary_model_description=$(cli config describe LMLINE_MODEL)
+[[ "$ordinary_model_description" == *$'value=ordinary-model\n'* ]] || fail 'ordinary model labels remain unchanged'
+cli config set LMLINE_MODEL "$raw_model"
+stored_model=$(
+  # shellcheck disable=SC1090
+  source "$config_dir/settings.bash"
+  printf '%s' "$LMLINE_MODEL"
+)
+[[ "$stored_model" == "$raw_model" ]] || fail 'model setting preserves the exact raw ID'
+model_config_get=$(cli config get)
+safe_output "$model_config_get" 'model config get'
+[[ "$model_config_get" == *"LMLINE_MODEL='$model_label'"* ]] || fail 'config get renders the selected model safely'
+model_config_effective=$(cli config effective)
+safe_output "$model_config_effective" 'model config effective'
+[[ "$model_config_effective" == *$'LMLINE_MODEL\t'"$model_label"$'\t'* ]] || fail 'config effective renders the selected model safely'
+model_config_description=$(cli config describe LMLINE_MODEL)
+safe_output "$model_config_description" 'model config description'
+[[ "$model_config_description" == *$'value='"$model_label"$'\n'* ]] || fail 'config describe renders the selected model safely'
+(
+  cd "$work/project" || exit
+  cli config project-set LMLINE_MODEL "$raw_model"
+  project_raw_model=$(
+    # shellcheck disable=SC1091
+    source .lmline.bash
+    printf '%s' "$LMLINE_MODEL"
+  )
+  [[ "$project_raw_model" == "$raw_model" ]] || fail 'project setting preserves the exact raw model ID'
+  project_model_config=$(cli config project-get)
+  safe_output "$project_model_config" 'model project config get'
+  [[ "$project_model_config" == *"LMLINE_MODEL='$model_label'"* ]] || fail 'project config renders the selected model safely'
+)
+ok 'endpoint and model displays are terminal-safe while raw lookup and selection remain exact'

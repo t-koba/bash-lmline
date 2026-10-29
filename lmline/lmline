@@ -417,6 +417,9 @@ __lmline_redact_setting_value() {
     LMLINE_ACTIVE_ENDPOINT)
       if [[ -n "$value" ]]; then __lmline_display_endpoint "$value"; fi
       ;;
+    LMLINE_MODEL)
+      if [[ -n "$value" ]]; then __lmline_display_catalog_model "$value"; fi
+      ;;
     *TOKEN*|*SECRET*|*PASSWORD*|*PASS*|*KEY*)
       [[ -n "$value" ]] && printf '***REDACTED***'
       ;;
@@ -965,7 +968,7 @@ print_config_redacted() {
   sed -E \
     's/^(export LMLINE_[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|PASS|KEY)=).*/\1***REDACTED***/' \
     "$file" | while IFS= read -r line; do
-      if [[ "$line" == export\ LMLINE_ACTIVE_ENDPOINT=* ]]; then
+      if [[ "$line" == export\ LMLINE_ACTIVE_ENDPOINT=* || "$line" == export\ LMLINE_MODEL=* ]]; then
         __lmline_load_display_support || exit 1
         display=$(printf '%s\n' "$line" | __lmline_display_answer) || exit 1
         printf '%s\n' "$display"
