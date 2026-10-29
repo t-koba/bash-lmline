@@ -194,6 +194,34 @@ for action in clip explain; do
     [[ "${limit_out#*"$status_line"}" == "$expected" ]] || fail "$action $limit_case answer byte prefix"
   done
 done
+# The display boundary protects both actions, including replacement engines.
+# Assertions stay boolean: never print the untrusted answer to the test log.
+unsafe_answer=$'before\e]52;c;clipboard-payload\aafter\e[31m red\e[0m\r\b\t\177\302\205\nUTF-8: \303\251 \346\227\245 \360\237\230\200\nlast'
+expected=$'beforeafter red\nUTF-8: \303\251 \346\227\245 \360\237\230\200\nlast'
+for action in clip explain; do
+  for streaming in 0 1; do
+    safe_out=$(env LMLINE_STREAM="$streaming" LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_PS0='[lm] ' \
+      LMLINE_ENGINE="$clip_test_dir/engine-limits" LMLINE_TEST_ANSWER="$unsafe_answer" \
+      "$repo_dir/lmline/lmline" "$action" 'echo hi') || fail "$action display status"
+    [[ "$safe_out" != *$'\e'* && "$safe_out" != *clipboard-payload* ]] || fail "$action display controls removed"
+    if (( streaming )); then
+      [[ "$safe_out" == *"$expected"$'\n'"[lm] m=limit-model; tok=7/3/10" ]] || fail "$action stream text and status preserved"
+    else
+      [[ "${safe_out#*"$status_line"}" == "$expected" ]] || fail "$action buffered text preserved"
+    fi
+  done
+  # Sanitization does not make additional raw answer bytes fit the cap.
+  if [[ "$action" == clip ]]; then
+    limit_setting=LMLINE_CLIP_MAX_OUTPUT_BYTES; notice=clip-output-truncated
+  else
+    limit_setting=LMLINE_EXPLAIN_MAX_OUTPUT_BYTES; notice=explanation-truncated
+  fi
+  answer=$'A\e[31mBTAIL'
+  safe_out=$(env "$limit_setting=7" LMLINE_STREAM=0 LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_PS0='[lm] ' \
+    LMLINE_ENGINE="$clip_test_dir/engine-limits" LMLINE_TEST_ANSWER="$answer" \
+    "$repo_dir/lmline/lmline" "$action" 'echo hi') || fail "$action raw budget status"
+  [[ "${safe_out#*"$status_line"}" == $'AB\n\n'"[lm] $notice original_bytes=11 max_bytes=7" ]] || fail "$action raw byte budget preserved"
+done
 install_clip_dir="$cfg_tmp/install-clip"
 mkdir -p "$install_clip_dir/bin" "$install_clip_dir/config" "$install_clip_dir/homebin"
 cat >"$install_clip_dir/homebin/pbpaste" <<'EOF'

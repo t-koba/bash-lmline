@@ -84,18 +84,31 @@ __lmline_stream_display_enabled() {
   esac
 }
 
-# Runs the engine in the foreground with stdout attached to the caller so SSE
-# chunks appear as they arrive. Returns the engine status; status/meta lines
-# are read from the captured stderr file.
+# Runs the engine in the foreground through the line-flushed answer renderer
+# so SSE answer lines appear as they arrive. Returns the engine status; status/meta lines
+# are read from the captured stderr file. A renderer failure is not masked:
+# engine failure takes precedence, otherwise the renderer status is returned.
 __lmline_action_stream_engine() {
-  local prefix=$1 stderr_file=$2 engine_status error meta_status
+  local prefix=$1 stderr_file=$2 engine_status display_status error meta_status
+  local -a pipe_status
   shift 2
-  engine_status=0
-  "$@" 2>"$stderr_file" || engine_status=$?
+  engine_status=0; display_status=0
+  if "$@" 2>"$stderr_file" | __lmline_display_answer; then
+    pipe_status=("${PIPESTATUS[@]}")
+    engine_status=${pipe_status[0]}
+    display_status=${pipe_status[1]}
+  else
+    pipe_status=("${PIPESTATUS[@]}")
+    engine_status=${pipe_status[0]}
+    display_status=${pipe_status[1]}
+  fi
   if (( engine_status != 0 )); then
     error=$(__lmline_action_strip_runtime_lines <"$stderr_file" 2>/dev/null | __lmline_display_error_line 300)
     __lmline_engine_error_message "$prefix" "${error:-engine exited with status $engine_status}"
     return "$engine_status"
+  fi
+  if (( display_status != 0 )); then
+    return "$display_status"
   fi
   meta_status=$(__lmline_action_meta_status "$(cat "$stderr_file" 2>/dev/null)")
   [[ -n "$meta_status" ]] && printf '%s%s\n' "$prefix" "$meta_status"
@@ -270,7 +283,7 @@ EOF
 
 __lmline_print_clip() {
   local engine=$1 shell_name=$2 question=$3 prefix=$4
-  local tmp clipboard clip_input engine_output engine_status error had_errexit=0 max_output output_bytes meta_status provider
+  local tmp clipboard clip_input engine_output engine_status error had_errexit=0 max_output output_bytes meta_status provider display_status
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-clip.XXXXXX") || return 1
   __lmline_clipboard_read >"$tmp/clipboard" || {
     rm -rf "$tmp"
@@ -324,16 +337,18 @@ __lmline_print_clip() {
   output_bytes=$(LC_ALL=C printf '%s' "$engine_output" | wc -c | tr -d ' ')
   if (( output_bytes > max_output )); then
     # Set the byte locale before expanding the substring, without changing the caller.
-    (LC_ALL=C; printf '%s\n' "${engine_output:0:max_output}")
+    display_status=0
+    (LC_ALL=C; printf '%s\n' "${engine_output:0:max_output}") | __lmline_display_answer || display_status=$?
     printf '\n%sclip-output-truncated original_bytes=%s max_bytes=%s\n' "$prefix" "$output_bytes" "$max_output"
+    (( display_status != 0 )) && return "$display_status"
     return 0
   fi
-  printf '%s\n' "$engine_output"
+  printf '%s\n' "$engine_output" | __lmline_display_answer
 }
 
 __lmline_print_explanation() {
   local engine=$1 shell_name=$2 line=$3 point=$4 prefix=$5
-  local tmp risk reason risk_match engine_output engine_status error had_errexit=0 max_output output_bytes meta_status
+  local tmp risk reason risk_match engine_output engine_status error had_errexit=0 max_output output_bytes meta_status display_status
   [[ -n "${line//[[:space:]]/}" ]] || {
     printf '%sno command to explain\n' "$prefix"
     return 0
@@ -394,11 +409,13 @@ __lmline_print_explanation() {
   output_bytes=$(LC_ALL=C printf '%s' "$engine_output" | wc -c | tr -d ' ')
   if (( output_bytes > max_output )); then
     # Set the byte locale before expanding the substring, without changing the caller.
-    (LC_ALL=C; printf '%s\n' "${engine_output:0:max_output}")
+    display_status=0
+    (LC_ALL=C; printf '%s\n' "${engine_output:0:max_output}") | __lmline_display_answer || display_status=$?
     printf '\n%sexplanation-truncated original_bytes=%s max_bytes=%s\n' "$prefix" "$output_bytes" "$max_output"
+    (( display_status != 0 )) && return "$display_status"
     return 0
   fi
-  printf '%s\n' "$engine_output"
+  printf '%s\n' "$engine_output" | __lmline_display_answer
 }
 
 __lmline_fix_run() {

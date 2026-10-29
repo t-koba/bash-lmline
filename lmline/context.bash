@@ -981,6 +981,141 @@ __lmline_collect_command_summaries() {
 
 # Shared utility helpers used by shell actions and engine inputs
 
+# Render untrusted answer bodies only, after raw-byte budgeting. Work in bytes
+# so locale cannot turn UTF-8 continuation bytes into C1 controls. Escape/control
+# strings are discarded through their terminator or LF: an unfinished sequence
+# must not swallow later answer lines or engine notices. One awk handles the
+# whole stream and flushes each line. mawk additionally needs interactive input
+# mode to read pipe lines without waiting for a full input buffer. Probe without
+# consuming answer input; other awks use their normal line reader. Raw engine
+# data stays intact.
+__lmline_display_answer() {
+  local LC_ALL=C line
+  local -a awk_options=()
+  if [[ $(LC_ALL=C awk -W version </dev/null 2>&1) == mawk* ]]; then
+    awk_options=(-W interactive)
+  fi
+  # Bash read removes NULs before mawk interactive input (whose C-string
+  # reader would otherwise lose line boundaries at NUL). Feed complete lines
+  # without starting a process per line, including lines without a final LF.
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    printf '%s\n' "$line" || return
+  done | LC_ALL=C awk "${awk_options[@]}" '
+  BEGIN {
+    for (i = 0; i < 256; i++) byte[sprintf("%c", i)] = i
+  }
+  {
+    state = ""; run = 0
+    len = length($0)
+    for (i = 1; i <= len; i++) {
+      c = substr($0, i, 1); n = byte[c]
+      if (n >= 128) {
+        if (n == 194) {
+          if (i < len) {
+            m = byte[substr($0, i + 1, 1)]
+            if (m >= 128 && m <= 159) {
+              if (run) { printf "%s", substr($0, run, i - run); run = 0 }
+              n = m; i++
+            } else if (m >= 160 && m <= 191) {
+              if (state == "") { if (!run) run = i; i++; continue }
+              i++; continue
+            } else {
+              # lone C2: fall through as single 194 below
+            }
+          }
+          if (n == 194) {
+            # lone lead: safe unless in a control string
+            if (state == "") { if (!run) run = i; continue }
+            continue
+          }
+        } else if (n >= 195 && n <= 223) {
+          if (i < len) {
+            m = byte[substr($0, i + 1, 1)]
+            if (m >= 128 && m <= 191) {
+              if (state == "") { if (!run) run = i; i++; continue }
+              i++; continue
+            }
+          }
+          # invalid: fall through singly
+        } else if (n == 224) {
+          if (i + 1 <= len) {
+            m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]
+            if (m1 >= 160 && m1 <= 191 && m2 >= 128 && m2 <= 191) {
+              if (state == "") { if (!run) run = i; i += 2; continue }
+              i += 2; continue
+            }
+          }
+        } else if ((n >= 225 && n <= 236) || n == 238 || n == 239) {
+          if (i + 1 <= len) {
+            m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]
+            if (m1 >= 128 && m1 <= 191 && m2 >= 128 && m2 <= 191) {
+              if (state == "") { if (!run) run = i; i += 2; continue }
+              i += 2; continue
+            }
+          }
+        } else if (n == 237) {
+          if (i + 1 <= len) {
+            m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]
+            if (m1 >= 128 && m1 <= 159 && m2 >= 128 && m2 <= 191) {
+              if (state == "") { if (!run) run = i; i += 2; continue }
+              i += 2; continue
+            }
+          }
+        } else if (n == 240) {
+          if (i + 2 <= len) {
+            m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]; m3 = byte[substr($0, i + 3, 1)]
+            if (m1 >= 144 && m1 <= 191 && m2 >= 128 && m2 <= 191 && m3 >= 128 && m3 <= 191) {
+              if (state == "") { if (!run) run = i; i += 3; continue }
+              i += 3; continue
+            }
+          }
+        } else if (n >= 241 && n <= 243) {
+          if (i + 2 <= len) {
+            m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]; m3 = byte[substr($0, i + 3, 1)]
+            if (m1 >= 128 && m1 <= 191 && m2 >= 128 && m2 <= 191 && m3 >= 128 && m3 <= 191) {
+              if (state == "") { if (!run) run = i; i += 3; continue }
+              i += 3; continue
+            }
+          }
+        } else if (n == 244) {
+          if (i + 2 <= len) {
+            m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]; m3 = byte[substr($0, i + 3, 1)]
+            if (m1 >= 128 && m1 <= 143 && m2 >= 128 && m2 <= 191 && m3 >= 128 && m3 <= 191) {
+              if (state == "") { if (!run) run = i; i += 3; continue }
+              i += 3; continue
+            }
+          }
+        }
+      }
+      # Single-byte control handling (n may be mapped C1 for C2 pairs).
+      if (state == "string") {
+        if (n == 7 || n == 156) state = ""
+        else if (n == 27 && substr($0, i + 1, 1) == "\\") { state = ""; i++ }
+        continue
+      }
+      if (n == 27) { if (run) { printf "%s", substr($0, run, i - run); run = 0 } state = "escape"; continue }
+      if (n == 155) { if (run) { printf "%s", substr($0, run, i - run); run = 0 } state = "csi"; continue }
+      if (n == 144 || n == 152 || n == 157 || n == 158 || n == 159) { if (run) { printf "%s", substr($0, run, i - run); run = 0 } state = "string"; continue }
+      if (n < 32 || (n >= 127 && n <= 159)) { if (run) { printf "%s", substr($0, run, i - run); run = 0 } continue }
+      if (state == "escape") {
+        if (c == "[") state = "csi"
+        else if (c == "]" || c == "P" || c == "X" || c == "^" || c == "_") state = "string"
+        else if (n < 32 || n > 47) state = ""
+        continue
+      }
+      if (state == "csi") {
+        if (n >= 64 && n <= 126) state = ""
+        continue
+      }
+      # Ordinary byte in normal state: extend the pending run.
+      if (!run) run = i
+    }
+    if (run) printf "%s", substr($0, run, len - run + 1)
+    printf "\n"
+    fflush()
+  }'
+}
+
 # Caps error text to one display line, cutting at a UTF-8 boundary and
 # appending "..." when shortened. Replaces raw byte cuts of error output;
 # the full text stays available via LMLINE_TRACE_DIR.

@@ -187,6 +187,15 @@ bindings.
 stdout carries the response text with blank lines removed. No candidate
 protocol lines are used.
 
+Frontends render answer bodies as terminal-safe text in both buffered and
+streaming modes, removing ESC sequences (including CSI, OSC and control strings),
+C0 controls other than LF, DEL, and raw or UTF-8-encoded C1 controls. Ordinary
+UTF-8 and LF line breaks are preserved. An unfinished escape sequence is discarded
+through the end of its line, so it cannot hide later lines or engine notices.
+Rendering happens after raw-byte budgeting; removing controls does not make more
+answer bytes fit the limit. Internal response data, tool parsing, conversation
+history, and traces remain unmodified.
+
 When streaming is active (`LMLINE_STREAM=1`), text is written incrementally,
 line by line, and the tool loop keeps working: streamed `tool_calls` deltas
 and text-protocol `TOOL` lines are collected mid-stream, executed locally,
