@@ -488,6 +488,12 @@ lmline endpoint add myapi https://api.example/v1 --auth-header X-Api-Key --auth-
 `endpoint set-secret` stores the API key under `~/.config/lmline/secrets/` with
 mode `0600`; TSV files store only the secret file path.
 
+Profile listings and configuration views render endpoint and model names as
+terminal-safe labels; controls may be removed, so labels are not lookup keys. Stored names and
+exact selection remain unchanged, and command hints use reversible shell quoting.
+The `--raw` forms of `endpoint list`, `complete endpoints`, and `complete models`
+are lossless machine transports, not terminal-safe lists.
+
 `endpoint add` and `model add` accept `--temperature`, `--max-tokens`, and
 `--tool-mode`. `model add` also accepts `--api-format`. Model values override
 endpoint values; empty model values fall back to endpoint values.
@@ -496,7 +502,7 @@ endpoint values; empty model values fall back to endpoint values.
 <summary>Profile command reference</summary>
 
 ```bash
-lmline endpoint list
+lmline endpoint list [--raw]
 lmline endpoint add ENDPOINT BASE_URL [--auth-header NAME] [--auth-scheme SCHEME] [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--models-url URL] [--models-jq JQ] [--models-prefix PREFIX] [--models-include REGEX] [--models-exclude REGEX]
 lmline endpoint remove ENDPOINT [--keep-secret]
 lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--api-format chat|responses|messages]
@@ -790,7 +796,7 @@ lmline use ENDPOINT [MODEL]
 lmline current
 lmline chatgpt login|status|refresh|reauth|logout
 lmline complete commands|subcommands COMMAND|settings|setting-values KEY
-lmline complete endpoints|models [ENDPOINT]|clipboard-providers
+lmline complete endpoints [--raw]|models [--raw] [ENDPOINT]|clipboard-providers
 lmline history show
 lmline history tendencies
 lmline risk COMMAND...

@@ -104,6 +104,8 @@ import os, pty, select, signal, sys, tempfile, time
 repo, work = sys.argv[1:]
 raw = 'provider_\u009d52;c;payload\u009csuffix'
 unicode = 'unicode-\u30e2\u30c7\u30eb'
+raw_endpoint = 'endpoint_\u009d52;c;payload\u009csuffix'
+unicode_endpoint = 'unicode-endpoint-\u7aef\u70b9'
 needle_start = b'\xc2\x9d'
 needle_end = b'\xc2\x9c'
 bindir = os.path.join(work, 'completion-bin')
@@ -113,11 +115,15 @@ with open(fake, 'w', encoding='utf-8') as f:
     f.write('''#!/usr/bin/env bash
 if [[ ${1-} == complete && ${2-} == models ]]; then
   printf '%s\\n%s\\n%s\\n' "$LMLINE_TEST_CANDIDATE" "$LMLINE_TEST_SAFE_CANDIDATE" "$LMLINE_TEST_UNICODE_CANDIDATE"
+elif [[ ${1-} == complete && ${2-} == endpoints && ${3-} == --raw ]]; then
+  printf '%s\\n%s\\n%s\\n' "$LMLINE_TEST_ENDPOINT_CANDIDATE" "$LMLINE_TEST_SAFE_ENDPOINT_CANDIDATE" "$LMLINE_TEST_UNICODE_ENDPOINT_CANDIDATE"
 elif [[ ${1-} == use ]]; then
-  if [[ ${3-} == "$LMLINE_TEST_CANDIDATE" || ${3-} == "$LMLINE_TEST_SAFE_CANDIDATE" || ${3-} == "$LMLINE_TEST_UNICODE_CANDIDATE" ]]; then
+  if [[ ${2-} == "$LMLINE_TEST_ENDPOINT_CANDIDATE" || ${2-} == "$LMLINE_TEST_SAFE_ENDPOINT_CANDIDATE" || ${2-} == "$LMLINE_TEST_UNICODE_ENDPOINT_CANDIDATE" ]]; then
+    printf 'ENDPOINT_EXACT=true\\n'
+  elif [[ ${3-} == "$LMLINE_TEST_CANDIDATE" || ${3-} == "$LMLINE_TEST_SAFE_CANDIDATE" || ${3-} == "$LMLINE_TEST_UNICODE_CANDIDATE" ]]; then
     printf 'MODEL_EXACT=true\\n'
   else
-    printf 'MODEL_EXACT=false\\n'
+    printf 'EXACT=false\\n'
   fi
 fi
 ''')
@@ -142,6 +148,9 @@ for index, (shell, argv, setup, input_line) in enumerate((
         env['LMLINE_TEST_CANDIDATE'] = raw
         env['LMLINE_TEST_SAFE_CANDIDATE'] = 'ordinary-model'
         env['LMLINE_TEST_UNICODE_CANDIDATE'] = unicode
+        env['LMLINE_TEST_ENDPOINT_CANDIDATE'] = raw_endpoint
+        env['LMLINE_TEST_SAFE_ENDPOINT_CANDIDATE'] = 'ordinary-endpoint'
+        env['LMLINE_TEST_UNICODE_ENDPOINT_CANDIDATE'] = unicode_endpoint
         env['LC_ALL'] = 'C'
         env['LMLINE_COMPLETION_READY'] = ready_file
         env['TERM'] = 'xterm'
@@ -162,9 +171,12 @@ for index, (shell, argv, setup, input_line) in enumerate((
             drain(0.05)
         return transcript.count(marker) >= count
     exact = False
+    endpoint_exact = False
     safe = False
     quoted_safe = False
     escaped_safe = False
+    endpoint_quoted_safe = False
+    endpoint_escaped_safe = False
     try:
         drain(0.15)
         setup += '; printf ready > "$LMLINE_COMPLETION_READY"'
@@ -187,6 +199,13 @@ for index, (shell, argv, setup, input_line) in enumerate((
         os.write(fd, b'\r')
         exact = exact and wait_for_count(b'MODEL_EXACT=true', 3, 3)
 
+        endpoint_exact = True
+        for count, prefix in enumerate((b'endpoint_', b'ordinary-endpoint', b'unicode-endpoint-'), 1):
+            os.write(fd, b'lmline use ' + prefix + b'\t')
+            drain(0.5)
+            os.write(fd, b'\r')
+            endpoint_exact = endpoint_exact and wait_for_count(b'ENDPOINT_EXACT=true', count, 3)
+
         before = len(transcript)
         os.write(fd, b'lmline use catalog "provider_\t')
         drain(0.5)
@@ -200,6 +219,22 @@ for index, (shell, argv, setup, input_line) in enumerate((
         drain(0.5)
         escaped = transcript[before:]
         escaped_safe = (needle_start not in escaped and needle_end not in escaped and b"$'" not in escaped)
+        os.write(fd, b'\x03')
+        drain(0.15)
+
+        before = len(transcript)
+        os.write(fd, b'lmline use "endpoint_\t')
+        drain(0.5)
+        quoted_endpoint = transcript[before:]
+        endpoint_quoted_safe = (needle_start not in quoted_endpoint and needle_end not in quoted_endpoint and b"$'" not in quoted_endpoint)
+        os.write(fd, b'\x03')
+        drain(0.15)
+
+        before = len(transcript)
+        os.write(fd, b'lmline use endpoint\\_\t')
+        drain(0.5)
+        escaped_endpoint = transcript[before:]
+        endpoint_escaped_safe = (needle_start not in escaped_endpoint and needle_end not in escaped_endpoint and b"$'" not in escaped_endpoint)
         os.write(fd, b'\x03')
         drain(0.15)
         safe = needle_start not in transcript and needle_end not in transcript
@@ -221,8 +256,8 @@ for index, (shell, argv, setup, input_line) in enumerate((
             os.close(fd)
         except OSError:
             pass
-    if not exact or not safe or not quoted_safe or not escaped_safe:
-        raise SystemExit(shell + ' completion safety failed (exact=' + str(exact).lower() + ', no_c1=' + str(safe).lower() + ', quoted=' + str(quoted_safe).lower() + ', escaped=' + str(escaped_safe).lower() + ')')
+    if not exact or not endpoint_exact or not safe or not quoted_safe or not escaped_safe or not endpoint_quoted_safe or not endpoint_escaped_safe:
+        raise SystemExit(shell + ' profile completion safety failed (models=' + str(exact).lower() + ', endpoints=' + str(endpoint_exact).lower() + ', no_c1=' + str(safe).lower() + ', quoted=' + str(quoted_safe and endpoint_quoted_safe).lower() + ', escaped=' + str(escaped_safe and endpoint_escaped_safe).lower() + ')')
 PY
 
-ok 'provider catalog model IDs are terminal-safe and completion remains lossless'
+ok 'model and endpoint completions are terminal-safe and lossless'

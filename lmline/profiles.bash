@@ -271,19 +271,37 @@ profile_endpoint_list() {
   awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8,$9,$10,$11,$12,$13,($14 ? $14 : "api-key") }' "$endpoints_file"
 }
 
+# Keep the raw profile adapter available to machine callers.
+profile_endpoint_list_display() {
+  local row labels i
+  local -a rows=() names=() display_names=()
+  while IFS= read -r row; do
+    rows+=("$row")
+    names+=("${row%%$'\t'*}")
+  done < <(profile_endpoint_list)
+  ((${#rows[@]} > 0)) || return 0
+  labels=$(__lmline_display_names unknown-endpoint "${names[@]}") || return 1
+  mapfile -t display_names <<<"$labels"
+  ((${#display_names[@]} == ${#rows[@]})) || return 1
+  for ((i = 0; i < ${#rows[@]}; i++)); do
+    printf '%s\t%s\n' "${display_names[i]}" "${rows[i]#*$'\t'}"
+  done
+}
+
 profile_endpoint_set_secret() {
-  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name
+  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name quoted_name
   [[ -n "$name" ]] || { usage; exit 2; }
   profile_require_name endpoint "$name"
-  line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$name" >&2; exit 2; }
+  line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$name" )" >&2; exit 2; }
   profile_split_tsv "$line" _ base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode
   old_models_exclude=$(profile_first_column "$old_models_exclude")
   old_auth_mode=$(profile_stored_auth_mode "$old_auth_mode")
   if [[ -n "$value" ]]; then
-    printf 'lmline: warning: secrets passed as command arguments can leak via shell history and ps; prefer the prompt: lmline endpoint set-secret %s\n' "$name" >&2
+    LC_ALL=C printf -v quoted_name '%q' "$name"
+    printf 'lmline: warning: secrets passed as command arguments can leak via shell history and ps; prefer the prompt: lmline endpoint set-secret %s\n' "$quoted_name" >&2
   fi
   if [[ -z "$value" ]]; then
-    printf 'endpoint %s API key: ' "$name" >&2
+    printf 'endpoint %s API key: ' "$( __lmline_display_endpoint "$name" )" >&2
     stty -echo 2>/dev/null || true
     IFS= read -r value
     stty echo 2>/dev/null || true
@@ -314,7 +332,7 @@ profile_endpoint_remove() {
     esac
   done
   profile_require_name endpoint "$name"
-  line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$name" >&2; exit 2; }
+  line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$name" )" >&2; exit 2; }
   profile_split_tsv "$line" _ _ _ _ api_key_file _
   profile_filter_out_key "$endpoints_file" 1 "$name"
   chmod 600 "$endpoints_file" 2>/dev/null || true
@@ -329,7 +347,7 @@ profile_endpoint_remove() {
     esac
   fi
   if [[ "${LMLINE_ACTIVE_ENDPOINT:-}" == "$name" ]]; then
-    printf 'lmline: removed endpoint %s was active; run lmline use ENDPOINT [MODEL] to select another\n' "$name" >&2
+    printf 'lmline: removed endpoint %s was active; run lmline use ENDPOINT [MODEL] to select another\n' "$( __lmline_display_endpoint "$name" )" >&2
   fi
 }
 
@@ -339,7 +357,7 @@ profile_model_remove() {
   profile_require_name endpoint "$endpoint"
   profile_require_name model "$model"
   profile_find_line "$models_file" "$endpoint" "$model" >/dev/null || {
-    printf 'lmline: unknown model for %s: %s\n' "$endpoint" "$( __lmline_display_catalog_model "$model" )" >&2
+    printf 'lmline: unknown model for %s: %s\n' "$( __lmline_display_endpoint "$endpoint" )" "$( __lmline_display_catalog_model "$model" )" >&2
     exit 2
   }
   profile_filter_out_key "$models_file" 2 "$endpoint" "$model"
@@ -351,7 +369,7 @@ profile_model_add() {
   [[ -n "$endpoint" && -n "$model" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   profile_require_name model "$model"
-  profile_find_line "$endpoints_file" "$endpoint" >/dev/null || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
+  profile_find_line "$endpoints_file" "$endpoint" >/dev/null || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2; exit 2; }
   shift 2
   while (($#)); do
     case "$1" in
@@ -390,23 +408,27 @@ profile_model_list() {
 # refresh and shell-completion transports.
 profile_model_list_display() {
   local endpoint=${1-} row row_endpoint model temperature max_tokens tool_mode api_format display_model labels i
-  local -a rows=() model_ids=() display_ids=()
+  local -a rows=() model_ids=() display_ids=() endpoints=() display_endpoints=()
   while IFS= read -r row; do
     [[ -n "$row" ]] || continue
     profile_split_tsv "$row" row_endpoint model temperature max_tokens tool_mode api_format
     [[ -n "$row_endpoint" ]] || continue
     rows+=("$row")
     model_ids+=("$model")
+    endpoints+=("$row_endpoint")
   done < <(profile_model_list "$endpoint")
   ((${#rows[@]} > 0)) || return 0
   labels=$(__lmline_display_catalog_model_ids "${model_ids[@]}") || return 1
   mapfile -t display_ids <<<"$labels"
   ((${#display_ids[@]} == ${#rows[@]})) || return 1
+  labels=$(__lmline_display_names unknown-endpoint "${endpoints[@]}") || return 1
+  mapfile -t display_endpoints <<<"$labels"
+  ((${#display_endpoints[@]} == ${#rows[@]})) || return 1
   for ((i = 0; i < ${#rows[@]}; i++)); do
     profile_split_tsv "${rows[i]}" row_endpoint model temperature max_tokens tool_mode api_format
     display_model=${display_ids[i]}
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$row_endpoint" "$display_model" "$temperature" "$max_tokens" "$tool_mode" "$api_format"
+      "${display_endpoints[i]}" "$display_model" "$temperature" "$max_tokens" "$tool_mode" "$api_format"
   done
 }
 
@@ -487,7 +509,7 @@ profile_model_refresh() {
   local -a removed_ids=() removed_labels=()
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
-  line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
+  line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2; exit 2; }
   profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _ _ _ models_url models_jq models_prefix models_include models_exclude auth_mode
   auth_mode=$(profile_stored_auth_mode "$auth_mode")
   profile_require_jq_expr models_jq "$models_jq"
@@ -510,7 +532,7 @@ profile_model_refresh() {
   fi
   printf 'lmline: fetching model catalog from %s\n' "$catalog_url" >&2
   body=$(__lmline_http_get "$catalog_url" 20) || {
-    printf 'lmline: model refresh failed for endpoint: %s\n' "$endpoint" >&2
+    printf 'lmline: model refresh failed for endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2
     exit 1
   }
   records=$(profile_extract_model_records "$catalog_jq" "$models_prefix" "$models_include" "$models_exclude" <<<"$body") || {
@@ -642,7 +664,7 @@ profile_model_refresh() {
     [[ -z "$removed_display" ]] || removed_display+=", "
     removed_display+=${removed_labels[removed_index]}
   done
-  printf 'lmline: refreshed %s models for %s (%s added, %s updated, %s removed)' "$final_count" "$endpoint" "$added_count" "$updated_count" "$removed_count" >&2
+  printf 'lmline: refreshed %s models for %s (%s added, %s updated, %s removed)' "$final_count" "$( __lmline_display_endpoint "$endpoint" )" "$added_count" "$updated_count" "$removed_count" >&2
   if (( removed_count > 0 )); then
     printf '; removed models: %s' "$removed_display" >&2
   fi
@@ -657,7 +679,7 @@ profile_model_refresh() {
 # the active endpoint is unset. Never changes configuration. Membership uses
 # newline-separated IDs, not the display list: commas are valid in model IDs.
 profile_model_refresh_warn_removed() {
-  local endpoint=$1 base=$2 removed_ids=$3 id selected_model=${LMLINE_MODEL:-}
+  local endpoint=$1 base=$2 removed_ids=$3 id quoted_endpoint selected_model=${LMLINE_MODEL:-}
   [[ -n "$selected_model" ]] || return 0
   if [[ -n "${LMLINE_ACTIVE_ENDPOINT:-}" ]]; then
     [[ "$LMLINE_ACTIVE_ENDPOINT" == "$endpoint" ]] || return 0
@@ -666,38 +688,40 @@ profile_model_refresh_warn_removed() {
   fi
   while IFS= read -r id; do
     if [[ "$id" == "$selected_model" ]]; then
+      LC_ALL=C printf -v quoted_endpoint '%q' "$endpoint"
       printf 'lmline: warning: selected model %s is no longer served by %s; run lmline use %s MODEL to select another\n' \
-        "$( __lmline_display_catalog_model "$selected_model" )" "$endpoint" "$endpoint" >&2
+        "$( __lmline_display_catalog_model "$selected_model" )" "$( __lmline_display_endpoint "$endpoint" )" "$quoted_endpoint" >&2
       break
     fi
   done <<<"$removed_ids"
 }
 
 profile_use() {
-  local endpoint=${1-} model=${2-} endpoint_line model_line quoted_model _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude e_auth_mode m_temp m_tokens m_tool m_api_format
+  local endpoint=${1-} model=${2-} endpoint_line model_line quoted_model quoted_endpoint _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude e_auth_mode m_temp m_tokens m_tool m_api_format
   local -a available
   [[ -n "$endpoint" ]] || { usage; exit 2; }
-  endpoint_line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$endpoint" >&2; exit 2; }
+  endpoint_line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2; exit 2; }
   if [[ -z "$model" ]]; then
+    LC_ALL=C printf -v quoted_endpoint '%q' "$endpoint"
     available=()
     while IFS= read -r model_line; do
       [[ -n "$model_line" ]] && available+=("$model_line")
     done < <(profile_model_list "$endpoint" | awk -F '\t' '{ print $2 }')
     if ((${#available[@]} == 0)); then
-      printf 'lmline: no models registered for %s; run: lmline model refresh %s (or lmline model add %s MODEL)\n' "$endpoint" "$endpoint" "$endpoint" >&2
+      printf 'lmline: no models registered for %s; run: lmline model refresh %s (or lmline model add %s MODEL)\n' "$( __lmline_display_endpoint "$endpoint" )" "$quoted_endpoint" "$quoted_endpoint" >&2
       exit 2
     elif ((${#available[@]} > 1)); then
-      printf 'lmline: multiple models registered for %s; pick one:\n' "$endpoint" >&2
+      printf 'lmline: multiple models registered for %s; pick one:\n' "$( __lmline_display_endpoint "$endpoint" )" >&2
       for model_line in "${available[@]}"; do
         LC_ALL=C printf -v quoted_model '%q' "$model_line"
-        printf '  lmline use %s %s\n' "$endpoint" "$quoted_model" >&2
+        printf '  lmline use %s %s\n' "$quoted_endpoint" "$quoted_model" >&2
       done
       exit 2
     fi
     model=${available[0]}
   fi
   model_line=$(profile_find_line "$models_file" "$endpoint" "$model") || {
-    printf 'lmline: unknown model for %s: %s\n' "$endpoint" "$( __lmline_display_catalog_model "$model" )" >&2
+    printf 'lmline: unknown model for %s: %s\n' "$( __lmline_display_endpoint "$endpoint" )" "$( __lmline_display_catalog_model "$model" )" >&2
     exit 2
   }
   profile_split_tsv "$endpoint_line" _ base auth_header auth_scheme api_key_file e_temp e_tokens e_tool e_models_url e_models_jq e_models_prefix e_models_include e_models_exclude e_auth_mode
@@ -733,7 +757,7 @@ profile_current() {
     "${LMLINE_BASE_URL:-}" "$display_model" "${LMLINE_AUTH_MODE:-api-key}"
   if [[ -n "${LMLINE_ACTIVE_ENDPOINT:-}" && -n "${LMLINE_MODEL:-}" ]] &&
     profile_find_line "$models_file" "$LMLINE_ACTIVE_ENDPOINT" "$LMLINE_MODEL" >/dev/null 2>&1; then
-    printf 'endpoint=%s\nprofile_status=matched\n' "$LMLINE_ACTIVE_ENDPOINT"
+    printf 'endpoint=%s\nprofile_status=matched\n' "$( __lmline_display_endpoint "$LMLINE_ACTIVE_ENDPOINT" )"
     return 0
   fi
   [[ -f "$endpoints_file" && -f "$models_file" ]] || { printf 'profile_status=unmatched\n'; return 0; }
@@ -743,7 +767,7 @@ profile_current() {
     while IFS= read -r model_line || [[ -n "$model_line" ]]; do
       profile_split_tsv "$model_line" e model _
       if [[ "$e" == "$endpoint" && "$model" == "${LMLINE_MODEL:-}" ]]; then
-        printf 'endpoint=%s\nprofile_status=matched\n' "$endpoint"
+        printf 'endpoint=%s\nprofile_status=matched\n' "$( __lmline_display_endpoint "$endpoint" )"
         return 0
       fi
     done <"$models_file"

@@ -3,13 +3,18 @@
 # compinit or when sourced directly (init.zsh sources it and runs compdef).
 # Dynamic values come from "lmline complete ..." at completion time.
 
-# Insert reversible shell words only in an unquoted model argument. For an
-# existing quote context, retain ordinary safe candidates but omit IDs whose
-# suffix needs encoding instead of leaking controls or breaking the quote.
-_lmline_complete_catalog_models_zsh() {
-  local cmd=$1 endpoint=$2 id suffix encoded_prefix encoded_suffix raw_word
+# Insert reversible shell words for endpoint and model names in supported
+# unquoted contexts. In quoted or escaped words, omit candidates that need
+# encoding rather than leaking controls or corrupting existing quoting.
+_lmline_complete_profile_names_zsh() {
+  local cmd=$1 kind=$2 endpoint=$3 id suffix encoded_prefix encoded_suffix raw_word
   local quoted_context=${compstate[quoting]-}
-  local -a candidates=()
+  local -a candidates=() completion_args=()
+  case "$kind" in
+    endpoints) completion_args=(complete endpoints --raw) ;;
+    models) completion_args=(complete models --raw "$endpoint") ;;
+    *) return 0 ;;
+  esac
   raw_word=${${LBUFFER-}##*[[:space:]]}
   if [[ $raw_word == *\\* || $raw_word == *\"* || $raw_word == *\'* ]]; then
     quoted_context=escaped
@@ -28,7 +33,7 @@ _lmline_complete_catalog_models_zsh() {
     else
       candidates+=("$PREFIX$encoded_suffix")
     fi
-  done < <("$cmd" complete models --raw "$endpoint" 2>/dev/null)
+  done < <("$cmd" "${completion_args[@]}" 2>/dev/null)
   (( ${#candidates} )) || return 0
   if [[ -n "$quoted_context" ]]; then
     compadd -- "${candidates[@]}"
@@ -50,7 +55,7 @@ _lmline() {
       ;;
     3)
       case $words[2] in
-        use) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
+        use) _lmline_complete_profile_names_zsh "$cmd" endpoints "" ;;
         payload) compadd -- generate rewrite explain fix clip ;;
         help) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
         sandbox) compadd -- setup run check ;;
@@ -68,13 +73,13 @@ _lmline() {
       ;;
     4)
       case "$words[2]:$words[3]" in
-        use:*) _lmline_complete_catalog_models_zsh "$cmd" "$words[3]" ;;
+        use:*) _lmline_complete_profile_names_zsh "$cmd" models "$words[3]" ;;
         help:*) compadd -- "${(@f)$($cmd complete subcommands "$words[3]" 2>/dev/null)}" ;;
         sandbox:setup) compadd -- --name --image --workspace --root --workdir --timeout --help ;;
         sandbox:run) compadd -- --name --image --timeout --max-output --help -- ;;
         clip:--use|clip:--provider) compadd -- "${(@f)$($cmd complete clipboard-providers 2>/dev/null)}" ;;
-        endpoint:set-secret|endpoint:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
-        model:add|model:list|model:refresh|model:remove) compadd -- "${(@f)$($cmd complete endpoints 2>/dev/null)}" ;;
+        endpoint:set-secret|endpoint:remove) _lmline_complete_profile_names_zsh "$cmd" endpoints "" ;;
+        model:add|model:list|model:refresh|model:remove) _lmline_complete_profile_names_zsh "$cmd" endpoints "" ;;
         config:describe|config:set|config:unset|config:project-set|config:project-unset) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
         complete:subcommands) compadd -- "${(@f)$($cmd complete commands 2>/dev/null)}" ;;
         complete:setting-values) compadd -- "${(@f)$($cmd complete settings 2>/dev/null)}" ;;
@@ -83,7 +88,7 @@ _lmline() {
       ;;
     5)
       case "$words[2]:$words[3]" in
-        model:remove) _lmline_complete_catalog_models_zsh "$cmd" "$words[4]" ;;
+        model:remove) _lmline_complete_profile_names_zsh "$cmd" models "$words[4]" ;;
         sandbox:setup)
           [[ "$words[4]" == --workspace ]] && compadd -- readonly writable none
           ;;
