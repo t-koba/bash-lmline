@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 work=$(mktemp -d "${TMPDIR:-/tmp}/lmline-endpoint-display.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 raw_endpoint=$'endpoint_\302\23552;c;payload\302\234suffix'
-label=endpoint_suffix
+safe_endpoint_label=endpoint_suffix
 unicode_endpoint='unicode-端点'
 config_dir=$work/config
 lmline=$repo_dir/lmline/lmline
@@ -21,7 +21,7 @@ rejected() {
   rejected_error=$(cat "$work/rejected.err")
   safe_output "$rejected_error" 'rejection diagnostic'
 }
-for endpoint in "$raw_endpoint" "$label" ordinary "$unicode_endpoint"; do
+for endpoint in "$raw_endpoint" "$safe_endpoint_label" ordinary "$unicode_endpoint"; do
   cli endpoint add "$endpoint" https://endpoint.example/v1 >/dev/null
   cli model add "$endpoint" first >/dev/null
 done
@@ -32,7 +32,7 @@ grep -Fxq "$raw_endpoint" <<<"$stored_names" || fail 'storage preserves raw endp
 # explicitly request the lossless transport and quote before insertion.
 safe_completion=$(cli complete endpoints)
 safe_output "$safe_completion" 'endpoint completion labels'
-expected_completion=$(printf '%s\n' "$label" "$label" ordinary "$unicode_endpoint")
+expected_completion=$(printf '%s\n' "$safe_endpoint_label" "$safe_endpoint_label" ordinary "$unicode_endpoint")
 [[ "$safe_completion" == "$expected_completion" ]] || fail 'endpoint completion defaults to safe readable labels'
 raw_completion=$(cli complete endpoints --raw)
 [[ "$raw_completion" == "$stored_names" ]] || fail 'endpoint completion transport preserves exact raw names'
@@ -47,25 +47,29 @@ raw_rows=$(
 grep -Fq "$raw_endpoint" <<<"$raw_rows" || fail 'raw profile list adapters stay lossless'
 list=$(cli endpoint list)
 safe_output "$list" 'endpoint list'
-[[ $(cut -f1 <<<"$list") == $(printf '%s\n' "$label" "$label" ordinary "$unicode_endpoint") ]] || fail 'endpoint list preserves ordinary and Unicode labels'
+[[ $(cut -f1 <<<"$list") == $(printf '%s\n' "$safe_endpoint_label" "$safe_endpoint_label" ordinary "$unicode_endpoint") ]] || fail 'endpoint list preserves ordinary and Unicode labels'
 raw_list=$(cli endpoint list --raw)
 [[ $(cut -f1 <<<"$raw_list") == "$stored_names" ]] || fail 'raw endpoint list preserves exact stored names'
 model_list=$(cli model list "$raw_endpoint")
 safe_output "$model_list" 'model list'
-[[ $(cut -f1,2 <<<"$model_list") == $(printf '%s\tfirst\n%s\tsecond' "$label" "$label") ]] || fail 'model list filters by raw endpoint before rendering'
+[[ $(cut -f1,2 <<<"$model_list") == $(printf '%s\tfirst\n%s\tsecond' "$safe_endpoint_label" "$safe_endpoint_label") ]] || fail 'model list filters by raw endpoint before rendering'
 [[ $(cli complete models --raw "$raw_endpoint") == $'first\nsecond' ]] || fail 'model completion filters by the exact raw endpoint'
 
 # Ambiguous and empty selections offer shell words that recover the raw name.
 LC_ALL=C printf -v quoted_endpoint '%q' "$raw_endpoint"
 rejected use "$raw_endpoint"
-[[ "$rejected_error" == *"multiple models registered for $label"* ]] || fail 'ambiguous selection uses a safe endpoint label'
+[[ "$rejected_error" == *"multiple models registered for $safe_endpoint_label"* ]] || fail 'ambiguous selection uses a safe endpoint label'
 [[ "$rejected_error" == *"lmline use $quoted_endpoint first"* ]] || fail 'choice hint quotes the endpoint reversibly'
-# Execute only the generated hint with a local argument-checking stub, not lmline.
+# Execute only the generated hint with an external argument-checking stub, not lmline.
 hint=$(sed -n '/^  lmline use /{s/^  //;p;q;}' "$work/rejected.err")
-(
-  lmline() { [[ $# == 3 && $1 == use && $2 == "$raw_endpoint" && $3 == first ]]; }
-  eval "$hint"
-) || fail 'choice hint recovers the exact raw endpoint'
+mkdir -p "$work/hint-bin"
+cat >"$work/hint-bin/lmline" <<'LM_LINE'
+#!/usr/bin/env bash
+[[ $# == 3 && $1 == use && $2 == "${LMLINE_TEST_EXPECT_ENDPOINT-}" && $3 == first ]]
+LM_LINE
+chmod +x "$work/hint-bin/lmline"
+env PATH="$work/hint-bin:$PATH" LMLINE_TEST_EXPECT_ENDPOINT="$raw_endpoint" \
+  bash -c 'eval "$1"' lmline-hint "$hint" || fail 'choice hint recovers the exact raw endpoint'
 cli endpoint add "empty-$raw_endpoint" https://empty.example/v1 >/dev/null
 rejected use "empty-$raw_endpoint"
 LC_ALL=C printf -v quoted_empty '%q' "empty-$raw_endpoint"
@@ -124,7 +128,7 @@ if printf '\n' | cli endpoint set-secret "$raw_endpoint" >"$work/prompt.out" 2>"
 fi
 prompt=$(cat "$work/prompt.err")
 safe_output "$prompt" 'secret prompt'
-[[ "$prompt" == *"endpoint $label API key:"* ]] || fail 'secret prompt uses a safe endpoint label'
+[[ "$prompt" == *"endpoint $safe_endpoint_label API key:"* ]] || fail 'secret prompt uses a safe endpoint label'
 [[ ! -d "$config_dir/secrets" ]] || fail 'display test must not write secrets'
 
 # Refresh uses the raw endpoint for its lookup, request URL, merge and warnings.
@@ -139,28 +143,28 @@ chmod +x "$work/bin/curl"
 PATH="$work/bin:$PATH" LMLINE_CONFIG_DIR="$config_dir" "$lmline" model refresh "$raw_endpoint" >"$work/refresh.out" 2>"$work/refresh.err" || fail 'raw endpoint refresh succeeds'
 refresh=$(cat "$work/refresh.err")
 safe_output "$refresh" 'refresh summary'
-[[ "$refresh" == *"models for $label"* && "$refresh" == *"no longer served by $label; run lmline use $quoted_endpoint MODEL"* ]] || fail 'refresh summary and removed selection warning render endpoints safely'
+[[ "$refresh" == *"models for $safe_endpoint_label"* && "$refresh" == *"no longer served by $safe_endpoint_label; run lmline use $quoted_endpoint MODEL"* ]] || fail 'refresh summary and removed selection warning render endpoints safely'
 [[ $(cli complete models --raw "$raw_endpoint") == second ]] || fail 'refresh merges under the exact raw endpoint'
-[[ $(cli complete models --raw "$label") == first ]] || fail 'refresh leaves display-colliding endpoints alone'
+[[ $(cli complete models --raw "$safe_endpoint_label") == first ]] || fail 'refresh leaves display-colliding endpoints alone'
 if PATH="$work/bin:$PATH" LMLINE_TEST_FETCH_FAIL=1 cli model refresh "$raw_endpoint" >"$work/fetch.out" 2>"$work/fetch.err"; then
   fail 'failed fetch must fail'
 fi
 fetch_error=$(cat "$work/fetch.err")
 safe_output "$fetch_error" 'refresh failure'
-[[ "$fetch_error" == *"model refresh failed for endpoint: $label"* ]] || fail 'refresh failure uses a safe endpoint label'
+[[ "$fetch_error" == *"model refresh failed for endpoint: $safe_endpoint_label"* ]] || fail 'refresh failure uses a safe endpoint label'
 
 # Doctor's invalid-jq and orphan warnings use labels, not raw endpoint bytes.
 printf '%s\thttps://invalid.example/v1\t\t\t\t\t\t\t\t[\t\t\t\tapi-key\n' "$raw_endpoint" >>"$config_dir/endpoints.tsv"
 printf '%s\tmissing\t\t\t\tchat\n' "$unknown" >>"$config_dir/models.tsv"
 doctor=$(cli doctor)
 safe_output "$doctor" 'doctor'
-[[ "$doctor" == *"endpoint $label has an invalid models_jq"* ]] || fail 'doctor sanitizes endpoint validation warnings'
-[[ "$doctor" == *"unknown endpoint: missing-$label/missing"* ]] || fail 'doctor sanitizes orphan endpoint warnings'
+[[ "$doctor" == *"endpoint $safe_endpoint_label has an invalid models_jq"* ]] || fail 'doctor sanitizes endpoint validation warnings'
+[[ "$doctor" == *"unknown endpoint: missing-$safe_endpoint_label/missing"* ]] || fail 'doctor sanitizes orphan endpoint warnings'
 cli endpoint remove "$raw_endpoint" --keep-secret >"$work/remove.out" 2>"$work/remove.err"
 remove=$(cat "$work/remove.err")
 safe_output "$remove" 'endpoint removal'
-[[ "$remove" == *"removed endpoint $label was active"* ]] || fail 'active endpoint removal uses a safe label'
-[[ $(cli complete models --raw "$label") == first ]] || fail 'removal keeps display-colliding endpoint models'
+[[ "$remove" == *"removed endpoint $safe_endpoint_label was active"* ]] || fail 'active endpoint removal uses a safe label'
+[[ $(cli complete models --raw "$safe_endpoint_label") == first ]] || fail 'removal keeps display-colliding endpoint models'
 
 # Selected model IDs remain raw in configuration storage but are safe in every
 # human-readable configuration view, including the shared project renderer.

@@ -679,7 +679,7 @@ profile_model_refresh() {
 # the active endpoint is unset. Never changes configuration. Membership uses
 # newline-separated IDs, not the display list: commas are valid in model IDs.
 profile_model_refresh_warn_removed() {
-  local endpoint=$1 base=$2 removed_ids=$3 id quoted_endpoint selected_model=${LMLINE_MODEL:-}
+  local endpoint=$1 base=$2 removed_ids_text=$3 id quoted_endpoint selected_model=${LMLINE_MODEL:-}
   [[ -n "$selected_model" ]] || return 0
   if [[ -n "${LMLINE_ACTIVE_ENDPOINT:-}" ]]; then
     [[ "$LMLINE_ACTIVE_ENDPOINT" == "$endpoint" ]] || return 0
@@ -693,7 +693,7 @@ profile_model_refresh_warn_removed() {
         "$( __lmline_display_catalog_model "$selected_model" )" "$( __lmline_display_endpoint "$endpoint" )" "$quoted_endpoint" >&2
       break
     fi
-  done <<<"$removed_ids"
+  done <<<"$removed_ids_text"
 }
 
 profile_use() {
