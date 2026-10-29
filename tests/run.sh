@@ -28,6 +28,8 @@ suite_started=$SECONDS
 for test_file in "$tests_dir"/test_*.sh; do
   name=$(basename "$test_file")
   test_started=$SECONDS
+  # The builtin writes immediately, even when CI captures stdout.
+  printf 'start - %s\n' "$name"
   if ((skip_shellcheck)) && [[ "$name" == "test_shellcheck.sh" ]]; then
     printf 'skip - %s: full ShellCheck lint runs once on Ubuntu; run bounded monitor regression\n' "$name"
     if ! bash "$test_file" --monitor-self-test; then

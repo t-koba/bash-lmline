@@ -100,7 +100,7 @@ cache_error=$(cat "$work/cache.err")
 # Each shipped completion adapter inserts an encoded shell word which evaluates
 # to the exact raw ID; only booleans are reported from these interactive PTYs.
 python3 - "$repo_dir" "$work" <<'PY'
-import os, pty, select, signal, sys, tempfile, time
+import errno, os, pty, select, signal, sys, time
 repo, work = sys.argv[1:]
 raw = 'provider_\u009d52;c;payload\u009csuffix'
 unicode = 'unicode-\u30e2\u30c7\u30eb'
@@ -136,6 +136,7 @@ for index, (shell, argv, setup, input_line) in enumerate((
     ('zsh', ['zsh', '-f', '-i'],
      'autoload -Uz compinit; compinit -i; source ' + os.path.join(repo, 'lmline/completions/_lmline') + '; compdef _lmline lmline',
      b'lmline use catalog provider_\t'))):
+    print('pty - ' + shell + ': start', flush=True)
     ready_file = os.path.join(work, 'completion-ready-' + shell + '-' + str(index))
     try:
         os.unlink(ready_file)
@@ -156,15 +157,40 @@ for index, (shell, argv, setup, input_line) in enumerate((
         env['TERM'] = 'xterm'
         os.execvpe(shell, argv, env)
     transcript = bytearray()
+    owned_group = None
+    def write_all(data):
+        deadline = time.monotonic() + 3
+        pending = memoryview(data)
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise SystemExit(shell + ' PTY write timed out')
+            try:
+                _, writable, _ = select.select([], [fd], [], remaining)
+                if writable:
+                    written = os.write(fd, pending)
+                    if written == 0:
+                        raise SystemExit(shell + ' PTY write made no progress')
+                    pending = pending[written:]
+            except OSError as error:
+                if error.errno not in (errno.EINTR, errno.EAGAIN, errno.EWOULDBLOCK):
+                    raise SystemExit(shell + ' PTY write failed') from None
     def drain(seconds):
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline and len(transcript) < 65536:
-            ready, _, _ = select.select([fd], [], [], 0.05)
-            if ready:
-                try:
-                    transcript.extend(os.read(fd, 4096))
-                except OSError:
+            try:
+                ready, _, _ = select.select([fd], [], [], 0.05)
+                if ready:
+                    chunk = os.read(fd, 4096)
+                    if not chunk:
+                        return
+                    transcript.extend(chunk)
+            except OSError as error:
+                if error.errno in (errno.EINTR, errno.EAGAIN, errno.EWOULDBLOCK):
+                    continue
+                if error.errno == errno.EIO:  # PTY slave has closed on Linux.
                     return
+                raise SystemExit(shell + ' PTY read failed') from None
     def wait_for_count(marker, count, seconds):
         deadline = time.monotonic() + seconds
         while transcript.count(marker) < count and time.monotonic() < deadline:
@@ -178,84 +204,117 @@ for index, (shell, argv, setup, input_line) in enumerate((
     endpoint_quoted_safe = False
     endpoint_escaped_safe = False
     try:
+        os.set_blocking(fd, False)
         drain(0.15)
+        # pty.fork creates a session/group; never signal an unverified group.
+        if os.getpgid(pid) != pid or pid == os.getpgrp():
+            raise SystemExit(shell + ' PTY process group is not owned')
+        owned_group = pid
+        # Keep completion helpers in the owned group, including in interactive Bash.
+        setup = 'set +m; ' + setup
         setup += '; printf ready > "$LMLINE_COMPLETION_READY"'
-        os.write(fd, (setup + '\n').encode())
+        write_all((setup + '\n').encode())
         deadline = time.monotonic() + 5
         while not os.path.exists(ready_file) and time.monotonic() < deadline:
             drain(0.05)
         if not os.path.exists(ready_file):
             raise SystemExit(shell + ' completion setup timed out')
-        os.write(fd, input_line)
+        print('pty - ' + shell + ': setup ready', flush=True)
+        write_all(input_line)
         drain(0.5)
-        os.write(fd, b'\r')
+        write_all(b'\r')
         exact = wait_for_count(b'MODEL_EXACT=true', 1, 3)
-        os.write(fd, b'lmline use catalog ordinary-\t')
+        write_all(b'lmline use catalog ordinary-\t')
         drain(0.5)
-        os.write(fd, b'\r')
+        write_all(b'\r')
         exact = exact and wait_for_count(b'MODEL_EXACT=true', 2, 3)
-        os.write(fd, 'lmline use catalog unicode-'.encode('utf-8') + b'\t')
+        write_all('lmline use catalog unicode-'.encode('utf-8') + b'\t')
         drain(0.5)
-        os.write(fd, b'\r')
+        write_all(b'\r')
         exact = exact and wait_for_count(b'MODEL_EXACT=true', 3, 3)
 
         endpoint_exact = True
         for count, prefix in enumerate((b'endpoint_', b'ordinary-endpoint', b'unicode-endpoint-'), 1):
-            os.write(fd, b'lmline use ' + prefix + b'\t')
+            write_all(b'lmline use ' + prefix + b'\t')
             drain(0.5)
-            os.write(fd, b'\r')
+            write_all(b'\r')
             endpoint_exact = endpoint_exact and wait_for_count(b'ENDPOINT_EXACT=true', count, 3)
 
         before = len(transcript)
-        os.write(fd, b'lmline use catalog "provider_\t')
+        write_all(b'lmline use catalog "provider_\t')
         drain(0.5)
         quoted = transcript[before:]
         quoted_safe = (needle_start not in quoted and needle_end not in quoted and b"$'" not in quoted)
-        os.write(fd, b'\x03')
+        write_all(b'\x03')
         drain(0.15)
 
         before = len(transcript)
-        os.write(fd, b'lmline use catalog provider\\_\t')
+        write_all(b'lmline use catalog provider\\_\t')
         drain(0.5)
         escaped = transcript[before:]
         escaped_safe = (needle_start not in escaped and needle_end not in escaped and b"$'" not in escaped)
-        os.write(fd, b'\x03')
+        write_all(b'\x03')
         drain(0.15)
 
         before = len(transcript)
-        os.write(fd, b'lmline use "endpoint_\t')
+        write_all(b'lmline use "endpoint_\t')
         drain(0.5)
         quoted_endpoint = transcript[before:]
         endpoint_quoted_safe = (needle_start not in quoted_endpoint and needle_end not in quoted_endpoint and b"$'" not in quoted_endpoint)
-        os.write(fd, b'\x03')
+        write_all(b'\x03')
         drain(0.15)
 
         before = len(transcript)
-        os.write(fd, b'lmline use endpoint\\_\t')
+        write_all(b'lmline use endpoint\\_\t')
         drain(0.5)
         escaped_endpoint = transcript[before:]
         endpoint_escaped_safe = (needle_start not in escaped_endpoint and needle_end not in escaped_endpoint and b"$'" not in escaped_endpoint)
-        os.write(fd, b'\x03')
+        write_all(b'\x03')
         drain(0.15)
         safe = needle_start not in transcript and needle_end not in transcript
     finally:
+        print('pty - ' + shell + ': cleanup', flush=True)
+        cleanup_failed = False
         try:
-            os.write(fd, b'exit\n')
-            time.sleep(0.05)
-        except OSError:
-            pass
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            os.waitpid(pid, 0)
-        except ChildProcessError:
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+            # Kill helpers before reaping the shell (and releasing its PID).
+            if owned_group is not None:
+                try:
+                    os.killpg(owned_group, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except OSError:
+                    cleanup_failed = True
+            # Also covers setup failures before group ownership was established.
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                cleanup_failed = True
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    reaped, _ = os.waitpid(pid, os.WNOHANG)
+                    if reaped == pid:
+                        break
+                except ChildProcessError:
+                    break
+                except OSError as error:
+                    if error.errno != errno.EINTR:
+                        cleanup_failed = True
+                        break
+                if time.monotonic() >= deadline:
+                    cleanup_failed = True
+                    break
+                time.sleep(0.02)
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                cleanup_failed = True
+        if cleanup_failed:
+            raise SystemExit(shell + ' PTY cleanup failed or timed out')
+        print('pty - ' + shell + ': cleanup complete', flush=True)
     if not exact or not endpoint_exact or not safe or not quoted_safe or not escaped_safe or not endpoint_quoted_safe or not endpoint_escaped_safe:
         raise SystemExit(shell + ' profile completion safety failed (models=' + str(exact).lower() + ', endpoints=' + str(endpoint_exact).lower() + ', no_c1=' + str(safe).lower() + ', quoted=' + str(quoted_safe and endpoint_quoted_safe).lower() + ', escaped=' + str(escaped_safe and endpoint_escaped_safe).lower() + ')')
 PY
