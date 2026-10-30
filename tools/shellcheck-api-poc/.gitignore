@@ -1,0 +1,3 @@
+_run/
+dist-newstyle/
+cabal.project.freeze
