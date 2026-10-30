@@ -41,6 +41,15 @@ data: [DONE]
 SSE
     printf '200\ttext/event-stream'
     ;;
+  sse-control)
+    cat >"$out" <<'SSE'
+data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"test-model","status":"completed","output":[{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to \u001b[31m list files \u009b32m café"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page\u009b33m","title":"Example \u001b[0m Page \u009b34m café"}]}]}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}}
+
+data: [DONE]
+
+SSE
+    printf '200\ttext/event-stream'
+    ;;
   error)
     printf '{"error":{"message":"Unsupported parameter: max_output_tokens is not supported with this model"}}\n' >"$out"
     printf '400\tapplication/json'
@@ -77,9 +86,9 @@ JSON
     cat >"$out" <<'JSON'
 {"id":"resp_1","object":"response","model":"test-model","status":"completed",
  "output":[
-  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to \u001b[31m list files"}},
+  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to \u001b[31m list files \u009b32m café"}},
   {"type":"message","id":"msg_1","role":"assistant",
-   "content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example \u001b[0m Page"}]}]}
+   "content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page\u009b33m","title":"Example \u001b[0m Page \u009b34m café"}]}]}
  ],
  "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
 JSON
@@ -132,6 +141,17 @@ run_engine() {
     "$@" \
     "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
       --line-file "$ws_tmp/line" --context-file "$ws_tmp/context" --n 1
+}
+
+assert_safe_search_display() {
+  local display_file=$1 label=$2
+  grep '^lmline-search: ' "$display_file" >"$ws_tmp/search-line" || fail "$label search line is missing"
+  grep '^lmline-citation: ' "$display_file" >"$ws_tmp/citation-line" || fail "$label citation line is missing"
+  ! grep -q $'\033' "$display_file" || fail "$label display carries an escape character"
+  ! LC_ALL=C grep -q $'\302[\200-\237]' "$ws_tmp/search-line" || fail "$label search query carries a C1 control"
+  ! LC_ALL=C grep -q $'\302[\200-\237]' "$ws_tmp/citation-line" || fail "$label citation carries a C1 control"
+  grep -Fq 'café' "$ws_tmp/search-line" || fail "$label safe UTF-8 search text is lost"
+  grep -Fq 'café' "$ws_tmp/citation-line" || fail "$label safe UTF-8 citation text is lost"
 }
 
 # 1. Default off: no provider-native search tool in the request, one call.
@@ -265,10 +285,16 @@ if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 LMLINE_FAKE_CURL
     >"$ws_tmp/t10.out" 2>"$ws_tmp/t10.err"; then
   fail "control-character web-search request failed: $(sed -n '1p' "$ws_tmp/t10.err")"
 fi
-grep -q '^lmline-search: ' "$ws_tmp/t10.err" || fail "the search line is missing"
-grep -q '^lmline-citation: ' "$ws_tmp/t10.err" || fail "the citation line is missing"
-! grep -q $'\033' "$ws_tmp/t10.err" || fail "the search line carries an escape character"
-ok "web search events and citations drop control characters"
+assert_safe_search_display "$ws_tmp/t10.err" buffered
+reset_fake
+if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 LMLINE_AUTH_MODE=chatgpt \
+    LMLINE_BASE_URL=http://127.0.0.1:9/v1 LMLINE_FAKE_CURL_MODE=sse-control \
+    >"$ws_tmp/t10s.out" 2>"$ws_tmp/t10s.err"; then
+  fail "streamed control-character web-search request failed"
+fi
+assert_safe_search_display "$ws_tmp/t10s.err" streamed
+[[ "$(candidates_of <"$ws_tmp/t10s.out")" == "echo hello" ]] || fail "streamed control data changed the candidate"
+ok "web search events and citations drop control characters in buffered and streamed responses"
 
 # 11. The protocol documents the two lines, and the shell frontends strip
 # them like the other informational lines.
