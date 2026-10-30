@@ -174,16 +174,22 @@ EOF
         [[ ! -s "$1" ]] || return 0
         sleep 0.05
       done
+      # Zsh ERR_EXIT skips EXIT traps when a function returns nonzero.
+      cleanup_probe
       return 1
     }
     cleanup_probe() {
+      local unrelated_pid=${unrelated:-}
+      unrelated=
       # Release blocked fixtures even if an assertion fails on an unfixed build.
       ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/first.gate"; printf "release\n" >&3 )
       ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/second.gate"; printf "release\n" >&3 )
       ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/timeout.gate"; printf "release\n" >&3 )
-      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/unrelated.gate"; printf "release\n" >&3 ) 2>/dev/null || true
-      if [[ -n "${unrelated:-}" ]]; then
-        wait "$unrelated" 2>/dev/null || true
+      if [[ -n "$unrelated_pid" ]]; then
+        # Terminate directly: a release sent before the child opens its FIFO
+        # is lost when the cleanup descriptor closes, leaving the child blocked.
+        kill "$unrelated_pid" 2>/dev/null || true
+        wait "$unrelated_pid" 2>/dev/null || true
       fi
     }
     trap cleanup_probe EXIT
