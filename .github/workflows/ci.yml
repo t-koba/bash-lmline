@@ -7,13 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Run the full suite or the bounded ShellCheck API diagnostic only
+        description: Run the full suite or a ShellCheck diagnostic only
         type: choice
         required: true
         default: full
         options:
           - full
           - shellcheck-api-diagnostic
+          - shellcheck-per-file-diagnostic
 
 jobs:
   test:
@@ -80,3 +81,10 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/shellcheck-api-diagnostic.yml
+
+  shellcheck_per_file_diagnostic:
+    name: ShellCheck per-file diagnostic
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'shellcheck-per-file-diagnostic' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/shellcheck-per-file-diagnostic.yml

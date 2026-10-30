@@ -1,0 +1,128 @@
+name: ShellCheck per-file diagnostic
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Initialize evidence directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/shellcheck-per-file-diagnostic"
+          echo 'Diagnostic only: one full-manifest per-file measurement, not full parity or adoption.' > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/scope.txt"
+      - name: Provision exact pinned ShellCheck
+        timeout-minutes: 3
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          bin=$(sh scripts/install-shellcheck.sh)
+          echo "SC_BIN_DIR=$bin" >> "$GITHUB_ENV"
+      - name: Run focused candidate selftests
+        timeout-minutes: 5
+        run: |
+          SHELLCHECK="$SC_BIN_DIR/shellcheck" python3 tools/shellcheck-per-file-poc/test_candidate.py > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/selftests.log" 2>&1
+      - name: Measure the full manifest once
+        id: measurement
+        timeout-minutes: 30
+        run: |
+          set +e
+          python3 tools/shellcheck-per-file-poc/run_manifest.py \
+            --shellcheck "$SC_BIN_DIR/shellcheck" \
+            --report "$RUNNER_TEMP/shellcheck-per-file-diagnostic/manifest.jsonl" \
+            > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/measurement.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/exit-status.txt"
+          exit "$status"
+      - name: Summarize without raw transcript
+        if: always()
+        env:
+          MEASUREMENT_OUTCOME: ${{ steps.measurement.outcome }}
+        id: summarize
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, 'tools/shellcheck-per-file-poc')
+          root = Path(os.environ['RUNNER_TEMP']) / 'shellcheck-per-file-diagnostic'
+          root.mkdir(exist_ok=True)
+          text = 'Diagnostic only: one full-manifest per-file measurement; no full-parity or adoption claim.\n\n'
+          complete = False
+          count = diagnostics = 0
+          try:
+              from candidate import production_manifest
+
+              header = version = summary = None
+              errors = False
+              with (root / 'manifest.jsonl').open() as stream:
+                  for line in stream:
+                      if not line.endswith('\n'):
+                          raise ValueError('partial record')
+                      row = json.loads(line)
+                      kind = row['type']
+                      if summary is not None:
+                          raise ValueError('records after summary')
+                      if header is None:
+                          if kind != 'header' or row['schema'] != 1:
+                              raise ValueError('missing header')
+                          header = row
+                          if row['arguments'] != production_manifest() or not row['manifest']:
+                              raise ValueError('wrong manifest')
+                          if len(row['manifest']) != len(row['arguments']):
+                              raise ValueError('wrong occurrence count')
+                      elif version is None:
+                          if kind != 'version':
+                              raise ValueError('missing version')
+                          version = row
+                          errors = bool(row['errors'])
+                      elif kind == 'target':
+                          if row['index'] != count or row['target'] != header['manifest'][count]:
+                              raise ValueError('wrong target order')
+                          errors |= bool(row['errors']) or row['status'] not in (0, 1)
+                          diagnostics += len(row['target_diagnostics'])
+                          count += 1
+                      elif kind == 'summary':
+                          summary = row
+                      else:
+                          raise ValueError('unexpected record')
+              status = int((root / 'exit-status.txt').read_text())
+              complete = (header is not None and version is not None and summary is not None
+                          and count == len(header['manifest']) and not errors
+                          and not summary['errors'] and summary['complete'] is True
+                          and summary['status'] == status == int(bool(diagnostics))
+                          and os.environ['MEASUREMENT_OUTCOME'] == ('success' if status == 0 else 'failure'))
+          except (OSError, ValueError, KeyError, TypeError, IndexError, ImportError):
+              complete = False
+          if complete:
+              text += f'Complete measurement: {count} target occurrences, {diagnostics} target diagnostics, exit status {status}.\n'
+          else:
+              text += 'Incomplete: missing, partial, inconsistent, or failed evidence/process completion; never a lint pass. Inspect retained artifacts.\n'
+          (root / 'summary.md').write_text(text)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write(text)
+          sys.exit(0 if complete else 1)
+          PY
+      - name: Retain untruncated evidence even on failure or incomplete measurement
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shellcheck-per-file-diagnostic
+          path: ${{ runner.temp }}/shellcheck-per-file-diagnostic/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary pinned binary directory after upload
+        if: always()
+        run: |
+          if test -n "${SC_BIN_DIR:-}"; then
+            rm -rf -- "$SC_BIN_DIR"
+          fi
