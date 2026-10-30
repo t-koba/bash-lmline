@@ -5,13 +5,17 @@ This isolated experiment is **not a full ShellCheck pass, a replacement for
 lint configuration, default CI, source manifest, or baseline warning policy.
 Do not use a successful three-file result to close full-lint acceptance.
 
-The ordinary reviewed workflow is `.github/workflows/shellcheck-api-diagnostic.yml`.
-It runs **only on manual `workflow_dispatch`**, with read-only repository access,
-one `ubuntu-24.04` job, and a 40-minute job deadline. Review before manually
-running it; no dispatch is part of preparing this change. Checkout does not
-persist its read-only token. There is no publishing, cache restore, matrix, or
-automatic trigger. Build and measurement are separate
-steps in the same job; measurement reuses the compiled executable.
+The `.github/workflows/shellcheck-api-diagnostic.yml` file is a reusable
+workflow called only through the already-registered `.github/workflows/ci.yml`
+manual dispatch. Select `mode=shellcheck-api-diagnostic` at the reviewed
+candidate ref; that choice skips the normal full-suite matrix and runs only this
+bounded diagnostic. The default `mode=full` and every push/pull request retain
+the existing CI behavior. The reusable workflow grants read-only repository
+access, uses one `ubuntu-24.04` job, and has a 40-minute job deadline. Checkout
+does not persist its read-only token. There is no publishing, cache restore,
+matrix, or automatic diagnostic trigger. Build and measurement are separate
+steps in the same job; measurement reuses the compiled executable. Preparing
+this route does not dispatch it.
 
 ## Identities and lock
 

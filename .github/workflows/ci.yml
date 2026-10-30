@@ -5,9 +5,19 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Run the full suite or the bounded ShellCheck API diagnostic only
+        type: choice
+        required: true
+        default: full
+        options:
+          - full
+          - shellcheck-api-diagnostic
 
 jobs:
   test:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode == 'full' }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,3 +73,10 @@ jobs:
             bash tests/test_pty.sh || status=$?
           done
           exit "$status"
+
+  shellcheck_api_diagnostic:
+    name: ShellCheck API diagnostic
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'shellcheck-api-diagnostic' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/shellcheck-api-diagnostic.yml
