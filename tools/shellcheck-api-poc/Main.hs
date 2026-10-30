@@ -14,13 +14,13 @@ import System.Exit (ExitCode(..), exitWith)
 import System.FilePath (normalise)
 
 files :: [FilePath]
-files = ["lmline/policy.bash", "lmline/config.bash", "lmline/validation-boundary.bash"]
+files = ["tests/test_endpoint_display.sh"]
 
--- These sources use explicit source=lmline/... annotations, resolved from
--- the repository working directory. No source-path or external-sources
--- overrides are supported by this deliberately closed reproducer adapter.
--- Like the CLI without -x, only command-line inputs (and /dev/null) may be
--- sourced. Read failures are returned to ShellCheck, not silently discarded.
+-- Source annotations are resolved from the repository working directory.
+-- Like the CLI without -x, non-input files remain not-followed, including
+-- annotated sources. Only the single input (and /dev/null) may be sourced.
+-- No source-path or external-sources overrides are supported by this closed
+-- adapter. Read failures are returned to ShellCheck, not silently discarded.
 readSource :: Maybe Bool -> FilePath -> IO (Either String String)
 readSource external path
   | external /= Nothing = ioError $ userError "Reproducer adapter does not support external-sources directives"

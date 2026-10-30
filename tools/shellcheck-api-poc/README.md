@@ -3,7 +3,7 @@
 This isolated experiment is **not a full ShellCheck pass, a replacement for
 `tests/test_shellcheck.sh`, or a coverage workaround**. It changes no runtime,
 lint configuration, default CI, source manifest, or baseline warning policy.
-Do not use a successful three-file result to close full-lint acceptance.
+Do not use a successful one-file result to close full-lint acceptance.
 
 The `.github/workflows/shellcheck-api-diagnostic.yml` file is a reusable
 workflow called only through the already-registered `.github/workflows/ci.yml`
@@ -52,19 +52,25 @@ From the repository root, the CLI command is exactly:
 
 ```sh
 shellcheck -s bash --rcfile=.shellcheckrc --format=json \
-  lmline/policy.bash lmline/config.bash lmline/validation-boundary.bash
+  tests/test_endpoint_display.sh
 ```
 
-The API executable calls `ShellCheck.Checker.checkScript` once per path, in that
-order, using `emptyCheckSpec` defaults with only filename, script, and the Bash
+This follow-up uses only `tests/test_endpoint_display.sh`, whose pinned CLI
+baseline has four SC1091 info diagnostics at lines 3, 41, 82, and 179 (exit 1,
+empty stderr). The earlier three-file comparison returned empty diagnostics
+from both implementations; that result cannot establish nonempty parity.
+
+The API executable calls `ShellCheck.Checker.checkScript` once for this input,
+using `emptyCheckSpec` defaults with only filename, script, and the Bash
 shell override set. The system interface supplies the checked-in `.shellcheckrc`
 to the analyzer unchanged. There is **no `-x`**, sourced-diagnostic flag,
 extended-analysis change, optional-check change, or extra analyzer input.
-The source allowlist is exactly the same three command-line inputs plus
-ShellCheck's `/dev/null` special case. The existing `source=lmline/...`
-annotations resolve from the repository root, so the interface's source resolver
-returns that name unchanged. This is intentionally only a reproducer adapter,
-not a general replacement for the CLI's search-path machinery: it fails if the
+The source allowlist is exactly this single command-line input plus
+ShellCheck's `/dev/null` special case. Source annotations resolve from the
+repository root, so the interface's source resolver returns that name unchanged.
+With no `-x`, non-input sources remain not-followed, including annotated files
+such as `tests/lib.sh` and `lmline/profiles.bash`. This is intentionally only a
+reproducer adapter, not a general replacement for the CLI's search-path machinery: it fails if the
 rc gains settings beyond its current `disable=` lines. If source-path/external
 source annotations change, review the adapter before reusing the experiment.
 
@@ -96,7 +102,9 @@ messages, not absolute runner paths (raw build logs/plans can contain runner
 paths).
 
 `compare.py` requires complete JSON and normal exit codes (0 or 1), validates
-that status agrees with diagnostic presence, and compares multisets of **every
+that status agrees with diagnostic presence, and requires all four expected
+`(file, line, code, level)` diagnostics above in **both** outputs. Empty or missing
+expected diagnostics fail closed. It then compares multisets of **every
 diagnostic** including duplicate multiplicity, filename, start/end positions,
 severity, code, and exact message. Ordering/JSON formatting alone are ignored.
 CLI suggested-edit `fix` metadata stays in the raw artifact but is not compared:
@@ -110,8 +118,16 @@ evidence**.
 
 Only bounded static checks are appropriate before dispatch: workflow trigger,
 permissions/action pins/paths, Bash syntax and helper-only lint, Python syntax,
-and synthetic comparator cases. GHC/Cabal are unavailable in the preparation
-sandbox; **compilation and actual parity are not locally verified**. Do not run
+and synthetic comparator cases:
+
+```sh
+bash -n tools/shellcheck-api-poc/run.sh
+python3 -m py_compile tools/shellcheck-api-poc/compare.py tools/shellcheck-api-poc/test_compare.py
+python3 tools/shellcheck-api-poc/test_compare.py
+git diff --check
+```
+
+GHC/Cabal are unavailable in the preparation sandbox; **compilation and actual parity are not locally verified**. Do not run
 the full 74-file lint to validate this diagnostic change.
 
 This directory's experimental code is **GPL-3.0-or-later**, with the GPL v3 text

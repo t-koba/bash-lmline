@@ -76,9 +76,7 @@ case "${1:-}" in
     archive shellcheck-api-poc.cabal shellcheck-api-poc.cabal
     archive "$repo/.shellcheckrc" shellcheckrc
     archive "$repo/pinned-downloads.txt" pinned-downloads.txt
-    for file in policy config validation-boundary; do
-      archive "$repo/lmline/$file.bash" "$file.bash"
-    done
+    archive "$repo/tests/test_endpoint_display.sh" test_endpoint_display.sh
     # Existing installer verifies the existing manifest digest AND CLI version.
     cli_dir=$(timeout --kill-after=5s 90s bash "$repo/scripts/install-shellcheck.sh" 2> "$results/installer.stderr")
     mkdir -p _run/bin
@@ -114,7 +112,7 @@ case "${1:-}" in
     check_lock
     (cd _run/bin && sha256sum --check "$results/cli.sha256" "$results/api.sha256")
     cd "$repo"
-    inputs=(lmline/policy.bash lmline/config.bash lmline/validation-boundary.bash)
+    inputs=(tests/test_endpoint_display.sh)
     # Sequential, one process per implementation, identical source allowlist.
     limited cli 180 json "$poc/_run/bin/shellcheck" -s bash --rcfile=.shellcheckrc --format=json "${inputs[@]}" || true
     limited api 180 json "$poc/_run/bin/shellcheck-api-poc" +RTS -N1 -M3G -RTS || true

@@ -17,7 +17,7 @@ jobs:
       - name: Initialize bounded evidence directory
         run: |
           mkdir -p tools/shellcheck-api-poc/_run/results
-          echo 'Diagnostic only; incomplete until both measurements and comparison succeed.' > tools/shellcheck-api-poc/_run/results/scope.txt
+          echo 'Diagnostic only: tests/test_endpoint_display.sh nonempty follow-up; incomplete until both measurements and comparison succeed.' > tools/shellcheck-api-poc/_run/results/scope.txt
       - name: Set up exact compiler and solver
         uses: haskell-actions/setup@96f3dafd067155f32643c2a0757ab71d2910e2c2 # v2.8.0
         with:
@@ -41,7 +41,7 @@ jobs:
       - name: Summarize diagnostic scope
         if: always()
         run: |
-          echo 'Diagnostic only: three-file reproducer, not full lint or a coverage workaround.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Diagnostic only: one-file nonempty follow-up (tests/test_endpoint_display.sh), not full lint or a coverage workaround.' >> "$GITHUB_STEP_SUMMARY"
           if test -f tools/shellcheck-api-poc/_run/results/comparison.txt; then
             cat tools/shellcheck-api-poc/_run/results/comparison.txt >> "$GITHUB_STEP_SUMMARY"
           else

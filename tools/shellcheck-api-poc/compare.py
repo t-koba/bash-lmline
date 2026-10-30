@@ -7,6 +7,8 @@ import math
 import sys
 
 KEYS = ("file", "line", "column", "endLine", "endColumn", "level", "code", "message")
+EXPECTED = {("tests/test_endpoint_display.sh", line, 1091, "info")
+            for line in (3, 41, 82, 179)}
 ARTIFACT_CAP = 8 * 1024 * 1024
 
 
@@ -33,13 +35,17 @@ def compare(root):
         rows = json.loads((root / f"{name}.json").read_text())
         if not isinstance(rows, list) or status != int(bool(rows)):
             return "Incomplete: invalid diagnostics/status; no parity claim.", False
+        identities = {(row["file"], row["line"], row["code"], row["level"])
+                      for row in rows}
+        if not EXPECTED <= identities:
+            return f"Incomplete: {name} lacks expected nonempty diagnostics; no parity claim.", False
         # Preserve duplicate multiplicity, every diagnostic, and all diagnostic
         # fields. CLI's optional suggested-edit ('fix') metadata is retained in
         # cli.json but is not diagnostic parity (the API tool proposes no edits).
         diagnostics.append(sorted(json.dumps({k: row[k] for k in KEYS},
                                               sort_keys=True) for row in rows))
     same = statuses[0] == statuses[1] and diagnostics[0] == diagnostics[1]
-    return ("Three-file diagnostic and exit-status parity." if same else
+    return ("One-file nonempty diagnostic and exit-status parity." if same else
             "Mismatch: diagnostics or exit statuses differ; no parity claim."), same
 
 
