@@ -9,7 +9,11 @@ explicitly re-runs the current line once through `LMLINE_EXEC_BACKEND` to
 capture failure evidence (`LMLINE_EXEC_BACKEND=off` disables it), the opt-in
 `command_run` tool, and `lmline sandbox run`, all of which the user invokes or
 enables and all of which are risk-gated (see Candidate Handling and
-SECURITY.md). One more path can run a program without the user invoking it, but only when explicitly opted in with `LMLINE_TOOL_COMMAND_INFO=1`: the `command_info` tool then probes an external program the model names with the fixed flag `--version` under a short timeout (see SECURITY.md).
+SECURITY.md). One more path may run a program without user invocation, but only
+with explicit opt-in `LMLINE_TOOL_COMMAND_INFO=1`: the `command_info` tool may
+run a model-named external program from `PATH` with the fixed `--version` flag
+under a short timeout. A fixed list of macOS commands that do not accept the
+flag is not probed (see SECURITY.md).
 
 The bundled engine is `lmline/engine`. A replacement set with `LMLINE_ENGINE`
 must implement [docs/engine-protocol.md](docs/engine-protocol.md).
@@ -1032,10 +1036,11 @@ tool descriptions     LMLINE_TOOL_MODE=auto and enabled LMLINE_TOOL_* flags
 Default context collection does not read file contents, shell history, lmline
 debug history, the full command inventory, current-directory file names, or the
 clipboard. Tools can expose extra local facts only when enabled and only when
-the model calls them. `command_info` is disabled by default because it runs a
-bounded `--version` probe for a model-named program and returns its output to
-the model. `file_excerpt` is disabled by default because it reads bounded file
-content. `command_run` is disabled by default because it executes a command
+the model calls them. `command_info` is disabled by default because it may run
+a bounded `--version` probe for a model-named external program on `PATH` and
+return its output to the model; a fixed list of macOS commands is not probed
+(see SECURITY.md). `file_excerpt` is disabled by default because it reads
+bounded file content. `command_run` is disabled by default because it executes a command
 through the selected backend and sends bounded stdout/stderr back to the model.
 `git_status`, `command_info`, `file_excerpt`, and `command_run` require exact
 `1` to enable; unset, empty, and any other value leave them disabled.
