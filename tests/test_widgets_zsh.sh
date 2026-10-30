@@ -137,7 +137,12 @@ if [[ "$1" == child ]]; then
   exec 3<>"$LMLINE_TEST_ASYNC_DIR/$name.gate"
   trap 'printf stopped >"$LMLINE_TEST_ASYNC_DIR/$name.child.stopped"; exit 143' TERM
   printf "%s\n" "$$" >"$LMLINE_TEST_ASYNC_DIR/$name.child.ready"
-  IFS= read -r -t 20 -u 3 release
+  if [[ "$name" == unrelated ]]; then
+    # This process must remain live until the test explicitly releases it.
+    IFS= read -r -u 3 release
+  else
+    IFS= read -r -t 20 -u 3 release
+  fi
   printf finished >"$LMLINE_TEST_ASYNC_DIR/$name.child.finished"
   exit
 fi
@@ -176,8 +181,8 @@ EOF
       ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/first.gate"; printf "release\n" >&3 )
       ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/second.gate"; printf "release\n" >&3 )
       ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/timeout.gate"; printf "release\n" >&3 )
+      ( exec 3<>"$LMLINE_TEST_ASYNC_DIR/unrelated.gate"; printf "release\n" >&3 ) 2>/dev/null || true
       if [[ -n "${unrelated:-}" ]]; then
-        kill "$unrelated" 2>/dev/null || true
         wait "$unrelated" 2>/dev/null || true
       fi
     }
