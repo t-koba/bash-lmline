@@ -900,6 +900,31 @@ class ResourceTests(unittest.TestCase):
                 self.assertEqual(measured["terminated_by_signal"], None)
                 self.assertTrue(any(r["type"] == "resource_sample" and r[key] == value for r in records))
 
+    def test_final_sample_count_cap_still_removes_proven_empty_leaf(self):
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        resource = FakeResource()
+        measure = c.measure
+
+        def capped_measure(command, **kwargs):
+            if "--version" in command:
+                return measure(command, **kwargs)
+            # Only the initial sample fits. Disable periodic sampling so the
+            # cap is reached at final capture, after the child exits normally.
+            with mock.patch.object(c, "SAMPLE_COUNT", 1), mock.patch.object(c, "SAMPLE_INTERVAL", float("inf")):
+                return measure(command, **kwargs)
+
+        with mock.patch.object(c, "CgroupGuard", side_effect=[FakeResource(), resource]), \
+                mock.patch.object(c, "measure", side_effect=capped_measure):
+            report = c.run([path], fake, guard=self.config)
+        self.assertEqual(report["status"], 2)
+        self.assertFalse(report["complete"])
+        measured = report["targets"][0]["measurement"]
+        self.assertEqual(measured["status"], 0)
+        self.assertIn("wrapper failure: ValueError: resource sample count cap", measured["errors"])
+        self.assertEqual(len(measured["guard"]["samples"]), 1)
+        self.assertEqual(measured["guard"]["cleanup"], dict(quiescent=True, removed=True))
+
     def test_final_sink_failure_still_removes_but_reports_incomplete(self):
         path = self.file("a.sh", "#!/bin/bash\n")
         fake = self.fake("print('[]')\n")

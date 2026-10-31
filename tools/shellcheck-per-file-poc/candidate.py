@@ -246,14 +246,14 @@ def measure(command, *, cwd=ROOT, cap=OUTPUT_CAP, timeout=TIMEOUT, guard=None,
     def capture_final():
         nonlocal sample_bytes
         samples = result["guard"]["samples"]
+        if len(samples) >= SAMPLE_COUNT:
+            result["errors"].append("wrapper failure: ValueError: resource sample count cap")
+            return
         values = resource.sample()
         row = dict(type="resource_sample", index=index, sample=len(samples),
                    **{k: values.get(k, "unavailable") for k in COUNTERS})
         line = progress_record(row)
         size = len(line.encode("ascii")) * (3 if observe is not None else 1)
-        if len(samples) >= SAMPLE_COUNT:
-            result["errors"].append("wrapper failure: ValueError: resource sample count cap")
-            return
         if sample_bytes + size > SAMPLE_BYTES:
             result["errors"].append("wrapper failure: ValueError: resource sample byte cap")
             return
