@@ -7,9 +7,11 @@ import json
 import os
 from pathlib import Path
 import signal
+import shlex
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from unittest import mock
 
@@ -371,6 +373,120 @@ class ProgressTests(unittest.TestCase):
             self.assertFalse({"command", "arguments", "stdout", "stderr", "message",
                               "measurement", "errors", "manifest", "cwd"} & row.keys())
 
+    def workflow_script(self, step):
+        # Exercise the actual workflow shell/gate without a YAML dependency.
+        workflow = (c.ROOT / ".github/workflows/shellcheck-per-file-diagnostic.yml").read_text()
+        block = workflow.split("      - name: " + step + "\n", 1)[1]
+        return textwrap.dedent(block.split("        run: |\n", 1)[1].split("      - name:", 1)[0])
+
+    def measurement(self, fake, files):
+        evidence = self.root / "shellcheck-per-file-diagnostic"
+        evidence.mkdir(exist_ok=True)
+        # Only substitute the small fixture manifest entry point and fake CLI;
+        # keep the workflow's pipeline, redirections and status handling intact.
+        entry = (f"import sys; sys.path.insert(0, {str(Path(c.__file__).parent)!r}); "
+                 "from candidate import main; "
+                 "print('DISTINCTIVE_RAW_DIAGNOSTIC /private/path --argument', file=sys.stderr); "
+                 f"sys.exit(main({files!r}))")
+        script = self.workflow_script("Measure the full manifest once").replace(
+            "python3 tools/shellcheck-per-file-poc/run_manifest.py",
+            shlex.join([sys.executable, "-c", entry]))
+        cli = self.root / "shellcheck"
+        cli.write_bytes(Path(fake).read_bytes())
+        cli.chmod(0o755)
+        live = self.root / "live.log"
+        with live.open("w") as stream:
+            result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script],
+                                    env=dict(os.environ, RUNNER_TEMP=str(self.root),
+                                             SC_BIN_DIR=str(self.root)),
+                                    stdout=stream, stderr=subprocess.PIPE, text=True, timeout=10)
+        self.assertEqual(result.stderr, "")
+        self.assert_safe(live.read_text())
+        return result.returncode, evidence, live.read_text()
+
+    def summarize(self, output, files, status, outcome):
+        evidence = self.root / "shellcheck-per-file-diagnostic"
+        evidence.mkdir(exist_ok=True)
+        (evidence / "manifest.jsonl").write_bytes(output.read_bytes())
+        (evidence / "exit-status.txt").write_text(str(status) + "\n")
+        script = self.workflow_script("Summarize without raw transcript")
+        gate = script.split("python3 - <<'PY'\n", 1)[1].rsplit("PY\n", 1)[0]
+        # Match the fixture manifest so rejection cannot be a manifest mismatch.
+        setup = (f"import sys; sys.path.insert(0, {str(Path(c.__file__).parent)!r}); "
+                 f"import candidate; candidate.production_manifest = lambda: {files!r}\n")
+        result = subprocess.run([sys.executable, "-c", setup + gate], capture_output=True,
+                                text=True, timeout=5,
+                                env=dict(os.environ, RUNNER_TEMP=str(self.root),
+                                         MEASUREMENT_OUTCOME=outcome,
+                                         GITHUB_STEP_SUMMARY=str(self.root / "step-summary.md")))
+        self.assertEqual(result.stdout + result.stderr, "")
+        return result.returncode, (evidence / "summary.md").read_text()
+
+    def test_workflow_pipeline_streams_only_progress_and_retains_full_evidence(self):
+        first = self.file("first.sh", "#!/bin/bash\n")
+        later = self.file("later.sh", "#!/bin/bash\n")
+        marker = "DISTINCTIVE_RAW_DIAGNOSTIC " + str(self.root) + " --raw-argument"
+        row = dict(file=first, line=1, column=1, endLine=1, endColumn=2,
+                   level="warning", code=2086, message=marker, fix={"replacements": []})
+        for status in (0, 1, 2):
+            with self.subTest(status=status):
+                fake = self.fake(f'''from pathlib import Path
+import time
+if sys.argv[-1] == {later!r}:
+ # Both destinations must be live before this CLI invocation can finish.
+ deadline = time.monotonic() + 3
+ while True:
+  try:
+   logs = [Path({str(self.root)!r}) / name for name in
+           ("live.log", "shellcheck-per-file-diagnostic/measurement.log")]
+   if all(any(json.loads(line).get("index") == 0
+              for line in p.read_text().splitlines()) for p in logs):
+    break
+  except (OSError, ValueError):
+   pass
+  assert time.monotonic() < deadline, "progress was not live"
+  time.sleep(0.01)
+ if {status} == 2:
+  print({marker!r}); print({marker!r}, file=sys.stderr); sys.exit(3)
+ print("[]"); sys.exit(0)
+print(json.dumps({[row] if status else []!r})); sys.exit({int(bool(status))})
+''')
+                code, evidence, live = self.measurement(fake, [first, later])
+                self.assertEqual(code, status)
+                self.assertEqual((evidence / "exit-status.txt").read_text(), f"{status}\n")
+                self.assertEqual(live, (evidence / "measurement.log").read_text())
+                records = self.read_records(evidence / "manifest.jsonl")
+                self.assertEqual(live, "".join(c.progress_record(record) for record in records))
+                self.assertEqual(records[2]["measurement"]["command"][-1], first)
+                if status:
+                    self.assertEqual(records[2]["group_diagnostics"], [row])
+                    self.assertEqual(records[2]["target_diagnostics"], [row])
+                    self.assertIn(marker, records[2]["measurement"]["stdout"])
+                if status == 2:
+                    self.assertEqual(records[3]["measurement"]["stderr"], marker + "\n")
+                    self.assertEqual(records[3]["measurement"]["stdout"], marker + "\n")
+                summary_code, summary = self.summarize(evidence / "manifest.jsonl", [first, later],
+                                                     status, "success" if status == 0 else "failure")
+                self.assertEqual(summary_code, int(status == 2))
+                self.assertIn("Incomplete:" if status == 2 else "Complete measurement:", summary)
+                (evidence / "manifest.jsonl").unlink()
+
+    def test_workflow_tee_failure_is_fatal_and_silent(self):
+        path = self.file("clean.sh", "#!/bin/bash\n")
+        fake = self.fake('print("[]")\n')
+        evidence = self.root / "shellcheck-per-file-diagnostic"
+        evidence.mkdir()
+        (evidence / "measurement.log").mkdir()  # tee cannot write a directory.
+        code, evidence, live = self.measurement(fake, [path])
+        self.assertEqual(code, 2)
+        self.assertEqual((evidence / "exit-status.txt").read_text(), "0\n")
+        records = self.read_records(evidence / "manifest.jsonl")
+        self.assertTrue(records[-1]["complete"])
+        self.assertEqual(live, "".join(c.progress_record(record) for record in records))
+        code, summary = self.summarize(evidence / "manifest.jsonl", [path], 0, "failure")
+        self.assertEqual(code, 1)
+        self.assertIn("Incomplete:", summary)
+
     def test_cli_progress_is_sanitized_lossless_evidence_and_opt_in(self):
         dependency = self.file("dependency.sh", "#!/bin/bash\n")
         first = self.file("first.sh", f"#!/bin/bash\n# shellcheck source={dependency}\n")
@@ -462,6 +578,14 @@ print("[]")
         self.assert_safe(progress.read_text())
         self.assertEqual([r["type"] for r in self.read_records(progress)], ["header", "version", "target"])
         self.assertEqual([r["type"] for r in self.read_records(output)], ["header", "version", "target"])
+        # Even a stale successful exit-status/outcome cannot turn a flushed
+        # prefix into a complete measurement or lint pass.
+        for status, outcome in ((128 + signal.SIGTERM, "failure"), (0, "success")):
+            code, summary = self.summarize(output, [first, later], status, outcome)
+            self.assertEqual(code, 1)
+            self.assertIn("Incomplete:", summary)
+            self.assertIn("never a lint pass", summary)
+            self.assertNotIn("Complete measurement:", summary)
 
     def test_unrepresentable_target_and_log_failure_fail_safely(self):
         class FailingStream(io.StringIO):
