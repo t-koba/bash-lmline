@@ -70,10 +70,13 @@ provisions the exact pinned CLI, runs the focused selftests, then invokes the
 full-manifest wrapper **once**, sequentially, on Ubuntu 24.04. It does not run the
 combined production lint or the API probe.
 
-The job is bounded to 40 minutes (30 minutes for the measurement). JSONL and
-selftest/measurement logs live under `$RUNNER_TEMP` and are uploaded without
-truncation, including on failure/incomplete runs, with 7-day retention. The step
-summary contains only scope, completeness, and counts, not raw transcripts.
+The job is bounded to 40 minutes (30 minutes for the measurement). The
+`measurement.log` contains only bounded, allowlisted progress records; it does
+not mirror Python stderr or ShellCheck output. Full measurements and diagnostics
+remain in `manifest.jsonl`. JSONL and selftest/measurement logs live under
+`$RUNNER_TEMP` and are uploaded without truncation, including on
+failure/incomplete runs, with 7-day retention. The step summary contains only
+scope, completeness, and counts, not raw transcripts.
 Missing/partial final summaries, missing target occurrences, and unsuccessful
 report/process completion are reported as **incomplete**, never a lint pass.
 The temporary pinned binary directory is removed after artifact upload. A hard

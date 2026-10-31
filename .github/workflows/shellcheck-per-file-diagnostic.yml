@@ -35,11 +35,18 @@ jobs:
         run: |
           set +e
           python3 tools/shellcheck-per-file-poc/run_manifest.py \
-            --shellcheck "$SC_BIN_DIR/shellcheck" \
+            --shellcheck "$SC_BIN_DIR/shellcheck" --progress \
             --report "$RUNNER_TEMP/shellcheck-per-file-diagnostic/manifest.jsonl" \
-            > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/measurement.log" 2>&1
-          status=$?
+            2>/dev/null | tee "$RUNNER_TEMP/shellcheck-per-file-diagnostic/measurement.log" >/dev/null 2>/dev/null
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          status=${statuses[0]}
           printf '%s\n' "$status" > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/exit-status.txt"
+          # Keep Python's lint/failure status; a logging failure must also fail.
+          # tee errors are silenced above because they may disclose runner paths.
+          if (( statuses[1] != 0 )); then
+            exit 2
+          fi
           exit "$status"
       - name: Summarize without raw transcript
         if: always()

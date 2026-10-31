@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test-only direct-source-context ShellCheck candidate; no workflow integration."""
+"""Test-only direct-source-context ShellCheck candidate with opt-in CI diagnostics."""
 import argparse
 import json
 import os
@@ -17,6 +17,43 @@ PIN = "0.11.0"
 # Per stream, per invocation. Overflow is an explicit incomplete/failing result.
 OUTPUT_CAP = 8 * 1024 * 1024
 TIMEOUT = 300
+# Fixed-size, allowlisted log records; the JSONL evidence has no such reduction.
+PROGRESS_BYTES = 1024
+
+
+def progress_record(record):
+    """Project evidence onto log-safe scalars, never child text or commands."""
+    kind = record["type"]
+    data = dict(type=kind, schema=1)
+    if kind == "header":
+        data["target_count"] = len(record["manifest"])
+    elif kind == "version":
+        data.update(pinned_version=PIN, status=2 if record["errors"] else 0)
+    elif kind == "target":
+        # Canonical evidence paths must stay inside the repository. Do not echo
+        # an unrepresentable path, even in an error message.
+        try:
+            target = Path(record["target"]).resolve().relative_to(ROOT).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            raise ValueError("unrepresentable progress target") from None
+        if target == "." or any(ord(char) < 32 or ord(char) == 127 for char in target):
+            raise ValueError("unrepresentable progress target")
+        measurement = record["measurement"] or {}
+        data.update(index=record["index"], target=target, status=record["status"],
+                    tool_status=measurement.get("status"),
+                    elapsed_s=measurement.get("elapsed_s"),
+                    peak_rss_kib=measurement.get("peak_rss_kib"),
+                    target_diagnostic_count=len(record["target_diagnostics"]),
+                    error_count=len(record["errors"]))
+    elif kind == "summary":
+        data.update(status=record["status"], complete=record["complete"],
+                    total_elapsed_s=record["total_elapsed_s"])
+    else:
+        raise ValueError("unknown progress record")
+    line = json.dumps(data, ensure_ascii=True, allow_nan=False) + "\n"
+    if len(line.encode("ascii")) > PROGRESS_BYTES:
+        raise ValueError("unrepresentable progress record")
+    return line
 
 
 def measure(command, *, cwd=ROOT, cap=OUTPUT_CAP, timeout=TIMEOUT):
@@ -228,6 +265,8 @@ def run(files, shellcheck="shellcheck", *, rcfile=None, cap=OUTPUT_CAP, timeout=
 def main(manifest=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--progress", action="store_true",
+                        help="flush bounded sanitized JSON progress to stdout (full evidence stays in --report)")
     parser.add_argument("--shellcheck", default="shellcheck", help="pinned CLI path (version checked)")
     if manifest is None:
         parser.add_argument("files", nargs="+")
@@ -243,10 +282,17 @@ def main(manifest=None):
             def record(data):
                 stream.write(json.dumps(data, ensure_ascii=True, allow_nan=False) + "\n")
                 stream.flush()
+                if args.progress:
+                    sys.stdout.write(progress_record(data))
+                    sys.stdout.flush()
             report = run(manifest if manifest is not None else args.files, args.shellcheck,
                          cap=args.output_cap, timeout=args.timeout, record=record)
     except (OSError, ValueError) as exc:
-        print(f"evidence report failure: {exc}", file=sys.stderr)
+        if args.progress:
+            # Report/sink exceptions can contain absolute paths or raw data.
+            print('{"type":"failure","schema":1,"status":2}', file=sys.stderr, flush=True)
+        else:
+            print(f"evidence report failure: {exc}", file=sys.stderr)
         return 2
     return report["status"]
 

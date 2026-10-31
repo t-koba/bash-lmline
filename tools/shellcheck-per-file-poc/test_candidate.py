@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Focused, bounded tests. Requires the pinned CLI; never runs the full manifest."""
 from collections import Counter
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
@@ -243,6 +243,8 @@ print("[]")
                    "--report", str(output), path]
         result = subprocess.run(command, cwd=self.root, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, b"")  # No progress unless explicitly requested.
+        self.assertEqual(result.stderr, b"")
         records = self.read_records(output)
         self.assertEqual([r["type"] for r in records], ["header", "version", "target", "summary"])
         self.assertEqual(records[0]["manifest"], [path])
@@ -340,6 +342,158 @@ print(json.dumps({([row] * 2)!r})); sys.exit(1)
         self.assertIn("evidence report failure", err.getvalue())
         self.assertEqual([json.loads(line)["type"] for line in stream.getvalue().splitlines()],
                          ["header", "version", "target"])
+
+
+class ProgressTests(unittest.TestCase):
+    # Fake CLI coverage is independent of pinned-CLI availability. Fixtures live
+    # inside ROOT so progress must use real repo-relative paths, not ../ aliases.
+    file = CandidateTests.file
+    fake = CandidateTests.fake
+    read_records = CandidateTests.read_records
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="progress-fixture-", dir=c.ROOT)
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def command(self, output, fake, files, progress=True):
+        return [sys.executable, str(Path(c.__file__)), "--shellcheck", fake,
+                "--report", str(output)] + (["--progress"] if progress else []) + files
+
+    def assert_safe(self, text):
+        self.assertNotIn("DISTINCTIVE_RAW_DIAGNOSTIC", text)
+        self.assertNotIn(str(c.ROOT), text)
+        self.assertNotIn(str(self.root), text)
+        for line in text.splitlines(keepends=True):
+            self.assertTrue(line.endswith("\n"))
+            self.assertLessEqual(len(line.encode("ascii")), c.PROGRESS_BYTES)
+            row = json.loads(line)
+            self.assertFalse({"command", "arguments", "stdout", "stderr", "message",
+                              "measurement", "errors", "manifest", "cwd"} & row.keys())
+
+    def test_cli_progress_is_sanitized_lossless_evidence_and_opt_in(self):
+        dependency = self.file("dependency.sh", "#!/bin/bash\n")
+        first = self.file("first.sh", f"#!/bin/bash\n# shellcheck source={dependency}\n")
+        later = self.file("later.sh", "#!/bin/bash\n")
+        marker = "DISTINCTIVE_RAW_DIAGNOSTIC " + str(self.root) + " --raw-argument"
+        row = dict(file=dependency, line=1, column=1, endLine=1, endColumn=2,
+                   level="warning", code=2086, message=marker, fix={"replacements": []})
+        for bad in (False, True):
+            for progress in (False, True):
+                with self.subTest(bad=bad, progress=progress):
+                    output = self.root / f"evidence-{bad}-{progress}.jsonl"
+                    fake = self.fake(f'''if sys.argv[-1] == {later!r}:
+ if {bad!r}:
+  print({marker!r}); print({marker!r}, file=sys.stderr); sys.exit(3)
+ print("[]"); sys.exit(0)
+print(json.dumps({([row] * 2)!r})); sys.exit(1)
+''')
+                    script = Path(fake).read_text().replace(
+                        ' print("version: 0.11.0"); sys.exit(0)',
+                        f' print("version: 0.11.0"); print({marker!r}); sys.exit(0)')
+                    Path(fake).write_text(script)
+                    result = subprocess.run(self.command(output, fake, [first, dependency, later], progress),
+                                            capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, 2 if bad else 1, result.stderr)
+                    self.assertEqual(result.stderr, "")
+                    records = self.read_records(output)
+                    self.assertIn(marker, records[1]["version"]["stdout"])
+                    self.assertEqual(records[2]["group_diagnostics"], [row] * 2)
+                    self.assertEqual(records[2]["target_diagnostics"], [])
+                    self.assertEqual(records[3]["target_diagnostics"], [row] * 2)
+                    self.assertIn(marker, records[2]["measurement"]["stdout"])
+                    self.assertEqual(records[-1]["status"], result.returncode)
+                    if bad:
+                        self.assertEqual(records[4]["measurement"]["stderr"], marker + "\n")
+                        self.assertEqual(records[4]["measurement"]["stdout"], marker + "\n")
+                    if not progress:
+                        self.assertEqual(result.stdout, "")
+                        continue
+                    self.assert_safe(result.stdout)
+                    rows = [json.loads(line) for line in result.stdout.splitlines()]
+                    self.assertEqual(rows, [json.loads(c.progress_record(record)) for record in records])
+                    self.assertEqual(rows[0], dict(type="header", schema=1, target_count=3))
+                    self.assertEqual(rows[1], dict(type="version", schema=1, pinned_version=c.PIN, status=0))
+                    targets = rows[2:-1]
+                    self.assertEqual([r["index"] for r in targets], [0, 1, 2])
+                    self.assertEqual([r["status"] for r in targets], [0, 1, 2 if bad else 0])
+                    self.assertEqual([r["target_diagnostic_count"] for r in targets], [0, 2, 0])
+                    for projected, full in zip(targets, records[2:-1]):
+                        self.assertEqual(projected["target"], Path(full["target"]).relative_to(c.ROOT).as_posix())
+                        for key in ("elapsed_s", "peak_rss_kib"):
+                            self.assertEqual(projected[key], full["measurement"][key])
+                            self.assertGreater(projected[key], 0)
+                        self.assertEqual(projected["tool_status"], full["measurement"]["status"])
+
+    def test_clean_cli_with_and_without_progress(self):
+        fake = self.fake('print("[]")\n')
+        path = self.file("clean.sh", "#!/bin/bash\n")
+        for progress in (False, True):
+            output = self.root / f"clean-{progress}.jsonl"
+            result = subprocess.run(self.command(output, fake, [path], progress),
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, "")
+            if progress:
+                self.assert_safe(result.stdout)
+                self.assertEqual(json.loads(result.stdout.splitlines()[-1])["status"], 0)
+            else:
+                self.assertEqual(result.stdout, "")
+            self.assertTrue(self.read_records(output)[-1]["complete"])
+
+    def test_progress_is_flushed_before_later_shutdown(self):
+        first = self.file("first.sh", "#!/bin/bash\n")
+        later = self.file("later.sh", "#!/bin/bash\n")
+        output = self.root / "evidence.jsonl"
+        progress = self.root / "progress.jsonl"
+        fake = self.fake(f'''from pathlib import Path
+records = [json.loads(line) for line in Path({str(progress)!r}).read_text().splitlines()]
+assert [r["type"] for r in records[:2]] == ["header", "version"]
+if sys.argv[-1] == {later!r}:
+ assert [r["type"] for r in records] == ["header", "version", "target"]
+ assert records[2]["index"] == 0 and records[2]["status"] == 0
+ os.kill(os.getppid(), signal.SIGTERM)
+print("[]")
+''')
+        with progress.open("w") as stream:
+            result = subprocess.run(self.command(output, fake, [first, later]),
+                                    stdout=stream, stderr=subprocess.PIPE, timeout=10)
+        self.assertEqual(result.returncode, -signal.SIGTERM, result.stderr)
+        self.assert_safe(progress.read_text())
+        self.assertEqual([r["type"] for r in self.read_records(progress)], ["header", "version", "target"])
+        self.assertEqual([r["type"] for r in self.read_records(output)], ["header", "version", "target"])
+
+    def test_unrepresentable_target_and_log_failure_fail_safely(self):
+        class FailingStream(io.StringIO):
+            def flush(self):
+                raise OSError("DISTINCTIVE_RAW_DIAGNOSTIC /absolute/path --argument")
+
+        fake = self.fake('print("[]")\n')
+        loop = self.root / "loop.sh"
+        loop.symlink_to(loop.name)
+        for name in ("/dev/null", self.file("control\x1b.sh", "#!/bin/bash\n"), str(loop)):
+            with self.subTest(name=name):
+                output = self.root / (Path(name).name + ".jsonl")
+                result = subprocess.run(self.command(output, fake, [name]),
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 2)
+                self.assert_safe(result.stdout + result.stderr)
+                self.assertEqual(json.loads(result.stderr), dict(type="failure", schema=1, status=2))
+                # Full target evidence was flushed first, without a false summary.
+                self.assertEqual([r["type"] for r in self.read_records(output)], ["header", "version", "target"])
+        target = dict(type="target", index=0, target=str(c.ROOT / ("x" * c.PROGRESS_BYTES)),
+                      measurement=None, status=2, target_diagnostics=[], errors=["raw"])
+        with self.assertRaises((OSError, ValueError)):
+            c.progress_record(target)
+        output = self.root / "sink-failure.jsonl"
+        with mock.patch.object(sys, "argv", self.command(output, fake, ["install.sh"])[1:]), \
+                mock.patch.object(c, "measure") as measure, \
+                redirect_stdout(FailingStream()), redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(c.main(), 2)
+        measure.assert_not_called()
+        self.assert_safe(err.getvalue())
+        self.assertEqual(json.loads(err.getvalue()), dict(type="failure", schema=1, status=2))
+        self.assertEqual([r["type"] for r in self.read_records(output)], ["header"])
 
 
 if __name__ == "__main__":
