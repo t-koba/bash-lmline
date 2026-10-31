@@ -25,7 +25,18 @@ failed=()
 # Bash SECONDS keeps per-file timings portable across the Linux and macOS runners.
 suite_started=$SECONDS
 
+test_files=()
+shellcheck_test=''
 for test_file in "$tests_dir"/test_*.sh; do
+  if [[ ${test_file##*/} == test_shellcheck.sh ]]; then
+    shellcheck_test=$test_file
+  else
+    test_files+=("$test_file")
+  fi
+done
+[[ -z "$shellcheck_test" ]] || test_files+=("$shellcheck_test")
+
+for test_file in "${test_files[@]}"; do
   name=$(basename "$test_file")
   test_started=$SECONDS
   # The builtin writes immediately, even when CI captures stdout.
