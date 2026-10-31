@@ -68,29 +68,27 @@ Selecting a model never enables search. The search setting is explicit
 
 ## Request budget on a paid route
 
-A repeated request can spend the user's plan or repeat a billed search, so
-every kind of repeat is listed here:
+A repeated provider request can incur another API charge, spend plan usage,
+or repeat a billed search. The table separates transient HTTP retries from
+application-level retries:
 
 | Route | Automatic HTTP retry | Compatibility or format retry | Candidate-validation retry | Empty-answer auto-text retry | Local tool rounds |
 | --- | --- | --- | --- | --- | --- |
 | `api-key` without search | yes (`LMLINE_HTTP_RETRIES`, default 1) | yes | yes | yes | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
-| `chatgpt` | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | none: the route has no local function tools, and the local tools are off there, so the exchange is one request |
-| native search enabled | no, unless `LMLINE_HTTP_RETRIES` is set explicitly | no | no | no | later rounds do not ask for a new search |
+| `chatgpt` | no by default; a positive `LMLINE_HTTP_RETRIES` enables | no | no | no | none |
+| native search enabled | no by default; a positive `LMLINE_HTTP_RETRIES` enables | no | no | no | yes |
 
-A rejected request on a paid route is reported with the provider's reason
-instead of being repeated, and an empty answer on a paid route is reported
-the same way. A route that repeats drops the local function tools of that
-request; a route that carries a provider-native tool never repeats, so no
-request loses its search tool.
+On ChatGPT and native-search routes, compatibility/format, candidate-validation,
+and empty-answer retries are suppressed; failures and rejections are reported
+without an application-level repeat. `LMLINE_HTTP_RETRIES` is separate and
+applies only to transient HTTP failures. Where candidate-validation or
+empty-answer retries are allowed, the retry omits local function tools.
 
-The subscription route answers once per exchange: the route refuses native
-function tools, the local tools are off there, and a local tool round would be
-another provider request that spends the plan.
-
-At most one provider request per exchange asks the provider to run a new
-search, because every such request can bill another search. Later tool rounds
-keep the earlier search results in the replay and do not ask again; the engine
-says so on the progress channel.
+Native search is requested once per exchange by default. Later local-tool rounds
+reuse earlier results, and the progress channel reports that reuse; an
+explicitly enabled HTTP retry can resend the original search-bearing request.
+ChatGPT has no local tool rounds, because another provider request would spend
+plan usage.
 
 ## Usage reporting
 

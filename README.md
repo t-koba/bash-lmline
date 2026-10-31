@@ -196,10 +196,11 @@ and only the internal token command prints one, on stdout.
 
 On this route the request follows the contract of the subscription API: the
 Responses format, `store: false`, `stream: true`, the instructions as
-`instructions`, and no sampling or account fields. The engine does not repeat
-the request on its own, because a repeated request can spend the plan: the
-route answers once per exchange, and the local tools are off there, because a
-tool round would be another request that spends the plan.
+`instructions`, and no sampling or account fields. HTTP retries are disabled
+by default because another request can spend the plan; a positive explicit
+`LMLINE_HTTP_RETRIES` enables retries for transient HTTP failures. Compatibility,
+validation, and empty-answer retries remain disabled. Local tools are off, so
+there are no tool rounds that would spend another plan request.
 
 The subscription token is sent only to the OpenAI API, and only over
 `https`. A loopback proxy (`http://127.0.0.1:PORT/v1`,
@@ -1326,7 +1327,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CHATGPT_NO_BROWSER` | `0` | skip the browser during the ChatGPT sign-in (`0` opens it, `1` skips it) |
 | `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
-| `LMLINE_HTTP_RETRIES` | `1` | transient provider retries |
+| `LMLINE_HTTP_RETRIES` | `1` | transient provider retries (defaults to 0 on ChatGPT or native-search routes; a positive explicit value enables them) |
 | `LMLINE_RETRY_DELAY` | `1` | seconds between retries |
 | `LMLINE_CACHE_TTL` | `600` | response cache TTL in seconds (0 disables) |
 | `LMLINE_STREAM` | `0` | stream `explain` and `clip` responses |
