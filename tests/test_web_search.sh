@@ -2,7 +2,7 @@
 # shellcheck source=tests/lib.sh
 # shellcheck disable=SC1091
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-# Risk: native web search stays opt-in, provider-side, and never repeats a billed search.
+# Risk: native web search stays opt-in and provider-side; a billed search is not repeated by default.
 
 ws_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-web-search-test.XXXXXX")
 trap 'rm -rf "$ws_tmp"' EXIT
@@ -53,6 +53,22 @@ SSE
   error)
     printf '{"error":{"message":"Unsupported parameter: max_output_tokens is not supported with this model"}}\n' >"$out"
     printf '400\tapplication/json'
+    ;;
+  transient)
+    if (( count == 1 )); then
+      printf '{"error":{"message":"temporary rate limit"}}\n' >"$out"
+      printf '429\tapplication/json'
+    else
+      cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[
+  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to list files"}},
+  {"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example Page"}]}]}
+ ],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+      printf '200\tapplication/json'
+    fi
     ;;
   toolround)
     if (( count <= 1 )); then
@@ -318,5 +334,27 @@ fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "the empty answer was asked again on a paid route"
 grep -q 'not repeated' "$ws_tmp/t12.err" || fail "the refused repeat is not reported"
 ok "web search does not repeat an empty answer"
+
+# 13. An explicit positive HTTP retry override permits retrying the original
+# search-bearing request after a transient 429; both attempts must be identical.
+reset_fake
+if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 \
+    LMLINE_HTTP_RETRIES=1 LMLINE_RETRY_DELAY=0 LMLINE_FAKE_CURL_MODE=transient \
+    >"$ws_tmp/t13.out" 2>"$ws_tmp/t13.err"; then
+  fail "explicit native-search HTTP retry failed: $(sed -n '1p' "$ws_tmp/t13.err")"
+fi
+[[ "$(cat "$count_file")" == 2 ]] || fail "explicit native-search retry count"
+cmp -s "$bodies_dir/body-1.json" "$bodies_dir/body-2.json" \
+  || fail "explicit retry changed the search-bearing request"
+for attempt in 1 2; do
+  jq -e '[.tools[]? | select(.type == "web_search")] | length == 1' \
+    "$bodies_dir/body-$attempt.json" >/dev/null \
+    || fail "explicit retry attempt $attempt lacks the native search tool"
+done
+[[ "$(candidates_of <"$ws_tmp/t13.out")" == "echo hello" ]] \
+  || fail "explicit native-search retry candidate"
+grep -q 'transient provider error; retrying (1/1)' "$ws_tmp/t13.err" \
+  || fail "explicit native-search retry progress"
+ok "explicit HTTP retries repeat the original native-search request"
 
 ok "web search"
