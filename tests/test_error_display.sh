@@ -98,6 +98,14 @@ for renderer in missing failed; do
   out=$(__lmline_engine_error_message "$prefix" "lmline-engine: no valid candidate: $raw")
   [[ "$out" == "$prefix" ]] || fail 'candidate error fails closed without renderer'
   __lmline_report_request_failure 422 application/json "$fixture" 2>"$work/direct"
-  [[ $(cat "$work/direct") == "lmline-engine: request failed: HTTP 422: $hint" ]] || fail 'provider error fails closed without renderer'
+  actual=$(cat "$work/direct")
+  expected="lmline-engine: request failed: HTTP 422: $hint"
+  if [[ "$actual" != "$expected" ]]; then
+    header=no hint_present=no provider_marker=no
+    [[ "$actual" == 'lmline-engine: request failed: HTTP 422: '* ]] && header=yes
+    [[ "$actual" == *"$hint" ]] && hint_present=yes
+    [[ "$actual" == *left* || "$actual" == *right* || "$actual" == *payload* ]] && provider_marker=yes
+    fail "provider error fails closed without renderer (renderer=$renderer; header=$header; hint=$hint_present; provider_marker=$provider_marker)"
+  fi
 done
 ok 'terminal-safe provider error display'
