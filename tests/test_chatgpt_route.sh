@@ -178,10 +178,10 @@ reset_fake() {
   printf '0\n' >"$count_file"
 }
 
-# Runs the engine on the subscription route. The extra arguments are
-# environment assignments and come last, so a case can override the defaults.
+# Runs the engine on the subscription route with inherited retry overrides
+# cleared; explicit case assignments come last and can opt in when needed.
 run_engine() {
-  env PATH="$fake_bin:$PATH" \
+  env -u LMLINE_HTTP_RETRIES PATH="$fake_bin:$PATH" \
     LMLINE_FAKE_CURL_COUNT="$count_file" \
     LMLINE_FAKE_CURL_BODIES="$bodies_dir" \
     LMLINE_CONFIG_DIR="$route_tmp/config" \
@@ -407,6 +407,7 @@ reset_fake
 if run_engine LMLINE_FAKE_CURL_MODE=plan-429 >"$route_tmp/plan-429.out" 2>"$route_tmp/plan-429.err"; then
   fail "the paid route accepted a plan refusal"
 fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route retried a plan HTTP 429 by default"
 grep -q 'subscription_sharing_usage_limit_exceeded' "$route_tmp/plan-429.err" \
   || fail "the plan error code is lost: $(sed -n '1p' "$route_tmp/plan-429.err")"
 grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-429.err" \
