@@ -17,18 +17,20 @@ source "$repo_dir/lmline/chat.bash"
 list_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-local-commands.XXXXXX")
 trap 'rm -rf "$list_tmp"' EXIT
 
-# The list is longer than a pipe buffer and the match comes first. A reader
-# that stops at the match leaves the writer of the list with a closed pipe,
-# and the writer's failure must not decide the answer.
+# The list is long and the match is near its beginning. Lookup must normalize
+# entries and avoid writer diagnostics on an early match.
 list_file="$list_tmp/local_commands.txt"
-printf 'printf\n' >"$list_file"
+printf '\n  # comment\n  printf  # allowlisted\n' >"$list_file"
 for i in $(seq 1 10000); do printf 'filler%s\n' "$i"; done >>"$list_file"
 export LMLINE_LOCAL_COMMANDS_FILE="$list_file"
 
 # The same question has one answer, however often it is asked.
+allowlist_status=0
 for _ in 1 2 3 4 5; do
-  __lmline_local_command_allowed printf || fail "an allowlisted command is refused"
-done
+  __lmline_local_command_allowed printf || { allowlist_status=1; break; }
+done 2>"$list_tmp/allowlist.stderr"
+(( allowlist_status == 0 )) || fail "an allowlisted command is refused"
+[[ ! -s "$list_tmp/allowlist.stderr" ]] || fail "allowlist lookup leaked list-reader diagnostics"
 ok "the allowlist answer is the content of the file"
 
 # A command that the list does not name stays refused.

@@ -548,14 +548,15 @@ __lmline_local_commands_file() {
 __lmline_local_command_allowed() {
   local command_name=$1 file line
   file=$(__lmline_local_commands_file) || return 1
-  # The answer is the content of the file. A reader that stops at the first
-  # match must not decide it: the writer of the list would fail on the
-  # closed pipe, and that failure would refuse an allowlisted command.
+  [[ -r "$file" ]] || return 1
+  # Read directly so an early match closes no process-substitution writer.
+  # Keep normalization aligned with __lmline_read_list_file.
   while IFS= read -r line || [[ -n "$line" ]]; do
-    if [[ "$line" == "$command_name" ]]; then
-      return 0
-    fi
-  done < <(__lmline_read_list_file "$file")
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [[ -n "$line" && "$line" == "$command_name" ]] && return 0
+  done <"$file"
   return 1
 }
 
