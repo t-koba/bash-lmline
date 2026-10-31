@@ -377,4 +377,15 @@ fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "default native-search curl failure was retried"
 ok "native search does not retry a curl failure by default"
 
+# 16. A transient HTTP 429 also stays at one attempt without an explicit
+# retry budget; the earlier case proves the positive override opts in.
+reset_fake
+if run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 \
+    LMLINE_RETRY_DELAY=0 LMLINE_FAKE_CURL_MODE=transient \
+    >"$ws_tmp/t16.out" 2>"$ws_tmp/t16.err"; then
+  fail "default native-search HTTP 429 was accepted"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "default native-search HTTP 429 was retried"
+ok "native search does not retry HTTP 429 by default"
+
 ok "web search"
