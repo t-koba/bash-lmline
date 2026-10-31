@@ -33,6 +33,7 @@ jobs:
         id: measurement
         timeout-minutes: 30
         run: |
+          # Guard stays OFF here. No first-group/cgroup trial is authorized by this workflow.
           set +e
           python3 tools/shellcheck-per-file-poc/run_manifest.py \
             --shellcheck "$SC_BIN_DIR/shellcheck" --progress \
@@ -67,10 +68,41 @@ jobs:
           complete = False
           count = diagnostics = 0
           try:
-              from candidate import production_manifest
+              from candidate import (production_manifest, progress_record, relative_target, COUNTERS,
+                                     SAMPLE_BYTES, SAMPLE_COUNT, SAMPLE_INTERVAL)
+
+              def guard_complete(measurement, index):
+                  guard = measurement.get('guard')
+                  if guard is None:
+                      return True
+                  if (guard['cleanup'] != {'quiescent': True, 'removed': True}
+                          or guard['sample_interval_s'] != SAMPLE_INTERVAL
+                          or guard['sample_count_cap'] != SAMPLE_COUNT
+                          or guard['sample_byte_cap'] != SAMPLE_BYTES
+                          or measurement.get('terminated_by_signal') is not None
+                          or not 2 <= len(guard['samples']) <= SAMPLE_COUNT):
+                      return False
+                  limits = guard['limits']
+                  if any(type(limits[k]) is not int or not 0 < limits[k] < 2**63
+                         for k in ('memory_bytes', 'cpu_usec', 'cpu_quota_usec', 'cpu_period_usec')):
+                      return False
+                  size = 0
+                  for number, sample in enumerate(guard['samples']):
+                      size += len(progress_record(sample).encode('ascii')) * (1 if index == -1 else 3)
+                      if (sample['index'] != index or sample['sample'] != number
+                              or any(sample[k] == 'unavailable' for k in COUNTERS)
+                              or sample['memory_current'] >= limits['memory_bytes']
+                              or sample['memory_peak'] >= limits['memory_bytes']
+                              or sample['cpu_usage_usec'] >= limits['cpu_usec']
+                              or sample['oom'] or sample['oom_kill']):
+                          return False
+                  return size <= SAMPLE_BYTES
 
               header = version = summary = None
               errors = False
+              active = None
+              samples = []
+              sample_bytes = 0
               with (root / 'manifest.jsonl').open() as stream:
                   for line in stream:
                       if not line.endswith('\n'):
@@ -91,14 +123,51 @@ jobs:
                           if kind != 'version':
                               raise ValueError('missing version')
                           version = row
-                          errors = bool(row['errors'])
+                          errors = (bool(row['errors']) or row['version'] is None
+                                    or bool(row['version']['errors'])
+                                    or not guard_complete(row['version'], -1))
+                      elif kind == 'target_start':
+                          if active is not None or row['index'] != count:
+                              raise ValueError('wrong start order')
+                          if (set(row) != {'type', 'index', 'target', 'group_count'}
+                                  or row['target'] != relative_target(header['manifest'][count])
+                                  or row['target'].startswith('/') or not 1 <= row['group_count'] <= len(header['manifest'])):
+                              raise ValueError('invalid start')
+                          progress_record(row)  # Validate allowlist scalar types and 1 KiB bound.
+                          active = row
+                          samples = []
+                          sample_bytes = 0
+                      elif kind == 'resource_sample':
+                          if active is None or row['index'] != count or row['sample'] != len(samples):
+                              raise ValueError('wrong sample order')
+                          safe = json.loads(progress_record(row))
+                          if set(row) != set(safe) - {'schema'}:
+                              raise ValueError('unexpected sample fields')
+                          sample_bytes += 3 * len(progress_record(row).encode('ascii'))
+                          if len(samples) >= SAMPLE_COUNT or sample_bytes > SAMPLE_BYTES:
+                              raise ValueError('sample cap exceeded')
+                          samples.append(row)
                       elif kind == 'target':
                           if row['index'] != count or row['target'] != header['manifest'][count]:
                               raise ValueError('wrong target order')
-                          errors |= bool(row['errors']) or row['status'] not in (0, 1)
+                          if active is None or active['group_count'] != len(row['group']):
+                              raise ValueError('missing/inconsistent start')
+                          measurement = row['measurement'] or {}
+                          guard = measurement.get('guard')
+                          if guard is not None:
+                              if (guard['samples'] != samples or guard['cleanup'] != {'quiescent': True, 'removed': True}):
+                                  errors = True
+                          elif samples:
+                              raise ValueError('samples without guard')
+                          active = None
+                          errors |= (bool(row['errors']) or row['status'] not in (0, 1)
+                                     or bool(measurement.get('errors'))
+                                     or not guard_complete(measurement, count))
                           diagnostics += len(row['target_diagnostics'])
                           count += 1
                       elif kind == 'summary':
+                          if active is not None:
+                              raise ValueError('unfinished target')
                           summary = row
                       else:
                           raise ValueError('unexpected record')

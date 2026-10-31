@@ -27,7 +27,7 @@ class CandidateTests(unittest.TestCase):
             raise RuntimeError("tests require the pinned ShellCheck CLI (set SHELLCHECK)")
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="shellcheck-per-file-")
+        self.temp = tempfile.TemporaryDirectory(prefix="shellcheck-per-file-", dir=c.ROOT)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
@@ -223,7 +223,7 @@ print("[]")
         report = c.run([path, path], self.shellcheck, rcfile=c.ROOT / ".shellcheckrc",
                        timeout=20, record=records.append)
         self.assertEqual([r["type"] for r in records],
-                         ["header", "version", "target", "target", "summary"])
+                         ["header", "version", "target_start", "target", "target_start", "target", "summary"])
         # Reconstruct every existing report field, including diagnostic multiplicity.
         rebuilt = {k: v for r in (records[0], records[1], records[-1])
                    for k, v in r.items() if k != "type"}
@@ -248,12 +248,12 @@ print("[]")
         self.assertEqual(result.stdout, b"")  # No progress unless explicitly requested.
         self.assertEqual(result.stderr, b"")
         records = self.read_records(output)
-        self.assertEqual([r["type"] for r in records], ["header", "version", "target", "summary"])
+        self.assertEqual([r["type"] for r in records], ["header", "version", "target_start", "target", "summary"])
         self.assertEqual(records[0]["manifest"], [path])
         self.assertEqual(records[-1]["status"], 0)
         self.assertTrue(records[-1]["complete"])
         self.assertEqual(records[-1]["source_counts"]["declarations"], 0)
-        self.assertEqual(records[2]["measurement"]["stdout"], "[]\n")
+        self.assertEqual(records[3]["measurement"]["stdout"], "[]\n")
         for destination in (output, self.root / "missing" / "evidence.jsonl"):
             with self.subTest(destination=destination):
                 # No version probe or target may start if exclusive open fails.
@@ -277,6 +277,8 @@ print("[]")
                 # final serialization. No polling, sleeps, or buffering assumptions.
                 fake = self.fake(f'''from pathlib import Path
 records = [json.loads(line) for line in Path({str(output)!r}).read_text().splitlines()]
+assert records[-1]["type"] == "target_start"
+records = [r for r in records if r["type"] != "target_start"]
 assert records[0]["type"] == "header"
 assert records[1]["type"] == "version"
 if sys.argv[-1] == {later!r}:
@@ -300,7 +302,7 @@ print(json.dumps({([row] * 2)!r})); sys.exit(1)
                 result = subprocess.run([sys.executable, str(Path(c.__file__)), "--shellcheck", fake,
                                          "--report", str(output), first, later, first],
                                         capture_output=True, timeout=10)
-                records = self.read_records(output)
+                records = [r for r in self.read_records(output) if r["type"] != "target_start"]
                 self.assertEqual(records[2]["target_diagnostics"], [row] * 2)
                 self.assertEqual(records[2]["status"], 1)
                 if cancel:
@@ -340,10 +342,10 @@ print(json.dumps({([row] * 2)!r})); sys.exit(1)
                 mock.patch.object(c, "measure", wraps=c.measure) as measure, \
                 redirect_stderr(io.StringIO()) as err:
             self.assertEqual(c.main(), 2)
-        self.assertEqual(measure.call_count, 2)  # Version and first target only.
+        self.assertEqual(measure.call_count, 1)  # Start flush failed: no target may launch.
         self.assertIn("evidence report failure", err.getvalue())
         self.assertEqual([json.loads(line)["type"] for line in stream.getvalue().splitlines()],
-                         ["header", "version", "target"])
+                         ["header", "version", "target_start"])
 
 
 class ProgressTests(unittest.TestCase):
@@ -439,7 +441,7 @@ if sys.argv[-1] == {later!r}:
   try:
    logs = [Path({str(self.root)!r}) / name for name in
            ("live.log", "shellcheck-per-file-diagnostic/measurement.log")]
-   if all(any(json.loads(line).get("index") == 0
+   if all(any(json.loads(line).get("type") == "target_start" and json.loads(line).get("index") == 1
               for line in p.read_text().splitlines()) for p in logs):
     break
   except (OSError, ValueError):
@@ -457,6 +459,7 @@ print(json.dumps({[row] if status else []!r})); sys.exit({int(bool(status))})
                 self.assertEqual(live, (evidence / "measurement.log").read_text())
                 records = self.read_records(evidence / "manifest.jsonl")
                 self.assertEqual(live, "".join(c.progress_record(record) for record in records))
+                records = [r for r in records if r["type"] != "target_start"]
                 self.assertEqual(records[2]["measurement"]["command"][-1], first)
                 if status:
                     self.assertEqual(records[2]["group_diagnostics"], [row])
@@ -512,7 +515,8 @@ print(json.dumps({([row] * 2)!r})); sys.exit(1)
                                             capture_output=True, text=True, timeout=10)
                     self.assertEqual(result.returncode, 2 if bad else 1, result.stderr)
                     self.assertEqual(result.stderr, "")
-                    records = self.read_records(output)
+                    all_records = self.read_records(output)
+                    records = [r for r in all_records if r["type"] != "target_start"]
                     self.assertIn(marker, records[1]["version"]["stdout"])
                     self.assertEqual(records[2]["group_diagnostics"], [row] * 2)
                     self.assertEqual(records[2]["target_diagnostics"], [])
@@ -527,10 +531,10 @@ print(json.dumps({([row] * 2)!r})); sys.exit(1)
                         continue
                     self.assert_safe(result.stdout)
                     rows = [json.loads(line) for line in result.stdout.splitlines()]
-                    self.assertEqual(rows, [json.loads(c.progress_record(record)) for record in records])
+                    self.assertEqual(rows, [json.loads(c.progress_record(record)) for record in all_records])
                     self.assertEqual(rows[0], dict(type="header", schema=1, target_count=3))
                     self.assertEqual(rows[1], dict(type="version", schema=1, pinned_version=c.PIN, status=0))
-                    targets = rows[2:-1]
+                    targets = [r for r in rows if r["type"] == "target"]
                     self.assertEqual([r["index"] for r in targets], [0, 1, 2])
                     self.assertEqual([r["status"] for r in targets], [0, 1, 2 if bad else 0])
                     self.assertEqual([r["target_diagnostic_count"] for r in targets], [0, 2, 0])
@@ -564,6 +568,8 @@ print(json.dumps({([row] * 2)!r})); sys.exit(1)
         progress = self.root / "progress.jsonl"
         fake = self.fake(f'''from pathlib import Path
 records = [json.loads(line) for line in Path({str(progress)!r}).read_text().splitlines()]
+assert records[-1]["type"] == "target_start"
+records = [r for r in records if r["type"] != "target_start"]
 assert [r["type"] for r in records[:2]] == ["header", "version"]
 if sys.argv[-1] == {later!r}:
  assert [r["type"] for r in records] == ["header", "version", "target"]
@@ -576,8 +582,8 @@ print("[]")
                                     stdout=stream, stderr=subprocess.PIPE, timeout=10)
         self.assertEqual(result.returncode, -signal.SIGTERM, result.stderr)
         self.assert_safe(progress.read_text())
-        self.assertEqual([r["type"] for r in self.read_records(progress)], ["header", "version", "target"])
-        self.assertEqual([r["type"] for r in self.read_records(output)], ["header", "version", "target"])
+        self.assertEqual([r["type"] for r in self.read_records(progress)], ["header", "version", "target_start", "target", "target_start"])
+        self.assertEqual([r["type"] for r in self.read_records(output)], ["header", "version", "target_start", "target", "target_start"])
         # Even a stale successful exit-status/outcome cannot turn a flushed
         # prefix into a complete measurement or lint pass.
         for status, outcome in ((128 + signal.SIGTERM, "failure"), (0, "success")):
@@ -618,6 +624,617 @@ print("[]")
         self.assert_safe(err.getvalue())
         self.assertEqual(json.loads(err.getvalue()), dict(type="failure", schema=1, status=2))
         self.assertEqual([r["type"] for r in self.read_records(output)], ["header"])
+
+
+class FakeResource:
+    """No filesystem/cgroup operations; only real, tiny test child processes."""
+    def __init__(self, rows=None, setup_error=False, placement_error=False, cleanup_error=False, final_row=None):
+        self.rows = rows or [dict.fromkeys(c.COUNTERS, 0)]
+        self.final_row = final_row
+        self.finishing = False
+        self.setup_error = setup_error
+        self.placement_error = placement_error
+        self.cleanup_error = cleanup_error
+        self.path = Path("/fake-only/child")
+        self.calls = []
+        self.reads = 0
+
+    def setup(self):
+        self.calls.append("setup")
+        if self.setup_error:
+            raise OSError("fake setup failure")
+
+    def place(self):
+        if self.placement_error:
+            raise OSError("fake placement failure")
+
+    def sample(self):
+        self.calls.append("sample")
+        row = self.final_row if self.finishing and self.final_row is not None else self.rows[min(self.reads, len(self.rows) - 1)]
+        self.reads += 1
+        if isinstance(row, Exception):
+            raise row
+        return row
+
+    def kill(self):
+        self.calls.append("kill-all")
+
+    def cleanup(self, final_sample):
+        self.calls.append("cleanup")
+        self.kill()
+        if self.cleanup_error:
+            raise OSError("fake unknown quiescence")
+        self.finishing = True
+        final_sample()
+        return dict(quiescent=True, removed=True)
+
+
+class ResourceTests(unittest.TestCase):
+    setUp = ProgressTests.setUp
+    file = CandidateTests.file
+    fake = CandidateTests.fake
+    summarize = ProgressTests.summarize
+    workflow_script = ProgressTests.workflow_script
+    config = dict(parent="/fake-only", memory_bytes=1000, cpu_usec=2000, cpu_quota_usec=50000, cpu_period_usec=100000)
+
+    def measured(self, resource, body="print('[]')", **kwargs):
+        with mock.patch.object(c, "CgroupGuard", return_value=resource):
+            return c.measure([sys.executable, "-c", body], guard=self.config, timeout=2, **kwargs)
+
+    def test_guard_is_explicit_off_by_default_and_partial_options_never_launch(self):
+        with mock.patch.object(c, "CgroupGuard") as factory:
+            result = c.measure([sys.executable, "-c", "pass"])
+        self.assertEqual(result["status"], 0)
+        self.assertNotIn("guard", result)
+        factory.assert_not_called()
+        for options in (["--cgroup-parent", "/fake-only"], ["--memory-bytes", "1"],
+                        ["--cgroup-parent", "/fake-only", "--memory-bytes", "1", "--cpu-usec", "1",
+                         "--cpu-quota-usec", "1", "--cpu-period-usec", "0"],
+                        ["--cgroup-parent", "/fake-only", "--memory-bytes", "1", "--cpu-usec", "1",
+                         "--cpu-quota-usec", str(2**64), "--cpu-period-usec", "1"],
+                        ["--cgroup-parent", "/fake-only", "--memory-bytes", "1", "--cpu-usec", "1"]):
+            with self.subTest(options=options), mock.patch.object(sys, "argv", ["candidate", "--report", "unused", *options, "install.sh"]), mock.patch.object(c, "measure") as measure, redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    c.main()
+                self.assertEqual(error.exception.code, 2)
+                measure.assert_not_called()
+
+    def test_setup_and_preexec_placement_failures_never_exec_or_fallback(self):
+        marker = self.root / "executed"
+        for kwargs in (dict(setup_error=True), dict(placement_error=True)):
+            resource = FakeResource(**kwargs)
+            result = self.measured(resource, f"from pathlib import Path; Path({str(marker)!r}).touch()")
+            self.assertIsNone(result["status"])
+            self.assertTrue(result["errors"])
+            self.assertFalse(marker.exists())
+            self.assertIn("kill-all", resource.calls)
+            self.assertIn("cleanup", resource.calls)
+
+    def test_counters_allowlist_missing_and_invalid_values_fail_before_exec(self):
+        for key in c.COUNTERS:
+            for value in ("unavailable", -1, True, "raw/private/text", 2**64):
+                row = dict.fromkeys(c.COUNTERS, 0)
+                row[key] = value
+                resource = FakeResource([row])
+                result = self.measured(resource)
+                self.assertIsNone(result["status"])
+                self.assertTrue(result["errors"])
+        resource = FakeResource([dict.fromkeys(c.COUNTERS, 0) | {"pid": 999, "stderr": "PRIVATE"}])
+        seen = []
+        result = self.measured(resource, observe=seen.append, index=4)
+        self.assertFalse(result["errors"], result)
+        self.assertTrue(seen)
+        self.assertEqual(seen, result["guard"]["samples"])
+        for row in seen:
+            self.assertEqual(set(row), {"type", "index", "sample", *c.COUNTERS})
+            self.assertLessEqual(len(c.progress_record(row).encode("ascii")), 1024)
+            self.assertNotIn("PRIVATE", json.dumps(row))
+
+    def test_memory_cpu_oom_limits_kill_and_force_incomplete_preserving_child_status(self):
+        zero = dict.fromkeys(c.COUNTERS, 0)
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        for key, value in (("memory_current", 1000), ("memory_peak", 1000), ("cpu_usage_usec", 2000), ("oom", 1), ("oom_kill", 1)):
+            with self.subTest(counter=key):
+                # Version is healthy; the target's final scoped sample breaches
+                # its budget after the original exit status has been reaped.
+                resource = FakeResource(final_row=zero | {key: value})
+                records = []
+                with mock.patch.object(c, "CgroupGuard", side_effect=[FakeResource(), resource]):
+                    report = c.run([path], fake, guard=self.config, record=records.append)
+                self.assertEqual(report["status"], 2)
+                self.assertFalse(report["complete"])
+                measured = report["targets"][0]["measurement"]
+                self.assertEqual(measured["status"], 0)
+                self.assertTrue(measured["errors"])
+                self.assertIn("kill-all", resource.calls)
+                self.assertTrue(any(r["type"] == "resource_sample" and r[key] == value for r in records))
+        # A running child is also stopped, without waiting for the wall budget.
+        with mock.patch.object(c, "SAMPLE_INTERVAL", 0.01):
+            resource = FakeResource([zero, zero | {"cpu_usage_usec": 2000}])
+            measured = self.measured(resource, "import time; time.sleep(1)")
+        self.assertEqual(measured["status"], -signal.SIGKILL)
+        self.assertTrue(measured["errors"])
+
+    def test_observer_sample_count_and_total_bytes_fail_closed(self):
+        for constant, value in (("SAMPLE_COUNT", 1), ("SAMPLE_BYTES", 1)):
+            with self.subTest(cap=constant), mock.patch.object(c, constant, value):
+                resource = FakeResource()
+                result = self.measured(resource)
+                self.assertTrue(result["errors"])
+                self.assertLessEqual(len(result["guard"]["samples"]), 1)
+                self.assertIn("kill-all", resource.calls)
+        def fail(row):
+            raise OSError("fake observer/sink failure")
+        for resource, observe in ((FakeResource(), fail), (FakeResource([OSError("fake observer read")]), None)):
+            result = self.measured(resource, observe=observe)
+            self.assertIsNone(result["status"])
+            self.assertTrue(result["errors"])
+            self.assertIn("kill-all", resource.calls)
+        # Later progress failure still retains original status and failure
+        # evidence in a usable artifact sink; never reports successful lint.
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        records = []
+        resource = FakeResource()
+        def sink(row):
+            records.append(row)
+            if row["type"] == "resource_sample" and resource.finishing:
+                raise OSError("fake live sink failure")
+        with mock.patch.object(c, "CgroupGuard", side_effect=[FakeResource(), resource]):
+            report = c.run([path], fake, guard=self.config, record=sink)
+        self.assertEqual(report["status"], 2)
+        target = next(r for r in records if r["type"] == "target")
+        self.assertEqual(target["measurement"]["status"], 0)
+        self.assertIn("fake live sink failure", str(target["errors"]))
+        self.assertFalse(records[-1]["complete"])
+
+    def test_existing_output_wall_bounds_and_child_outcomes_with_fake_guard(self):
+        for body, kwargs, error in (("print('x' * 1000)", dict(cap=32), "byte cap"),
+                                    ("import time; time.sleep(1)", dict(timeout=0.04), "timeout")):
+            resource = FakeResource()
+            # Override the helper's default timeout without duplicate kwargs.
+            with mock.patch.object(c, "CgroupGuard", return_value=resource):
+                result = c.measure([sys.executable, "-c", body], guard=self.config, **kwargs)
+            self.assertIn(error, str(result["errors"]))
+            self.assertLessEqual(len(result["stdout"]), kwargs.get("cap", c.OUTPUT_CAP))
+            self.assertIn("kill-all", resource.calls)
+            self.assertEqual(result["guard"]["cleanup"], dict(quiescent=True, removed=True))
+        for status in (0, 1, 7):
+            result = self.measured(FakeResource(), f"import sys; sys.exit({status})")
+            self.assertEqual(result["status"], status)
+            self.assertFalse(result["errors"])
+        result = self.measured(FakeResource(cleanup_error=True), "import sys; sys.exit(1)")
+        self.assertEqual(result["status"], 1)
+        self.assertEqual(result["guard"]["cleanup"], dict(quiescent=False, removed=False))
+        self.assertIn("reserved", str(result["errors"]))
+
+    def test_unknown_cleanup_stops_following_targets_and_retains_outcome(self):
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        with mock.patch.object(c, "CgroupGuard", side_effect=[FakeResource(), FakeResource(cleanup_error=True)]) as factory:
+            report = c.run([path, path], fake, guard=self.config)
+        self.assertEqual(factory.call_count, 2)  # Version, first target; never a replacement.
+        self.assertEqual(len(report["targets"]), 1)
+        self.assertEqual(report["targets"][0]["measurement"]["status"], 0)
+        self.assertEqual(report["status"], 2)
+        self.assertFalse(report["complete"])
+        result = self.measured(FakeResource(), "import os, signal; os.kill(os.getpid(), signal.SIGTERM)")
+        self.assertEqual(result["status"], -signal.SIGTERM)
+
+    def test_start_allowlist_bounds_and_failed_flush_prevent_target_launch(self):
+        row = dict(type="target_start", index=0, target="install.sh", group_count=2,
+                   command="PRIVATE", pid=42, stderr="PRIVATE")
+        self.assertEqual(json.loads(c.progress_record(row)),
+                         dict(type="target_start", schema=1, index=0, target="install.sh", group_count=2))
+        for target in ("/private/not-repo", "../outside", "x\x1b.sh", "x" * 1024):
+            with self.assertRaises((ValueError, OSError)):
+                c.progress_record(row | dict(target=target))
+        def fail_start(row):
+            if row["type"] == "target_start":
+                raise OSError("fake start flush failure")
+        fake = self.fake("print('[]')\n")
+        with mock.patch.object(c, "measure", wraps=c.measure) as measure:
+            with self.assertRaises(c.EvidenceFailure):
+                c.run(["install.sh"], fake, record=fail_start)
+        self.assertEqual(measure.call_count, 1)
+
+    def test_workflow_validates_guard_records_and_rejects_partial_or_tampered_samples(self):
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        records = []
+        with mock.patch.object(c, "CgroupGuard", side_effect=lambda config: FakeResource()):
+            report = c.run([path], fake, guard=self.config, record=records.append)
+        self.assertEqual(report["status"], 0)
+        output = self.root / "guard.jsonl"
+        def check(rows, expected):
+            output.write_text("".join(json.dumps(r) + "\n" for r in rows))
+            code, text = self.summarize(output, [path], 0, "success")
+            self.assertEqual(code, expected, text)
+        check(records, 0)
+        sample_index = next(i for i, r in enumerate(records) if r["type"] == "resource_sample")
+        check(records[:sample_index + 1], 1)
+        check([r for i, r in enumerate(records) if i != sample_index], 1)
+        for change in (dict(sample=99), dict(memory_peak="raw"), dict(stderr="raw"), dict(index=8)):
+            changed = list(records)
+            changed[sample_index] = changed[sample_index] | change
+            check(changed, 1)
+
+    def test_cpu_quota_period_explicit_and_aggregate_separately_enforced(self):
+        # Limits are passed through verbatim; no defaults are guessed.
+        resource = FakeResource()
+        measured = self.measured(resource)
+        self.assertEqual(measured["guard"]["limits"], self.config)
+        self.assertEqual(measured["guard"]["sample_interval_s"], c.SAMPLE_INTERVAL)
+        self.assertIn("cpu_quota_usec", measured["guard"]["limits"])
+        self.assertIn("cpu_period_usec", measured["guard"]["limits"])
+        # Aggregate usage is still enforced independently of the rate quota.
+        for key, value in (("memory_current", 1000), ("memory_peak", 1000),
+                            ("cpu_usage_usec", 2000), ("oom", 1), ("oom_kill", 1)):
+            row = dict.fromkeys(c.COUNTERS, 0) | {key: value}
+            res = FakeResource([row])
+            result = self.measured(res)
+            self.assertIsNone(result["status"])
+            self.assertTrue(result["errors"])
+            self.assertIn("kill-all", res.calls)
+
+    def test_final_limit_breach_still_removes_proven_empty_leaf(self):
+        zero = dict.fromkeys(c.COUNTERS, 0)
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        for key, value in (("memory_current", 1000), ("memory_peak", 1000),
+                            ("cpu_usage_usec", 2000), ("oom", 1), ("oom_kill", 1)):
+            with self.subTest(counter=key):
+                resource = FakeResource(final_row=zero | {key: value})
+                records = []
+                with mock.patch.object(c, "CgroupGuard", side_effect=[FakeResource(), resource]):
+                    report = c.run([path], fake, guard=self.config, record=records.append)
+                self.assertEqual(report["status"], 2)
+                self.assertFalse(report["complete"])
+                measured = report["targets"][0]["measurement"]
+                # Original child outcome is preserved; enforcement is recorded.
+                self.assertEqual(measured["status"], 0)
+                self.assertTrue(measured["errors"])
+                # Proven-empty leaf is still removed; only reservation blocks release.
+                self.assertEqual(measured["guard"]["cleanup"], dict(quiescent=True, removed=True))
+                self.assertEqual(measured["terminated_by_signal"], None)
+                self.assertTrue(any(r["type"] == "resource_sample" and r[key] == value for r in records))
+
+    def test_final_sink_failure_still_removes_but_reports_incomplete(self):
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        records = []
+        resource = FakeResource()
+        def sink(row):
+            records.append(row)
+            if row["type"] == "resource_sample" and resource.finishing:
+                raise OSError("fake live sink failure")
+        with mock.patch.object(c, "CgroupGuard", side_effect=[FakeResource(), resource]):
+            report = c.run([path], fake, guard=self.config, record=sink)
+        self.assertEqual(report["status"], 2)
+        self.assertFalse(report["complete"])
+        measured = next(r for r in records if r["type"] == "target")["measurement"]
+        self.assertEqual(measured["status"], 0)
+        self.assertIn("fake live sink failure", str(measured["errors"]))
+        self.assertEqual(measured["guard"]["cleanup"], dict(quiescent=True, removed=True))
+
+    def test_termination_during_guarded_child_kill_quiescence_before_removal(self):
+        # Deterministic: second sample (first polling after exec) signals self.
+        resource = FakeResource()
+        orig_sample = resource.sample
+        calls = {"n": 0}
+        def signalling_sample():
+            calls["n"] += 1
+            if calls["n"] == 2:
+                import os as _os, signal as _sig
+                _os.kill(_os.getpid(), _sig.SIGTERM)
+            return orig_sample()
+        resource.sample = signalling_sample
+        measured = self.measured(resource, "import time; time.sleep(5)")
+        self.assertEqual(measured["terminated_by_signal"], signal.SIGTERM)
+        self.assertTrue(any("terminated by signal" in e for e in measured["errors"]))
+        # Child was killed promptly; original kill outcome is preserved.
+        self.assertEqual(measured["status"], -signal.SIGKILL)
+        self.assertIn("kill-all", resource.calls)
+        self.assertEqual(resource.calls.count("kill-all") >= 1, True)
+        # Quiescence was proven before removal (FakeResource cleanup succeeded).
+        self.assertEqual(measured["guard"]["cleanup"], dict(quiescent=True, removed=True))
+        # Order: kill was attempted before cleanup finished.
+        self.assertLess(resource.calls.index("kill-all"), len(resource.calls) - 1)
+
+    def test_guard_requires_signal_handlers_and_records_signal_during_cleanup(self):
+        marker = self.root / "must-not-exec"
+        resource = FakeResource()
+        with mock.patch.object(c.signal, "signal", side_effect=ValueError("not main thread")):
+            result = self.measured(resource, f"from pathlib import Path; Path({str(marker)!r}).touch()")
+        self.assertIsNone(result["status"])
+        self.assertTrue(result["errors"])
+        self.assertFalse(marker.exists())
+        self.assertIn("cleanup", resource.calls)
+
+        class TerminatedDuringCleanup(FakeResource):
+            def cleanup(self, final_capture):
+                os.kill(os.getpid(), signal.SIGTERM)
+                return super().cleanup(final_capture)
+
+        result = self.measured(TerminatedDuringCleanup())
+        self.assertEqual(result["status"], 0)
+        self.assertEqual(result["terminated_by_signal"], signal.SIGTERM)
+        self.assertTrue(any("terminated by signal" in error for error in result["errors"]))
+        self.assertEqual(result["guard"]["cleanup"], dict(quiescent=True, removed=True))
+
+    def test_termination_stops_further_targets_after_bounded_cleanup(self):
+        first = self.file("first.sh", "#!/bin/bash\n")
+        later = self.file("later.sh", "#!/bin/bash\n")
+        fake = self.fake("import time; time.sleep(2)\nprint('[]')\n")
+        records = []
+        seen = {"n": 0}
+        def record(row):
+            records.append(row)
+            # Second polled sample of the first target signals while child active.
+            if row["type"] == "resource_sample" and row["index"] == 0:
+                seen["n"] += 1
+                if seen["n"] == 2:
+                    import os as _os, signal as _sig
+                    _os.kill(_os.getpid(), _sig.SIGTERM)
+        resources = [FakeResource(), FakeResource(), FakeResource()]
+        with mock.patch.object(c, "CgroupGuard", side_effect=resources):
+            report = c.run([first, later], fake, guard=self.config, record=record)
+        self.assertEqual(len(report["targets"]), 1)
+        self.assertEqual(report["status"], 2)
+        self.assertFalse(report["complete"])
+        measured = report["targets"][0]["measurement"]
+        self.assertEqual(measured["terminated_by_signal"], signal.SIGTERM)
+        self.assertEqual(measured["guard"]["cleanup"], dict(quiescent=True, removed=True))
+
+    def test_workflow_summary_rejects_missing_starts_samples_cleanup(self):
+        path = self.file("a.sh", "#!/bin/bash\n")
+        fake = self.fake("print('[]')\n")
+        records = []
+        with mock.patch.object(c, "CgroupGuard", side_effect=lambda config: FakeResource()):
+            report = c.run([path], fake, guard=self.config, record=records.append)
+        self.assertEqual(report["status"], 0)
+        output = self.root / "guard-strict.jsonl"
+        def check(rows, expected):
+            output.write_text("".join(json.dumps(r) + "\n" for r in rows))
+            code, text = self.summarize(output, [path], 0, "success")
+            self.assertEqual(code, expected, text)
+        # Valid guarded evidence is accepted.
+        check(records, 0)
+        kinds = [r["type"] for r in records]
+        start_idx = kinds.index("target_start")
+        sample_idxs = [i for i, r in enumerate(records) if r["type"] == "resource_sample"]
+        target_idx = kinds.index("target")
+        # Missing start is rejected.
+        check([r for i, r in enumerate(records) if i != start_idx], 1)
+        # Missing any sample is rejected (proven samples must all be present).
+        check([r for i, r in enumerate(records) if i not in sample_idxs], 1)
+        check([r for i, r in enumerate(records) if i != sample_idxs[0]], 1)
+        # Tampered cleanup (reserved) is rejected.
+        tampered = [dict(r) for r in records]
+        for row in tampered:
+            if row["type"] == "target" and row.get("measurement", {}).get("guard") is not None:
+                row["measurement"] = dict(row["measurement"])
+                row["measurement"]["guard"] = dict(row["measurement"]["guard"])
+                row["measurement"]["guard"]["cleanup"] = dict(quiescent=False, removed=False)
+        check(tampered, 1)
+        # Wrong order (target before samples) is rejected.
+        reordered = [r for r in records if r["type"] != "target"] + [r for r in records if r["type"] == "target"]
+        # Reordered still has same multiset but wrong event order for samples vs target.
+        # Build an explicitly misordered stream: target before its samples.
+        misordered = []
+        for r in records:
+            if r["type"] == "target":
+                # Insert target before preceding samples by moving it earlier.
+                misordered.insert(start_idx, r)
+            else:
+                misordered.append(r)
+        # The above keeps order; instead craft a direct violation: swap start and target.
+        swapped = list(records)
+        swapped[start_idx], swapped[target_idx] = swapped[target_idx], swapped[start_idx]
+        check(swapped, 1)
+        # Extra unexpected sample field is rejected via strict schema.
+        extra = list(records)
+        extra[sample_idxs[0]] = extra[sample_idxs[0]] | dict(extra_field="raw")
+        check(extra, 1)
+        # Any valid sample count within bounds is accepted when events exactly
+        # match the retained measurement: a slower child yields more polls.
+        slow_fake = self.fake("import time; time.sleep(0.35)\nprint('[]')\n")
+        slow_records = []
+        with mock.patch.object(c, "CgroupGuard", side_effect=lambda config: FakeResource()):
+            slow_report = c.run([path], slow_fake, guard=self.config, record=slow_records.append)
+        self.assertEqual(slow_report["status"], 0)
+        slow_samples = [r for r in slow_records if r["type"] == "resource_sample"]
+        self.assertGreater(len(slow_samples), len(sample_idxs))
+        slow_output = self.root / "guard-slow.jsonl"
+        slow_output.write_text("".join(json.dumps(r) + "\n" for r in slow_records))
+        code, text = self.summarize(slow_output, [path], 0, "success")
+        self.assertEqual(code, 0, text)
+
+
+class CgroupFilesystemTests(unittest.TestCase):
+    """Exercise real guard decisions using fake kernel files, never cgroup writes."""
+    def setUp(self):
+        self.parent = Path("/fake-cgroups")
+        self.child = self.parent / "child"
+        self.fs = {
+            "/proc/self/mountinfo": "1 0 0:1 / /fake-cgroups rw - cgroup2 cgroup rw\n",
+            str(self.parent / "cgroup.controllers"): "cpu memory",
+            str(self.parent / "cgroup.subtree_control"): "cpu memory",
+        }
+        for name, value in {"cgroup.procs": "", "cgroup.events": "populated 0\n", "cgroup.kill": "",
+                            "memory.max": "max", "memory.current": "0", "memory.peak": "0",
+                            "memory.events": "oom 0\noom_kill 0\n", "cpu.max": "max 100000",
+                            "cpu.stat": "usage_usec 0\n"}.items():
+            self.fs[str(self.child / name)] = value
+        self.writes = []
+        def read(path, *args, **kwargs):
+            if str(path) not in self.fs:
+                raise FileNotFoundError("fake missing file")
+            return self.fs[str(path)]
+        def write(path, value, *args, **kwargs):
+            # Faithful fake: store the exact bytes written; never rewrite "0" into a PID.
+            # The real kernel rejects "0" in a leaf cgroup.procs, so the test must
+            # assert the child's own PID was written.
+            self.writes.append((path.name, value))
+            self.fs[str(path)] = value
+        self.addCleanup(mock.patch.stopall)
+        for name, value in (("read_text", read), ("write_text", write),
+                            ("resolve", lambda path: path),
+                            ("is_file", lambda path: str(path) in self.fs)):
+            mock.patch.object(Path, name, value).start()
+        self.mkdir = mock.patch.object(c.tempfile, "mkdtemp", return_value=str(self.child)).start()
+        self.remove = mock.patch.object(Path, "rmdir").start()
+        mock.patch.object(Path, "open", mock.mock_open()).start()
+        self.guard = c.CgroupGuard(ResourceTests.config | dict(parent=str(self.parent)))
+
+    def test_v2_controller_preflight_memory_readback_and_placement(self):
+        self.guard.setup()
+        self.assertIn(("memory.max", "1000"), self.writes)
+        self.assertIn(("cpu.max", "50000 100000"), self.writes)
+        self.guard.place()
+        # The forked child must write its own PID; "0" is invalid in a leaf.
+        pid = str(os.getpid())
+        self.assertIn(("cgroup.procs", pid), self.writes)
+        self.assertNotIn(("cgroup.procs", "0"), self.writes)
+        self.assertEqual(self.fs[str(self.child / "cgroup.procs")], pid)
+        self.assertEqual(self.guard.sample(), dict.fromkeys(c.COUNTERS, 0))
+        del self.fs[str(self.child / "memory.peak")]
+        self.assertEqual(self.guard.sample()["memory_peak"], "unavailable")
+        self.fs[str(self.child / "memory.events")] = "oom 1\n"
+        self.assertEqual(self.guard.sample()["oom"], 1)
+        self.assertEqual(self.guard.sample()["oom_kill"], "unavailable")
+        with mock.patch.object(Path, "write_text", side_effect=PermissionError("fake denial")):
+            with self.assertRaises(PermissionError):
+                self.guard.place()
+
+    def test_placement_writes_own_pid_and_readback_cannot_silently_fail(self):
+        self.guard.setup()
+        with mock.patch.object(Path, "write_text", return_value=1):
+            with self.assertRaises(ValueError):
+                self.guard.place()  # No simulated membership change on this write.
+        # Successful placement must write the child's own PID, never literal "0".
+        self.guard.place()
+        procs_writes = [v for k, v in self.writes if k == "cgroup.procs"]
+        self.assertTrue(procs_writes)
+        self.assertTrue(all(v != "0" for v in procs_writes))
+        self.assertTrue(all(v == str(os.getpid()) for v in procs_writes))
+        self.assertEqual(self.fs[str(self.child / "cgroup.procs")], str(os.getpid()))
+    def test_placement_and_memory_limit_readback_cannot_silently_fail(self):
+        self.guard.setup()
+        self.fs[str(self.child / "memory.max")] = "max"
+        with mock.patch.object(Path, "write_text", return_value=1):
+            with self.assertRaises(ValueError):
+                self.guard.setup()
+        self.fs[str(self.child / "memory.max")] = "1000"
+        self.fs[str(self.child / "cpu.max")] = "max 100000"
+        with mock.patch.object(Path, "write_text", return_value=1):
+            with self.assertRaises(ValueError):
+                self.guard.setup()
+
+    def test_preflight_rejects_non_v2_missing_controllers_and_required_files(self):
+        for file, value in (("/proc/self/mountinfo", "1 0 0:1 / /fake-cgroups rw - tmpfs tmpfs rw\n"),
+                            (str(self.parent / "cgroup.subtree_control"), "cpu"),
+                            (str(self.parent / "cgroup.controllers"), "memory")):
+            original = self.fs[file]
+            self.fs[file] = value
+            with self.assertRaises(ValueError):
+                self.guard.setup()
+            self.mkdir.assert_not_called()
+            self.fs[file] = original
+        original_mounts = self.fs["/proc/self/mountinfo"]
+        self.fs["/proc/self/mountinfo"] = (original_mounts.replace("/fake-cgroups rw", "/ rw") +
+                                          "2 1 0:2 / /fake-cgroups rw - tmpfs tmpfs rw\n")
+        with self.assertRaises(ValueError):
+            self.guard.setup()  # A nested non-cgroup mount cannot inherit v2 identity.
+        self.mkdir.assert_not_called()
+        self.fs["/proc/self/mountinfo"] = original_mounts
+        del self.fs[str(self.child / "cgroup.kill")]
+        with self.assertRaises(ValueError):
+            self.guard.setup()
+        self.assertNotIn(("memory.max", "1000"), self.writes)
+
+    def test_descendants_require_authoritative_quiescence_before_release(self):
+        self.guard.setup()
+        for events in ("populated 1\n", "", "populated unknown\n"):
+            self.fs[str(self.child / "cgroup.events")] = events
+            with mock.patch.object(c, "QUIESCE_SECONDS", 0):
+                with self.assertRaises(ValueError):
+                    self.guard.cleanup(lambda: None)
+            self.remove.assert_not_called()
+            self.assertIn(("cgroup.kill", "1"), self.writes)
+        self.fs[str(self.child / "cgroup.events")] = "populated 0\n"
+        observed = []
+        cleanup = self.guard.cleanup(lambda: observed.append("final scoped counters"))
+        self.assertEqual(cleanup, dict(quiescent=True, removed=True))
+        self.assertEqual(observed, ["final scoped counters"])
+        self.remove.assert_called_once()
+        self.remove.reset_mock()
+        with mock.patch.object(Path, "read_text", side_effect=OSError("fake observer loss")):
+            with self.assertRaises(OSError):
+                self.guard.cleanup(lambda: None)
+        self.remove.assert_not_called()
+        with mock.patch.object(Path, "write_text", side_effect=OSError("fake kill failure")):
+            with self.assertRaises(OSError):
+                self.guard.cleanup(lambda: None)
+        self.remove.assert_not_called()
+
+    def test_quiescence_transition_final_observation_and_removal_failure(self):
+        self.guard.setup()
+        reads = iter(("populated 1\n", "populated 0\n"))
+        original = Path.read_text
+        def events(path, *args, **kwargs):
+            if path.name == "cgroup.events":
+                return next(reads)
+            return original(path, *args, **kwargs)
+        final = mock.Mock()
+        with mock.patch.object(Path, "read_text", events), mock.patch.object(c.time, "sleep"):
+            self.assertEqual(self.guard.cleanup(final), dict(quiescent=True, removed=True))
+        final.assert_called_once()
+        self.remove.reset_mock()
+        with mock.patch.object(Path, "rmdir", side_effect=OSError("fake busy")):
+            with self.assertRaises(OSError):
+                self.guard.cleanup(lambda: None)
+        def failed_final():
+            raise OSError("fake final observer failure")
+        with self.assertRaises(OSError):
+            self.guard.cleanup(failed_final)
+        self.remove.assert_not_called()
+
+    def test_cpu_quota_period_required_applied_and_read_back(self):
+        # Explicit finite quota and period are required; no defaults exist.
+        for bad in (dict(cpu_quota_usec=0, cpu_period_usec=100000),
+                    dict(cpu_quota_usec=50000, cpu_period_usec=0),
+                    dict(cpu_quota_usec=2**63, cpu_period_usec=100000),
+                    dict(cpu_quota_usec=50000, cpu_period_usec=2**63),
+                    dict(cpu_quota_usec=True, cpu_period_usec=100000)):
+            bad_config = dict(self.guard.config) | bad
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    c.CgroupGuard(bad_config).setup()
+                self.mkdir.assert_not_called()
+        for missing in ("cpu_quota_usec", "cpu_period_usec", "cpu_usec", "memory_bytes"):
+            bad_config = dict(self.guard.config)
+            del bad_config[missing]
+            with self.subTest(missing=missing):
+                with self.assertRaises((ValueError, KeyError)):
+                    c.CgroupGuard(bad_config).setup()
+        # Applied and read back verbatim.
+        self.guard.setup()
+        self.assertIn(("cpu.max", "50000 100000"), self.writes)
+        self.assertEqual(self.fs[str(self.child / "cpu.max")], "50000 100000")
+        # Readback mismatch is a failure, never silent use of a wrong quota.
+        self.fs[str(self.child / "cpu.max")] = "1 100000"
+        with mock.patch.object(Path, "write_text", return_value=1):
+            with self.assertRaises(ValueError):
+                self.guard.setup()
+
+    def test_missing_cpu_max_file_fails_preflight(self):
+        del self.fs[str(self.child / "cpu.max")]
+        with self.assertRaises(ValueError):
+            self.guard.setup()
+        self.assertNotIn(("memory.max", "1000"), self.writes)
+        self.assertNotIn(("cpu.max", "50000 100000"), self.writes)
 
 
 if __name__ == "__main__":
