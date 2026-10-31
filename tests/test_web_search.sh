@@ -143,11 +143,11 @@ reset_fake() {
   printf '0\n' >"$count_file"
 }
 
-# Runs the engine against the fake provider. The arguments are environment
-# assignments for the engine (for example LMLINE_WEB_SEARCH=1); they come
-# last, so a case can override the defaults set here.
+# Runs the engine against the fake provider with caller-specific retry
+# overrides cleared. Arguments are environment assignments for the engine;
+# they come last, so a case can opt in explicitly.
 run_engine() {
-  env PATH="$fake_bin:$PATH" \
+  env -u LMLINE_HTTP_RETRIES PATH="$fake_bin:$PATH" \
     LMLINE_FAKE_CURL_COUNT="$count_file" \
     LMLINE_FAKE_CURL_BODIES="$bodies_dir" \
     LMLINE_CONFIG_DIR="$ws_tmp/config" \
@@ -365,5 +365,16 @@ ok "explicit HTTP retries repeat the original native-search request"
 # 14. The same explicit budget also retries after a curl transport error.
 assert_explicit_native_search_retry curl-error "explicit native-search curl-error retry"
 ok "explicit retries cover curl transport failures"
+
+# 15. Without an explicit retry budget, a failed native-search transport is
+# not repeated because the provider may already have accepted the request.
+reset_fake
+if run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 \
+    LMLINE_RETRY_DELAY=0 LMLINE_FAKE_CURL_MODE=curl-error \
+    >"$ws_tmp/t15.out" 2>"$ws_tmp/t15.err"; then
+  fail "default native-search curl failure was accepted"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "default native-search curl failure was retried"
+ok "native search does not retry a curl failure by default"
 
 ok "web search"
