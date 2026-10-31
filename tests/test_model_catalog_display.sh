@@ -221,22 +221,18 @@ for index, (shell, argv, setup, input_line) in enumerate((
             raise SystemExit(shell + ' completion setup timed out')
         print('pty - ' + shell + ': setup ready', flush=True)
         write_all(input_line)
-        drain(0.5)
         write_all(b'\r')
         exact = wait_for_count(b'MODEL_EXACT=true', 1, 3)
         write_all(b'lmline use catalog ordinary-\t')
-        drain(0.5)
         write_all(b'\r')
         exact = exact and wait_for_count(b'MODEL_EXACT=true', 2, 3)
         write_all('lmline use catalog unicode-'.encode('utf-8') + b'\t')
-        drain(0.5)
         write_all(b'\r')
         exact = exact and wait_for_count(b'MODEL_EXACT=true', 3, 3)
 
         endpoint_exact = True
         for count, prefix in enumerate((b'endpoint_', b'ordinary-endpoint', b'unicode-endpoint-'), 1):
             write_all(b'lmline use ' + prefix + b'\t')
-            drain(0.5)
             write_all(b'\r')
             endpoint_exact = endpoint_exact and wait_for_count(b'ENDPOINT_EXACT=true', count, 3)
 
