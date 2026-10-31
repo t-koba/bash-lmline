@@ -12,9 +12,8 @@ bodies_dir="$ws_tmp/bodies"
 count_file="$ws_tmp/curl-count"
 mkdir -p "$fake_bin" "$bodies_dir"
 
-# The fake provider records every request body and answers with a canned
-# response. The mode selects the answer: a buffered Responses body, a
-# Responses server-sent event stream, or a provider error.
+# The fake provider records every request body. Modes select a buffered
+# Responses body, an event stream, an HTTP error, or a curl transport failure.
 cat >"$fake_bin/curl" <<'CURL'
 #!/usr/bin/env bash
 out=; data=
@@ -31,6 +30,17 @@ bodies=${LMLINE_FAKE_CURL_BODIES:?}
 count=0; [[ -f "$state" ]] && read -r count <"$state"
 count=$((count + 1)); printf '%s\n' "$count" >"$state"
 cp "$data" "$bodies/body-$count.json"
+write_buffered() {
+  cat >"$out" <<'JSON'
+{"id":"resp_1","object":"response","model":"test-model","status":"completed",
+ "output":[
+  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to list files"}},
+  {"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example Page"}]}]}
+ ],
+ "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
+JSON
+  printf '200\tapplication/json'
+}
 case "${LMLINE_FAKE_CURL_MODE:-buffered}" in
   sse)
     cat >"$out" <<'SSE'
@@ -59,16 +69,15 @@ SSE
       printf '{"error":{"message":"temporary rate limit"}}\n' >"$out"
       printf '429\tapplication/json'
     else
-      cat >"$out" <<'JSON'
-{"id":"resp_1","object":"response","model":"test-model","status":"completed",
- "output":[
-  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to list files"}},
-  {"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example Page"}]}]}
- ],
- "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
-JSON
-      printf '200\tapplication/json'
+      write_buffered
     fi
+    ;;
+  curl-error)
+    if (( count == 1 )); then
+      printf 'curl: (28) operation timed out\n' >&2
+      exit 28
+    fi
+    write_buffered
     ;;
   toolround)
     if (( count <= 1 )); then
@@ -110,17 +119,7 @@ JSON
 JSON
     printf '200\tapplication/json'
     ;;
-  *)
-    cat >"$out" <<'JSON'
-{"id":"resp_1","object":"response","model":"test-model","status":"completed",
- "output":[
-  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"how to list files"}},
-  {"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"echo hello","annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example Page"}]}]}
- ],
- "usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}
-JSON
-    printf '200\tapplication/json'
-    ;;
+  *) write_buffered ;;
 esac
 CURL
 chmod +x "$fake_bin/curl"
@@ -157,6 +156,29 @@ run_engine() {
     "$@" \
     "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
       --line-file "$ws_tmp/line" --context-file "$ws_tmp/context" --n 1
+}
+
+assert_explicit_native_search_retry() {
+  local mode=$1 label=$2 out err attempt
+  out="$ws_tmp/$mode.out"
+  err="$ws_tmp/$mode.err"
+  reset_fake
+  if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 \
+      LMLINE_HTTP_RETRIES=1 LMLINE_RETRY_DELAY=0 LMLINE_FAKE_CURL_MODE="$mode" \
+      >"$out" 2>"$err"; then
+    fail "$label failed: $(sed -n '1p' "$err")"
+  fi
+  [[ "$(cat "$count_file")" == 2 ]] || fail "$label retry count"
+  cmp -s "$bodies_dir/body-1.json" "$bodies_dir/body-2.json" \
+    || fail "$label changed the search-bearing request"
+  for attempt in 1 2; do
+    jq -e '[.tools[]? | select(.type == "web_search")] | length == 1' \
+      "$bodies_dir/body-$attempt.json" >/dev/null \
+      || fail "$label attempt $attempt lacks the native search tool"
+  done
+  [[ "$(candidates_of <"$out")" == "echo hello" ]] || fail "$label candidate"
+  grep -q 'transient provider error; retrying (1/1)' "$err" \
+    || fail "$label retry progress"
 }
 
 assert_safe_search_display() {
@@ -335,26 +357,13 @@ fi
 grep -q 'not repeated' "$ws_tmp/t12.err" || fail "the refused repeat is not reported"
 ok "web search does not repeat an empty answer"
 
-# 13. An explicit positive HTTP retry override permits retrying the original
-# search-bearing request after a transient 429; both attempts must be identical.
-reset_fake
-if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=1 \
-    LMLINE_HTTP_RETRIES=1 LMLINE_RETRY_DELAY=0 LMLINE_FAKE_CURL_MODE=transient \
-    >"$ws_tmp/t13.out" 2>"$ws_tmp/t13.err"; then
-  fail "explicit native-search HTTP retry failed: $(sed -n '1p' "$ws_tmp/t13.err")"
-fi
-[[ "$(cat "$count_file")" == 2 ]] || fail "explicit native-search retry count"
-cmp -s "$bodies_dir/body-1.json" "$bodies_dir/body-2.json" \
-  || fail "explicit retry changed the search-bearing request"
-for attempt in 1 2; do
-  jq -e '[.tools[]? | select(.type == "web_search")] | length == 1' \
-    "$bodies_dir/body-$attempt.json" >/dev/null \
-    || fail "explicit retry attempt $attempt lacks the native search tool"
-done
-[[ "$(candidates_of <"$ws_tmp/t13.out")" == "echo hello" ]] \
-  || fail "explicit native-search retry candidate"
-grep -q 'transient provider error; retrying (1/1)' "$ws_tmp/t13.err" \
-  || fail "explicit native-search retry progress"
+# 13. An explicit positive retry budget repeats the search-bearing request
+# after a transient HTTP status.
+assert_explicit_native_search_retry transient "explicit native-search HTTP retry"
 ok "explicit HTTP retries repeat the original native-search request"
+
+# 14. The same explicit budget also retries after a curl transport error.
+assert_explicit_native_search_retry curl-error "explicit native-search curl-error retry"
+ok "explicit retries cover curl transport failures"
 
 ok "web search"
