@@ -228,10 +228,12 @@ lmline config set LMLINE_WEB_SEARCH 1
 
 The search events and the cited URLs are reported on the stderr side channel
 as `lmline-search:` and `lmline-citation:` lines, never inside the candidate
-text. The provider bills the search calls, so a rejected request is reported
-with the provider's reason instead of being repeated, and the provider is
-asked for at most one new search per exchange: a later tool round reuses the
-earlier results.
+text. The provider bills the search calls, so by default a rejected request
+is reported with the provider's reason instead of being repeated, and the
+provider is asked for at most one new search per exchange; later tool rounds
+reuse earlier results. A positive explicit `LMLINE_HTTP_RETRIES` can resend
+the search-bearing request after a transient HTTP or curl failure, potentially
+repeating a billed search if the provider already accepted it.
 
 [docs/capabilities.md](docs/capabilities.md) lists every supported,
 unsupported, and allowed-but-unverified combination of authentication mode,
@@ -1330,7 +1332,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CHATGPT_NO_BROWSER` | `0` | skip the browser during the ChatGPT sign-in (`0` opens it, `1` skips it) |
 | `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
-| `LMLINE_HTTP_RETRIES` | `1` | transient provider retries (defaults to 0 on ChatGPT or native-search routes; a positive explicit value enables them) |
+| `LMLINE_HTTP_RETRIES` | `1` | transient HTTP-status and curl retries (defaults to 0 on ChatGPT or native-search routes; a positive explicit value enables them) |
 | `LMLINE_RETRY_DELAY` | `1` | seconds between retries |
 | `LMLINE_CACHE_TTL` | `600` | response cache TTL in seconds (0 disables) |
 | `LMLINE_STREAM` | `0` | stream `explain` and `clip` responses |
