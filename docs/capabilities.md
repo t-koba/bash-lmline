@@ -80,13 +80,17 @@ application-level retries:
 
 On ChatGPT and native-search routes, compatibility/format, candidate-validation,
 and empty-answer retries are suppressed; failures and rejections are reported
-without an application-level repeat. `LMLINE_HTTP_RETRIES` is separate and
-applies only to transient HTTP failures. Where candidate-validation or
-empty-answer retries are allowed, the retry omits local function tools.
+without an application-level repeat. `LMLINE_HTTP_RETRIES` is separate from
+those application-level retries and covers transient HTTP statuses (429, 502,
+503, and 504) and curl failures. A curl failure can happen after the provider
+accepts a request, so an enabled retry can repeat ChatGPT plan usage or a billed
+search. Where candidate-validation or empty-answer retries are allowed, the
+retry omits local function tools.
 
 Native search is requested once per exchange by default. Later local-tool rounds
 reuse earlier results, and the progress channel reports that reuse; an
-explicitly enabled HTTP retry can resend the original search-bearing request.
+explicitly enabled `LMLINE_HTTP_RETRIES` retry can resend the original
+search-bearing request.
 ChatGPT has no local tool rounds, because another provider request would spend
 plan usage.
 

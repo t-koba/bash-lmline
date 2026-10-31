@@ -196,11 +196,14 @@ and only the internal token command prints one, on stdout.
 
 On this route the request follows the contract of the subscription API: the
 Responses format, `store: false`, `stream: true`, the instructions as
-`instructions`, and no sampling or account fields. HTTP retries are disabled
-by default because another request can spend the plan; a positive explicit
-`LMLINE_HTTP_RETRIES` enables retries for transient HTTP failures. Compatibility,
-validation, and empty-answer retries remain disabled. Local tools are off, so
-there are no tool rounds that would spend another plan request.
+`instructions`, and no sampling or account fields. Retries are disabled by
+default because another request can spend the plan; a positive explicit
+`LMLINE_HTTP_RETRIES` enables retries for transient HTTP statuses
+(429, 502, 503, and 504) and curl failures. A curl failure may happen after
+the provider receives the request, so a retry may spend plan usage again.
+Compatibility, validation, and empty-answer retries remain disabled. Local
+tools are off, so there are no tool rounds that would spend another plan
+request.
 
 The subscription token is sent only to the OpenAI API, and only over
 `https`. A loopback proxy (`http://127.0.0.1:PORT/v1`,
