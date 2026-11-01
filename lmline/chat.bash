@@ -467,15 +467,20 @@ __lmline_report_provider_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason=
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason= provider_failed=0
   if [[ "$api_format" == responses ]]; then
     if jq -e '((.status // "") == "failed") or ((.error? | type) == "object")' "$response" >/dev/null 2>&1; then
-      __lmline_report_provider_failure "$response"
-      return 1
+      provider_failed=1
     fi
     incomplete_reason=$(jq -r '.incomplete_details.reason // ""' "$response" 2>/dev/null) || incomplete_reason=
   fi
   __lmline_web_search_report "$response"
+  if (( provider_failed )); then
+    __lmline_trace_file "$label" "$response"
+    __lmline_record_usage "$response"
+    __lmline_report_provider_failure "$response"
+    return 1
+  fi
   __lmline_normalize_response "$api_format" "$response" || {
     printf 'lmline-engine: failed to normalize %s response\n' "$api_format" >&2
     return 1

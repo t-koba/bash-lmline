@@ -488,7 +488,9 @@ ok "the plan route keeps the incomplete reason"
 # A plan failure delivered inside a 200 event stream after output deltas is
 # reported with the provider code and plan recovery, not as an empty answer.
 reset_fake
-if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-failed >"$route_tmp/plan-stream-failed.out" 2>"$route_tmp/plan-stream-failed.err"; then
+trace_failed="$route_tmp/trace-failed"
+mkdir -p "$trace_failed"
+if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-failed LMLINE_TRACE_DIR="$trace_failed" >"$route_tmp/plan-stream-failed.out" 2>"$route_tmp/plan-stream-failed.err"; then
   fail "the paid route accepted a mid-stream plan failure"
 fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated a failed stream"
@@ -500,6 +502,8 @@ grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-stream-failed.err" \
 grep -q 'response resp_failed' "$route_tmp/plan-stream-failed.err" \
   || fail "the mid-stream response id is lost: $(sed -n '1p' "$route_tmp/plan-stream-failed.err")"
 ! grep -q 'empty answer' "$route_tmp/plan-stream-failed.err" || fail "the mid-stream plan failure is reported as an empty answer"
+find "$trace_failed" -maxdepth 1 -name '*.json' -type f | grep -q . \
+  || fail "the failed stream left no trace file"
 ok "the plan route reports a mid-stream provider failure"
 
 reset_fake
