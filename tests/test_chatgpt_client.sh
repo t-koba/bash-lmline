@@ -69,6 +69,15 @@ start_mock() {
   mock_base="http://127.0.0.1:$(sed -n 's/^port=//p' "$out_file" | head -n 1)"
 }
 
+wait_for_refresh_request() {
+  local log=$1 i
+  for ((i = 0; i < 200; i++)); do
+    grep -q '^token_grant_type=refresh_token$' "$log" 2>/dev/null && return 0
+    sleep 0.05
+  done
+  fail "the mock authorization server did not receive a refresh request"
+}
+
 client() {
   env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
     LMLINE_CHATGPT_AUTH_URL="$mock_base" \
@@ -313,7 +322,7 @@ client login >/dev/null 2>&1 || fail "ChatGPT login before the logout race"
 expire_credential "$credentials_file"
 client token >"$chatgpt_tmp/logout-race-token.out" 2>"$chatgpt_tmp/logout-race-token.err" &
 logout_race_pid=$!
-sleep 0.3
+wait_for_refresh_request "$chatgpt_tmp/mock-logout-race.log"
 client logout >"$chatgpt_tmp/logout-race.out" 2>"$chatgpt_tmp/logout-race.err" \
   || fail "ChatGPT logout during a refresh"
 logout_race_rc=0
@@ -404,7 +413,7 @@ client login >/dev/null 2>&1 || fail "ChatGPT login before the sign-in race"
 expire_credential "$credentials_file"
 client token >"$chatgpt_tmp/signin-race-token.out" 2>"$chatgpt_tmp/signin-race-token.err" &
 signin_race_pid=$!
-sleep 0.3
+wait_for_refresh_request "$chatgpt_tmp/mock-signin-race.log"
 client login >"$chatgpt_tmp/signin-race-login.out" 2>"$chatgpt_tmp/signin-race-login.err" \
   || fail "ChatGPT login during a refresh: $(sed -n '1p' "$chatgpt_tmp/signin-race-login.err")"
 signin_race_rc=0
