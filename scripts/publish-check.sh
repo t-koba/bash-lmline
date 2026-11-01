@@ -17,25 +17,7 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) ))
   exit 1
 fi
 
-bash -n \
-  install.sh \
-  lmline/engine \
-  lmline/lmline \
-  lmline/init.bash \
-  lmline/actions.bash \
-  lmline/context.bash \
-  lmline/sandbox.bash \
-  lmline/config.bash \
-  lmline/policy.bash \
-  lmline/http.bash \
-  lmline/profiles.bash \
-  lmline/chat.bash \
-  lmline/responses.bash \
-  lmline/websearch.bash \
-  lmline/chatgpt.bash \
-  scripts/check-commit-subjects.sh \
-  scripts/privacy-scan.sh \
-  tests/*.sh
+# Shipped Bash syntax is owned by tests/test_syntax.sh, which the suite below runs.
 
 if command -v zsh >/dev/null 2>&1; then
   zsh -n lmline/init.zsh
