@@ -1318,7 +1318,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
-| `LMLINE_CHATGPT_CLIENT` | the installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
+| `LMLINE_CHATGPT_CLIENT` | installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
 | `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger, so a waiter can always reclaim an abandoned lock |
 | `LMLINE_CHATGPT_LOCK_STALE_MS` | `60000` | milliseconds before an abandoned ChatGPT credential lock is reclaimed; the wait budget is raised to at least this value plus 30 s, so a waiter can always reclaim it |
 | `LMLINE_CHATGPT_CREDENTIALS_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/credentials.json` | credential file the ChatGPT client reads and writes |
@@ -1354,6 +1354,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_COPILOT_TIMEOUT` | `15000` | Copilot LSP request timeout in milliseconds |
 | `LMLINE_COPILOT_RUNTIME_DIR` | `$LMLINE_CONFIG_DIR/copilot/runtime` | Copilot daemon runtime directory |
 | `LMLINE_COPILOT_COMMAND` | empty | optional Language Server executable override |
+| `LMLINE_COPILOT_OPEN_LOG` | empty | file the Copilot client records the URIs it opens in |
 | `LMLINE_PROMPT_DIR` | installed prompts | prompt override directory |
 | `LMLINE_PROMPT_VERSION` | `3` | prompt/context version marker used in request keys |
 | `LMLINE_RESPONSE_LOCALE` | locale-derived when locale context is enabled | response language selector |
@@ -1385,7 +1386,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_SPINNER` | `1` | waiting animation |
 | `LMLINE_SPINNER_INTERVAL` | `0.2` | spinner refresh interval |
 | `LMLINE_PROGRESS` | `1` | engine progress lines |
-| `LMLINE_PS0` | `🍋‍🟩 ` | lmline status prefix |
+| `LMLINE_PS0` | `🍋‍🟩` | lmline status prefix |
 | `LMLINE_FIX_TIMEOUT` | `12` | positive seconds for fix execution (maximum `2147483647`) |
 | `LMLINE_FIX_MAX_OUTPUT` | `12000` | stdout/stderr byte limit for fix |
 | `LMLINE_NO_LOCK` | `0` | disable config-dir locking |
