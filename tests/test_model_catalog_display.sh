@@ -55,9 +55,8 @@ LC_ALL=C printf -v quoted_unicode '%q' "$unicode_model"
 [[ "$use_error" == *"lmline use catalog $quoted_unicode"* ]] || fail 'Unicode model-choice guidance uses a reversible shell word'
 LMLINE_CONFIG_DIR="$config_dir" "$lmline" use catalog "$raw_model" >/dev/null
 saved_model=$(
-  # shellcheck disable=SC1090
-  source "$config_dir/settings.bash"
-  printf '%s' "$LMLINE_MODEL"
+  "$BASH" -c 'source "$1"; printf "%s" "$LMLINE_MODEL"' _ \
+    "$config_dir/settings.bash"
 )
 [[ "$saved_model" == "$raw_model" ]] || fail 'explicit selection stores the exact raw catalog ID'
 current_out=$(LMLINE_CONFIG_DIR="$config_dir" "$lmline" current)
