@@ -7,12 +7,34 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 scanner="$repo_dir/scripts/privacy-scan.sh"
 
 if ! command -v rg >/dev/null 2>&1; then
+  if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+    fail "ripgrep is required for the privacy scan in CI"
+  fi
   ok "privacy scan (skipped: rg is not installed)"
   exit 0
 fi
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/lmline-privacy.XXXXXX")
 trap 'rm -rf "$work"' EXIT
+
+# Keep both the CI-required dependency and the optional local skip observable.
+no_rg_bin="$work/norg-test"
+mkdir -p "$no_rg_bin"
+bash_path=$(command -v bash) || fail "could not find bash"
+dirname_path=$(command -v dirname) || fail "could not find dirname"
+ln -s "$bash_path" "$no_rg_bin/bash"
+ln -s "$dirname_path" "$no_rg_bin/dirname"
+test_script="$repo_dir/tests/test_privacy_scan.sh"
+if PATH="$no_rg_bin" GITHUB_ACTIONS=true bash "$test_script" >"$work/missing-rg-ci.out" 2>&1; then
+  fail "the privacy test skipped when ripgrep was missing in CI"
+fi
+grep -q 'ripgrep is required for the privacy scan in CI' "$work/missing-rg-ci.out" \
+  || fail "the privacy test did not report missing ripgrep in CI"
+if ! PATH="$no_rg_bin" GITHUB_ACTIONS=false bash "$test_script" >"$work/missing-rg-local.out" 2>&1; then
+  fail "the privacy test rejected its optional local skip"
+fi
+grep -q 'privacy scan (skipped: rg is not installed)' "$work/missing-rg-local.out" \
+  || fail "the privacy test did not report its optional local skip"
 
 # The private strings are assembled at run time, so that this file does not
 # hold the very strings the scan looks for.
