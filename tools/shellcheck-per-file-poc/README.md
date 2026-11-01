@@ -1,11 +1,19 @@
-# Per-file ShellCheck candidate (test-only)
+# Per-file ShellCheck runner
 
-This isolated candidate is **not an adopted replacement** for
-`tests/test_shellcheck.sh`. It changes no production lint; the separate manual
-diagnostic route below is opt-in only.
-Python 3.9+ on Linux is required (the measurement code also normalizes Darwin's
-RSS units). The CLI must be the project pin, ShellCheck 0.11.0; its version is
-checked, and the existing installer verifies the pinned download's digest.
+Pinned Linux CI uses this sequential runner for the full manifest in
+`tests/test_shellcheck.sh`. Every manifest occurrence is linted in order with
+the current `.shellcheckrc` and direct annotated source context; inputs and
+warnings are not dropped. The required ShellCheck 0.11.0 pin is version-checked,
+and the existing installer verifies the download digest. Local runs without the
+required-pin setting continue to use one batched invocation of an installed
+ShellCheck, or skip when it is unavailable. The separate macOS smoke path only
+provisions the pin. Python 3.9+ is required for the per-file route.
+
+The Linux route writes sanitized bounded progress to live CI output and
+`measurement.log`; the complete per-target stdout, stderr, parsed diagnostics,
+status, and resource measurements stay in a JSONL report. CI uploads the report
+and progress log on failure with seven-day retention once the per-file run
+starts. The optional cgroup guard is off in normal CI.
 
 ## Focused checks
 
@@ -32,7 +40,7 @@ bounded regression test. A drift test checks the production argument list/order
 without invoking ShellCheck on that list: currently 74 unique inputs, 135 source
 declarations, 131 unique direct edges, maximum context group size 10.
 
-## Candidate entry points
+## Runner entry points
 
 Resolve/provision the CLI with the existing installer as above. Explicit inputs:
 
@@ -42,9 +50,10 @@ python3 tools/shellcheck-per-file-poc/candidate.py \
   lmline/profiles.bash tests/lib.sh tests/test_endpoint_display.sh
 ```
 
-The wrapper below mirrors the **exact path list/order and glob expansion** in
-`tests/test_shellcheck.sh`. It is available for a separately reviewed measurement;
-implementing it is not evidence that a full-manifest measurement has passed:
+The optional `run_manifest.py` wrapper mirrors the **exact path list/order and
+glob expansion** in `tests/test_shellcheck.sh`. The regular CI test invokes
+`candidate.py` directly with that same explicit manifest; the wrapper remains for
+the separate diagnostic workflow:
 
 ```bash
 python3 tools/shellcheck-per-file-poc/run_manifest.py \
@@ -60,17 +69,15 @@ normally, just as in the full harness. The Python module's `rcfile` argument is 
 fixture-only hook, not a command-line option. There is no network/provisioning
 inside the candidate itself.
 
-## Manual GitHub Actions measurement
+## Manual GitHub Actions diagnostic
 
-This documents the available mechanism, **not authorization to run it**. A new
-measurement, including a first-group/cgroup trial, still needs separate operator
-review as described below. For a separately authorized run, the route is **CI**
-mode `shellcheck-per-file-diagnostic` on the exact reviewed revision. The reusable
-`.github/workflows/shellcheck-per-file-diagnostic.yml` is `workflow_call` only;
-pushes, pull requests, and the default `full` mode do not select it. This route
-provisions the exact pinned CLI, runs the focused selftests, then invokes the
-full-manifest wrapper **once**, sequentially, on Ubuntu 24.04. It does not run the
-combined production lint or the API probe.
+The separate `.github/workflows/shellcheck-per-file-diagnostic.yml` is a
+`workflow_call`-only diagnostic route; it is not selected by ordinary pushes or
+pull requests and does not replace the full project test job. It provisions the
+same exact pin, runs the focused selftests, then invokes the full-manifest wrapper
+once and sequentially on Ubuntu 24.04. The optional cgroup guard is disabled in
+this workflow. The regular Linux test path already uses the per-file runner; this
+workflow adds a dedicated report and summary, not a combined-batch comparison.
 
 The job is bounded to 40 minutes (30 minutes for the measurement). The
 `measurement.log` contains only bounded, allowlisted progress records; it does
@@ -84,10 +91,10 @@ report/process completion are reported as **incomplete**, never a lint pass.
 The temporary pinned binary directory is removed after artifact upload. A hard
 runner loss can still prevent always-run summary/upload/cleanup steps.
 
-This is a resource measurement route, **not evidence of full parity or adoption**.
-Even a complete clean measurement does not authorize replacing the current
-production harness; equivalence review remains separate. Review artifact content
-under `PUBLISHING.md` before sharing it.
+This diagnostic run does not compare all per-file diagnostics against the
+combined invocation, so it is not a full-batch parity claim or a substitute for
+full project CI. The JSONL report contains runner paths and raw ShellCheck output;
+review it under `PUBLISHING.md` before sharing it outside the workflow artifacts.
 
 ## Grouping and status
 
@@ -174,8 +181,8 @@ and also fails. No partial/overflow output is silently accepted. The report size
 scales with manifest occurrences and these per-child bounds; it deliberately
 retains both raw output and parsed diagnostic objects for review.
 
-Reports contain absolute local paths and source diagnostics. Keep them outside
-the repository; review/redact before sharing under `PUBLISHING.md`.
+Reports contain absolute local paths and source diagnostics. Keep ad hoc reports
+outside the repository; review/redact before sharing under `PUBLISHING.md`.
 
 ## Review constraints
 
@@ -185,24 +192,24 @@ source search: runtime `source` expressions, heredoc/comment context, recursive
 resolution, `source-path` policies, and future rc/source semantics need independent
 review if introduced. Malformed parsed annotations fail rather than claiming
 coverage. The current rc does not enable external sources; changing that policy
-would require revisiting these tests before adoption. Canonicalizing symlinked
-inputs could also affect future rc discovery (the current manifest has none).
+requires revisiting source-resolution tests and revalidating the full manifest.
+Canonicalizing symlinked inputs could also affect future rc discovery (the current
+manifest has none).
 
-Synthetic chain and real subset parity do not establish full-manifest parity or
-CI resource fitness. Those measurements/reviews remain a later step; leave the
-current full-lint harness unchanged until the equivalence gaps are addressed.
+Synthetic-chain and real-subset parity tests do not establish full-manifest
+parity against one combined ShellCheck invocation. The regular Linux CI run now
+measures the per-file runner across the full manifest; investigate any incomplete
+or failed exact-SHA result before treating lint as passed. Revisit source-context
+handling if the rc or source policy changes.
 
 
-## Optional cgroup-v2 diagnostic guard (OFF by default)
+## Optional cgroup-v2 diagnostic guard (disabled by default)
 
-This is **diagnostic-only**, not production lint or adoption. The workflow does
-not enable the guard or supply trial values. An actual first-group trial remains
-**unauthorized** until separate operator review of the concrete entrypoint,
-source revision, pin and rc, isolation/preflight, exact finite limits, disposable
-resources, and an independent cleanup procedure. No trial cap values are guessed
-here. Fake-resource tests are not evidence of real isolation or parity. In
-particular, OOM counters from a future scoped run cannot explain the earlier
-hosted shutdown.
+Regular CI does not enable this guard or supply its limit values. It remains a
+separate opt-in diagnostic mechanism; fake-resource tests cover its fail-closed
+behavior but do not establish real cgroup isolation. The normal per-file path
+uses sequential children, per-child time/output bounds, and exact report records
+without creating or modifying cgroups.
 
 The candidate accepts the following **only as a complete explicit set**:
 `--cgroup-parent`, `--memory-bytes`, `--cpu-usec`, `--cpu-quota-usec`, and

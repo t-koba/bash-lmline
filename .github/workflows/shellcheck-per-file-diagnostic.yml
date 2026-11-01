@@ -17,7 +17,7 @@ jobs:
       - name: Initialize evidence directory
         run: |
           mkdir -p "$RUNNER_TEMP/shellcheck-per-file-diagnostic"
-          echo 'Diagnostic only: one full-manifest per-file measurement, not full parity or adoption.' > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/scope.txt"
+          echo 'Diagnostic only: full-manifest per-file run; no combined-batch parity comparison.' > "$RUNNER_TEMP/shellcheck-per-file-diagnostic/scope.txt"
       - name: Provision exact pinned ShellCheck
         timeout-minutes: 3
         env:
@@ -33,7 +33,7 @@ jobs:
         id: measurement
         timeout-minutes: 30
         run: |
-          # Guard stays OFF here. No first-group/cgroup trial is authorized by this workflow.
+          # The optional cgroup guard stays off; this workflow supplies no guard limits.
           set +e
           python3 tools/shellcheck-per-file-poc/run_manifest.py \
             --shellcheck "$SC_BIN_DIR/shellcheck" --progress \
@@ -64,7 +64,7 @@ jobs:
           sys.path.insert(0, 'tools/shellcheck-per-file-poc')
           root = Path(os.environ['RUNNER_TEMP']) / 'shellcheck-per-file-diagnostic'
           root.mkdir(exist_ok=True)
-          text = 'Diagnostic only: one full-manifest per-file measurement; no full-parity or adoption claim.\n\n'
+          text = 'Diagnostic only: full-manifest per-file run; no combined-batch parity comparison.\n\n'
           complete = False
           count = diagnostics = 0
           try:

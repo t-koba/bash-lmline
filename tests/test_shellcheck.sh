@@ -3,8 +3,9 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: pinned ShellCheck covers every supported Bash source/test input with correct source resolution.
 
-# Emit only bounded numeric telemetry; ShellCheck's own stdout/stderr remains
-# attached so the original diagnostics are neither filtered nor delayed.
+# Emit only bounded numeric telemetry. The pinned per-file runner retains full
+# diagnostics in JSONL and emits only sanitized progress; local unpinned lint
+# keeps ShellCheck's stdout/stderr attached.
 __lmline_shellcheck_proc_rss() {
   local pid=$1 key value unit rss=na peak=na
   if [[ -r "/proc/$pid/status" ]]; then
@@ -281,10 +282,10 @@ __lmline_shellcheck_monitor_self_test() {
   ok "shellcheck resource monitor"
 }
 
-# With no arguments runs the full ShellCheck batch (pinned via
-# scripts/install-shellcheck.sh when LMLINE_REQUIRE_SHELLCHECK=1, otherwise
-# an installed shellcheck or skip). --provision-only verifies the pinned
-# platform asset without linting; --monitor-self-test exercises the bounded
+# With no arguments lints the full manifest (sequential direct-source groups
+# with the required pin, otherwise the installed ShellCheck batch or skip).
+# --provision-only verifies the pinned platform asset without linting;
+# --monitor-self-test exercises the bounded
 # telemetry wrapper with controlled child exit and signal cases.
 provision_only=0
 monitor_self_test=0
@@ -337,26 +338,59 @@ else
     exit 0
   fi
 fi
+if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
+  SHELLCHECK="$(command -v shellcheck)" python3 "$repo_dir/tools/shellcheck-per-file-poc/test_candidate.py" \
+    CandidateTests.test_manifest_matches_shell_harness_without_running_it \
+    ProgressTests.test_regular_harness_pinned_route_and_failure_artifact \
+    ProgressTests.test_regular_harness_pinned_route_fails_on_tee_error \
+    || fail "per-file ShellCheck route selftest"
+fi
 
 diagnostics_file=''
-if [[ "${GITHUB_ACTIONS:-false}" == true && -n "${RUNNER_TEMP:-}" ]]; then
+if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" != 1 && "${GITHUB_ACTIONS:-false}" == true && -n "${RUNNER_TEMP:-}" ]]; then
   diagnostics_file="$RUNNER_TEMP/lmline-shellcheck-diagnostics.log"
   : > "$diagnostics_file" 2>/dev/null || diagnostics_file=''
 fi
-# A 30-second interval caps resource output at 60 samples (30 minutes);
-# the cap bounds telemetry only and never times out or changes ShellCheck.
-__lmline_shellcheck_run_monitored shellcheck 30 60 "$diagnostics_file" \
-  shellcheck -s bash \
-  "$repo_dir/lmline/lmline" \
-  "$repo_dir/lmline/engine" \
-  "$repo_dir/lmline/validate" \
-  "$repo_dir"/lmline/*.bash \
-  "$repo_dir/lmline/completions/lmline.bash" \
-  "$repo_dir/install.sh" \
-  "$repo_dir/scripts/install-shellcheck.sh" \
-  "$repo_dir/scripts/check-commit-subjects.sh" \
-  "$repo_dir/scripts/privacy-scan.sh" \
-  "$repo_dir/scripts/publish-check.sh" \
-  "$repo_dir"/tests/*.sh \
-  || fail "shellcheck findings"
+# Keep one literal manifest for both paths; the per-file selftest checks its
+# exact order/glob expansion against the diagnostic entry point.
+shellcheck_inputs=(
+  "$repo_dir/lmline/lmline"
+  "$repo_dir/lmline/engine"
+  "$repo_dir/lmline/validate"
+  "$repo_dir"/lmline/*.bash
+  "$repo_dir/lmline/completions/lmline.bash"
+  "$repo_dir/install.sh"
+  "$repo_dir/scripts/install-shellcheck.sh"
+  "$repo_dir/scripts/check-commit-subjects.sh"
+  "$repo_dir/scripts/privacy-scan.sh"
+  "$repo_dir/scripts/publish-check.sh"
+  "$repo_dir"/tests/*.sh
+)
+if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
+  # The runner creates its report exclusively and flushes every record before
+  # starting the next child. Keep it even on failure/incomplete runs; CI uploads
+  # the JSONL report and sanitized progress log. No cgroup guard is used.
+  report_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/lmline-shellcheck-per-file.XXXXXXXX" 2>/dev/null) \
+    || fail "could not create ShellCheck report directory"
+  # Keep sanitized progress live and archived. Copy PIPESTATUS immediately;
+  # either a lint failure or a broken progress sink fails the check.
+  set +e
+  python3 "$repo_dir/tools/shellcheck-per-file-poc/candidate.py" \
+    --shellcheck "$(command -v shellcheck)" --progress --report "$report_dir/manifest.jsonl" \
+    "${shellcheck_inputs[@]}" 2>/dev/null | tee "$report_dir/measurement.log" 2>/dev/null
+  pipeline_status=("${PIPESTATUS[@]}")
+  set -e
+  if ((pipeline_status[1] != 0)); then
+    fail "ShellCheck progress logging failed"
+  fi
+  if ((pipeline_status[0] != 0)); then
+    fail "shellcheck findings or incomplete report"
+  fi
+else
+  # The 30-second interval caps local telemetry at 60 samples (30 minutes);
+  # it never times out or changes the ShellCheck command.
+  __lmline_shellcheck_run_monitored shellcheck 30 60 "$diagnostics_file" \
+    shellcheck -s bash "${shellcheck_inputs[@]}" \
+    || fail "shellcheck findings"
+fi
 ok "shellcheck"

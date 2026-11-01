@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test-only direct-source-context ShellCheck candidate with opt-in CI diagnostics."""
+"""Sequential per-file ShellCheck runner with opt-in resource diagnostics."""
 import argparse
 import json
 import os

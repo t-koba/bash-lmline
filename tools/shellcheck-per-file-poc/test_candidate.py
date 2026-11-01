@@ -62,11 +62,12 @@ class CandidateTests(unittest.TestCase):
 
     def test_manifest_matches_shell_harness_without_running_it(self):
         harness = (c.ROOT / "tests/test_shellcheck.sh").read_text()
-        invocation = harness.split("  shellcheck -s bash \\\n", 1)[1].split("  || fail", 1)[0]
+        invocation = harness.split("shellcheck_inputs=(\n", 1)[1].split("\n)", 1)[0]
         # Evaluate only the literal argument list, not any harness functions.
         for line in invocation.splitlines():
-            self.assertRegex(line, r'^  "\$repo_dir(?:/[-a-zA-Z0-9_./]+"|"/[-a-zA-Z0-9_./*]+) \\$')
-        result = subprocess.run(["bash", "-c", 'repo_dir=$1; printf "%s\\0" ' + invocation,
+            self.assertRegex(line, r'^  "\$repo_dir(?:/[-a-zA-Z0-9_./]+"|"/[-a-zA-Z0-9_./*]+)$')
+        result = subprocess.run(["bash", "-c", 'repo_dir=$1; inputs=(\n' + invocation +
+                                 '\n); printf "%s\\0" "${inputs[@]}"',
                                  "manifest-test", str(c.ROOT)], capture_output=True, check=True)
         actual = result.stdout.decode().rstrip("\0").split("\0")
         manifest = list(map(c.canonical, c.production_manifest()))
@@ -423,6 +424,107 @@ class ProgressTests(unittest.TestCase):
                                          GITHUB_STEP_SUMMARY=str(self.root / "step-summary.md")))
         self.assertEqual(result.stdout + result.stderr, "")
         return result.returncode, (evidence / "summary.md").read_text()
+
+    def test_regular_harness_pinned_route_and_failure_artifact(self):
+        later = self.file("later.sh", "#!/bin/bash\n")
+        first = self.file("first.sh", f"#!/bin/bash\n# shellcheck source={later}\n")
+        marker = "DISTINCTIVE_RAW_DIAGNOSTIC " + str(self.root)
+        row = dict(file=first, line=1, column=1, endLine=1, endColumn=2,
+                   level="warning", code=2086, message=marker, fix={"replacements": []})
+        for status in (0, 1, 2):
+            with self.subTest(status=status):
+                fake = self.fake(f'''if sys.argv[4] == {first!r}:
+ print(json.dumps({[row] if status else []!r})); sys.exit({int(bool(status))})
+if {status} == 2:
+ print({marker!r}); print({marker!r}, file=sys.stderr); sys.exit(3)
+print("[]")
+''')
+                result, reports = self.regular_harness(fake, [first, later], pinned=True)
+                self.assertEqual(result.returncode, int(bool(status)), result)
+                records = self.read_records(reports[-1])
+                self.assertEqual(records[0]["manifest"], [first, later])
+                targets = [r for r in records if r["type"] == "target"]
+                self.assertEqual([r["target"] for r in targets], [first, later])
+                self.assertEqual(targets[0]["group"], [first, later])
+                self.assertEqual(records[-1]["status"], status)
+                self.assertEqual(records[-1]["complete"], status != 2)
+                self.assertEqual(records[0]["limits"], dict(stream_bytes=c.OUTPUT_CAP,
+                                                          child_timeout_s=c.TIMEOUT))
+                self.assertNotIn("guard", targets[0]["measurement"])
+                if status:
+                    self.assertEqual(targets[0]["target_diagnostics"], [row])
+                if status == 2:
+                    self.assertEqual(targets[1]["measurement"]["stderr"], marker + "\n")
+                live = "".join(line + "\n" for line in result.stdout.splitlines()
+                               if not line.startswith(("shellcheck-resource ", "ok - ")))
+                self.assert_safe(live)
+                self.assertEqual(live, "".join(c.progress_record(r) for r in records))
+                self.assertNotIn(marker, result.stderr)
+                workflow = (c.ROOT / ".github/workflows/ci.yml").read_text()
+                upload = workflow.split("      - name: Retain ShellCheck diagnostics\n", 1)[1]
+                upload = upload.split("      - name:", 1)[0]
+                self.assertIn("always() && runner.os == 'Linux'", upload)
+                self.assertIn("steps.run_tests_ubuntu.outcome != 'success'", upload)
+                self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/manifest.jsonl", upload)
+                self.assertNotIn("lmline-shellcheck-diagnostics.log", upload)
+                # The exact upload glob covers every newly retained report.
+                self.assertTrue(all(p.match("lmline-shellcheck-per-file.*/manifest.jsonl")
+                                    for p in reports))
+                measurement_log = reports[-1].parent / "measurement.log"
+                self.assertEqual(measurement_log.read_text(), live)
+                self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/measurement.log", upload)
+
+    def regular_harness(self, fake, files, pinned, fail_tee=False):
+        # Exercise the actual pinned/unpinned route with a two-file fixture
+        # manifest; the unpinned case also covers the monitor. No real lint of
+        # the production manifest is invoked by this integration regression.
+        harness = (c.ROOT / "tests/test_shellcheck.sh").read_text()
+        functions = harness.split("__lmline_shellcheck_proc_rss()", 1)[1]
+        functions = "__lmline_shellcheck_proc_rss()" + functions.split("# With no arguments", 1)[0]
+        route = harness.split("diagnostics_file=''\n", 1)[1]
+        route = "diagnostics_file=''\n" + route
+        start = route.index("shellcheck_inputs=(\n")
+        end = route.index("\n)", start) + 2
+        route = route[:start] + "shellcheck_inputs=(" + shlex.join(files) + ")" + route[end:]
+        cli = self.root / "shellcheck"
+        cli.write_bytes(Path(fake).read_bytes())
+        cli.chmod(0o755)
+        if fail_tee:
+            tee = self.root / "tee"
+            tee.write_text("#!/bin/sh\ncat >/dev/null\nexit 7\n")
+            tee.chmod(0o755)
+        script = "source " + shlex.quote(str(c.ROOT / "tests/lib.sh")) + "\n" + functions + route
+        before = set(self.root.glob("lmline-shellcheck-per-file.*/manifest.jsonl"))
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10,
+                                env=dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ["PATH"],
+                                         LMLINE_REQUIRE_SHELLCHECK=str(int(pinned)),
+                                         GITHUB_ACTIONS="true", RUNNER_TEMP=str(self.root)))
+        reports = set(self.root.glob("lmline-shellcheck-per-file.*/manifest.jsonl")) - before
+        return result, sorted(reports)
+
+    def test_regular_harness_pinned_route_fails_on_tee_error(self):
+        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
+        fake = self.fake('print("[]")\n')
+        result, reports = self.regular_harness(fake, files, pinned=True, fail_tee=True)
+        self.assertEqual(result.returncode, 1, result)
+        self.assertIn("not ok - ShellCheck progress logging failed", result.stderr)
+        records = self.read_records(reports[-1])
+        self.assertEqual(records[-1]["status"], 0)
+        self.assertTrue(records[-1]["complete"])
+        self.assertFalse((reports[-1].parent / "measurement.log").exists())
+
+    def test_regular_harness_unpinned_stays_one_batch(self):
+        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
+        calls = self.root / "calls"
+        fake = self.fake(f'''with open({str(calls)!r}, "a") as stream: stream.write(json.dumps(sys.argv[1:]) + "\\n")
+print("DISTINCTIVE_RAW_DIAGNOSTIC")
+''')
+        result, reports = self.regular_harness(fake, files, pinned=False)
+        self.assertEqual(result.returncode, 0, result)
+        self.assertEqual(reports, [])
+        self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()],
+                         [["-s", "bash"] + files])
+        self.assertIn("DISTINCTIVE_RAW_DIAGNOSTIC", result.stdout)
 
     def test_workflow_pipeline_streams_only_progress_and_retains_full_evidence(self):
         first = self.file("first.sh", "#!/bin/bash\n")
