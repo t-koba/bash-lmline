@@ -474,7 +474,7 @@ print("[]")
                 self.assertEqual(measurement_log.read_text(), live)
                 self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/measurement.log", upload)
 
-    def regular_harness(self, fake, files, pinned, fail_tee=False):
+    def regular_harness(self, fake, files, pinned, fail_tee=False, github_actions=True):
         # Exercise the actual pinned/unpinned route with a two-file fixture
         # manifest; the unpinned case also covers the monitor. No real lint of
         # the production manifest is invoked by this integration regression.
@@ -498,9 +498,35 @@ print("[]")
         result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10,
                                 env=dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ["PATH"],
                                          LMLINE_REQUIRE_SHELLCHECK=str(int(pinned)),
-                                         GITHUB_ACTIONS="true", RUNNER_TEMP=str(self.root)))
+                                         GITHUB_ACTIONS="true" if github_actions else "false",
+                                         RUNNER_TEMP=str(self.root)))
         reports = set(self.root.glob("lmline-shellcheck-per-file.*/manifest.jsonl")) - before
         return result, sorted(reports)
+
+    def test_regular_harness_local_failure_shows_actionable_diagnostics(self):
+        later = self.file("later.sh", "#!/bin/bash\n")
+        first = self.file("first.sh", f"#!/bin/bash\n# shellcheck source={later}\n")
+        marker = "LOCAL_ONLY_DIAGNOSTIC " + str(self.root)
+        row = dict(file=first, line=1, column=1, endLine=1, endColumn=2,
+                   level="warning", code=2086, message=marker, fix={"replacements": []})
+        fake = self.fake(f'''if sys.argv[4] == {first!r}:
+ print(json.dumps([{row!r}])); sys.exit(1)
+print("[]")
+''')
+        result, reports = self.regular_harness(fake, [first, later], pinned=True,
+                                               github_actions=False)
+        self.assertEqual(result.returncode, 1, result)
+        self.assertIn(str(reports[-1]), result.stderr)
+        self.assertIn(f"{first}:1:1: warning: {marker} [SC2086]", result.stderr)
+        self.assertNotIn(marker, result.stdout)
+        self.assertTrue((reports[-1].parent / "measurement.log").exists())
+
+    def test_regular_harness_local_success_cleans_temporary_report(self):
+        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
+        result, reports = self.regular_harness(self.fake('print("[]")\n'), files,
+                                               pinned=True, github_actions=False)
+        self.assertEqual(result.returncode, 0, result)
+        self.assertEqual(reports, [])
 
     def test_regular_harness_pinned_route_fails_on_tee_error(self):
         files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]

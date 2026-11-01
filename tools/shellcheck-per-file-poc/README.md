@@ -13,7 +13,10 @@ The Linux route writes sanitized bounded progress to live CI output and
 `measurement.log`; the complete per-target stdout, stderr, parsed diagnostics,
 status, and resource measurements stay in a JSONL report. CI uploads the report
 and progress log on failure with seven-day retention once the per-file run
-starts. The optional cgroup guard is off in normal CI.
+starts. A local required-pin run prints file/line/rule/message diagnostics and
+the retained report path on failure; successful local runs remove their temporary
+report directory. GitHub Actions never replays raw diagnostic text to live logs.
+The optional cgroup guard is off in normal CI.
 
 ## Focused checks
 

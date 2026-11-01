@@ -282,6 +282,61 @@ __lmline_shellcheck_monitor_self_test() {
   ok "shellcheck resource monitor"
 }
 
+__lmline_shellcheck_print_local_diagnostics() {
+  local report=$1
+  printf 'ShellCheck report: %q\n' "$report" >&2
+  python3 - "$report" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+
+def shown(value):
+    text = str(value)
+    result = []
+    for char in text:
+        codepoint = ord(char)
+        if char.isprintable():
+            result.append(char)
+        elif codepoint <= 0xffff:
+            result.append(f"\\u{codepoint:04x}")
+        else:
+            result.append(f"\\U{codepoint:08x}")
+    return "".join(result)
+
+
+try:
+    stream = Path(sys.argv[1]).open(encoding="utf-8")
+except OSError:
+    print("  ShellCheck report is unavailable.", file=sys.stderr)
+else:
+    with stream:
+        for number, line in enumerate(stream, 1):
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"  report record {number} is incomplete or invalid JSONL.", file=sys.stderr)
+                continue
+            if not isinstance(record, dict):
+                print(f"  report record {number} is not an evidence object.", file=sys.stderr)
+                continue
+            target = record.get("target") or "ShellCheck"
+            for error in record.get("errors", []):
+                print(f"  {shown(target)}: {shown(error)}", file=sys.stderr)
+            if record.get("type") != "target":
+                continue
+            for diagnostic in record.get("target_diagnostics", []):
+                code = diagnostic.get("code")
+                rule = f" [SC{code}]" if type(code) is int else ""
+                location = (f"{shown(diagnostic.get('file', target))}:"
+                            f"{shown(diagnostic.get('line', '?'))}:"
+                            f"{shown(diagnostic.get('column', '?'))}")
+                level = shown(diagnostic.get("level", "diagnostic"))
+                message = shown(diagnostic.get("message", ""))
+                print(f"{location}: {level}: {message}{rule}", file=sys.stderr)
+PY
+}
+
 # With no arguments lints the full manifest (sequential direct-source groups
 # with the required pin, otherwise the installed ShellCheck batch or skip).
 # --provision-only verifies the pinned platform asset without linting;
@@ -342,6 +397,8 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
   SHELLCHECK="$(command -v shellcheck)" python3 "$repo_dir/tools/shellcheck-per-file-poc/test_candidate.py" \
     CandidateTests.test_manifest_matches_shell_harness_without_running_it \
     ProgressTests.test_regular_harness_pinned_route_and_failure_artifact \
+    ProgressTests.test_regular_harness_local_failure_shows_actionable_diagnostics \
+    ProgressTests.test_regular_harness_local_success_cleans_temporary_report \
     ProgressTests.test_regular_harness_pinned_route_fails_on_tee_error \
     || fail "per-file ShellCheck route selftest"
 fi
@@ -380,6 +437,13 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
     "${shellcheck_inputs[@]}" 2>/dev/null | tee "$report_dir/measurement.log" 2>/dev/null
   pipeline_status=("${PIPESTATUS[@]}")
   set -e
+  if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then
+    if [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
+      __lmline_shellcheck_print_local_diagnostics "$report_dir/manifest.jsonl"
+    fi
+  elif [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
+    rm -rf -- "$report_dir" 2>/dev/null || true
+  fi
   if ((pipeline_status[1] != 0)); then
     fail "ShellCheck progress logging failed"
   fi
