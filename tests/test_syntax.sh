@@ -9,11 +9,11 @@ done
 ok "bash syntax"
 
 if command -v node >/dev/null 2>&1; then
-  node --check "$repo_dir/lmline/copilot-client.js" || fail "node syntax copilot-client.js"
-  node --check "$repo_dir/tests/fake_copilot_ls.js" || fail "node syntax fake_copilot_ls.js"
+  for file in "$repo_dir"/lmline/*.js "$repo_dir"/tests/fake_*.js; do
+    node --check "$file" || fail "node syntax ${file##*/}"
+  done
   ok "node syntax"
 fi
-
 
 if command -v zsh >/dev/null 2>&1; then
   zsh -n "$repo_dir/lmline/init.zsh" || fail "zsh -n init.zsh"

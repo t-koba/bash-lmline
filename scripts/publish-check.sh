@@ -17,16 +17,8 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) ))
   exit 1
 fi
 
-# Shipped Bash syntax is owned by tests/test_syntax.sh, which the suite below runs.
-
-if command -v zsh >/dev/null 2>&1; then
-  zsh -n lmline/init.zsh
-fi
-
-if command -v node >/dev/null 2>&1; then
-  node --check lmline/copilot-client.js
-  node --check lmline/chatgpt-client.js
-fi
+# Shipped Bash, Node, and Zsh syntax is owned by tests/test_syntax.sh, which
+# the suite below runs.
 
 if ! bash "$repo_dir/scripts/privacy-scan.sh" >/dev/null; then
   printf 'publish-check: the privacy scan failed\n' >&2
