@@ -136,7 +136,7 @@ init_case responses-truncated responses
 cat >"$case_dir/response.json" <<'JSON'
 {"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
 JSON
-assert_truncated responses incomplete
+assert_truncated responses 'incomplete: max_output_tokens'
 
 # Compatibility: absent/null statuses and unfamiliar provider statuses are
 # not rejected by a broad success allowlist.

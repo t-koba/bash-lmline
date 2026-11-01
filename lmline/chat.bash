@@ -373,6 +373,24 @@ __lmline_store_field_rejected() {
 __lmline_chatgpt_failure_hint() {
   local http_code=$1 detail=$2
   case "$http_code" in
+    200)
+      case "$detail" in
+        *subscription_sharing_usage_limit_exceeded*)
+          printf '; the ChatGPT plan usage limit is reached; see https://chatgpt.com/settings/usage' ;;
+        *subscription_sharing_usage_unavailable*|*subscription_sharing_user_unavailable*)
+          printf '; the ChatGPT plan usage is temporarily unavailable; retry later' ;;
+        *subscription_sharing_unsupported_capability*)
+          printf '; the plan does not support this request; remove it and do not repeat it' ;;
+        *subscription_sharing_invalid_user*)
+          printf '; the ChatGPT plan sign-in was refused; sign in again with: lmline chatgpt login' ;;
+        *subscription_sharing_route_not_supported*)
+          printf '; the plan route does not support this request; do not repeat it' ;;
+        chatpass_v2_*)
+          printf '; the ChatGPT plan rejected this request; do not repeat it' ;;
+        *)
+          printf '; the provider rejected the request; do not repeat it' ;;
+      esac
+      ;;
     401) printf '; the ChatGPT plan sign-in was refused; sign in again with: lmline chatgpt login' ;;
     403) printf '; the ChatGPT plan does not allow this request; do not repeat it' ;;
     429) printf '; the ChatGPT plan usage limit is reached; see https://chatgpt.com/settings/usage' ;;
@@ -429,8 +447,34 @@ __lmline_report_request_failure() {
   fi
 }
 
+# Reports a provider failure that arrived inside a successful HTTP response,
+# such as a Responses stream that ends with response.failed. The HTTP status
+# cannot classify these, so the provider error code drives the recovery hint.
+__lmline_report_provider_failure() {
+  local response=$1 detail display_detail hint= response_id=
+  detail=$(__lmline_response_error_detail "$response" application/json)
+  response_id=$(jq -r '.id // empty' "$response" 2>/dev/null) || response_id=
+  if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+    hint=$(__lmline_chatgpt_failure_hint 200 "$detail")
+  fi
+  [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
+  if [[ -n "$detail" ]]; then
+    display_detail=$(printf '%s\n' "$detail" | __lmline_display_answer 2>/dev/null) || display_detail=
+    printf 'lmline-engine: request failed: %s%s%s\n' "$display_detail" "${response_id:+ (response $response_id)}" "$hint" >&2
+  else
+    printf 'lmline-engine: request failed: provider reported a failed response%s%s\n' "${response_id:+ (response $response_id)}" "$hint" >&2
+  fi
+}
+
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason=
+  if [[ "$api_format" == responses ]]; then
+    if jq -e '((.status // "") == "failed") or ((.error? | type) == "object")' "$response" >/dev/null 2>&1; then
+      __lmline_report_provider_failure "$response"
+      return 1
+    fi
+    incomplete_reason=$(jq -r '.incomplete_details.reason // ""' "$response" 2>/dev/null) || incomplete_reason=
+  fi
   __lmline_web_search_report "$response"
   __lmline_normalize_response "$api_format" "$response" || {
     printf 'lmline-engine: failed to normalize %s response\n' "$api_format" >&2
@@ -450,8 +494,12 @@ __lmline_accept_response() {
       ' "$response" 2>/dev/null) || finish_status=
       case "${finish_status,,}" in
         length|max_tokens|incomplete)
-          printf 'lmline-engine: provider returned an incomplete command response (%s); increase LMLINE_MAX_TOKENS or shorten the request and retry\n' \
-            "${finish_status,,}" >&2
+          printf 'lmline-engine: provider returned an incomplete command response (%s%s); increase LMLINE_MAX_TOKENS or shorten the request and retry\n' \
+            "${finish_status,,}" "${incomplete_reason:+: $incomplete_reason}" >&2
+          return 1
+          ;;
+        failed)
+          printf 'lmline-engine: provider returned a failed command response; do not repeat it\n' >&2
           return 1
           ;;
         model_context_window_exceeded)

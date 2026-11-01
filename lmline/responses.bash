@@ -35,9 +35,11 @@ __lmline_responses_body_from_events() {
   jq -s '
     ([.[] | select(.type == "response.completed") | .response] | last) as $done
     | ([.[] | select(.type == "response.failed") | .response] | last) as $failed
+    | ([.[] | select(.type == "response.incomplete") | .response] | last) as $incomplete
     | ([.[] | select(.type == "response.created") | .response] | first) as $start
     | if $done != null then $done
       elif $failed != null then ($failed + {status: "failed"})
+      elif $incomplete != null then ($incomplete + {status: "incomplete"})
       else (($start // {}) + {
               output: [.[] | select(.type == "response.output_item.done") | .item],
               status: "incomplete",

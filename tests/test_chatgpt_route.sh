@@ -144,6 +144,39 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-stream-incomplete ]]; then
+  # An incomplete plan stream carries the provider's reason for truncation;
+  # the engine must keep that reason in its command-response diagnostic.
+  cat >"$out" <<'SSE'
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_incomplete","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"partial"}
+
+event: response.incomplete
+data: {"type":"response.incomplete","response":{"id":"resp_incomplete","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}}
+SSE
+  printf '200\ttext/event-stream'
+  exit 0
+fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-stream-failed ]]; then
+  # A plan failure delivered inside a successful event stream after output
+  # deltas. The engine must report the provider code and plan recovery, not
+  # treat the partially delivered text as the answer.
+  cat >"$out" <<'SSE'
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_failed","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"partial"}
+
+event: response.failed
+data: {"type":"response.failed","response":{"id":"resp_failed","status":"failed","error":{"code":"subscription_sharing_usage_limit_exceeded","message":"usage limit reached"}}}
+SSE
+  printf '200\ttext/event-stream'
+  exit 0
+fi
 cat >"$out" <<'JSON'
 {"id":"resp_1","object":"response","model":"test-model","status":"completed",
  "output":[{"type":"message","id":"msg_1","role":"assistant",
@@ -414,6 +447,35 @@ grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-429.err" \
   || fail "the plan usage limit has no recovery: $(sed -n '1p' "$route_tmp/plan-429.err")"
 ! grep -q 'set-secret' "$route_tmp/plan-429.err" || fail "the plan route gives API-key advice"
 ! grep -q 'LMLINE_HTTP_RETRIES' "$route_tmp/plan-429.err" || fail "the plan route advises raising the retries"
+# An incomplete plan stream keeps the provider's reason in the truncation
+# message instead of the generic stream-ended reason.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-incomplete >"$route_tmp/plan-stream-incomplete.out" 2>"$route_tmp/plan-stream-incomplete.err"; then
+  fail "the paid route accepted an incomplete plan stream"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated an incomplete stream"
+[[ -z "$(candidates_of <"$route_tmp/plan-stream-incomplete.out")" ]] || fail "the incomplete stream produced a candidate"
+grep -q 'incomplete: max_output_tokens' "$route_tmp/plan-stream-incomplete.err" \
+  || fail "the incomplete reason is lost: $(sed -n '1p' "$route_tmp/plan-stream-incomplete.err")"
+ok "the plan route keeps the incomplete reason"
+
+# A plan failure delivered inside a 200 event stream after output deltas is
+# reported with the provider code and plan recovery, not as an empty answer.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-failed >"$route_tmp/plan-stream-failed.out" 2>"$route_tmp/plan-stream-failed.err"; then
+  fail "the paid route accepted a mid-stream plan failure"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated a failed stream"
+[[ -z "$(candidates_of <"$route_tmp/plan-stream-failed.out")" ]] || fail "the mid-stream failure produced a candidate"
+grep -q 'subscription_sharing_usage_limit_exceeded' "$route_tmp/plan-stream-failed.err" \
+  || fail "the mid-stream plan code is lost: $(sed -n '1p' "$route_tmp/plan-stream-failed.err")"
+grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-stream-failed.err" \
+  || fail "the mid-stream plan failure has no recovery: $(sed -n '1p' "$route_tmp/plan-stream-failed.err")"
+grep -q 'response resp_failed' "$route_tmp/plan-stream-failed.err" \
+  || fail "the mid-stream response id is lost: $(sed -n '1p' "$route_tmp/plan-stream-failed.err")"
+! grep -q 'empty answer' "$route_tmp/plan-stream-failed.err" || fail "the mid-stream plan failure is reported as an empty answer"
+ok "the plan route reports a mid-stream provider failure"
+
 reset_fake
 if run_engine LMLINE_FAKE_CURL_MODE=plan-401 >"$route_tmp/plan-401.out" 2>"$route_tmp/plan-401.err"; then
   fail "the paid route accepted a refused sign-in"
