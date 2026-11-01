@@ -144,6 +144,19 @@ JSON
   printf '200\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-stream-cut ]]; then
+  # A stream that ends after output deltas without any terminal event is a
+  # local interruption, not a provider-reported token limit.
+  cat >"$out" <<'SSE'
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_cut","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"partial"}
+SSE
+  printf '200\ttext/event-stream'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-stream-incomplete ]]; then
   # An incomplete plan stream carries the provider's reason for truncation;
   # the engine must keep that reason in its command-response diagnostic.
@@ -447,6 +460,19 @@ grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-429.err" \
   || fail "the plan usage limit has no recovery: $(sed -n '1p' "$route_tmp/plan-429.err")"
 ! grep -q 'set-secret' "$route_tmp/plan-429.err" || fail "the plan route gives API-key advice"
 ! grep -q 'LMLINE_HTTP_RETRIES' "$route_tmp/plan-429.err" || fail "the plan route advises raising the retries"
+# A stream that ends without a terminal event is a local interruption, not a
+# provider token-limit truncation, and must not recommend raising the limit.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-cut >"$route_tmp/plan-stream-cut.out" 2>"$route_tmp/plan-stream-cut.err"; then
+  fail "the paid route accepted a cut stream"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated a cut stream"
+[[ -z "$(candidates_of <"$route_tmp/plan-stream-cut.out")" ]] || fail "the cut stream produced a candidate"
+grep -q 'response stream ended before completion' "$route_tmp/plan-stream-cut.err" \
+  || fail "the cut stream has no local interruption message: $(sed -n '1p' "$route_tmp/plan-stream-cut.err")"
+! grep -q 'LMLINE_MAX_TOKENS' "$route_tmp/plan-stream-cut.err" || fail "a cut stream recommends raising the token limit"
+ok "the plan route reports a cut stream as a local interruption"
+
 # An incomplete plan stream keeps the provider's reason in the truncation
 # message instead of the generic stream-ended reason.
 reset_fake

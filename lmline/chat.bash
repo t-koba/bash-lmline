@@ -494,8 +494,12 @@ __lmline_accept_response() {
       ' "$response" 2>/dev/null) || finish_status=
       case "${finish_status,,}" in
         length|max_tokens|incomplete)
-          printf 'lmline-engine: provider returned an incomplete command response (%s%s); increase LMLINE_MAX_TOKENS or shorten the request and retry\n' \
-            "${finish_status,,}" "${incomplete_reason:+: $incomplete_reason}" >&2
+          if [[ "${finish_status,,}" == incomplete && "$incomplete_reason" == stream_ended_without_completion ]]; then
+            printf 'lmline-engine: the response stream ended before completion; the command response is incomplete and was not accepted\n' >&2
+          else
+            printf 'lmline-engine: provider returned an incomplete command response (%s%s); increase LMLINE_MAX_TOKENS or shorten the request and retry\n' \
+              "${finish_status,,}" "${incomplete_reason:+: $incomplete_reason}" >&2
+          fi
           return 1
           ;;
         failed)

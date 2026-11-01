@@ -264,18 +264,24 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
   `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
   `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`).
 - Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
-- In buffered command modes (`generate`, `rewrite`, and `fix`), an explicitly
-  reported incomplete first-choice terminal status rejects the response before
+- In buffered command modes (`generate`, `rewrite`, and `fix`), provider-
+  reported incomplete or failed terminal statuses reject the response before
   tool calls are parsed or dispatched, and before candidates are emitted or
-  cached. The bundled engine recognizes only exact case-insensitive status
-  values `length`, `max_tokens`, and `incomplete` (normalized from Chat
+  cached. The bundled engine recognizes exact case-insensitive status values
+  `length`, `max_tokens`, and `incomplete` (normalized from Chat
   `finish_reason`, Messages `stop_reason`, and Responses `status`), plus the
-  Messages stop reason `model_context_window_exceeded`. Missing or null statuses
-  and unfamiliar values remain accepted for provider compatibility; this is not
-  a success-status allowlist. The bounded error recommends increasing
-  `LMLINE_MAX_TOKENS` or shortening the request for token-limit statuses, and
-  shortening the prompt/context for context-window exhaustion.
-  `explain`/`clip` buffered behavior and streaming behavior are unchanged.
+  Messages stop reason `model_context_window_exceeded` and `failed`. A
+  Responses `incomplete` carries its `incomplete_details.reason` into the
+  diagnostic. A Responses body with status `failed` or a top-level error object
+  is reported as a provider failure with its code and message, not as an
+  answer. Missing or null statuses and unfamiliar values remain accepted for
+  provider compatibility; this is not a success-status allowlist. The bounded
+  error recommends increasing `LMLINE_MAX_TOKENS` or shortening the request for
+  provider-reported token-limit statuses, and shortening the prompt/context for
+  context-window exhaustion. A Responses stream that ends before any terminal
+  event is a local interruption: it is rejected with a stream-ended message and
+  never recommends raising the token limit. `explain`/`clip` buffered behavior
+  and streaming behavior are unchanged.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests in the same declared working directory (`--cwd`). Cache
