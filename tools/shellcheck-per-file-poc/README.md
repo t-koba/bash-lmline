@@ -56,7 +56,12 @@ python3 tools/shellcheck-per-file-poc/candidate.py \
 The optional `run_manifest.py` wrapper mirrors the **exact path list/order and
 glob expansion** in `tests/test_shellcheck.sh`. The regular CI test invokes
 `candidate.py` directly with that same explicit manifest; the wrapper remains for
-the separate diagnostic workflow:
+the separate diagnostic workflow. The required route accepts two optional
+settings: `LMLINE_SHELLCHECK_CHILD_TIMEOUT_SECONDS` sets the finite per-child
+timeout in seconds (default `300`), and `LMLINE_SHELLCHECK_OUTPUT_CAP_BYTES`
+sets the positive byte cap for each child stdout and stderr stream (default
+`8388608`, or 8 MiB). Invalid or nonpositive values fail before ShellCheck runs;
+explicit `--timeout` and `--output-cap` arguments override the environment.
 
 ```bash
 python3 tools/shellcheck-per-file-poc/run_manifest.py \

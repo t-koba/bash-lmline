@@ -18,6 +18,8 @@ PIN = "0.11.0"
 # Per stream, per invocation. Overflow is an explicit incomplete/failing result.
 OUTPUT_CAP = 8 * 1024 * 1024
 TIMEOUT = 300
+OUTPUT_CAP_ENV = "LMLINE_SHELLCHECK_OUTPUT_CAP_BYTES"
+TIMEOUT_ENV = "LMLINE_SHELLCHECK_CHILD_TIMEOUT_SECONDS"
 # Fixed-size, allowlisted log records; the JSONL evidence has no such reduction.
 PROGRESS_BYTES = 1024
 SAMPLE_INTERVAL = 0.1
@@ -548,9 +550,10 @@ def main(manifest=None):
     parser.add_argument("--shellcheck", default="shellcheck", help="pinned CLI path (version checked)")
     if manifest is None:
         parser.add_argument("files", nargs="+")
-    parser.add_argument("--timeout", type=float, default=TIMEOUT, help="seconds per child (default: 300)")
-    parser.add_argument("--output-cap", type=int, default=OUTPUT_CAP,
-                        help="bytes per child stream (default: 8388608)")
+    parser.add_argument("--timeout", type=float, default=os.environ.get(TIMEOUT_ENV, TIMEOUT),
+                        help=f"seconds per child (default: 300; env: {TIMEOUT_ENV})")
+    parser.add_argument("--output-cap", type=int, default=os.environ.get(OUTPUT_CAP_ENV, OUTPUT_CAP),
+                        help=f"bytes per child stream (default: 8388608; env: {OUTPUT_CAP_ENV})")
     parser.add_argument("--cgroup-parent", type=Path, help="opt-in delegated cgroup-v2 parent; no fallback")
     parser.add_argument("--memory-bytes", type=int, help="explicit hard child-cgroup memory.max")
     parser.add_argument("--cpu-usec", type=int, help="explicit aggregate child-cgroup CPU usage budget")

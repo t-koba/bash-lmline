@@ -399,6 +399,8 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
     ProgressTests.test_regular_harness_pinned_route_and_failure_artifact \
     ProgressTests.test_regular_harness_local_failure_shows_actionable_diagnostics \
     ProgressTests.test_regular_harness_local_success_cleans_temporary_report \
+    ProgressTests.test_regular_harness_uses_configured_child_bounds \
+    ProgressTests.test_regular_harness_invalid_child_bounds_fail_closed_before_child \
     ProgressTests.test_regular_harness_pinned_route_fails_on_tee_error \
     || fail "per-file ShellCheck route selftest"
 fi
@@ -431,10 +433,14 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
     || fail "could not create ShellCheck report directory"
   # Keep sanitized progress live and archived. Copy PIPESTATUS immediately;
   # either a lint failure or a broken progress sink fails the check.
+  candidate_stderr=/dev/null
+  if [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
+    candidate_stderr=/dev/stderr
+  fi
   set +e
   python3 "$repo_dir/tools/shellcheck-per-file-poc/candidate.py" \
     --shellcheck "$(command -v shellcheck)" --progress --report "$report_dir/manifest.jsonl" \
-    "${shellcheck_inputs[@]}" 2>/dev/null | tee "$report_dir/measurement.log" 2>/dev/null
+    "${shellcheck_inputs[@]}" 2>"$candidate_stderr" | tee "$report_dir/measurement.log" 2>/dev/null
   pipeline_status=("${PIPESTATUS[@]}")
   set -e
   if ((pipeline_status[0] != 0 || pipeline_status[1] != 0)); then

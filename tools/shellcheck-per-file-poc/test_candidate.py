@@ -27,6 +27,10 @@ class CandidateTests(unittest.TestCase):
             raise RuntimeError("tests require the pinned ShellCheck CLI (set SHELLCHECK)")
 
     def setUp(self):
+        bounds = mock.patch.dict(os.environ, {
+            c.TIMEOUT_ENV: str(c.TIMEOUT), c.OUTPUT_CAP_ENV: str(c.OUTPUT_CAP)})
+        bounds.start()
+        self.addCleanup(bounds.stop)
         self.temp = tempfile.TemporaryDirectory(prefix="shellcheck-per-file-", dir=c.ROOT)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -357,6 +361,10 @@ class ProgressTests(unittest.TestCase):
     read_records = CandidateTests.read_records
 
     def setUp(self):
+        bounds = mock.patch.dict(os.environ, {
+            c.TIMEOUT_ENV: str(c.TIMEOUT), c.OUTPUT_CAP_ENV: str(c.OUTPUT_CAP)})
+        bounds.start()
+        self.addCleanup(bounds.stop)
         self.temp = tempfile.TemporaryDirectory(prefix="progress-fixture-", dir=c.ROOT)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -474,7 +482,7 @@ print("[]")
                 self.assertEqual(measurement_log.read_text(), live)
                 self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/measurement.log", upload)
 
-    def regular_harness(self, fake, files, pinned, fail_tee=False, github_actions=True):
+    def regular_harness(self, fake, files, pinned, fail_tee=False, github_actions=True, extra_env=None):
         # Exercise the actual pinned/unpinned route with a two-file fixture
         # manifest; the unpinned case also covers the monitor. No real lint of
         # the production manifest is invoked by this integration regression.
@@ -495,11 +503,15 @@ print("[]")
             tee.chmod(0o755)
         script = "source " + shlex.quote(str(c.ROOT / "tests/lib.sh")) + "\n" + functions + route
         before = set(self.root.glob("lmline-shellcheck-per-file.*/manifest.jsonl"))
+        env = dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ["PATH"],
+                   LMLINE_REQUIRE_SHELLCHECK=str(int(pinned)),
+                   GITHUB_ACTIONS="true" if github_actions else "false",
+                   RUNNER_TEMP=str(self.root),
+                   LMLINE_SHELLCHECK_CHILD_TIMEOUT_SECONDS=str(c.TIMEOUT),
+                   LMLINE_SHELLCHECK_OUTPUT_CAP_BYTES=str(c.OUTPUT_CAP))
+        env.update(extra_env or {})
         result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10,
-                                env=dict(os.environ, PATH=str(self.root) + os.pathsep + os.environ["PATH"],
-                                         LMLINE_REQUIRE_SHELLCHECK=str(int(pinned)),
-                                         GITHUB_ACTIONS="true" if github_actions else "false",
-                                         RUNNER_TEMP=str(self.root)))
+                                env=env)
         reports = set(self.root.glob("lmline-shellcheck-per-file.*/manifest.jsonl")) - before
         return result, sorted(reports)
 
@@ -527,6 +539,33 @@ print("[]")
                                                pinned=True, github_actions=False)
         self.assertEqual(result.returncode, 0, result)
         self.assertEqual(reports, [])
+
+    def test_regular_harness_uses_configured_child_bounds(self):
+        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
+        result, reports = self.regular_harness(
+            self.fake('print("[]")\n'), files, pinned=True,
+            extra_env={"LMLINE_SHELLCHECK_CHILD_TIMEOUT_SECONDS": "1.5",
+                       "LMLINE_SHELLCHECK_OUTPUT_CAP_BYTES": "8192"})
+        self.assertEqual(result.returncode, 0, result)
+        records = self.read_records(reports[-1])
+        self.assertEqual(records[0]["limits"], dict(stream_bytes=8192, child_timeout_s=1.5))
+
+    def test_regular_harness_invalid_child_bounds_fail_closed_before_child(self):
+        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
+        calls = self.root / "calls"
+        fake = self.fake(f'from pathlib import Path\nPath({str(calls)!r}).touch()\nprint("[]")\n')
+        for override in ({"LMLINE_SHELLCHECK_CHILD_TIMEOUT_SECONDS": "not-a-number"},
+                         {"LMLINE_SHELLCHECK_OUTPUT_CAP_BYTES": "0"}):
+            with self.subTest(override=override):
+                calls.unlink(missing_ok=True)
+                result, reports = self.regular_harness(fake, files, pinned=True,
+                                                       github_actions=False, extra_env=override)
+                self.assertEqual(result.returncode, 1, result)
+                self.assertEqual(reports, [])
+                self.assertFalse(calls.exists())
+                expected = ("invalid float value" if "TIMEOUT_SECONDS" in next(iter(override))
+                            else "output cap must be positive")
+                self.assertIn(expected, result.stderr)
 
     def test_regular_harness_pinned_route_fails_on_tee_error(self):
         files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
