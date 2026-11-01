@@ -312,14 +312,15 @@ LMLINE_ACCEPT_LOG="$copilot_handoff_log" bash -c '
   source "$1/lmline/actions.bash"
   node() { printf "%s\n" "$*" >>"$LMLINE_ACCEPT_LOG"; }
   disown() { return 0; }
+  # Keep disown as a no-op so each asynchronous handoff remains waitable.
   __lmline_copilot_accept "copilot:bare-token-1"
-  wait 2>/dev/null || true; sleep 0.3
+  wait 2>/dev/null || true
   __lmline_copilot_accept "other,copilot:bare-token-2"
-  wait 2>/dev/null || true; sleep 0.3
+  wait 2>/dev/null || true
   __lmline_copilot_accept "copilot:bare-token-3,other"
-  wait 2>/dev/null || true; sleep 0.3
+  wait 2>/dev/null || true
   __lmline_copilot_accept "xcopilot:fake"
-  wait 2>/dev/null || true; sleep 0.3
+  wait 2>/dev/null || true
 ' _ "$repo_dir" "$copilot_tmp/config" || fail "Copilot accept handoff runs"
 grep -q "accept bare-token-1$" "$copilot_handoff_log" || fail "Copilot first-marker token is bare"
 grep -q "accept bare-token-2$" "$copilot_handoff_log" || fail "Copilot later-marker token is bare"
@@ -345,7 +346,11 @@ if command -v zsh >/dev/null 2>&1; then
     __LMLINE_ZSH_LAST_MODE="generate"
     __LMLINE_ZSH_LAST_ORIGINAL="# req"
     __lmline_zsh_apply_index 1
-    sleep 0.5
+    # Zsh detaches the handoff, so wait briefly for the exact stub log line.
+    for ((i = 0; i < 10; i++)); do
+      grep -qx "accept bare-ztoken-1" "$LMLINE_ACCEPT_LOG" && break
+      sleep 0.05
+    done
   ' _ "$repo_dir" || fail "Copilot zsh accept handoff runs"
   grep -q "accept bare-ztoken-1$" "$copilot_zhandoff_log" || fail "Copilot zsh first-marker token is bare"
   ! grep -q "accept copilot:" "$copilot_zhandoff_log" || fail "Copilot zsh accept carries no marker"
