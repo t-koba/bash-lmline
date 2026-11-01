@@ -1386,7 +1386,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_SPINNER` | `1` | waiting animation |
 | `LMLINE_SPINNER_INTERVAL` | `0.2` | spinner refresh interval |
 | `LMLINE_PROGRESS` | `1` | engine progress lines |
-| `LMLINE_PS0` | `🍋‍🟩` | lmline status prefix |
+| `LMLINE_PS0` | `🍋‍🟩 ` | lmline status prefix |
 | `LMLINE_FIX_TIMEOUT` | `12` | positive seconds for fix execution (maximum `2147483647`) |
 | `LMLINE_FIX_MAX_OUTPUT` | `12000` | stdout/stderr byte limit for fix |
 | `LMLINE_NO_LOCK` | `0` | disable config-dir locking |
