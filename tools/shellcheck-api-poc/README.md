@@ -128,7 +128,7 @@ git diff --check
 ```
 
 GHC/Cabal are unavailable in the preparation sandbox; **compilation and actual parity are not locally verified**. Do not run
-the full 75-file lint to validate this diagnostic change.
+the full 76-file lint to validate this diagnostic change.
 
 This directory's experimental code is **GPL-3.0-or-later**, with the GPL v3 text
 in `LICENSE`; it links against GPL-3.0-or-later ShellCheck. It is not installed by

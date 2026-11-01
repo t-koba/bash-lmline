@@ -30,7 +30,7 @@ rm -rf "$bin"
 exit "$status"
 ```
 
-The tests do **not** run the full 75-input lint. They compare complete JSON
+The tests do **not** run the full 76-input lint. They compare complete JSON
 objects as multisets (including `fix` and duplicate occurrences), using the exact
 project `.shellcheckrc` via `--rcfile` only for temporary fixtures in the
 repository (so emitted targets are repository-relative). They also check implicit production rc behavior, non-manifest source
@@ -40,8 +40,8 @@ per-child rather than cumulative RSS. JSONL tests check lossless reconstruction
 of the in-memory report, header/target visibility from running child processes,
 retention after later tool failure or cancellation, and fail-closed flush errors. The real three-file endpoint subset is a
 bounded regression test. A drift test checks the production argument list/order
-without invoking ShellCheck on that list: currently 75 unique inputs, 136 source
-declarations, 132 unique direct edges, maximum context group size 10.
+without invoking ShellCheck on that list: currently 76 unique inputs, 137 source
+declarations, 133 unique direct edges, maximum context group size 10.
 
 ## Runner entry points
 

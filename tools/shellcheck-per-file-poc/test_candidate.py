@@ -76,12 +76,12 @@ class CandidateTests(unittest.TestCase):
         actual = result.stdout.decode().rstrip("\0").split("\0")
         manifest = list(map(c.canonical, c.production_manifest()))
         self.assertEqual(actual, manifest)
-        self.assertEqual(len(manifest), 75)
-        self.assertEqual(len(set(manifest)), 75)
+        self.assertEqual(len(manifest), 76)
+        self.assertEqual(len(set(manifest)), 76)
         declarations = [(p, d) for p in manifest for d in c.sources(p, set(manifest))]
-        self.assertEqual(len(declarations), 136)
+        self.assertEqual(len(declarations), 137)
         self.assertTrue(all(d["in_manifest"] for _, d in declarations))
-        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 132)
+        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 133)
         groups = [{p} | {d["resolved"] for d in c.sources(p, set(manifest))} for p in manifest]
         self.assertEqual(max(map(len, groups)), 10)
 
