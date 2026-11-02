@@ -89,12 +89,17 @@ budget_effective=$(lmline config effective)
 grep -q $'^LMLINE_HTTP_RETRIES\t0\t' <<<"$budget_effective" || fail "chatgpt effective retries"
 grep -q $'^LMLINE_TOOL_MODE\tnone\t' <<<"$budget_effective" || fail "chatgpt effective tool mode"
 grep -q $'^LMLINE_STORE\t0\t' <<<"$budget_effective" || fail "chatgpt effective store"
+for unsent in LMLINE_TEMPERATURE LMLINE_FIX_TEMPERATURE LMLINE_MAX_TOKENS LMLINE_EXPLAIN_MAX_TOKENS LMLINE_CLIP_MAX_TOKENS; do
+  grep -q "^$unsent"$'\t'"not sent"$'\t' <<<"$budget_effective" || fail "chatgpt effective $unsent"
+done
 retry_effective=$(LMLINE_HTTP_RETRIES=2 lmline config effective)
 grep -q $'^LMLINE_HTTP_RETRIES\t2\t' <<<"$retry_effective" || fail "chatgpt explicit retries in effective report"
 lmline use plain gpt-5 >/dev/null || fail "use the api-key endpoint"
 plain_effective=$(lmline config effective)
 grep -q $'^LMLINE_HTTP_RETRIES\t1\t' <<<"$plain_effective" || fail "api-key effective retries"
 grep -q $'^LMLINE_TOOL_MODE\tauto\t' <<<"$plain_effective" || fail "api-key effective tool mode"
+grep -q $'^LMLINE_TEMPERATURE\t0.2\t' <<<"$plain_effective" || fail "api-key effective temperature"
+grep -q $'^LMLINE_MAX_TOKENS\t1200\t' <<<"$plain_effective" || fail "api-key effective max tokens"
 ok "the effective report shows the plan route's budget"
 
 # 10. An endpoint line written before the auth mode column still loads.

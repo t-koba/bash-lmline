@@ -33,6 +33,12 @@ __lmline_chatgpt_route_setting() {
       ;;
     LMLINE_TOOL_MODE) printf 'none' ;;
     LMLINE_STORE) printf '0' ;;
+    # The plan request carries no sampling parameters and no output cap: the
+    # route deletes them, and the provider sets the cap. The effective report
+    # shows that instead of a value the request never sends.
+    LMLINE_TEMPERATURE|LMLINE_FIX_TEMPERATURE|LMLINE_MAX_TOKENS|LMLINE_EXPLAIN_MAX_TOKENS|LMLINE_CLIP_MAX_TOKENS)
+      printf 'not sent'
+      ;;
     *) printf '%s' "$default" ;;
   esac
 }

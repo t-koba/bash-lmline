@@ -431,7 +431,9 @@ __lmline_effective_setting_value() {
   local key=$1 default=$2 value
   if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
     case "$key" in
-      LMLINE_HTTP_RETRIES|LMLINE_TOOL_MODE|LMLINE_STORE)
+      LMLINE_HTTP_RETRIES|LMLINE_TOOL_MODE|LMLINE_STORE|\
+        LMLINE_TEMPERATURE|LMLINE_FIX_TEMPERATURE|LMLINE_MAX_TOKENS|\
+        LMLINE_EXPLAIN_MAX_TOKENS|LMLINE_CLIP_MAX_TOKENS)
         __lmline_chatgpt_route_setting "$key" "$default"
         return
         ;;

@@ -467,7 +467,7 @@ __lmline_report_provider_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason= provider_failed=0
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason= provider_failed=0 max_tokens_advice=
   if [[ "$api_format" == responses ]]; then
     if jq -e '((.status // "") == "failed") or ((.error? | type) == "object")' "$response" >/dev/null 2>&1; then
       provider_failed=1
@@ -502,8 +502,13 @@ __lmline_accept_response() {
           if [[ "${finish_status,,}" == incomplete && "$incomplete_reason" == stream_ended_without_completion ]]; then
             printf 'lmline-engine: the response stream ended before completion; the command response is incomplete and was not accepted\n' >&2
           else
-            printf 'lmline-engine: provider returned an incomplete command response (%s%s); increase LMLINE_MAX_TOKENS or shorten the request and retry\n' \
-              "${finish_status,,}" "${incomplete_reason:+: $incomplete_reason}" >&2
+            max_tokens_advice='increase LMLINE_MAX_TOKENS or shorten the request and retry'
+            if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]] &&
+              [[ "$(__lmline_chatgpt_route_setting LMLINE_MAX_TOKENS '')" == 'not sent' ]]; then
+              max_tokens_advice='the ChatGPT plan route does not send a local output cap (the cap is provider-side); shorten the request and retry'
+            fi
+            printf 'lmline-engine: provider returned an incomplete command response (%s%s); %s\n' \
+              "${finish_status,,}" "${incomplete_reason:+: $incomplete_reason}" "$max_tokens_advice" >&2
           fi
           return 1
           ;;

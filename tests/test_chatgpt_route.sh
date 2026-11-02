@@ -498,6 +498,10 @@ fi
 [[ -z "$(candidates_of <"$route_tmp/plan-stream-incomplete.out")" ]] || fail "the incomplete stream produced a candidate"
 grep -q 'incomplete: max_output_tokens' "$route_tmp/plan-stream-incomplete.err" \
   || fail "the incomplete reason is lost: $(sed -n '1p' "$route_tmp/plan-stream-incomplete.err")"
+! grep -q 'increase LMLINE_MAX_TOKENS' "$route_tmp/plan-stream-incomplete.err" \
+  || fail "the plan route recommends raising a cap it does not send"
+grep -q 'provider-side' "$route_tmp/plan-stream-incomplete.err" \
+  || fail "the plan route does not name the provider-side cap: $(sed -n '1p' "$route_tmp/plan-stream-incomplete.err")"
 ok "the plan route keeps the incomplete reason"
 
 # A plan failure delivered inside a 200 event stream after output deltas is
