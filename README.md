@@ -212,6 +212,27 @@ its traffic stays on the machine; any other host, a cleartext base to the
 OpenAI API, a base URL without an explicit scheme, and a base URL that embeds
 credentials are refused before a request is sent.
 
+### Plan failures
+
+A plan request can fail after the stream has opened. lmline reports the
+provider's code and recovery hint on stderr, exits non-zero, and does not
+insert partial text as a candidate. Common codes:
+
+- `subscription_sharing_usage_limit_exceeded` — the plan usage limit is
+  reached. Do not repeat the request; check
+  https://chatgpt.com/settings/usage.
+- `subscription_sharing_usage_unavailable` or
+  `subscription_sharing_user_unavailable` — plan usage is temporarily
+  unavailable. Retry later.
+- `subscription_sharing_invalid_user` — the sign-in was refused; run
+  `lmline chatgpt login` again.
+- `subscription_sharing_unsupported_capability` or
+  `subscription_sharing_route_not_supported` — the plan does not support the
+  request. Remove the unsupported feature; do not repeat it.
+
+Other plan refusals are reported without API-key advice. Do not raise
+`LMLINE_HTTP_RETRIES` or set an endpoint secret to work around them.
+
 ## Native web search
 
 Native web search is a provider-side capability: the model asks the provider
