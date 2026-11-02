@@ -420,7 +420,7 @@ __lmline_redact_setting_value() {
     LMLINE_MODEL)
       if [[ -n "$value" ]]; then __lmline_display_catalog_model "$value"; fi
       ;;
-    *TOKEN*|*SECRET*|*PASSWORD*|*PASS*|*KEY*)
+    LMLINE_API_KEY_FILE|*_TOKEN|*_SECRET|*_PASSWORD|*_PASS|*_KEY)
       [[ -n "$value" ]] && printf '***REDACTED***'
       ;;
     *) printf '%s' "$value" ;;

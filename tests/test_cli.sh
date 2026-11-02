@@ -100,6 +100,19 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_
 effective_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config effective)
 grep -q $'^LMLINE_EXEC_BACKEND\tauto\t' <<<"$effective_out" || fail "config effective exec backend"
 grep -q $'^LMLINE_API_KEY_FILE\t\\*\\*\\*REDACTED\\*\\*\\*\t' <<<"$effective_out" || fail "config effective redacts secret file"
+grep -q $'^LMLINE_MAX_TOKENS\t' <<<"$effective_out" || fail "config effective max tokens row"
+if grep -F -q $'LMLINE_MAX_TOKENS\t***REDACTED***' <<<"$effective_out"; then
+  fail "config effective redacts max tokens"
+fi
+grep -q $'^LMLINE_KEY_GENERATE\t' <<<"$effective_out" || fail "config effective key binding row"
+if grep -F -q $'LMLINE_KEY_GENERATE\t***REDACTED***' <<<"$effective_out"; then
+  fail "config effective redacts key binding"
+fi
+describe_key=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_KEY_GENERATE)
+grep -q '^value=' <<<"$describe_key" || fail "config describe key binding value"
+if grep -F -q 'value=***REDACTED***' <<<"$describe_key"; then
+  fail "config describe redacts key binding"
+fi
 describe_backend=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_EXEC_BACKEND)
 grep -q '^setting=LMLINE_EXEC_BACKEND$' <<<"$describe_backend" || fail "config describe setting"
 grep -q '^value=auto$' <<<"$describe_backend" || fail "config describe value"
