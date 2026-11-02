@@ -288,9 +288,9 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
   identical requests in the same declared working directory (`--cwd`). Cache
   keys include the mode, line, declared directory, model, prompt version, and
   the effective request payload (resolved prompts and sampling/output
-  settings). Generate/rewrite keys also include a fixed terminal-status
-  policy revision, so command entries written before incomplete- or
-  failed-response validation are missed; prose entries are not invalidated. `fix` is not
+  settings). Every cached identity includes a fixed terminal-status policy
+  revision, so command and prose entries written before incomplete- or
+  failed-response validation are missed. `fix` and `clip` are not
   cache-eligible.
 - Native local tools (`LMLINE_TOOL_MODE=openai`/`auto`) work on `chat` and `responses` (buffered tool loop); streaming (`LMLINE_STREAM`) is `chat`-only. Some reasoning models (GPT-5.4 and later) reject native tools on `chat` with HTTP 400; the engine hint then suggests `LMLINE_API_FORMAT=responses` or `LMLINE_TOOL_MODE=text`. Newer models (GPT-6 Astra/Sol) require `responses` for tool calling. The `messages` format runs buffered requests without native tool calls (`text` tool requests still apply); the engine emits an `lmline-progress:` warning when native tools or streaming are requested but disabled by the format.
 - API keys are passed to curl through `-H @file` header files, never on the

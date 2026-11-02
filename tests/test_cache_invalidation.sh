@@ -91,10 +91,14 @@ LMLINE_FAKE_CURL_CONTENT="echo cached" LMLINE_RESPONSE_LOCALE=en LMLINE_CACHE_TT
   >"$cfg_tmp/annotated.out" 2>"$cfg_tmp/annotated.err"
 ! grep -q 'lmline-nonexistent-command-xyz' "$cfg_tmp/annotated.out" || fail "the annotated format served a refused cached candidate"
 
-# The command cache terminal-status policy revision must move with the
-# accepted-status set, so entries written before this policy miss.
-grep -Fq 'command_cache_policy=terminal-status-v2' "$repo_dir/lmline/chat.bash" \
-  || fail "the command cache terminal-status policy revision is not current"
-! grep -Fq 'command_cache_policy=terminal-status-v1' "$repo_dir/lmline/chat.bash" \
-  || fail "an old command cache terminal-status policy is still present"
-ok "cache invalidates on effective request change"
+# The terminal-status policy revision must move with the accepted-status set
+# and must apply to every cache-eligible mode, so old command and prose
+# entries miss instead of being served without a request.
+cache_key_body=$(sed -n '/__lmline_cache_key()/,/^}/p' "$repo_dir/lmline/chat.bash")
+grep -Fq 'terminal_status_policy=terminal-status-v2' <<<"$cache_key_body" \
+  || fail "the cache terminal-status policy revision is not current"
+! grep -Fq 'command_cache_policy' <<<"$cache_key_body" \
+  || fail "a command-only cache policy field is still present"
+! grep -Fq 'case "$mode" in' <<<"$cache_key_body" \
+  || fail "the cache policy revision is still limited to some modes"
+ok "cache invalidates on effective request change and policy revision"
