@@ -210,6 +210,18 @@ LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local loca
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add cloud openai/gpt-test --max-tokens 700
 model_list=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list local)
 grep -q $'^local\tlocal-test-model\t0.3\t\tauto\tchat$' <<<"$model_list" || fail "model add upsert"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add plan https://api.openai.com/v1 --auth-mode chatgpt
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add plan plan-model
+plan_model_list=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list plan)
+grep -q $'^plan\tplan-model\t\t\t\tresponses$' <<<"$plan_model_list" || fail "chatgpt model add records responses"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use plan plan-model
+plan_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
+grep -q "LMLINE_API_FORMAT=.*responses" <<<"$plan_config" || fail "chatgpt use persists responses"
+plan_effective=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config effective)
+grep -q $'^LMLINE_API_FORMAT\tresponses\t' <<<"$plan_effective" || fail "chatgpt effective format"
+LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add plan chat-model --api-format chat
+plan_chat_list=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list plan)
+grep -q $'^plan\tchat-model\t\t\t\tchat$' <<<"$plan_chat_list" || fail "chatgpt explicit chat preserved"
 complete_endpoints=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" complete endpoints)
 grep -q '^local$' <<<"$complete_endpoints" || fail "complete endpoints"
 complete_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" complete models cloud)

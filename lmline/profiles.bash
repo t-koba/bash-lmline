@@ -365,11 +365,13 @@ profile_model_remove() {
 }
 
 profile_model_add() {
-  local endpoint=${1-} model=${2-} temperature= max_tokens= tool_mode= api_format=
+  local endpoint=${1-} model=${2-} temperature= max_tokens= tool_mode= api_format= endpoint_line auth_mode
   [[ -n "$endpoint" && -n "$model" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   profile_require_name model "$model"
-  profile_find_line "$endpoints_file" "$endpoint" >/dev/null || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2; exit 2; }
+  endpoint_line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2; exit 2; }
+  profile_split_tsv "$endpoint_line" _ _ _ _ _ _ _ _ _ _ _ _ _ auth_mode
+  auth_mode=$(profile_stored_auth_mode "$auth_mode")
   shift 2
   while (($#)); do
     case "$1" in
@@ -384,6 +386,12 @@ profile_model_add() {
   profile_require_positive_int max_tokens "$max_tokens"
   profile_require_tool_mode "$tool_mode"
   profile_require_api_format "$api_format"
+  # The plan route speaks Responses, so record its format here as model
+  # refresh does. An explicit --api-format chat stays stored and is refused
+  # by the engine; an omitted format on other routes stays empty.
+  if [[ -z "$api_format" && "$auth_mode" == chatgpt ]]; then
+    api_format=responses
+  fi
   profile_upsert_line "$models_file" 2 "$(printf '%s\t%s\t%s\t%s\t%s\t%s' "$endpoint" "$model" "$temperature" "$max_tokens" "$tool_mode" "$api_format")"
 }
 
