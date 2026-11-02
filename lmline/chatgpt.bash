@@ -42,7 +42,12 @@ __lmline_chatgpt_route_setting() {
   local key=$1 default=${2-}
   case "$key" in
     LMLINE_HTTP_RETRIES) __lmline_paid_route_retries "$default" ;;
-    LMLINE_TOOL_MODE) printf 'none' ;;
+    LMLINE_TOOL_MODE)
+      case "${LMLINE_TOOL_MODE:-none}" in
+        openai) printf 'refused (openai)' ;;
+        *) printf 'none' ;;
+      esac
+      ;;
     LMLINE_STORE) printf '0' ;;
     # The plan request carries no sampling parameters and no output cap: the
     # route deletes them, and the provider sets the cap. The effective report

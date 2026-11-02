@@ -52,6 +52,15 @@ with an actionable message instead of billing an API key.
 | a model the endpoint catalog does not serve | unsupported — `lmline model refresh` lists the served models, and `lmline use` rejects an unknown model |
 | a model that only a ChatGPT plan serves | allowed, unverified — needs a real ChatGPT account; the offline suite proves the request shape, not the plan access |
 
+## Local tool mode
+
+| Authentication mode | `LMLINE_TOOL_MODE` | Result |
+| --- | --- | --- |
+| `api-key` | `auto` (default), `openai`, `text`, `none` | supported |
+| `chatgpt` | `none`, `off`, or unset | supported — the route makes one provider request per exchange |
+| `chatgpt` | `openai` | unsupported — native function tools are not supported on the subscription route; the engine refuses the request before it is sent, and `config effective` reports `refused (openai)` |
+| `chatgpt` | `auto` or `text` | supported — the local tools are disabled with a warning because the route makes one provider request per exchange |
+
 ## Native web search
 
 | Authentication mode | API format | Search | Result |

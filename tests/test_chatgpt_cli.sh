@@ -88,6 +88,12 @@ ok "a switched chatgpt endpoint resolves its model format on use"
 budget_effective=$(lmline config effective)
 grep -q $'^LMLINE_HTTP_RETRIES\t0\t' <<<"$budget_effective" || fail "chatgpt effective retries"
 grep -q $'^LMLINE_TOOL_MODE\tnone\t' <<<"$budget_effective" || fail "chatgpt effective tool mode"
+openai_effective=$(LMLINE_TOOL_MODE=openai lmline config effective)
+grep -q $'^LMLINE_TOOL_MODE\trefused (openai)\t' <<<"$openai_effective" \
+  || fail "chatgpt explicit openai effective tool mode"
+openai_describe=$(LMLINE_TOOL_MODE=openai lmline config describe LMLINE_TOOL_MODE)
+grep -q '^value=refused (openai)$' <<<"$openai_describe" \
+  || fail "chatgpt explicit openai described tool mode"
 grep -q $'^LMLINE_STORE\t0\t' <<<"$budget_effective" || fail "chatgpt effective store"
 for unsent in LMLINE_TEMPERATURE LMLINE_FIX_TEMPERATURE LMLINE_MAX_TOKENS LMLINE_EXPLAIN_MAX_TOKENS LMLINE_CLIP_MAX_TOKENS; do
   grep -q "^$unsent"$'\t'"not sent"$'\t' <<<"$budget_effective" || fail "chatgpt effective $unsent"
