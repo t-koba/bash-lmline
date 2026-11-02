@@ -44,12 +44,6 @@ __lmline_web_search_request_done() {
   __lmline_search_requested=1
 }
 
-# The provider-native tool declaration. It never reaches the local function
-# executor: the provider runs the search.
-__lmline_web_search_tool_json() {
-  printf '{"type":"web_search"}\n'
-}
-
 # Number of provider-side search calls in a response body.
 __lmline_web_search_count() {
   local body=$1

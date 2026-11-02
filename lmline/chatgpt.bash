@@ -16,11 +16,6 @@
 # same way: the client that holds the session, the host policy that keeps
 # the plan token on an allowed host, and the token itself.
 
-# True when the ChatGPT subscription path is selected.
-__lmline_chatgpt_enabled() {
-  [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]
-}
-
 # The ChatGPT client executable. Every path of the route resolves the client
 # here, so an override means the same thing in the CLI and in the engine.
 __lmline_chatgpt_client_path() {
