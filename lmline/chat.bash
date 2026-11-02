@@ -1334,8 +1334,10 @@ __lmline_cache_key() {
     # Command entries created before terminal-status validation cannot prove
     # that their provider response was complete. Version only command caches;
     # prose cache identities stay stable and old command entries expire.
+    # Bump this revision whenever the accepted or rejected terminal-status set
+    # changes, so entries written under the previous policy miss.
     case "$mode" in
-      generate|rewrite) printf 'command_cache_policy=terminal-status-v1\n' ;;
+      generate|rewrite) printf 'command_cache_policy=terminal-status-v2\n' ;;
     esac
     printf 'base=%s\nmodel=%s\napi_format=%s\nauth_mode=%s\nweb_search=%s\nn=%s\nmax_bytes=%s\nformat=%s\n' \
       "$base" "$LMLINE_MODEL" "${LMLINE_API_FORMAT:-chat}" "${LMLINE_AUTH_MODE:-api-key}" \

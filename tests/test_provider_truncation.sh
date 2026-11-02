@@ -54,6 +54,7 @@ init_case() {
 
 invoke_engine() {
   local tool_mode=${1:-none}
+  local engine_mode=${2:-generate}
   if engine_output=$(PATH="$fake_bin:$PATH" \
     LMLINE_CONFIG_DIR="$case_dir/config" \
     LMLINE_API_FORMAT="$api_format" \
@@ -62,7 +63,7 @@ invoke_engine() {
     LMLINE_FAKE_CURL_STATE="$case_dir/curl-count" \
     LMLINE_FAKE_CURL_FIXTURE="$case_dir/response.json" \
     LMLINE_FAKE_CURL_FIXTURES="$case_dir/fixtures" \
-    "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
+    "$repo_dir/lmline/engine" --mode "$engine_mode" --shell bash --cwd "$repo_dir" --point 0 \
       --line-file "$case_dir/line" --context-file "$case_dir/context" --n 1 \
       2>"$case_dir/stderr"); then
     engine_status=0
@@ -137,6 +138,19 @@ cat >"$case_dir/response.json" <<'JSON'
 {"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
 JSON
 assert_truncated responses 'incomplete: max_output_tokens'
+
+# A failed Responses body is a provider failure in every buffered mode,
+# including explain, where partial output must not be shown as an answer.
+init_case responses-failed responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":"failed","error":{"code":"server_error","message":"boom"},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo partial-candidate"}]}]}
+JSON
+invoke_engine none explain
+[[ $engine_status != 0 ]] || fail "responses failed response unexpectedly succeeded in explain"
+[[ -z "$engine_output" ]] || fail "responses failed response produced output in explain"
+grep -Fq 'request failed: server_error: boom' "$case_dir/stderr" || fail "responses failed response explain diagnostic"
+! grep -Fq 'partial-candidate' "$case_dir/stderr" || fail "responses failed response leaked content"
+ok "responses failure rejects explain"
 
 # Compatibility: absent/null statuses and unfamiliar provider statuses are
 # not rejected by a broad success allowlist.

@@ -264,32 +264,33 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
   `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
   `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`).
 - Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
-- In buffered command modes (`generate`, `rewrite`, and `fix`), provider-
-  reported incomplete or failed terminal statuses reject the response before
-  tool calls are parsed or dispatched, and before candidates are emitted or
-  cached. The bundled engine recognizes exact case-insensitive status values
-  `length`, `max_tokens`, and `incomplete` (normalized from Chat
+- A Responses body with status `failed` or a top-level error object is reported
+  as a provider failure with its code and message in every buffered mode,
+  including `explain` and `clip`; it never reaches candidate extraction or the
+  command-mode status list. In buffered command modes (`generate`, `rewrite`,
+  and `fix`), provider-reported incomplete terminal statuses reject the
+  response before tool calls are parsed or dispatched, and before candidates
+  are emitted or cached. The bundled engine recognizes exact case-insensitive
+  status values `length`, `max_tokens`, and `incomplete` (normalized from Chat
   `finish_reason`, Messages `stop_reason`, and Responses `status`), plus the
-  Messages stop reason `model_context_window_exceeded` and `failed`. A
-  Responses `incomplete` carries its `incomplete_details.reason` into the
-  diagnostic. A Responses body with status `failed` or a top-level error object
-  is reported as a provider failure with its code and message, not as an
-  answer. Missing or null statuses and unfamiliar values remain accepted for
-  provider compatibility; this is not a success-status allowlist. The bounded
-  error recommends increasing `LMLINE_MAX_TOKENS` or shortening the request for
-  provider-reported token-limit statuses, and shortening the prompt/context for
-  context-window exhaustion. A Responses stream that ends before any terminal
-  event is a local interruption: it is rejected with a stream-ended message and
-  never recommends raising the token limit. `explain`/`clip` buffered behavior
-  and streaming behavior are unchanged.
+  Messages stop reason `model_context_window_exceeded` and a normalized Chat
+  `failed` finish reason. A Responses `incomplete` carries its
+  `incomplete_details.reason` into the diagnostic. Missing or null statuses and
+  unfamiliar values remain accepted for provider compatibility; this is not a
+  success-status allowlist. The bounded error recommends increasing
+  `LMLINE_MAX_TOKENS` or shortening the request for provider-reported token-limit
+  statuses, and shortening the prompt/context for context-window exhaustion. A
+  Responses stream that ends before any terminal event is a local interruption:
+  it is rejected with a stream-ended message and never recommends raising the
+  token limit. Streaming behavior is unchanged.
 - With `LMLINE_CACHE_TTL` > 0, generate/rewrite/explain responses are
   cached under `~/.config/lmline/cache/` (mode 0700) and replayed for
   identical requests in the same declared working directory (`--cwd`). Cache
   keys include the mode, line, declared directory, model, prompt version, and
   the effective request payload (resolved prompts and sampling/output
   settings). Generate/rewrite keys also include a fixed terminal-status
-  policy revision, so command entries written before incomplete-response
-  validation are missed; prose entries are not invalidated. `fix` is not
+  policy revision, so command entries written before incomplete- or
+  failed-response validation are missed; prose entries are not invalidated. `fix` is not
   cache-eligible.
 - Native local tools (`LMLINE_TOOL_MODE=openai`/`auto`) work on `chat` and `responses` (buffered tool loop); streaming (`LMLINE_STREAM`) is `chat`-only. Some reasoning models (GPT-5.4 and later) reject native tools on `chat` with HTTP 400; the engine hint then suggests `LMLINE_API_FORMAT=responses` or `LMLINE_TOOL_MODE=text`. Newer models (GPT-6 Astra/Sol) require `responses` for tool calling. The `messages` format runs buffered requests without native tool calls (`text` tool requests still apply); the engine emits an `lmline-progress:` warning when native tools or streaming are requested but disabled by the format.
 - API keys are passed to curl through `-H @file` header files, never on the
