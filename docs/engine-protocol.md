@@ -260,10 +260,12 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
 
 - Empty `rewrite` input exits 0 with no output.
 - The engine retries transient provider failures (HTTP 429/502/503/504 and
-  curl errors) `LMLINE_HTTP_RETRIES` times. On a `chat`/`responses`-format HTTP 400 naming
-  `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
+  curl errors) `LMLINE_HTTP_RETRIES` times. On the ChatGPT and native-search
+  routes retries default to 0, so only an explicit value enables them. On a
+  `chat`/`responses`-format HTTP 400 naming `max_tokens`,
+  `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
   `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`).
-- Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
+- Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. The ChatGPT subscription route always sends `store: false`; an explicit `LMLINE_STORE=1` is ignored with a warning. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
 - A Responses body with status `failed` or a top-level error object is reported
   as a provider failure with its code and message in every buffered mode,
   including `explain` and `clip`; it never reaches candidate extraction or the

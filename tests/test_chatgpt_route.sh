@@ -293,6 +293,18 @@ done
 jq -e 'has("tools") | not' <<<"$payload" >/dev/null || fail "subscription route carries function tools"
 ok "subscription route request contract"
 
+# The plan route always sends store:false. An explicit LMLINE_STORE=1 is
+# ignored, and the warning says so.
+reset_fake
+if ! run_engine LMLINE_STORE=1 >"$route_tmp/store1.out" 2>"$route_tmp/store1.err"; then
+  fail "the plan route failed with an explicit store setting: $(sed -n '1p' "$route_tmp/store1.err")"
+fi
+jq -e '.store == false' "$bodies_dir/body-1.json" >/dev/null \
+  || fail "the plan route sent provider storage when LMLINE_STORE=1"
+grep -q 'requires store:false; LMLINE_STORE=1 is ignored' "$route_tmp/store1.err" \
+  || fail "the plan route ignored store 1 without a warning"
+ok "the plan route always sends store:false"
+
 # The plan token never travels to another host.
 reset_fake
 if run_engine LMLINE_BASE_URL=https://api.example.invalid/v1 >"$route_tmp/host.out" 2>"$route_tmp/host.err"; then
