@@ -63,6 +63,8 @@ ok "the doctor report shows the authentication and search state"
 # 7. The help and the completion list the ChatGPT commands.
 help_out=$(lmline help chatgpt) || fail "help for the chatgpt commands"
 grep -q '^usage: lmline chatgpt login' <<<"$help_out" || fail "help for the chatgpt commands"
+model_help=$(lmline help model add) || fail "help for model add"
+grep -q 'ChatGPT endpoint records responses when --api-format is omitted' <<<"$model_help" || fail "model add help explains the ChatGPT format default"
 subcommands_out=$(lmline complete subcommands chatgpt) || fail "completion lists the chatgpt subcommands"
 grep -qx login <<<"$subcommands_out" || fail "completion lists the chatgpt subcommands"
 commands_out=$(lmline complete commands) || fail "completion lists the chatgpt command"

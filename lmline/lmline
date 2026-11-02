@@ -732,6 +732,7 @@ EOF
 usage: lmline model add ENDPOINT MODEL [--temperature N] [--max-tokens N] [--tool-mode auto|openai|text|none] [--api-format chat|responses|messages]
 
 Register or update a model under an endpoint profile.
+A ChatGPT endpoint records responses when --api-format is omitted.
 EOF
       ;;
     model:list) cat <<'EOF'
