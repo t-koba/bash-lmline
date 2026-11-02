@@ -520,11 +520,6 @@ profile_extract_model_records() {
   done < <(profile_extract_model_candidates "$models_jq" "$models_prefix" "$models_include" "$models_exclude")
 }
 
-profile_extract_model_ids() {
-  local models_jq=$1 models_prefix=${2-} models_include=${3-} models_exclude=${4-}
-  profile_extract_model_records "$models_jq" "$models_prefix" "$models_include" "$models_exclude" | awk -F '\t' '{ print $1 }'
-}
-
 profile_model_refresh() {
   local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp merge_tmp records_file catalog_file catalog_raw dedup_tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq membership_jq final_count added_count updated_count removed_count removed_names removed_display old_ids removed_labels_text removed_index
   local -a removed_ids=() removed_labels=()
