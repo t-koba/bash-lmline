@@ -44,11 +44,11 @@ if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-catalog && "$count" == 1 ]]; then
   # and no status line. The answers that follow are the provider request.
   if [[ -n "$out" ]]; then
     cat >"$out" <<'JSON'
-{"data":[{"id":"gpt-plan-catalog"}]}
+{"models":[{"slug":"gpt-plan-catalog","visibility":"list"}]}
 JSON
     printf '200\tapplication/json'
   else
-    printf '%s\n' '{"data":[{"id":"gpt-plan-catalog"}]}'
+    printf '%s\n' '{"models":[{"slug":"gpt-plan-catalog","visibility":"list"}]}'
   fi
   exit 0
 fi
