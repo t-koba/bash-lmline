@@ -178,9 +178,14 @@ does not carry is refused by the provider, and that refusal is not proven
 offline.
 
 `lmline current` and `lmline doctor` show the active authentication mode.
-To go back to API-key billing, set the endpoint's mode back with
-`lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode api-key`
-and select it again.
+To go back to API-key billing, set the endpoint's mode back, store its API
+key, and select it again:
+
+```bash
+lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode api-key
+lmline endpoint set-secret openai-plan
+lmline use openai-plan MODEL
+```
 
 The account catalog is read with the plan token, so it travels under the
 same host rule as a request: a plan endpoint on a host the route does not
