@@ -444,6 +444,19 @@ profile_default_model_catalog_jq() {
   printf '(.data[]?), (.result[]?), (.models[]?), (try .result.models[] catch empty), (try .result.data[] catch empty)\n'
 }
 
+# The expression a refresh or discovery uses. A plan catalog lists the models
+# intended for display with visibility=list; a missing visibility is not listed.
+profile_model_catalog_jq() {
+  local models_jq=$1 auth_mode=${2-}
+  if [[ -n "$models_jq" ]]; then
+    printf '%s\n' "$models_jq"
+  elif [[ "$auth_mode" == chatgpt ]]; then
+    printf '%s\n' '.models[] | select(.visibility == "list")'
+  else
+    profile_default_model_catalog_jq
+  fi
+}
+
 profile_model_catalog_url() {
   local base=${1%/} override=${2-}
   [[ -n "$override" ]] && printf '%s\n' "$override" || printf '%s/models\n' "$base"
@@ -523,7 +536,7 @@ profile_model_refresh() {
   profile_require_jq_expr models_jq "$models_jq"
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
   catalog_url=$(profile_model_catalog_url "$base" "$models_url")
-  catalog_jq=${models_jq:-$(profile_default_model_catalog_jq)}
+  catalog_jq=$(profile_model_catalog_jq "$models_jq" "$auth_mode")
   __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
   if [[ "$auth_mode" == chatgpt ]]; then
     # A plan endpoint has no endpoint secret: the account catalog is served

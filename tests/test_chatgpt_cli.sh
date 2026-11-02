@@ -125,15 +125,14 @@ for arg in "$@"; do
 done
 printf 'called\n' >>"${LMLINE_FAKE_CURL_LOG:?}"
 if [[ -n "$header" && -r "$header" ]] && grep -q 'Bearer plan-token' "$header"; then
-  printf '%s\n' '{"models":[{"slug":"gpt-plan-one","display_name":"Plan One","visibility":"list"},{"slug":"gpt-plan-hidden","display_name":"Hidden","visibility":"hidden"}]}'
+  printf '%s\n' '{"models":[{"slug":"gpt-plan-one","display_name":"Plan One","visibility":"list"},{"slug":"gpt-plan-hidden","display_name":"Hidden","visibility":"hidden"},{"slug":"gpt-plan-no-visibility","display_name":"No Visibility"}]}'
   exit 0
 fi
 printf 'the catalog request carried no plan token\n' >&2
 exit 22
 CURL
 chmod +x "$plan_bin/curl"
-lmline endpoint add plan https://api.openai.com/v1 --auth-mode chatgpt \
-  --models-jq '.models[] | select(.visibility == "list") | {id: .slug, name: .display_name}' >/dev/null \
+lmline endpoint add plan https://api.openai.com/v1 --auth-mode chatgpt >/dev/null \
   || fail "the plan endpoint registration"
 PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
   lmline model refresh plan >"$cli_tmp/plan-refresh.out" 2>"$cli_tmp/plan-refresh.err" \
@@ -141,7 +140,8 @@ PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_C
 plan_models=$(lmline model list plan)
 grep -q $'^plan\tgpt-plan-one\t' <<<"$plan_models" || fail "the plan model is missing: $plan_models"
 grep -q $'\tresponses$' <<<"$plan_models" || fail "the plan model has no Responses format: $plan_models"
-! grep -q 'gpt-plan-hidden' <<<"$plan_models" || fail "a model the account does not list is stored"
+! grep -q 'gpt-plan-hidden' <<<"$plan_models" || fail "a hidden model is stored"
+! grep -q 'gpt-plan-no-visibility' <<<"$plan_models" || fail "a model without visibility is stored"
 ok "the plan endpoint reads its account model catalog"
 
 # The plan token spends the user's ChatGPT plan, so it must not travel to a

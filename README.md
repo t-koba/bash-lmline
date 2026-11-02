@@ -492,7 +492,10 @@ a different catalog URL, `--models-jq` for a different response shape, and
 discovered candidates. Catalog metadata is used to store `chat`, `responses`,
 or `messages` in each model profile. When the catalog does not expose usable
 format metadata, lmline keeps the `chat` default; set `--api-format` manually
-for models that require another API shape.
+for models that require another API shape. On a ChatGPT plan endpoint without
+`--models-jq`, the default plan catalog shape keeps only entries whose
+`visibility` is `list`; hidden entries and entries missing the field are not
+stored.
 
 `model refresh` mirrors the endpoint catalog: it adds new models, updates the
 stored API format for imported models, preserves per-model temperature,
