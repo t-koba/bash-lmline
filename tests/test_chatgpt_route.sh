@@ -173,6 +173,21 @@ SSE
   printf '200\ttext/event-stream'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-stream-unavailable ]]; then
+  # A second plan failure code delivered inside a successful stream.
+  cat >"$out" <<'SSE'
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_unavailable","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"partial"}
+
+event: response.failed
+data: {"type":"response.failed","response":{"id":"resp_unavailable","status":"failed","error":{"code":"subscription_sharing_usage_unavailable","message":"usage temporarily unavailable"}}}
+SSE
+  printf '200\ttext/event-stream'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-stream-failed ]]; then
   # A plan failure delivered inside a successful event stream after output
   # deltas. The engine must report the provider code and plan recovery, not
@@ -505,6 +520,23 @@ grep -q 'response resp_failed' "$route_tmp/plan-stream-failed.err" \
 find "$trace_failed" -maxdepth 1 -name '*.json' -type f | grep -q . \
   || fail "the failed stream left no trace file"
 ok "the plan route reports a mid-stream provider failure"
+
+# A different mid-stream plan failure gets its documented retry-later hint,
+# not the usage-limit URL or the generic retry override advice.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-unavailable >"$route_tmp/plan-stream-unavailable.out" 2>"$route_tmp/plan-stream-unavailable.err"; then
+  fail "the paid route accepted a mid-stream usage-unavailable failure"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated an unavailable plan stream"
+[[ -z "$(candidates_of <"$route_tmp/plan-stream-unavailable.out")" ]] || fail "the unavailable stream produced a candidate"
+grep -q 'subscription_sharing_usage_unavailable' "$route_tmp/plan-stream-unavailable.err" \
+  || fail "the mid-stream unavailable code is lost: $(sed -n '1p' "$route_tmp/plan-stream-unavailable.err")"
+grep -q 'retry later' "$route_tmp/plan-stream-unavailable.err" \
+  || fail "the unavailable plan failure has no retry-later hint: $(sed -n '1p' "$route_tmp/plan-stream-unavailable.err")"
+! grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-stream-unavailable.err" || fail "the unavailable plan failure points at the usage-limit page"
+! grep -q 'LMLINE_HTTP_RETRIES' "$route_tmp/plan-stream-unavailable.err" || fail "the unavailable plan failure advises raising retries"
+! grep -q 'partial' "$route_tmp/plan-stream-unavailable.err" || fail "the unavailable plan failure leaked partial text"
+ok "the plan route keeps the retry-later hint for a second mid-stream failure"
 
 reset_fake
 if run_engine LMLINE_FAKE_CURL_MODE=plan-401 >"$route_tmp/plan-401.out" 2>"$route_tmp/plan-401.err"; then
