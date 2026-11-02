@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Native provider web search for the lmline engine. This file is meant to be
-# sourced by the engine entry script after chat.bash.
+# Native provider web search for the lmline engine and the CLI. This file is
+# meant to be sourced by both entry scripts; it defines functions only.
 #
 # Native web search is a provider-side capability: the model asks the
 # provider to retrieve pages, the provider performs the network access, and

@@ -113,6 +113,8 @@ __lmline_load_all_config
 source "$script_dir/http.bash"
 # shellcheck source=lmline/chatgpt.bash
 source "$script_dir/chatgpt.bash"
+# shellcheck source=lmline/websearch.bash
+source "$script_dir/websearch.bash"
 # The ChatGPT client is resolved by the route, so the CLI and the engine use
 # the same client. The resolved path is exported for the child processes
 # that talk to the route.
@@ -438,6 +440,9 @@ __lmline_effective_setting_value() {
         return
         ;;
     esac
+  elif [[ "$key" == LMLINE_HTTP_RETRIES ]] && __lmline_web_search_enabled; then
+    __lmline_paid_route_retries "$default"
+    return
   fi
   case "$key" in
     LMLINE_CONFIG_DIR) value=$config_dir ;;

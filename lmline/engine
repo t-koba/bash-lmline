@@ -448,12 +448,8 @@ fi
 # A retry repeats a provider request. On a paid route (ChatGPT plan usage or
 # native web search) that can spend the user's plan or repeat a billed
 # search, so the default is a single attempt unless retries were requested.
-if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
-  LMLINE_HTTP_RETRIES=$(__lmline_chatgpt_route_setting LMLINE_HTTP_RETRIES "$LMLINE_HTTP_RETRIES")
-elif __lmline_web_search_enabled; then
-  if (( __lmline_http_retries_explicit == 0 )); then
-    LMLINE_HTTP_RETRIES=0
-  fi
+if [[ "$LMLINE_AUTH_MODE" == chatgpt ]] || __lmline_web_search_enabled; then
+  LMLINE_HTTP_RETRIES=$(__lmline_paid_route_retries "$LMLINE_HTTP_RETRIES")
 fi
 if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   if [[ "${LMLINE_STORE:-0}" == 1 ]]; then

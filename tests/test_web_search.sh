@@ -388,4 +388,26 @@ fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "default native-search HTTP 429 was retried"
 ok "native search does not retry HTTP 429 by default"
 
+# 17. The effective report shows the same retry budget: a search-enabled
+# route defaults to 0, an explicit value stays visible, and a route without
+# search keeps the catalog default.
+search_effective=$(env -u LMLINE_HTTP_RETRIES LMLINE_CONFIG_DIR="$ws_tmp/config-effective" \
+  LMLINE_WEB_SEARCH=1 "$repo_dir/lmline/lmline" config effective) \
+  || fail "native-search effective report"
+grep -q $'^LMLINE_HTTP_RETRIES\t0\t' <<<"$search_effective" \
+  || fail "native-search effective retries"
+grep -q $'^LMLINE_TOOL_MODE\tauto\t' <<<"$search_effective" \
+  || fail "native-search effective tool mode"
+explicit_effective=$(env -u LMLINE_HTTP_RETRIES LMLINE_CONFIG_DIR="$ws_tmp/config-effective" \
+  LMLINE_WEB_SEARCH=1 LMLINE_HTTP_RETRIES=2 "$repo_dir/lmline/lmline" config effective) \
+  || fail "native-search explicit effective report"
+grep -q $'^LMLINE_HTTP_RETRIES\t2\t' <<<"$explicit_effective" \
+  || fail "native-search explicit effective retries"
+plain_effective=$(env -u LMLINE_HTTP_RETRIES -u LMLINE_WEB_SEARCH \
+  LMLINE_CONFIG_DIR="$ws_tmp/config-effective" "$repo_dir/lmline/lmline" config effective) \
+  || fail "plain effective report"
+grep -q $'^LMLINE_HTTP_RETRIES\t1\t' <<<"$plain_effective" \
+  || fail "plain effective retries"
+ok "the effective report shows the native-search retry default"
+
 ok "web search"

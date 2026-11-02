@@ -16,21 +16,32 @@
 # same way: the client that holds the session, the host policy that keeps
 # the plan token on an allowed host, and the token itself.
 
+# A paid route repeats a provider request only when the user asked for it: a
+# repeat on the ChatGPT plan route spends the plan, and a repeat on a
+# search-enabled route can bill another provider search. The engine and
+# `config effective` both read this owner, so the displayed value is the one
+# the request path uses. An unset value means 0; an explicit value is kept.
+__lmline_paid_route_retries() {
+  local default=$1
+  if [[ "${LMLINE_AUTH_MODE:-api-key}" != chatgpt ]] && ! __lmline_web_search_enabled; then
+    printf '%s' "$default"
+    return
+  fi
+  if [[ -n "${LMLINE_HTTP_RETRIES+x}" ]] &&
+    { [[ -z "${__lmline_http_retries_explicit+x}" ]] ||
+      (( __lmline_http_retries_explicit == 1 )); }; then
+    printf '%s' "$LMLINE_HTTP_RETRIES"
+  else
+    printf '0'
+  fi
+}
+
 # The plan route's effective request budget. The engine's request decisions
 # and `config effective` both read it, so the displayed budget is the one used.
-# Retries are the explicit user value, or 0 when the setting was not set.
 __lmline_chatgpt_route_setting() {
   local key=$1 default=${2-}
   case "$key" in
-    LMLINE_HTTP_RETRIES)
-      if [[ -n "${LMLINE_HTTP_RETRIES+x}" ]] &&
-        { [[ -z "${__lmline_http_retries_explicit+x}" ]] ||
-          (( __lmline_http_retries_explicit == 1 )); }; then
-        printf '%s' "$LMLINE_HTTP_RETRIES"
-      else
-        printf '0'
-      fi
-      ;;
+    LMLINE_HTTP_RETRIES) __lmline_paid_route_retries "$default" ;;
     LMLINE_TOOL_MODE) printf 'none' ;;
     LMLINE_STORE) printf '0' ;;
     # The plan request carries no sampling parameters and no output cap: the
