@@ -16,6 +16,27 @@
 # same way: the client that holds the session, the host policy that keeps
 # the plan token on an allowed host, and the token itself.
 
+# The plan route's effective request budget. The engine's request decisions
+# and `config effective` both read it, so the displayed budget is the one used.
+# Retries are the explicit user value, or 0 when the setting was not set.
+__lmline_chatgpt_route_setting() {
+  local key=$1 default=${2-}
+  case "$key" in
+    LMLINE_HTTP_RETRIES)
+      if [[ -n "${LMLINE_HTTP_RETRIES+x}" ]] &&
+        { [[ -z "${__lmline_http_retries_explicit+x}" ]] ||
+          (( __lmline_http_retries_explicit == 1 )); }; then
+        printf '%s' "$LMLINE_HTTP_RETRIES"
+      else
+        printf '0'
+      fi
+      ;;
+    LMLINE_TOOL_MODE) printf 'none' ;;
+    LMLINE_STORE) printf '0' ;;
+    *) printf '%s' "$default" ;;
+  esac
+}
+
 # The ChatGPT client executable. Every path of the route resolves the client
 # here, so an override means the same thing in the CLI and in the engine.
 __lmline_chatgpt_client_path() {

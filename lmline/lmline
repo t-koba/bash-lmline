@@ -429,6 +429,14 @@ __lmline_redact_setting_value() {
 
 __lmline_effective_setting_value() {
   local key=$1 default=$2 value
+  if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
+    case "$key" in
+      LMLINE_HTTP_RETRIES|LMLINE_TOOL_MODE|LMLINE_STORE)
+        __lmline_chatgpt_route_setting "$key" "$default"
+        return
+        ;;
+    esac
+  fi
   case "$key" in
     LMLINE_CONFIG_DIR) value=$config_dir ;;
     LMLINE_HISTORY_DIR) value=$history_dir ;;

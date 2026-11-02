@@ -83,7 +83,21 @@ switched_doctor=$(lmline doctor)
 grep -q '^format=supported$' <<<"$switched_doctor" || fail "switched chatgpt doctor format"
 ok "a switched chatgpt endpoint resolves its model format on use"
 
-# 9. An endpoint line written before the auth mode column still loads.
+# 9. The effective report shows the paid route's budget, while an explicit
+# retry remains visible and an API-key profile keeps the catalog defaults.
+budget_effective=$(lmline config effective)
+grep -q $'^LMLINE_HTTP_RETRIES\t0\t' <<<"$budget_effective" || fail "chatgpt effective retries"
+grep -q $'^LMLINE_TOOL_MODE\tnone\t' <<<"$budget_effective" || fail "chatgpt effective tool mode"
+grep -q $'^LMLINE_STORE\t0\t' <<<"$budget_effective" || fail "chatgpt effective store"
+retry_effective=$(LMLINE_HTTP_RETRIES=2 lmline config effective)
+grep -q $'^LMLINE_HTTP_RETRIES\t2\t' <<<"$retry_effective" || fail "chatgpt explicit retries in effective report"
+lmline use plain gpt-5 >/dev/null || fail "use the api-key endpoint"
+plain_effective=$(lmline config effective)
+grep -q $'^LMLINE_HTTP_RETRIES\t1\t' <<<"$plain_effective" || fail "api-key effective retries"
+grep -q $'^LMLINE_TOOL_MODE\tauto\t' <<<"$plain_effective" || fail "api-key effective tool mode"
+ok "the effective report shows the plan route's budget"
+
+# 10. An endpoint line written before the auth mode column still loads.
 legacy_dir="$cli_tmp/legacy"
 mkdir -p "$legacy_dir"
 printf 'legacy\thttps://api.example.invalid/v1\tAuthorization\tBearer\t\t0.2\t800\ttext\t\t\t\t\t\n' >"$legacy_dir/endpoints.tsv"
