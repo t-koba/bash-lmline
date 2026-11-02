@@ -25,7 +25,9 @@ must implement [docs/engine-protocol.md](docs/engine-protocol.md).
 ```
 
 The installer copies files under `~/.config/lmline/` by default and links
-`lmline` into `~/.local/bin/`.
+`lmline` into `~/.local/bin/`. Keep that directory on `PATH`, or set
+`LMLINE_BIN_DIR` before installing to choose another one, so the `lmline`
+commands below resolve.
 
 Temporary Bash session:
 
