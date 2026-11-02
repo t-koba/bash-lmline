@@ -155,11 +155,11 @@ A refresh whose answer states no granted scope drops the plan grant, because
 the grant is then unproven. The client keeps the session but refuses to hand
 out a token, so the sign-in has to be repeated.
 
-Register the endpoint with the subscription path and select it:
+Register the endpoint and a model with the subscription path and select it:
 
 ```bash
 lmline endpoint add openai-plan https://api.openai.com/v1 --auth-mode chatgpt
-lmline model add openai-plan MODEL
+lmline model add openai-plan MODEL --api-format responses
 lmline use openai-plan MODEL
 ```
 
@@ -168,16 +168,10 @@ signed-in account can use. lmline reads the endpoint's model catalog
 (`$LMLINE_BASE_URL/models` by default) with the plan token when no model is
 selected, and uses the model id each entry carries. That a real plan serves
 the account's own models at that URL is not proven offline, like the rest of
-the subscription route. A model can also be registered by hand, and the
-plan route needs the Responses format:
-
-```bash
-lmline model add openai-plan MODEL --api-format responses
-```
-
-The model must exist on the signed-in account; a model id that the account
-does not carry is refused by the provider, and that refusal is not proven
-offline.
+the subscription route. The plan route uses the Responses format; the model
+profile records it with `--api-format responses`. The model must exist on
+the signed-in account; a model id that the account does not carry is refused
+by the provider, and that refusal is not proven offline.
 
 `lmline current` and `lmline doctor` show the active authentication mode.
 To go back to API-key billing, set the endpoint's mode back, store its API
