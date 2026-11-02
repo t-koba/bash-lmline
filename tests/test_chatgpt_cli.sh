@@ -134,14 +134,15 @@ CURL
 chmod +x "$plan_bin/curl"
 lmline endpoint add plan https://api.openai.com/v1 --auth-mode chatgpt >/dev/null \
   || fail "the plan endpoint registration"
+lmline model add plan gpt-plan-hidden >/dev/null || fail "the manual hidden plan model"
 PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
   lmline model refresh plan >"$cli_tmp/plan-refresh.out" 2>"$cli_tmp/plan-refresh.err" \
   || fail "the plan model refresh: $(sed -n '1p' "$cli_tmp/plan-refresh.err")"
 plan_models=$(lmline model list plan)
 grep -q $'^plan\tgpt-plan-one\t' <<<"$plan_models" || fail "the plan model is missing: $plan_models"
 grep -q $'\tresponses$' <<<"$plan_models" || fail "the plan model has no Responses format: $plan_models"
-! grep -q 'gpt-plan-hidden' <<<"$plan_models" || fail "a hidden model is stored"
-! grep -q 'gpt-plan-no-visibility' <<<"$plan_models" || fail "a model without visibility is stored"
+grep -q $'^plan\tgpt-plan-hidden\t' <<<"$plan_models" || fail "a manually added hidden model was removed"
+! grep -q 'gpt-plan-no-visibility' <<<"$plan_models" || fail "a model without visibility is imported"
 ok "the plan endpoint reads its account model catalog"
 
 # The plan token spends the user's ChatGPT plan, so it must not travel to a

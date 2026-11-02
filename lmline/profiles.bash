@@ -526,7 +526,7 @@ profile_extract_model_ids() {
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp merge_tmp records_file catalog_file catalog_raw dedup_tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq final_count added_count updated_count removed_count removed_names removed_display old_ids removed_labels_text removed_index
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp merge_tmp records_file catalog_file catalog_raw dedup_tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq membership_jq final_count added_count updated_count removed_count removed_names removed_display old_ids removed_labels_text removed_index
   local -a removed_ids=() removed_labels=()
   [[ -n "$endpoint" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
@@ -537,6 +537,9 @@ profile_model_refresh() {
   [[ -z "$api_key_file" || -r "$api_key_file" ]] || { printf 'lmline: endpoint secret file not readable: %s\n' "$api_key_file" >&2; exit 1; }
   catalog_url=$(profile_model_catalog_url "$base" "$models_url")
   catalog_jq=$(profile_model_catalog_jq "$models_jq" "$auth_mode")
+  # Import filtering must not narrow removal membership: a plan row that is
+  # hidden but still advertised stays selectable if it was added manually.
+  membership_jq=${models_jq:-$(profile_default_model_catalog_jq)}
   __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
   if [[ "$auth_mode" == chatgpt ]]; then
     # A plan endpoint has no endpoint secret: the account catalog is served
@@ -571,11 +574,12 @@ profile_model_refresh() {
     printf '%s\t%s\n' "$id" "$api_format"
   done <<<"$records" >"$records_file"
   # Derive the unfiltered catalog membership from the same response using only
-  # the configured models_jq, before prefix/include/exclude filtering. Rows for
-  # this endpoint survive only when their ID is still served; a manually added
-  # model that is filtered out but still advertised is kept as-is.
+  # the configured models_jq (or the generic default when none is configured),
+  # before prefix/include/exclude filtering. The plan import filter does not
+  # narrow membership: a manually added row that is hidden but still advertised
+  # is kept as-is.
   __lmline_mktemp catalog_file "${TMPDIR:-/tmp}/lmline-model-catalog.XXXXXX"
-  catalog_raw=$(profile_extract_model_candidates "$catalog_jq" <<<"$body") || {
+  catalog_raw=$(profile_extract_model_candidates "$membership_jq" <<<"$body") || {
     printf 'lmline: model refresh response did not contain model IDs\n' >&2
     exit 1
   }
