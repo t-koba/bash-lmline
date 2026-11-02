@@ -510,6 +510,7 @@ if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-failed LMLINE_TRACE_DIR="$trace_
 fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated a failed stream"
 [[ -z "$(candidates_of <"$route_tmp/plan-stream-failed.out")" ]] || fail "the mid-stream failure produced a candidate"
+! grep -q 'partial' "$route_tmp/plan-stream-failed.out" || fail "the failed stream leaked partial stdout"
 grep -q 'subscription_sharing_usage_limit_exceeded' "$route_tmp/plan-stream-failed.err" \
   || fail "the mid-stream plan code is lost: $(sed -n '1p' "$route_tmp/plan-stream-failed.err")"
 grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-stream-failed.err" \
@@ -529,6 +530,7 @@ if run_engine LMLINE_FAKE_CURL_MODE=plan-stream-unavailable >"$route_tmp/plan-st
 fi
 [[ "$(cat "$count_file")" == 1 ]] || fail "the paid route repeated an unavailable plan stream"
 [[ -z "$(candidates_of <"$route_tmp/plan-stream-unavailable.out")" ]] || fail "the unavailable stream produced a candidate"
+! grep -q 'partial' "$route_tmp/plan-stream-unavailable.out" || fail "the unavailable stream leaked partial stdout"
 grep -q 'subscription_sharing_usage_unavailable' "$route_tmp/plan-stream-unavailable.err" \
   || fail "the mid-stream unavailable code is lost: $(sed -n '1p' "$route_tmp/plan-stream-unavailable.err")"
 grep -q 'retry later' "$route_tmp/plan-stream-unavailable.err" \
