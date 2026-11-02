@@ -71,7 +71,19 @@ commands_out=$(lmline complete commands) || fail "completion lists the chatgpt c
 grep -qx chatgpt <<<"$commands_out" || fail "completion lists the chatgpt command"
 ok "the help and the completion list the chatgpt commands"
 
-# 8. An endpoint line written before the auth mode column still loads.
+# 8. A model added before its endpoint switched to chatgpt resolves the route
+# format on use, so the effective config and doctor agree with the request.
+lmline endpoint add switched https://api.openai.com/v1 >/dev/null || fail "switched endpoint"
+lmline model add switched legacy-model >/dev/null || fail "switched model"
+lmline endpoint add switched https://api.openai.com/v1 --auth-mode chatgpt >/dev/null || fail "switch endpoint auth mode"
+lmline use switched legacy-model >/dev/null || fail "use switched model"
+switched_effective=$(lmline config effective)
+grep -q $'^LMLINE_API_FORMAT\tresponses\t' <<<"$switched_effective" || fail "switched chatgpt effective format"
+switched_doctor=$(lmline doctor)
+grep -q '^format=supported$' <<<"$switched_doctor" || fail "switched chatgpt doctor format"
+ok "a switched chatgpt endpoint resolves its model format on use"
+
+# 9. An endpoint line written before the auth mode column still loads.
 legacy_dir="$cli_tmp/legacy"
 mkdir -p "$legacy_dir"
 printf 'legacy\thttps://api.example.invalid/v1\tAuthorization\tBearer\t\t0.2\t800\ttext\t\t\t\t\t\n' >"$legacy_dir/endpoints.tsv"

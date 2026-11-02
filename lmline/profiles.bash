@@ -745,7 +745,15 @@ profile_use() {
   [[ -n "${m_temp:-$e_temp}" ]] && write_config_value LMLINE_TEMPERATURE "${m_temp:-$e_temp}" || unset_config_value LMLINE_TEMPERATURE
   [[ -n "${m_tokens:-$e_tokens}" ]] && write_config_value LMLINE_MAX_TOKENS "${m_tokens:-$e_tokens}" || unset_config_value LMLINE_MAX_TOKENS
   [[ -n "${m_tool:-$e_tool}" ]] && write_config_value LMLINE_TOOL_MODE "${m_tool:-$e_tool}" || unset_config_value LMLINE_TOOL_MODE
-  [[ -n "$m_api_format" ]] && write_config_value LMLINE_API_FORMAT "$m_api_format" || unset_config_value LMLINE_API_FORMAT
+  if [[ -n "$m_api_format" ]]; then
+    write_config_value LMLINE_API_FORMAT "$m_api_format"
+  elif [[ "$e_auth_mode" == chatgpt ]]; then
+    # The plan route speaks Responses; resolve it for a switched endpoint or
+    # a legacy model that was registered without a format.
+    write_config_value LMLINE_API_FORMAT responses
+  else
+    unset_config_value LMLINE_API_FORMAT
+  fi
   [[ -n "$e_models_url" ]] && write_config_value LMLINE_MODELS_URL "$e_models_url" || unset_config_value LMLINE_MODELS_URL
   [[ -n "$e_models_jq" ]] && write_config_value LMLINE_MODELS_JQ "$e_models_jq" || unset_config_value LMLINE_MODELS_JQ
   [[ -n "$e_models_prefix" ]] && write_config_value LMLINE_MODELS_PREFIX "$e_models_prefix" || unset_config_value LMLINE_MODELS_PREFIX
