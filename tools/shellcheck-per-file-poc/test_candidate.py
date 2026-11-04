@@ -79,9 +79,9 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(len(manifest), 76)
         self.assertEqual(len(set(manifest)), 76)
         declarations = [(p, d) for p in manifest for d in c.sources(p, set(manifest))]
-        self.assertEqual(len(declarations), 138)
+        self.assertEqual(len(declarations), 139)
         self.assertTrue(all(d["in_manifest"] for _, d in declarations))
-        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 134)
+        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 135)
         groups = [{p} | {d["resolved"] for d in c.sources(p, set(manifest))} for p in manifest]
         self.assertEqual(max(map(len, groups)), 11)
 
