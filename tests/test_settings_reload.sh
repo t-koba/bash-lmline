@@ -164,6 +164,8 @@ if command -v zsh >/dev/null 2>&1; then
     unset LMLINE_PROGRESS
     source "$1/lmline/init.zsh"
     [[ "${LMLINE_PROJECT_CONFIG:-}" == 0 && -z "${LMLINE_PROGRESS-}" ]] || exit 31
+    source "$1/lmline/init.zsh"
+    [[ "${LMLINE_PROJECT_CONFIG:-}" == 0 && -z "${LMLINE_PROGRESS-}" ]] || exit 33
     for value in one two three; do
       printf "%s\n" "export LMLINE_DEBUG=$value" >"$cfg/settings.bash"
       __lmline_zsh_reload_settings_if_changed
