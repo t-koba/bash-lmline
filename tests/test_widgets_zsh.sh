@@ -1226,6 +1226,24 @@ EOF
     rm -f "$ready" "$tmp_out"
     [[ "$out" == *"suggestion ready"* ]] && (( __LMLINE_ZSH_ASYNC_NOTIFIED == 1 ))
   ' _ "$repo_dir" || fail "zsh async notify announces once"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-notify-revoked" zsh -efic '
+    cfg=$2
+    mkdir -p "$cfg" || exit 80
+    unset LMLINE_ASYNC_NOTIFY
+    printf "%s\n" "export LMLINE_ASYNC_NOTIFY=1" >"$cfg/settings.bash"
+    source "$1/lmline/init.zsh"
+    ready="$cfg/completed-result"
+    tmp_out="$cfg/notify.out"
+    trap "rm -f \"$ready\" \"$tmp_out\"" EXIT
+    print -r -- candidate >"$ready"
+    __LMLINE_ZSH_ASYNC_FILE=$ready
+    __LMLINE_ZSH_ASYNC_PID=2147483647
+    __LMLINE_ZSH_ASYNC_NOTIFIED=0
+    printf "%s\n" "export LMLINE_ASYNC_NOTIFY=0" >"$cfg/settings.bash"
+    __lmline_zsh_async_prompt_check 2>"$tmp_out"
+    [[ "${LMLINE_ASYNC_NOTIFY:-}" == 0 && ! -s "$tmp_out" && \
+      $__LMLINE_ZSH_ASYNC_NOTIFIED == 0 ]]
+  ' _ "$repo_dir" "$zsh_tmp/config-notify-revoked" || fail "zsh async notify opt-out reload"
   rm -rf "$zsh_tmp"
   ok "zsh integration"
 else

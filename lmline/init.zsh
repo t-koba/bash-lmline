@@ -586,6 +586,8 @@ __lmline_zsh_async_start() {
 # Opt-in precmd hook (LMLINE_ASYNC_NOTIFY=1): announces once, at the next
 # prompt, that a background generation finished and which key inserts it.
 __lmline_zsh_async_prompt_check() {
+  __lmline_zsh_reload_settings_if_changed
+  [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 1 ]] || return 0
   [[ -n "${__LMLINE_ZSH_ASYNC_FILE:-}" && ${__LMLINE_ZSH_ASYNC_PID:-0} -gt 0 ]] || return 0
   (( __LMLINE_ZSH_ASYNC_NOTIFIED == 0 )) || return 0
   kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null && return 0
