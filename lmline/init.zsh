@@ -59,7 +59,7 @@ __lmline_zsh_load_all_config() {
     fi
     __lmline_load_all_config
     while IFS= read -r key; do
-      [[ "$key" == LMLINE_* ]] || continue
+      [[ "$key" =~ ^LMLINE_[A-Z0-9_]*$ ]] || continue
       printf "%s\0%s\0" "$key" "${!key}"
     done < <(compgen -e LMLINE_)
   ' _ "$LMLINE_DIR" >"$export_file"; then
