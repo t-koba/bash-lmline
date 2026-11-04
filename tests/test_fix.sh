@@ -197,3 +197,37 @@ bash --norc -i -c '
 ' _ "$repo_dir" "$cap_tmp" || fail "fix output cap validation/default/pass-through"
 rm -rf "$cap_tmp"
 ok "fix rejects malformed output caps before backend selection and preserves valid caps"
+
+# Fix must capture execution budgets after a settings reload can change them.
+reload_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix-reload-budget.XXXXXX")
+bash --norc -i -c '
+  set -u
+  source "$1/lmline/init.bash"
+  LMLINE_FIX_TIMEOUT=12
+  LMLINE_FIX_MAX_OUTPUT=12000
+  __lmline_reload_settings_if_changed() {
+    LMLINE_FIX_TIMEOUT=1
+    LMLINE_FIX_MAX_OUTPUT=8
+  }
+  __lmline_select_exec_backend() { printf local; }
+  __lmline_risk_level() { printf low; }
+  __lmline_run_command_capture_with_backend() {
+    printf "%s\n" "$3" >>"$LMLINE_TEST_TIMEOUTS"
+    __LMLINE_EXEC_STATUS=0
+  }
+  __lmline_condense_file() { printf "%s\n" "$2" >>"$LMLINE_TEST_CAPS"; }
+  LMLINE_TEST_TIMEOUTS=$2/timeouts
+  LMLINE_TEST_CAPS=$2/caps
+  export LMLINE_TEST_TIMEOUTS LMLINE_TEST_CAPS
+  if __lmline_fix_run false bash 5 /bin/false 1 >/dev/null 2>"$2/stderr"; then
+    exit 10
+  else
+    [[ $? == 3 ]]
+  fi
+  printf "1\n" >"$2/expected-timeout"
+  printf "8\n8\n" >"$2/expected-caps"
+  cmp -s "$2/expected-timeout" "$2/timeouts"
+  cmp -s "$2/expected-caps" "$2/caps"
+' _ "$repo_dir" "$reload_tmp" || fail "fix uses execution budgets reloaded before validation and dispatch"
+rm -rf "$reload_tmp"
+ok "fix uses timeout and output budgets after reloading settings"

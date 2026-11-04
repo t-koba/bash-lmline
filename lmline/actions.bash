@@ -420,9 +420,11 @@ __lmline_print_explanation() {
 
 __lmline_fix_run() {
   local line=$1 shell_name=$2 point=$3 engine=$4 n=$5 prefix=${6:-}
-  local risk timeout=${LMLINE_FIX_TIMEOUT:-12} max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
+  local risk timeout max_output
   local tmp status engine_status backend context_text caller_functions exported_functions
   __lmline_reload_settings_if_changed "${__LMLINE_CONFIG_DIR:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}}"
+  timeout=${LMLINE_FIX_TIMEOUT:-12}
+  max_output=${LMLINE_FIX_MAX_OUTPUT:-12000}
   if ! __lmline_timeout_seconds_valid "$timeout"; then
     printf '%sinvalid LMLINE_FIX_TIMEOUT; expected a positive integer no greater than 2147483647\n' "$prefix" >&2
     return 3
