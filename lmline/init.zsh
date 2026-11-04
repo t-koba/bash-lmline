@@ -442,139 +442,98 @@ __lmline_zsh_bridge() {
   ' _ "$action" "$mode" "$line" "$point" "$async_file"
 }
 
-# Match the bridge's global scalar selection, with NUL-framed names and
-# values streamed to a digest rather than placed in arguments or the key.
-__lmline_zsh_settings_key() {
-  local key declaration
+# One hardened Bash pass for the request identity. Private values and caller
+# function names (never bodies) travel only on stdin, with explicit framing.
+# Component entry points below share this path for focused identity checks.
+__lmline_zsh_identity_key() {
+  local action=$1 mode=${2-} line=${3-} point=${4-} key caller_functions
   setopt localoptions pipefail
+  caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   {
+    # Preserve logical PWD even if Bash resets it after a directory rename.
+    printf '%s\0' "$PWD" "${+PATH}" "${PATH-}" "$caller_functions" "${LMLINE_PROMPT_VERSION:-3}"
+    # The parameter type includes "local" for dynamically scoped locals, so
+    # these exact types select global scalars without a child per declaration.
     for key in ${(ok)parameters}; do
       [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
       [[ "$key" == LMLINE_SHELL_FUNCTIONS || "$key" == LMLINE_EXPORTED_FUNCTIONS ]] && continue
       [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
-      declaration=$(typeset -p "$key" 2>/dev/null) || continue
-      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
       printf '%s\0%s\0' "$key" "${(P)key}"
     done
+    printf '\0'
   } | bash -p -c '
     set -o pipefail
-    if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d " " -f 1
-    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d " " -f 1
-    elif command -v cksum >/dev/null 2>&1; then cksum
-    else exit 1; fi
-  '
-}
-
-# Stream only the resolver inputs, using the bridge's global-scalar selection.
-# The Bash child removes inherited values before accepting the framed settings.
-__lmline_zsh_suggested_commands_key() {
-  local key declaration
-  setopt localoptions pipefail
-  {
-    for key in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS; do
-      [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]] || continue
-      declaration=$(typeset -p "$key" 2>/dev/null) || continue
-      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
-      printf '%s\0%s\0' "$key" "${(P)key}"
+    IFS= read -r -d "" logical_pwd &&
+      IFS= read -r -d "" path_set && IFS= read -r -d "" caller_path &&
+      IFS= read -r -d "" caller_functions && IFS= read -r -d "" prompt_version || exit 1
+    settings=()
+    while :; do
+      IFS= read -r -d "" key || exit 1
+      [[ -n "$key" ]] || break
+      [[ "$key" =~ ^LMLINE_[A-Z0-9_]+$ ]] || exit 1
+      IFS= read -r -d "" value || exit 1
+      settings+=("$key" "$value")
     done
-  } | bash -p -c '
-    unset LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS
-    while IFS= read -r -d "" key && IFS= read -r -d "" value; do
-      printf -v "$key" "%s" "$value"
-    done
-    source "$1/context.bash" || exit 1
-    __lmline_suggested_commands_key
-  ' _ "$LMLINE_DIR"
-}
-
-# Resolve project markers using the same global settings as the bridge.
-__lmline_zsh_project_markers_key() {
-  local key declaration
-  setopt localoptions pipefail
-  {
-    for key in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT; do
-      [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]] || continue
-      declaration=$(typeset -p "$key" 2>/dev/null) || continue
-      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
-      printf '%s\0%s\0' "$key" "${(P)key}"
-    done
-  } | bash -p -c '
-    unset LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT
-    while IFS= read -r -d "" key && IFS= read -r -d "" value; do
-      printf -v "$key" "%s" "$value"
-    done
-    source "$1/context.bash" || exit 1
-    __lmline_project_markers_key
-  ' _ "$LMLINE_DIR"
-}
-
-# Select the Git toggle exactly as the context bridge selects global scalars.
-__lmline_zsh_git_context_key() {
-  local key=LMLINE_INCLUDE_GIT_CONTEXT declaration
-  setopt localoptions pipefail
-  {
-    if [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]]; then
-      declaration=$(typeset -p "$key" 2>/dev/null) || return 1
-      if [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]]; then
-        printf '%s\0' "${(P)key}"
-      fi
+    unset LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR \
+      LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS \
+      LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT \
+      LMLINE_INCLUDE_GIT_CONTEXT LMLINE_INCLUDE_CWD_CONTEXT LMLINE_INCLUDE_SHELL_CONTEXT
+    # Retain the settings digest format, including both cksum fields on
+    # systems without SHA tools. Hash before context supplies any defaults.
+    if [[ "$2" == settings || "$2" == request ]]; then
+      settings_key=$(
+        { if (( ${#settings[@]} )); then printf "%s\0" "${settings[@]}"; fi; } |
+          { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d " " -f 1
+            elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d " " -f 1
+            elif command -v cksum >/dev/null 2>&1; then cksum
+            else exit 1; fi; }
+      ) || exit 1
+      [[ -n "$settings_key" ]] || exit 1
+      [[ "$2" != settings ]] || { printf "%s" "$settings_key"; exit; }
     fi
-  } | bash -p -c '
-    unset LMLINE_INCLUDE_GIT_CONTEXT
-    if IFS= read -r -d "" value; then LMLINE_INCLUDE_GIT_CONTEXT=$value; fi
-    source "$1/context.bash" || exit 1
-    __lmline_git_context_key
-  ' _ "$LMLINE_DIR"
-}
-
-# Frame PATH in the caller shell and stream it to the shared hash helper.
-__lmline_zsh_path_key() {
-  local digest
-  setopt localoptions pipefail
-  digest=$(
-    { if (( ${+PATH} )); then printf 'set\0%s\0' "$PATH"; else printf 'unset\0'; fi; } |
-      bash -p -c 'set -o pipefail; source "$1/context.bash" || exit 1; __lmline_hash_stdin' _ "$LMLINE_DIR" 2>/dev/null
-  ) || return 1
-  [[ -n "$digest" ]] || return 1
-  printf '%s' "$digest"
-}
-
-# Names-only caller function identity for async request keys. Hashes the same
-# caller function-name list supplied to the engine; never evaluates,
-# serializes, or forwards bodies.
-__lmline_zsh_request_key() {
-  local mode=$1 line=$2 point=$3 caller_functions settings_key suggested_key project_key git_key path_key key declaration
-  setopt localoptions pipefail
-  settings_key=$(__lmline_zsh_settings_key) && [[ -n "$settings_key" ]] || return 1
-  suggested_key=$(__lmline_zsh_suggested_commands_key) && [[ -n "$suggested_key" ]] || return 1
-  project_key=$(__lmline_zsh_project_markers_key) && [[ -n "$project_key" ]] || return 1
-  git_key=$(__lmline_zsh_git_context_key) && [[ -n "$git_key" ]] || return 1
-  path_key=$(__lmline_zsh_path_key) && [[ -n "$path_key" ]] || return 1
-  caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
-  {
-    # Bash may reset inherited PWD after a rename; retain the caller logical
-    # input privately, independently of the physical-CWD fingerprint.
-    printf 'PWD\0%s\0' "$PWD"
-    # Match the bridge's global-scalar selection for context toggles.
-    for key in LMLINE_INCLUDE_CWD_CONTEXT LMLINE_INCLUDE_SHELL_CONTEXT; do
-      [[ "${parameters[$key]-}" == scalar || "${parameters[$key]-}" == scalar-export ]] || continue
-      declaration=$(typeset -p "$key" 2>/dev/null) || return 1
-      [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
-      printf '%s\0%s\0' "$key" "${(P)key}"
+    # Only these inputs were passed to the component helpers. Leave other
+    # inherited settings alone; never export the streamed private snapshot.
+    for ((i=0; i<${#settings[@]}; i+=2)); do
+      key=${settings[i]}
+      case "$key" in
+        LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|\
+        LMLINE_SUGGESTED_COMMANDS_FILE|LMLINE_INCLUDE_SUGGESTED_COMMANDS|\
+        LMLINE_PROJECT_MARKERS_FILE|LMLINE_INCLUDE_PROJECT_CONTEXT|\
+        LMLINE_INCLUDE_GIT_CONTEXT|LMLINE_INCLUDE_CWD_CONTEXT|LMLINE_INCLUDE_SHELL_CONTEXT)
+          printf -v "$key" "%s" "${settings[i+1]}" ;;
+      esac
     done
-  } | LMLINE_PROMPT_VERSION=${LMLINE_PROMPT_VERSION:-3} bash -c '
-    set -o pipefail
-    unset LMLINE_INCLUDE_CWD_CONTEXT LMLINE_INCLUDE_SHELL_CONTEXT
-    while IFS= read -r -d "" key && IFS= read -r -d "" value; do
-      printf -v "$key" "%s" "$value"
-    done
+    PWD=$logical_pwd
+    LMLINE_PROMPT_VERSION=$prompt_version
     source "$1/context.bash" || exit 1
-    function_key=$(printf "%s\n" "$6" | __lmline_hash_stdin) || exit 1
-    request_key=$(__lmline_request_key "$2" "$3") || exit 1
+    case "$2" in
+      suggested) __lmline_suggested_commands_key; exit $? ;;
+      project) __lmline_project_markers_key; exit $? ;;
+      git) __lmline_git_context_key; exit $? ;;
+    esac
+    path_key=$(
+      { if [[ "$path_set" == 1 ]]; then printf "set\0%s\0" "$caller_path"; else printf "unset\0"; fi; } |
+        __lmline_hash_stdin
+    ) || exit 1
+    [[ -n "$path_key" ]] || exit 1
+    [[ "$2" != path ]] || { printf "%s" "$path_key"; exit; }
+    suggested_key=$(__lmline_suggested_commands_key) && [[ -n "$suggested_key" ]] || exit 1
+    project_key=$(__lmline_project_markers_key) && [[ -n "$project_key" ]] || exit 1
+    git_key=$(__lmline_git_context_key) && [[ -n "$git_key" ]] || exit 1
+    function_key=$(printf "%s\n" "$caller_functions" | __lmline_hash_stdin) || exit 1
+    request_key=$(__lmline_request_key "$3" "$4") || exit 1
     [[ -n "$request_key" && -n "$function_key" ]] || exit 1
-    printf "%s:%s:%s:%s:%s:%s\n" "$request_key" "$function_key" "$4" "$5" "$7" "$8"
-  ' _ "$LMLINE_DIR" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "$caller_functions" "${LMLINE_CANDIDATE_COUNT-}" "$settings_key:$suggested_key:$project_key:$git_key:$path_key"
+    printf "%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n" "$request_key" "$function_key" "$5" "$6" "$7" \
+      "$settings_key" "$suggested_key" "$project_key" "$git_key" "$path_key"
+  ' _ "$LMLINE_DIR" "$action" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "${LMLINE_CANDIDATE_COUNT-}"
 }
+
+__lmline_zsh_settings_key() { __lmline_zsh_identity_key settings; }
+__lmline_zsh_suggested_commands_key() { __lmline_zsh_identity_key suggested; }
+__lmline_zsh_project_markers_key() { __lmline_zsh_identity_key project; }
+__lmline_zsh_git_context_key() { __lmline_zsh_identity_key git; }
+__lmline_zsh_path_key() { __lmline_zsh_identity_key path; }
+__lmline_zsh_request_key() { __lmline_zsh_identity_key request "$@"; }
 
 __lmline_zsh_load_candidates_from_file() {
   local file=$1 output

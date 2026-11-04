@@ -24,6 +24,21 @@ EOF
   chmod +x "$zsh_tmp/fail-hash-bin/cksum"
   mkdir "$zsh_tmp/fail-request"
   printf 'source "%s/lmline/context.bash"\n__lmline_request_key() { printf partial; return 1; }\n' "$repo_dir" >"$zsh_tmp/fail-request/context.bash"
+  # Inject failures at the shared Bash components, not the zsh wrappers: a
+  # request now computes every component within the same hardened child.
+  mkdir "$zsh_tmp/fail-components"
+  printf 'source "%s/lmline/context.bash"\n' "$repo_dir" >"$zsh_tmp/fail-components/context.bash"
+  cat >>"$zsh_tmp/fail-components/context.bash" <<'EOF'
+case ${LMLINE_TEST_IDENTITY_FAILURE-} in
+  project) __lmline_project_markers_key() { return 1; } ;;
+  git) __lmline_git_context_key() { return 1; } ;;
+  path-fail) __lmline_hash_stdin() { return 1; } ;;
+  path-empty) __lmline_hash_stdin() { return 0; } ;;
+esac
+EOF
+  for file in policy.bash actions.bash; do
+    ln -s "$repo_dir/lmline/$file" "$zsh_tmp/fail-components/$file"
+  done
   # The request bridge loads context without the Bash widget or policy first.
   LMLINE_CONFIG_DIR="$zsh_tmp/config-context" bash --norc -ec '
     source "$1/lmline/context.bash"
@@ -62,6 +77,33 @@ EOF
       export LMLINE_MODEL=second
       [[ "$a" != "$(__lmline_zsh_settings_key)" ]]
     )
+    # A request launches one privileged Bash, ignoring caller startup code;
+    # neither a private scalar nor a function body belongs in its arguments.
+    (
+      printf "exit 97\n" >"$2/poison-env"
+      export BASH_ENV=$2/poison-env
+      typeset -g LMLINE_MODEL=private-probe
+      private_function() { : private-probe; }
+      child_log=$2/identity-children
+      bash() { [[ "$1" == -p && "$*" != *private-probe* ]] || return 1; print child >>"$child_log"; command bash "$@"; }
+      __lmline_zsh_request_key generate input 0 >/dev/null
+      [[ "$(cat "$child_log")" == child ]]
+    )
+    # Exact parameter types exclude locals (even exported ones) and arrays.
+    identity_scope_probe() {
+      local LMLINE_MODEL=hidden
+      local -x LMLINE_LOCAL_EXPORTED=hidden
+      local -a LMLINE_LOCAL_ARRAY=(hidden)
+      [[ "$a" == "$(__lmline_zsh_settings_key)" ]]
+    }
+    a=$(__lmline_zsh_settings_key); identity_scope_probe
+    typeset -g LMLINE_MODEL=
+    empty=$(__lmline_zsh_settings_key)
+    [[ "$a" != "$empty" ]]
+    LMLINE_MODEL=value; value=$(__lmline_zsh_settings_key)
+    LMLINE_MODEL=$'"'"'value\n'"'"'
+    [[ "$value" != "$(__lmline_zsh_settings_key)" ]]
+    unset LMLINE_MODEL
     # Preserve unset, empty, and trailing newline distinctions in the stream.
     (
       saved_path=$PATH
@@ -79,7 +121,7 @@ EOF
       failed=$(__lmline_zsh_request_key generate input 0) && exit 1
       [[ -z "$failed" ]]
     )
-    __lmline_zsh_settings_key() { return 1; }
+    __lmline_zsh_identity_key() { return 1; }
     __lmline_zsh_hint() { :; }
     __lmline_zsh_async_start() { rm -f "$4"; __LMLINE_ZSH_ASYNC_KEY=$5; __LMLINE_ZSH_ASYNC_PID=$$; (( ++starts )); }
     starts=0
@@ -346,7 +388,7 @@ EOF
     trap cleanup_markers_probe EXIT
     typeset -g LMLINE_USER_RULES_DIR=$PWD/rules LMLINE_DEFAULTS_DIR=$PWD/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
     typeset +x LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE
-    ( PATH="$PWD/privacy-bin:$PATH"; __lmline_zsh_project_markers_key >/dev/null )
+    ( PATH="$PWD/privacy-bin:$PATH"; __lmline_zsh_project_markers_key >/dev/null; LMLINE_INCLUDE_SUGGESTED_COMMANDS=0; __lmline_zsh_request_key generate input 0 >/dev/null )
     [[ -s checked && ! -e leak ]]
     key=$(__lmline_zsh_project_markers_key)
     [[ "$key" != *one* && "$key" != *"$PWD"* ]]
@@ -406,7 +448,8 @@ EOF
     wait "$second"
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo one" ]]
-    __lmline_zsh_project_markers_key() { return 1; }
+    LMLINE_DIR=$LMLINE_TEST_MARKERS_DIR/../fail-components
+    export LMLINE_TEST_IDENTITY_FAILURE=project
     BUFFER="# markers"; CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/dev/null 2>&1
     first=$__LMLINE_ZSH_ASYNC_PID
@@ -465,7 +508,8 @@ EOF
     wait "$second"
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo two" ]]
-    __lmline_zsh_git_context_key() { return 1; }
+    LMLINE_DIR=$LMLINE_TEST_GIT_DIR/../fail-components
+    export LMLINE_TEST_IDENTITY_FAILURE=git
     BUFFER="# git"; CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/dev/null 2>&1
     first=$__LMLINE_ZSH_ASYNC_PID
@@ -512,7 +556,7 @@ EOF
     }
     trap cleanup_suggested_probe EXIT
     typeset +x LMLINE_USER_RULES_DIR
-    ( PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"; __lmline_zsh_suggested_commands_key >/dev/null )
+    ( PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"; __lmline_zsh_suggested_commands_key >/dev/null; __lmline_zsh_request_key generate input 0 >/dev/null )
     [[ -s "$LMLINE_TEST_SUGGESTED_DIR/checked" && ! -e "$LMLINE_TEST_SUGGESTED_DIR/leak" ]]
     key=$(__lmline_zsh_suggested_commands_key)
     [[ "$key" != *printf* && "$key" != *"$LMLINE_USER_RULES_DIR"* ]]
@@ -566,11 +610,12 @@ EOF
     # Failure or empty output from the PATH digest must never reuse pending work.
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ -n "$__LMLINE_ZSH_ASYNC_KEY" && "$__LMLINE_ZSH_ASYNC_KEY" != function-context-unavailable ]]
-    __lmline_zsh_path_key() { return 1; }
+    LMLINE_DIR=$LMLINE_TEST_SUGGESTED_DIR/../fail-components
+    export LMLINE_TEST_IDENTITY_FAILURE=path-fail
     failed_pid=$__LMLINE_ZSH_ASYNC_PID
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
-    __lmline_zsh_path_key() { return 0; }
+    export LMLINE_TEST_IDENTITY_FAILURE=path-empty
     failed_pid=$__LMLINE_ZSH_ASYNC_PID
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
