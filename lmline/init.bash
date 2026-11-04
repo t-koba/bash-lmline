@@ -25,6 +25,13 @@ __LMLINE_DIR=$(cd -- "$__LMLINE_DIR" && pwd -P)
 __LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 # shellcheck source=lmline/config.bash
 source "$__LMLINE_DIR/config.bash"
+# Prime before loading; the post-load check still catches startup changes.
+__LMLINE_SETTINGS_CKSUM=
+if [[ -f "$__LMLINE_CONFIG_DIR/settings.bash" ]]; then
+  __LMLINE_SETTINGS_CKSUM=$(cksum <"$__LMLINE_CONFIG_DIR/settings.bash" 2>/dev/null) || __LMLINE_SETTINGS_CKSUM=
+else
+  __LMLINE_SETTINGS_CKSUM=no-settings-file
+fi
 __lmline_load_all_config
 __lmline_reload_settings_if_changed "$__LMLINE_CONFIG_DIR"
 

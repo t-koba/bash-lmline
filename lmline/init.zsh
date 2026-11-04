@@ -133,6 +133,12 @@ __lmline_zsh_reload_settings_if_changed() {
   return 0
 }
 
+# Prime before loading; the post-load check still catches startup changes.
+if [[ -f "$LMLINE_CONFIG_DIR/settings.bash" ]]; then
+  __LMLINE_ZSH_SETTINGS_CKSUM=$(cksum <"$LMLINE_CONFIG_DIR/settings.bash" 2>/dev/null) || __LMLINE_ZSH_SETTINGS_CKSUM=
+else
+  __LMLINE_ZSH_SETTINGS_CKSUM=no-settings-file
+fi
 __lmline_zsh_load_all_config
 __lmline_zsh_reload_settings_if_changed
 

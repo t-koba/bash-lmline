@@ -7,6 +7,45 @@ reload_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-settings-reload-test.XXXXXX")
 trap 'rm -rf "$reload_tmp"' EXIT
 cd "$reload_tmp" || fail "test working directory"
 
+# Count full loads, not elapsed time: unchanged startup loads once, failed
+# checksums cannot suppress it, and a change between checks still reloads.
+for startup_shell in bash zsh; do
+  command -v "$startup_shell" >/dev/null 2>&1 || continue
+  for startup_case in absent present failed raced; do
+    startup_cfg=$reload_tmp/startup-$startup_shell-$startup_case
+    mkdir -p "$startup_cfg"
+    if [[ "$startup_case" != absent ]]; then
+      printf '%s\n' 'export LMLINE_PROGRESS=startup' >"$startup_cfg/settings.bash"
+    fi
+    LMLINE_CONFIG_DIR="$startup_cfg" "$startup_shell" -fic '
+      expected=startup
+      case "$3" in
+        failed) cksum() { return 1; } ;;
+        raced)
+          expected=raced
+          cksum() {
+            command cksum || return
+            if [[ ! -e "$LMLINE_CONFIG_DIR/raced" ]]; then
+              : >"$LMLINE_CONFIG_DIR/raced"
+              printf "%s\n" "export LMLINE_PROGRESS=raced" >"$LMLINE_CONFIG_DIR/settings.bash"
+            fi
+          }
+          ;;
+      esac
+      PS4="+ "
+      set -x
+      source "$1/lmline/init.$2"
+      set +x
+      [[ "$3" == absent || "$LMLINE_PROGRESS" == "$expected" ]]
+    ' _ "$repo_dir" "$startup_shell" "$startup_case" \
+      >"$startup_cfg/stdout" 2>"$startup_cfg/trace" || fail "$startup_shell startup config ($startup_case)"
+    startup_loads=$(grep -Ec '^\++ __lmline_(zsh_)?load_all_config$' "$startup_cfg/trace")
+    expected_loads=1
+    [[ "$startup_case" != raced ]] || expected_loads=2
+    [[ "$startup_loads" == "$expected_loads" ]] || fail "$startup_shell startup load count ($startup_case): $startup_loads"
+  done
+done
+
 # Long-lived Bash shell: removed file values must not linger, while
 # intentional environment values are never cleared.
 LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
