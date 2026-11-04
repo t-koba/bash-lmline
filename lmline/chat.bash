@@ -439,8 +439,9 @@ __lmline_report_request_failure() {
   [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
   if [[ -n "$detail" ]]; then
     # Keep extraction, byte capping and hint classification raw; sanitize only
-    # the terminal-facing detail, not trusted framing or recovery hints.
-    display_detail=$(printf '%s\n' "$detail" | __lmline_display_answer 2>/dev/null) || display_detail=
+    # the terminal-facing detail, not trusted framing or recovery hints. A
+    # failed renderer must not emit producer-side EPIPE diagnostics.
+    display_detail=$(printf '%s\n' "$detail" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_detail=
     printf 'lmline-engine: request failed: HTTP %s: %s%s\n' "$http_code" "$display_detail" "$hint" >&2
   else
     printf 'lmline-engine: request failed: HTTP %s%s\n' "$http_code" "$hint" >&2
@@ -459,7 +460,8 @@ __lmline_report_provider_failure() {
   fi
   [[ -n "${LMLINE_TRACE_DIR:-}" ]] || hint+='; full error: lmline debug trace on'
   if [[ -n "$detail" ]]; then
-    display_detail=$(printf '%s\n' "$detail" | __lmline_display_answer 2>/dev/null) || display_detail=
+    # A failed renderer must not emit producer-side EPIPE diagnostics.
+    display_detail=$(printf '%s\n' "$detail" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_detail=
     printf 'lmline-engine: request failed: %s%s%s\n' "$display_detail" "${response_id:+ (response $response_id)}" "$hint" >&2
   else
     printf 'lmline-engine: request failed: provider reported a failed response%s%s\n' "${response_id:+ (response $response_id)}" "$hint" >&2

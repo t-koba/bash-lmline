@@ -38,7 +38,8 @@ __lmline_engine_error_message() {
       printf '%srequest timed out (%ss; set LMLINE_ENGINE_TIMEOUT to increase)\n' "$prefix" "${LMLINE_ENGINE_TIMEOUT:-60}"
       ;;
     lmline-engine:\ no\ valid\ candidate:*)
-      display_error=$(printf '%s\n' "${error#lmline-engine: }" | __lmline_display_answer 2>/dev/null) || display_error=
+      # Keep producer-side EPIPE diagnostics quiet when rendering is unavailable.
+      display_error=$(printf '%s\n' "${error#lmline-engine: }" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_error=
       printf '%s%s\n' "$prefix" "$display_error"
       ;;
     *401*|*Unauthorized*|*invalid*api*key*|*authentication*)
@@ -60,8 +61,9 @@ __lmline_engine_error_message() {
       ;;
     *)
       # Classify raw text above; render only the untrusted display detail.
-      # A missing/failed renderer must never fall back to raw terminal output.
-      display_error=$(printf '%s\n' "$error" | __lmline_display_answer 2>/dev/null) || display_error=
+      # A missing/failed renderer must never fall back to raw terminal output
+      # or emit producer-side EPIPE diagnostics.
+      display_error=$(printf '%s\n' "$error" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_error=
       printf '%sengine failed: %s (try: lmline doctor --check-api)\n' "$prefix" "$display_error"
       ;;
   esac

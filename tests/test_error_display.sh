@@ -93,10 +93,12 @@ for renderer in missing failed; do
   if [[ "$renderer" == failed ]]; then
     __lmline_display_answer() { cat; return 43; }
   fi
-  out=$(__lmline_engine_error_message "$prefix" "$raw")
+  out=$(__lmline_engine_error_message "$prefix" "$raw" 2>"$work/renderer.stderr")
   [[ "$out" == "${prefix}engine failed:  (try: lmline doctor --check-api)" ]] || fail 'engine error fails closed without renderer'
-  out=$(__lmline_engine_error_message "$prefix" "lmline-engine: no valid candidate: $raw")
+  [[ ! -s "$work/renderer.stderr" ]] || fail 'engine error renderer failure emits no pipe diagnostics'
+  out=$(__lmline_engine_error_message "$prefix" "lmline-engine: no valid candidate: $raw" 2>"$work/renderer.stderr")
   [[ "$out" == "$prefix" ]] || fail 'candidate error fails closed without renderer'
+  [[ ! -s "$work/renderer.stderr" ]] || fail 'candidate error renderer failure emits no pipe diagnostics'
   __lmline_report_request_failure 422 application/json "$fixture" 2>"$work/direct"
   actual=$(cat "$work/direct")
   expected="lmline-engine: request failed: HTTP 422: $hint"
@@ -107,5 +109,11 @@ for renderer in missing failed; do
     [[ "$actual" == *left* || "$actual" == *right* || "$actual" == *payload* ]] && provider_marker=yes
     fail "provider error fails closed without renderer (renderer=$renderer; header=$header; hint=$hint_present; provider_marker=$provider_marker)"
   fi
+
+  jq -cn --arg id r-test --arg message "$raw" '{id:$id,error:{message:$message},status:"failed"}' >"$fixture"
+  __lmline_report_provider_failure "$fixture" 2>"$work/direct"
+  actual=$(cat "$work/direct")
+  expected="lmline-engine: request failed:  (response r-test)$hint"
+  [[ "$actual" == "$expected" ]] || fail 'streamed provider error fails closed without renderer diagnostics'
 done
 ok 'terminal-safe provider error display'
