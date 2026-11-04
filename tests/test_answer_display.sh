@@ -25,7 +25,17 @@ for ((code=0; code<160; code++)); do
   out=$(printf 'left%b\nright\n' "\\$octal" | __lmline_display_answer)
   [[ "$out" == $'left\nright' ]] || fail "terminal control removed"
 done
-plain=$'ASCII [brackets] \\ slash\n\nUTF-8: \303\251 \346\227\245 \360\237\230\200\nend'
+# All Bidi_Control codepoints are removed without removing neighboring RTL
+# letters or other valid Unicode characters. Assert only, never print fixtures.
+for sequence in $'\330\234' $'\342\200\216' $'\342\200\217' \
+  $'\342\200\252' $'\342\200\253' $'\342\200\254' $'\342\200\255' $'\342\200\256' \
+  $'\342\201\246' $'\342\201\247' $'\342\201\250' $'\342\201\251'; do
+  for locale in C C.UTF-8; do
+    out=$(printf 'שלום%sمرحبا\n' "$sequence" | LC_ALL="$locale" __lmline_display_answer)
+    [[ "$out" == 'שלוםمرحبا' ]] || fail "bidi control removed and RTL letters preserved"
+  done
+done
+plain=$'ASCII [brackets] \\ slash\n\nUTF-8: \303\251 \346\227\245 \360\237\230\200 שלום مرحبا \330\233 \342\200\215 \342\200\220 \342\200\257 \342\201\245 \342\201\252\nend'
 for locale in C C.UTF-8; do
   out=$(printf '%s\n' "$plain" | LC_ALL="$locale" __lmline_display_answer)
   [[ "$out" == "$plain" ]] || fail "ordinary UTF-8 and LF preserved"

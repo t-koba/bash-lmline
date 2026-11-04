@@ -164,8 +164,9 @@ __lmline_parse_candidates() {
     payload=${payload#lmline-candidate: }
     IFS=$'\t' read -r risk reason flags candidate <<<"$payload"
     [[ -n "$candidate" ]] || continue
-    # C1 is C2 80..9F in UTF-8; bare continuation bytes are not controls.
-    [[ "$candidate" != *$'\302'[$'\200'-$'\237']* ]] || continue
+    # Reject C1 and Unicode Bidi_Control codepoints without matching ordinary
+    # UTF-8 continuation bytes.
+    __lmline_has_unsafe_unicode_control "$candidate" && continue
     [[ "$candidate" != *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]] || continue
     case "$risk" in
       high|medium|low) ;;

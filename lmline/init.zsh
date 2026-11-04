@@ -263,6 +263,10 @@ __lmline_zsh_set_candidates() {
     [[ -n "$candidate" ]] || continue
     # C1 is C2 80..9F in UTF-8; bare continuation bytes are not controls.
     [[ "$candidate" != *$'\302'[$'\200'-$'\237']* ]] || continue
+    # Unicode Bidi_Control: U+061C, U+200E/U+200F, U+202A-U+202E, U+2066-U+2069.
+    [[ "$candidate" != *$'\330\234'* ]] || continue
+    [[ "$candidate" != *$'\342\200'[$'\216'-$'\217'$'\252'-$'\256']* ]] || continue
+    [[ "$candidate" != *$'\342\201'[$'\246'-$'\251']* ]] || continue
     [[ "$candidate" != *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]] || continue
     case "$risk" in
       high|medium|low) ;;

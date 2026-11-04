@@ -129,11 +129,14 @@ __lmline_truncated_comment_candidate() {
   printf '%s' "$cmd" | LC_ALL=C cut -c "1-$body_len"
 }
 
-# Match Unicode C1 codepoints, not continuation bytes in ordinary UTF-8.
+# Match C1 and Unicode Bidi_Control codepoints, not ordinary UTF-8 bytes.
 # Keep byte matching local so validation never changes the caller's locale.
-__lmline_has_c1_control() {
+__lmline_has_unsafe_unicode_control() {
   local LC_ALL=C
-  [[ "$1" == *$'\302'[$'\200'-$'\237']* ]]
+  [[ "$1" == *$'\302'[$'\200'-$'\237']* ||
+     "$1" == *$'\330\234'* ||
+     "$1" == *$'\342\200'[$'\216'-$'\217'$'\252'-$'\256']* ||
+     "$1" == *$'\342\201'[$'\246'-$'\251']* ]]
 }
 
 __lmline_valid_candidates() {
@@ -143,7 +146,7 @@ __lmline_valid_candidates() {
   fi
   local candidate reason
   while IFS= read -r candidate; do
-    __lmline_has_c1_control "$candidate" && continue
+    __lmline_has_unsafe_unicode_control "$candidate" && continue
     if __lmline_candidate_truncated "$candidate"; then
       candidate=$(__lmline_truncate_candidate "$candidate")
       reason=$(__lmline_candidate_rejection_reason "$candidate")
@@ -168,7 +171,7 @@ __lmline_candidate_rejection_reason() {
   [[ "$cmd" != *$'\n'* ]] || { printf 'multiline'; return 0; }
   [[ "$cmd" != *$'\r'* ]] || { printf 'carriage-return'; return 0; }
   [[ ! "$cmd" =~ ^[[:space:]]*\`\`\`[[:alpha:]]*[[:space:]]*$ ]] || { printf 'markdown-fence'; return 0; }
-  if __lmline_has_c1_control "$cmd" || [[ "$cmd" == *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]]; then
+  if __lmline_has_unsafe_unicode_control "$cmd" || [[ "$cmd" == *[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037'$'\177']* ]]; then
     printf 'control-character'
     return 0
   fi

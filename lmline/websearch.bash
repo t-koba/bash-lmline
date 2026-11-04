@@ -69,7 +69,7 @@ __lmline_web_search_report() {
     __lmline_search_calls=$(( ${__lmline_search_calls:-0} + count ))
   fi
   jq -r '
-    def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f]"; ""));
+    def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"; ""));
     def items:
       if (.output | type) == "array" then .output
       else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
@@ -86,7 +86,7 @@ __lmline_web_search_report() {
     printf 'lmline-search: %s\n' "$detail" >&2
   done
   jq -r '
-    def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f]"; ""));
+    def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"; ""));
     def items:
       if (.output | type) == "array" then .output
       else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)

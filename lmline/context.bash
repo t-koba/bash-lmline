@@ -989,7 +989,7 @@ __lmline_collect_command_summaries() {
 # whole stream and flushes each line. mawk additionally needs interactive input
 # mode to read pipe lines without waiting for a full input buffer. Probe without
 # consuming answer input; other awks use their normal line reader. Raw engine
-# data stays intact.
+# data stays intact. Unicode Bidi_Control codepoints are removed as well.
 __lmline_display_answer() {
   local LC_ALL=C line
   local -a awk_options=()
@@ -1033,6 +1033,10 @@ __lmline_display_answer() {
           if (i < len) {
             m = byte[substr($0, i + 1, 1)]
             if (m >= 128 && m <= 191) {
+              if (n == 216 && m == 156) { # U+061C
+                if (run) { printf "%s", substr($0, run, i - run); run = 0 }
+                i++; continue
+              }
               if (state == "") { if (!run) run = i; i++; continue }
               i++; continue
             }
@@ -1050,6 +1054,11 @@ __lmline_display_answer() {
           if (i + 1 <= len) {
             m1 = byte[substr($0, i + 1, 1)]; m2 = byte[substr($0, i + 2, 1)]
             if (m1 >= 128 && m1 <= 191 && m2 >= 128 && m2 <= 191) {
+              # U+200E/F, U+202A..E, U+2066..9 (not ordinary RTL letters).
+              if (n == 226 && ((m1 == 128 && (m2 == 142 || m2 == 143 || (m2 >= 170 && m2 <= 174))) || (m1 == 129 && m2 >= 166 && m2 <= 169))) {
+                if (run) { printf "%s", substr($0, run, i - run); run = 0 }
+                i += 2; continue
+              }
               if (state == "") { if (!run) run = i; i += 2; continue }
               i += 2; continue
             }

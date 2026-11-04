@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-# Risk: actual Unicode C1 controls never become selectable commands; ordinary
+# Risk: Unicode C1/bidi controls never become selectable commands; ordinary
 # UTF-8 continuation bytes and the user's existing input remain untouched.
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-candidate-controls.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 safe='echo café-日本-一'
 export LMLINE_TEST_EXEC_MARKER="$tmp/executed"
+bidi_bad="echo 'left"$'\342\200\256'"right'"
 bad=$'echo \302\235title\302\234 $(touch "$LMLINE_TEST_EXEC_MARKER")'
 printf '%s\n' "$bad" >"$tmp/bad"
 printf '%s\n' "$safe" >"$tmp/safe"
@@ -16,6 +17,7 @@ set -euo pipefail
 source "$1/lmline/context.bash"
 source "$1/lmline/actions.bash"
 source "$1/lmline/policy.bash"
+source "$1/lmline/chat.bash"
 for byte in {128..159}; do
   printf -v octal '%03o' "$byte"
   printf -v control '\302%b' "\\$octal"
@@ -24,7 +26,25 @@ done
 for control in $'\001' $'\033' $'\177'; do
   [[ $(__lmline_candidate_rejection_reason "echo $control") == control-character ]]
 done
+# Exact Unicode Bidi_Control set, including controls inside quoted literals.
+bidi=($'\330\234' $'\342\200\216' $'\342\200\217' \
+  $'\342\200\252' $'\342\200\253' $'\342\200\254' $'\342\200\255' $'\342\200\256' \
+  $'\342\201\246' $'\342\201\247' $'\342\201\250' $'\342\201\251')
+rejected_file=$2/rejected
+for control in "${bidi[@]}"; do
+  [[ $(__lmline_candidate_rejection_reason "echo 'left${control}right'") == control-character ]]
+  for candidate in "echo 'left${control}right'" "echo abcdefghijklmnopqrstuvwxyz$control"; do
+    [[ -z $(printf '%s\n' "$candidate" | LMLINE_MAX_CANDIDATE_BYTES=16 __lmline_valid_candidates) ]]
+    # The engine emitter must reject before truncation too, retaining raw data
+    # only in its private rejection log, never as a rewritten command.
+    [[ -z $(LMLINE_MAX_CANDIDATE_BYTES=16 __lmline_emit_candidates "$candidate") ]]
+    [[ $(tail -1 "$rejected_file") == $'invalid:control-character\t'"$candidate" ]]
+  done
+done
 safe=$(cat "$2/safe")
+rtl='echo שלום-مرحبا'
+[[ $(__lmline_candidate_rejection_reason "$rtl") == ok ]]
+[[ $(printf '%s\n' "$rtl" | __lmline_valid_candidates) == "$rtl" ]]
 [[ $(__lmline_candidate_rejection_reason "$safe") == ok ]]
 # Reject before truncation, including a C1 after the byte limit.
 for candidate in "$(cat "$2/bad")" $'echo abcdefghijklmnopqrstuvwxyz\302\235'; do
@@ -34,7 +54,11 @@ done
 # Copilot inline edits use the same validator inside the isolated child.
 for shell in bash zsh; do
   command -v "$shell" >/dev/null || continue
-  output=$(printf 'bad\t%s\nsafe\t%s\n' "$(cat "$2/bad")" "$safe" |
+  output=$({
+    printf 'bad\t%s\n' "$(cat "$2/bad")"
+    for control in "${bidi[@]}"; do printf 'bad\techo %s\n' "$control"; done
+    printf 'safe\t%s\n' "$safe"
+  } |
     __LMLINE_VALIDATION_ISOLATED=1 __lmline_copilot_filter_candidates "$shell" rewrite)
   [[ ${output##*$'\t'} == "$safe" && "$output" != *title* ]]
 done
@@ -43,9 +67,9 @@ locales=(C)
 utf8_locale=$(locale -a | grep -iE '^(C\.(utf-?8)|en_US\.utf-?8)$' | head -1 || true)
 [[ -z "$utf8_locale" ]] || locales+=("$utf8_locale")
 for locale in "${locales[@]}"; do
-  LC_ALL=$locale bash "$tmp/policy-test" "$repo_dir" "$tmp" || fail "C1 policy ($locale)"
+  LC_ALL=$locale bash "$tmp/policy-test" "$repo_dir" "$tmp" || fail "Unicode control policy ($locale)"
 done
-ok 'C1 policy rejects all codepoints, preserves safe UTF-8, and filters Copilot edits'
+ok 'Unicode control policy rejects C1/bidi, preserves RTL text, and filters Copilot edits'
 
 # A custom engine bypasses policy, exercising the widgets' independent protocol
 # admission defense. The same admission path handles synchronous and file loads.
@@ -85,6 +109,10 @@ else
 fi
 safe=$(cat "$work/safe")
 bad=$(cat "$work/bad")
+rtl='echo שלום-مرحبا'
+bidi=($'\330\234' $'\342\200\216' $'\342\200\217' \
+  $'\342\200\252' $'\342\200\253' $'\342\200\254' $'\342\200\255' $'\342\200\256' \
+  $'\342\201\246' $'\342\201\247' $'\342\201\250' $'\342\201\251')
 # This is user input, not a provider suggestion: never strip or rewrite it.
 original=$(printf '# user \302\235 café')
 locale_before=$LC_ALL
@@ -95,10 +123,15 @@ for batch in mixed rejected; do
   for control in $'\302\234' $'\302\200' $'\302\237' $'\033' $'\177'; do
     printf 'lmline-candidate: low\t-\t-\techo %s\n' "$control" >>"$LMLINE_TEST_PROTOCOL_FILE"
   done
+  # Exact Unicode Bidi_Control set, including controls inside quoted literals.
+  for control in "${bidi[@]}"; do
+    printf 'lmline-candidate: low\t-\t-\t%s\n' "echo 'left${control}right'" >>"$LMLINE_TEST_PROTOCOL_FILE"
+  done
   if [[ "$batch" == mixed ]]; then
     printf 'lmline-candidate: low\t-\t-\t%s\n' "$safe" >>"$LMLINE_TEST_PROTOCOL_FILE"
+    printf 'lmline-candidate: low\t-\t-\t%s\n' "$rtl" >>"$LMLINE_TEST_PROTOCOL_FILE"
     printf 'lmline-candidate: low\t-\t-\techo safe-two\n' >>"$LMLINE_TEST_PROTOCOL_FILE"
-    expected=2
+    expected=3
   else
     expected=0
   fi
@@ -106,9 +139,9 @@ for batch in mixed rejected; do
   generate
   [[ $(count) == "$expected" ]]
   if [[ "$batch" == mixed ]]; then
-    [[ $(buffer) == "$safe" && $(dump) == "$safe"$'\n'"echo safe-two" ]]
+    [[ $(buffer) == "$safe" && $(dump) == "$safe"$'\n'"$rtl"$'\n'"echo safe-two" ]]
     if [[ "$shell" == bash ]]; then
-      [[ $(cat "$LMLINE_TEST_MENU_FILE") == "$safe"$'\n'"echo safe-two" ]]
+      [[ $(cat "$LMLINE_TEST_MENU_FILE") == "$safe"$'\n'"$rtl"$'\n'"echo safe-two" ]]
     fi
   else
     [[ $(buffer) == "$original" && $(cursor) == 3 ]]
@@ -123,7 +156,7 @@ if [[ "$shell" == bash ]]; then history; else fc -l 1; fi >"$work/$shell.history
 WIDGET
 for shell in bash zsh; do
   if ! command -v "$shell" >/dev/null; then
-    printf 'skip - C1 %s widgets (shell unavailable)\n' "$shell"
+    printf 'skip - C1/bidi %s widgets (shell unavailable)\n' "$shell"
     continue
   fi
   shell_flags=(-f -e -i)
@@ -134,14 +167,17 @@ for shell in bash zsh; do
       LMLINE_TEST_PROTOCOL_FILE="$tmp/protocol-$shell" LMLINE_TEST_MENU_FILE="$tmp/menu-$shell" \
       "$shell" "${shell_flags[@]}" -c 'source "$1" "$2" "$3" "$4"' _ \
         "$tmp/widget-test" "$repo_dir" "$tmp" "$shell" \
-        >"$tmp/$shell.out" 2>"$tmp/$shell.err" || fail "C1 $shell widgets ($locale)"
+        >"$tmp/$shell.out" 2>"$tmp/$shell.err" || fail "C1/bidi $shell widgets ($locale)"
     ! LC_ALL=C grep -q $'\302[\200-\237]' "$tmp/$shell.out" "$tmp/$shell.err" || fail "$shell C1 display leak"
+    ! LC_ALL=C grep -q $'\330\234' "$tmp/$shell.out" "$tmp/$shell.err" || fail "$shell bidi display leak"
+    ! LC_ALL=C grep -q $'\342\200[\216-\217\252-\256]' "$tmp/$shell.out" "$tmp/$shell.err" || fail "$shell bidi display leak"
+    ! LC_ALL=C grep -q $'\342\201[\246-\251]' "$tmp/$shell.out" "$tmp/$shell.err" || fail "$shell bidi display leak"
   done
   [[ -s "$tmp/history-$shell/suggestions.log" ]] || fail "$shell missing suggestion log"
   ! grep -RFq 'title' "$tmp/history-$shell" "$tmp/$shell.history" 2>/dev/null || fail "$shell history leak"
   ! grep -Fq 'title' "$tmp/$shell.out" "$tmp/$shell.err" || fail "$shell display leak"
 done
-ok 'C1 widget admission preserves buffers and safe UTF-8 without execution or history/display leaks'
+ok 'C1/bidi widget admission preserves buffers and safe UTF-8 without execution or history/display leaks'
 
 # Exercise actual provider parsing through the engine, including rejection
 # before byte truncation and raw trace retention. Never contact a network.
@@ -163,7 +199,7 @@ printf '## available_tools\n' >"$tmp/context"
 for shell in bash zsh; do
   command -v "$shell" >/dev/null || continue
   for batch in mixed rejected; do
-    text=$bad$'\n'"echo abcdefghijklmnopqrstuvwxyz"$'\302\235'
+    text=$bad$'\n'"echo abcdefghijklmnopqrstuvwxyz"$'\302\235\n'"$bidi_bad"$'\n'"echo abcdefghijklmnopqrstuvwxyz"$'\342\200\256'
     [[ "$batch" != mixed ]] || text+=$'\n'"$safe"
     jq -n --arg text "$text" '{choices:[{message:{role:"assistant",content:$text},finish_reason:"stop"}]}' >"$tmp/response.json"
     if PATH="$tmp/bin:$PATH" LMLINE_TEST_RESPONSE="$tmp/response.json" \
@@ -181,7 +217,8 @@ for shell in bash zsh; do
     fi
     ! LC_ALL=C grep -q $'\302[\200-\237]' "$tmp/engine.out" "$tmp/engine.err" || fail 'engine C1 display leak'
     grep -RFq "$bad" "$tmp/trace" || fail 'raw rejected trace was changed'
+    grep -RFq "$bidi_bad" "$tmp/trace" || fail 'raw bidi trace was changed'
   done
 done
 [[ ! -e "$LMLINE_TEST_EXEC_MARKER" ]] || fail 'candidate executed'
-ok 'C1 engine rejection precedes truncation, retains raw traces, and emits only safe candidates'
+ok 'C1/bidi engine rejection precedes truncation, retains raw traces, and emits only safe candidates'

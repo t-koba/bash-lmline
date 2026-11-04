@@ -16,11 +16,12 @@ export LMLINE_AUTH_MODE=api-key LMLINE_TRACE_DIR=
 fixture=$work/error.json
 hint='; full error: lmline debug trace on'
 prefix=$'\e[32m[lm]\e[0m '
-plain=$'ASCII [brackets] \\ slash UTF-8: \303\251 \346\227\245 \360\237\230\200'
+plain=$'שלום مرحبا ASCII [brackets] \\ slash UTF-8: \303\251 \346\227\245 \360\237\230\200'
 
 # Actual JSON decoding includes message, code and param, not escaped JSON text.
 for sequence in $'\e]52;c;payload\a' $'\e[2J' $'\ePpayload\e\\' \
-  $'\302\235payload\302\234' $'\302\2332J' $'\001\177\302\205'; do
+  $'\302\235payload\302\234' $'\302\2332J' $'\001\177\302\205' \
+  $'\330\234\342\200\256\342\201\246'; do
   raw="left${sequence}right $plain"
   jq -cn --arg message "$raw" --arg code "bad${sequence}code" --arg param "a${sequence}b" \
     '{error:{message:$message,code:$code,param:$param}}' >"$fixture"
@@ -87,12 +88,12 @@ for stream in 0 1; do
 done
 
 # Response IDs share the terminal-safe one-line display boundary with provider
-# details; ordinary text survives, while an OSC string and newline do not.
-response_id=$'r-test\e]52;c;synthetic\a\nforged'
+# details; RTL letters survive, while OSC, bidi controls and newline do not.
+response_id=$'r-test\342\200\256\e]52;c;synthetic\a\nforged-שלום-مرحبا'
 jq -cn --arg id "$response_id" --arg message 'provider failure' \
   '{id:$id,status:"failed",error:{message:$message}}' >"$fixture"
 __lmline_report_provider_failure "$fixture" 2>"$work/id-detail"
-expected="lmline-engine: request failed: provider failure (response r-test forged)$hint"
+expected="lmline-engine: request failed: provider failure (response r-test forged-שלום-مرحبا)$hint"
 [[ $(cat "$work/id-detail") == "$expected" ]] || fail 'response ID sanitized in provider-detail branch'
 [[ $(wc -l <"$work/id-detail") -eq 1 ]] || fail 'response ID newline collapsed'
 ! grep -Fq $'\e]52;c;synthetic\a' "$work/id-detail" || fail 'response ID OSC removed'
@@ -104,7 +105,7 @@ jq -e --arg id "$response_id" '.id == $id' "$fixture" >/dev/null || fail 'raw re
   __lmline_response_error_detail() { :; }
   __lmline_report_provider_failure "$fixture" 2>"$work/id-no-detail"
 )
-expected="lmline-engine: request failed: provider reported a failed response (response r-test forged)$hint"
+expected="lmline-engine: request failed: provider reported a failed response (response r-test forged-שלום-مرحبا)$hint"
 [[ $(cat "$work/id-no-detail") == "$expected" ]] || fail 'response ID sanitized in no-detail branch'
 [[ $(wc -l <"$work/id-no-detail") -eq 1 ]] || fail 'no-detail response ID newline collapsed'
 ! grep -Fq $'\e]52;c;synthetic\a' "$work/id-no-detail" || fail 'no-detail response ID OSC removed'
@@ -139,6 +140,8 @@ for renderer in missing failed; do
   expected="lmline-engine: request failed: $hint"
   [[ "$actual" == "$expected" ]] || fail 'streamed provider error fails closed without renderer diagnostics or raw ID'
   (
+    # This replacement is called indirectly by the provider-failure reporter.
+    # shellcheck disable=SC2329
     __lmline_response_error_detail() { :; }
     __lmline_report_provider_failure "$fixture" 2>"$work/no-detail-renderer"
   )
