@@ -70,6 +70,24 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   "$cli" config unset LMLINE_MAX_CANDIDATE_BYTES >/dev/null
   R
   [[ -z "${LMLINE_MAX_CANDIDATE_BYTES-}" ]] || exit 23
+  # H: revoking project-config consent must not reload project-owned settings.
+  printf "%s\n" "export LMLINE_PROJECT_CONFIG=1" >"$cfg/settings.bash"
+  printf "%s\n" "export LMLINE_TOOL_COMMAND_RUN=1" >"$PWD/.lmline.bash"
+  R
+  [[ "${LMLINE_PROJECT_CONFIG:-}" == 1 && "${LMLINE_TOOL_COMMAND_RUN:-}" == 1 ]] || exit 24
+  : >"$cfg/settings.bash"
+  R
+  [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 25
+  R
+  [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 26
+  # Project config cannot restore its own consent on a later settings reload.
+  printf "%s\n" \
+    "export LMLINE_PROJECT_CONFIG=1" \
+    "export LMLINE_TOOL_COMMAND_RUN=1" >"$PWD/.lmline.bash"
+  printf "%s\n" "export LMLINE_DEBUG=1" >"$cfg/settings.bash"
+  R
+  [[ "${LMLINE_DEBUG:-}" == 1 ]] || exit 27
+  [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 28
 ' _ "$repo_dir" "$reload_tmp/bash-config" "$repo_dir/lmline/lmline" || fail "Bash settings reload drops obsolete values"
 
 if command -v zsh >/dev/null 2>&1; then
@@ -117,6 +135,23 @@ if command -v zsh >/dev/null 2>&1; then
     "$cli" config set LMLINE_ASYNC 1 >/dev/null
     R
     [[ "${LMLINE_ASYNC:-}" == 1 ]] || exit 20
+    # H: consent revocation clears old project values through the bridge.
+    printf "%s\n" "export LMLINE_PROJECT_CONFIG=1" >"$cfg/settings.bash"
+    printf "%s\n" "export LMLINE_TOOL_COMMAND_RUN=1" >"$PWD/.lmline.bash"
+    R
+    [[ "${LMLINE_PROJECT_CONFIG:-}" == 1 && "${LMLINE_TOOL_COMMAND_RUN:-}" == 1 ]] || exit 21
+    : >"$cfg/settings.bash"
+    R
+    [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 22
+    R
+    [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 23
+    printf "%s\n" \
+      "export LMLINE_PROJECT_CONFIG=1" \
+      "export LMLINE_TOOL_COMMAND_RUN=1" >"$PWD/.lmline.bash"
+    printf "%s\n" "export LMLINE_DEBUG=1" >"$cfg/settings.bash"
+    R
+    [[ "${LMLINE_DEBUG:-}" == 1 ]] || exit 24
+    [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 25
   ' _ "$repo_dir" "$reload_tmp/zsh-config" "$repo_dir/lmline/lmline" || fail "zsh settings reload drops obsolete values"
 fi
 

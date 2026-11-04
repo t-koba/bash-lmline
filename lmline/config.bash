@@ -170,13 +170,16 @@ __lmline_init_dirs() {
 # then project config from the Git root, then project config from $PWD.
 # All entry points (CLI, engine, bash/zsh init) share this single loader.
 # Project files are only read when the user enabled LMLINE_PROJECT_CONFIG in
-# their own settings or environment (off by default). The check runs before
-# either project file is read, so a project file cannot enable itself.
+# their own settings or environment (off by default). Reconcile persistent
+# settings before checking consent, so removing the opt-in also drops stale
+# project-owned values; the gate runs before project files so they cannot
+# enable themselves.
 __lmline_load_all_config() {
   local config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline} root
   __lmline_capture_env_baseline
   __LMLINE_LOAD_KEYS=
   __lmline_load_export_file "$config_dir/settings.bash"
+  __lmline_reconcile_config_load
   if [[ "${LMLINE_PROJECT_CONFIG:-0}" == 1 ]]; then
     if command -v git >/dev/null 2>&1 && root=$(git rev-parse --show-toplevel 2>/dev/null); then
       if [[ -f "$root/.lmline.bash" ]]; then
