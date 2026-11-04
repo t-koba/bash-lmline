@@ -396,6 +396,7 @@ fi
 if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
   SHELLCHECK="$(command -v shellcheck)" python3 "$repo_dir/tools/shellcheck-per-file-poc/test_candidate.py" \
     CandidateTests.test_manifest_matches_shell_harness_without_running_it \
+    CandidateTests.test_bounded_batch_comparison \
     ProgressTests.test_regular_harness_pinned_route_and_failure_artifact \
     ProgressTests.test_regular_harness_local_failure_shows_actionable_diagnostics \
     ProgressTests.test_regular_harness_local_success_cleans_temporary_report \
