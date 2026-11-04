@@ -226,8 +226,8 @@ bash --norc -i -c '
   fi
   printf "1\n" >"$2/expected-timeout"
   printf "8\n8\n" >"$2/expected-caps"
-  cmp -s "$2/expected-timeout" "$2/timeouts"
-  cmp -s "$2/expected-caps" "$2/caps"
+  cmp -s "$2/expected-timeout" "$2/timeouts" || exit 12
+  cmp -s "$2/expected-caps" "$2/caps" || exit 13
 ' _ "$repo_dir" "$reload_tmp" || fail "fix uses execution budgets reloaded before validation and dispatch"
 rm -rf "$reload_tmp"
 ok "fix uses timeout and output budgets after reloading settings"
