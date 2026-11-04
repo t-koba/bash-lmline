@@ -1539,6 +1539,7 @@ __lmline_stream_chat() {
     : >"$content_file"
     : >"$tc_raw_file"
     : >"$usage_chunk_file"
+    : >"$curl_status_file"
     while IFS= read -r sse_line; do
       sse_line=${sse_line%$'\r'}
       [[ "$sse_line" == data:* ]] || continue
@@ -1569,12 +1570,17 @@ __lmline_stream_chat() {
     if [[ -n "$buf" ]]; then
       __lmline_stream_handle_line "$buf" && got_content=1
     fi
+    curl_status=$(cat "$curl_status_file" 2>/dev/null) || curl_status=1
     if (( saw_data == 1 )); then
+      break
+    fi
+    # Retry without stream_options only after a successful curl with no SSE
+    # data; a transport failure may have reached the provider already.
+    if [[ "$attempt" != with-usage || "$curl_status" != 0 ]]; then
       break
     fi
   done
   (( saw_data == 1 )) || return 1
-  curl_status=$(cat "$curl_status_file" 2>/dev/null) || curl_status=1
   stream_complete=$saw_done
   [[ "$curl_status" == 0 ]] && (( saw_finish == 1 )) && stream_complete=1
   if (( stream_complete == 0 && emitted_bytes == 0 )); then

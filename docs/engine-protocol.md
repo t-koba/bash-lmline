@@ -202,10 +202,11 @@ When streaming is active (`LMLINE_STREAM=1`), text is written incrementally,
 line by line, and the tool loop keeps working: streamed `tool_calls` deltas
 and text-protocol `TOOL` lines are collected mid-stream, executed locally,
 and the next round streams again. Token usage is taken from the provider's
-`stream_options.include_usage` final chunk when available (the engine retries
-once without `stream_options` for providers that reject it). The display byte
-limits (`LMLINE_EXPLAIN_MAX_OUTPUT_BYTES` / `LMLINE_CLIP_MAX_OUTPUT_BYTES`)
-apply to streamed output; when exceeded, emission stops and the last stdout
+`stream_options.include_usage` final chunk when available (after a successful
+curl with no SSE data, the engine retries once without `stream_options` for
+providers that reject it; a curl transport failure skips that retry).
+The display byte limits (`LMLINE_EXPLAIN_MAX_OUTPUT_BYTES` /
+`LMLINE_CLIP_MAX_OUTPUT_BYTES`) apply to streamed output; when exceeded, emission stops and the last stdout
 line is a marker:
 
 ```text

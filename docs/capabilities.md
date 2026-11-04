@@ -83,7 +83,7 @@ application-level retries and local tool rounds:
 
 | Route | HTTP retries | Application-level retries | Local tool rounds |
 | --- | --- | --- | --- |
-| `api-key` without search | yes (default 1) | compatibility/format, candidate-validation, and empty-answer | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
+| `api-key` without search | yes (default 1) | compatibility/format, candidate-validation, empty-answer, and optional chat-stream fallback | yes (`LMLINE_MAX_TOOL_ROUNDS`, default 4) |
 | `chatgpt` | no by default; a positive `LMLINE_HTTP_RETRIES` enables | none | none |
 | `api-key` with native search | no by default; a positive `LMLINE_HTTP_RETRIES` enables | none | yes |
 
@@ -92,6 +92,13 @@ and curl failures. A curl failure can happen after the provider accepts a
 request, so an explicitly enabled retry can repeat ChatGPT plan usage or a
 billed search. On routes where candidate-validation or empty-answer retries
 are allowed, those retries omit local function tools.
+
+With `LMLINE_STREAM=1` on the `chat` format, an explain/clip request can also
+make one no-`stream_options` compatibility request after a successful curl
+returns no SSE data; if streaming still yields no usable answer, the engine
+uses the buffered fallback. A curl transport failure skips that compatibility
+retry but still uses the buffered fallback. These additional provider calls
+may incur additional API charges.
 
 Native search is requested once per exchange by default. Where local-tool rounds
 are available, later rounds reuse earlier search results, with reuse reported
