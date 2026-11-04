@@ -201,6 +201,39 @@ if command -v zsh >/dev/null 2>&1; then
     __lmline_zsh_reload_settings_if_changed
     [[ -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 54
   ' _ "$repo_dir" "$reload_tmp/zsh-resourced-config" || fail "zsh re-source preserves settings ownership"
+  LMLINE_CONFIG_DIR="$reload_tmp/zsh-async-config" zsh -fic '
+    cfg=$2
+    mkdir -p "$cfg" || exit 60
+    : >"$cfg/settings.bash"
+    source "$1/lmline/init.zsh"
+    file="$cfg/pending-result"
+    : >"$file"
+    sleep 60 >/dev/null 2>&1 &
+    pid=$!
+    cleanup_test_async() {
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      rm -f "$file"
+    }
+    trap cleanup_test_async EXIT
+    __LMLINE_ZSH_ASYNC_FILE=$file
+    __LMLINE_ZSH_ASYNC_PID=$pid
+    __LMLINE_ZSH_ASYNC_KEY=pending-request
+    __LMLINE_ZSH_ASYNC_STARTED=123
+    __LMLINE_ZSH_ASYNC_NOTIFIED=1
+    source "$1/lmline/init.zsh"
+    if [[ "$__LMLINE_ZSH_ASYNC_FILE" != "$file" || "$__LMLINE_ZSH_ASYNC_PID" != "$pid" || \
+      "$__LMLINE_ZSH_ASYNC_KEY" != pending-request || "$__LMLINE_ZSH_ASYNC_STARTED" != 123 || \
+      "$__LMLINE_ZSH_ASYNC_NOTIFIED" != 1 ]]; then
+      cleanup_test_async
+      exit 61
+    fi
+    __lmline_zsh_async_cleanup
+    [[ -z "$__LMLINE_ZSH_ASYNC_FILE" && "$__LMLINE_ZSH_ASYNC_PID" == 0 && \
+      -z "$__LMLINE_ZSH_ASYNC_KEY" && ! -e "$file" ]] || exit 62
+    kill -0 "$pid" 2>/dev/null && exit 63
+    exit 0
+  ' _ "$repo_dir" "$reload_tmp/zsh-async-config" || fail "zsh re-source preserves pending async state"
 fi
 
 ok "settings reload drops obsolete values"
