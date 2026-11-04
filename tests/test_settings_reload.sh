@@ -153,6 +153,23 @@ if command -v zsh >/dev/null 2>&1; then
     [[ "${LMLINE_DEBUG:-}" == 1 ]] || exit 24
     [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 25
   ' _ "$repo_dir" "$reload_tmp/zsh-config" "$repo_dir/lmline/lmline" || fail "zsh settings reload drops obsolete values"
+  # Environment-origin project consent survives fresh bridge processes, while
+  # a persistent opt-out takes precedence and removing it restores the env gate.
+  LMLINE_CONFIG_DIR="$reload_tmp/zsh-env-config" LMLINE_PROJECT_CONFIG=1 zsh -fic '
+    cfg=$2
+    mkdir -p "$cfg" || exit 30
+    : >"$cfg/settings.bash"
+    printf "%s\n" "export LMLINE_PROJECT_CONFIG=0" >"$cfg/settings.bash"
+    printf "%s\n" "export LMLINE_PROGRESS=project-value" >"$PWD/.lmline.bash"
+    unset LMLINE_PROGRESS
+    source "$1/lmline/init.zsh"
+    [[ "${LMLINE_PROJECT_CONFIG:-}" == 0 && -z "${LMLINE_PROGRESS-}" ]] || exit 31
+    for value in one two three; do
+      printf "%s\n" "export LMLINE_DEBUG=$value" >"$cfg/settings.bash"
+      __lmline_zsh_reload_settings_if_changed
+      [[ "${LMLINE_PROJECT_CONFIG:-}" == 1 && "${LMLINE_PROGRESS:-}" == project-value ]] || exit 32
+    done
+  ' _ "$repo_dir" "$reload_tmp/zsh-env-config" || fail "zsh environment project consent survives reload"
 fi
 
 ok "settings reload drops obsolete values"

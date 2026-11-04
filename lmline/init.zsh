@@ -38,11 +38,24 @@ __lmline_zsh_capture_env_baseline() {
 
 __lmline_zsh_load_all_config() {
   local exports line key new_keys old_keys cur stamp ref base uk
+  local project_config_baseline_set=0 project_config_baseline_value=
   __lmline_zsh_capture_env_baseline
   old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
-  exports=$(LMLINE_CONFIG_DIR=$LMLINE_CONFIG_DIR __LMLINE_ZSH_PREV_KEYS=$__LMLINE_ZSH_BRIDGE_KEYS bash -c '
+  if __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_PROJECT_CONFIG; then
+    base=__LMLINE_ZSHBASE_LMLINE_PROJECT_CONFIG
+    project_config_baseline_set=1
+    project_config_baseline_value=${(P)base}
+  fi
+  exports=$(LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
+    __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
+    __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
+    __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" bash -c '
     source "$1/config.bash"
     __lmline_forget_bridge_keys
+    if [[ "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET:-0}" == 1 ]]; then
+      printf -v LMLINE_PROJECT_CONFIG "%s" "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE-}"
+      export LMLINE_PROJECT_CONFIG
+    fi
     __lmline_load_all_config
     env | awk -F= "/^LMLINE_[A-Z0-9_]*=/ { print }"
   ' _ "$LMLINE_DIR") || return 1
