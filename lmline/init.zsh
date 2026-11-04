@@ -101,11 +101,13 @@ typeset -g __LMLINE_ZSH_SETTINGS_CKSUM=
 __lmline_zsh_sync_async_notify_hook() {
   typeset -ga precmd_functions
   if [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 1 ]]; then
-    (( ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 )) &&
+    if (( ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 )); then
       precmd_functions+=(__lmline_zsh_async_prompt_check)
+    fi
   else
     precmd_functions=(${precmd_functions:#__lmline_zsh_async_prompt_check})
   fi
+  return 0
 }
 
 # Mirrors __lmline_reload_settings_if_changed for the zsh environment: re-exports

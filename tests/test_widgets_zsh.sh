@@ -1201,9 +1201,9 @@ EOF
   ' _ "$repo_dir" "$zsh_fix_session_marker" "$zsh_fix_session_survived" || fail "zsh session setting keeps precedence over loaded settings"
   [[ ! -e "$zsh_fix_session_marker" && -f "$zsh_fix_session_survived" ]] || fail "zsh session override survives child config reload"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-notify" LMLINE_ASYNC_NOTIFY=1 zsh -efic '
-    source "$1/lmline/init.zsh"
+    source "$1/lmline/init.zsh" || exit 84
     [[ " ${precmd_functions[@]} " == *"__lmline_zsh_async_prompt_check"* ]]
-    source "$1/lmline/init.zsh"
+    source "$1/lmline/init.zsh" || exit 85
     [[ " ${precmd_functions[@]} " == *"__lmline_zsh_async_prompt_check"* ]]
     count=0
     for fn in "${precmd_functions[@]}"; do [[ "$fn" == __lmline_zsh_async_prompt_check ]] && count=$((count + 1)); done
