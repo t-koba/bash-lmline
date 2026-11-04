@@ -29,7 +29,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           # The commit-subject check reads the history to find the commit
           # that added it, so the whole history is needed.
@@ -57,7 +57,7 @@ jobs:
         run: LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
       - name: Retain ShellCheck diagnostics
         if: ${{ always() && runner.os == 'Linux' && steps.run_tests_ubuntu.outcome != 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: shellcheck-per-file-evidence
           path: |
