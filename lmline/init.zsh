@@ -17,9 +17,9 @@ fi
 # contain instead of leaving them stale. Baselines are captured before the
 # first bridge load; per-key values live in double-underscore variables that
 # config files cannot define.
-typeset -g __LMLINE_ZSH_BASELINE_SET=0
-typeset -g __LMLINE_ZSH_BASELINE_KEYS=
-typeset -g __LMLINE_ZSH_BRIDGE_KEYS=
+(( ${+__LMLINE_ZSH_BASELINE_SET} )) || typeset -g __LMLINE_ZSH_BASELINE_SET=0
+(( ${+__LMLINE_ZSH_BASELINE_KEYS} )) || typeset -g __LMLINE_ZSH_BASELINE_KEYS=
+(( ${+__LMLINE_ZSH_BRIDGE_KEYS} )) || typeset -g __LMLINE_ZSH_BRIDGE_KEYS=
 
 __lmline_zsh_key_in_list() {
   [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]

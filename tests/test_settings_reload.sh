@@ -184,6 +184,21 @@ if command -v zsh >/dev/null 2>&1; then
     [[ "$LMLINE_MODEL" == "$expected" ]] || exit 42
     [[ -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 43
   ' _ "$repo_dir" "$reload_tmp/zsh-injection-config" || fail "zsh bridge preserves multiline environment values"
+  LMLINE_CONFIG_DIR="$reload_tmp/zsh-resourced-config" zsh -fic '
+    cfg=$2
+    mkdir -p "$cfg" || exit 50
+    unset LMLINE_TOOL_COMMAND_RUN LMLINE_PROJECT_CONFIG
+    printf "%s\n" "export LMLINE_TOOL_COMMAND_RUN=1" >"$cfg/settings.bash"
+    source "$1/lmline/init.zsh"
+    [[ "${LMLINE_TOOL_COMMAND_RUN-}" == 1 ]] || exit 51
+    source "$1/lmline/init.zsh"
+    [[ "${LMLINE_TOOL_COMMAND_RUN-}" == 1 ]] || exit 52
+    : >"$cfg/settings.bash"
+    __lmline_zsh_reload_settings_if_changed
+    [[ -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 53
+    __lmline_zsh_reload_settings_if_changed
+    [[ -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 54
+  ' _ "$repo_dir" "$reload_tmp/zsh-resourced-config" || fail "zsh re-source preserves settings ownership"
 fi
 
 ok "settings reload drops obsolete values"
