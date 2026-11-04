@@ -452,9 +452,18 @@ __lmline_report_request_failure() {
 # such as a Responses stream that ends with response.failed. The HTTP status
 # cannot classify these, so the provider error code drives the recovery hint.
 __lmline_report_provider_failure() {
-  local response=$1 detail display_detail hint= response_id=
+  local response=$1 detail display_detail hint= display_response_id= response_suffix=
   detail=$(__lmline_response_error_detail "$response" application/json)
-  response_id=$(jq -r '.id // empty' "$response" 2>/dev/null) || response_id=
+  # Response IDs are provider data too: bound/collapse them, then render
+  # through the same fail-closed terminal boundary as error detail.
+  display_response_id=$(
+    jq -r '.id // empty' "$response" 2>/dev/null |
+      __lmline_display_error_line 400 2>/dev/null |
+      __lmline_display_answer 2>/dev/null
+  ) || display_response_id=
+  if [[ -n "$display_response_id" ]]; then
+    response_suffix=" (response $display_response_id)"
+  fi
   if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
     hint=$(__lmline_chatgpt_failure_hint 200 "$detail")
   fi
@@ -462,9 +471,9 @@ __lmline_report_provider_failure() {
   if [[ -n "$detail" ]]; then
     # A failed renderer must not emit producer-side EPIPE diagnostics.
     display_detail=$(printf '%s\n' "$detail" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_detail=
-    printf 'lmline-engine: request failed: %s%s%s\n' "$display_detail" "${response_id:+ (response $response_id)}" "$hint" >&2
+    printf 'lmline-engine: request failed: %s%s%s\n' "$display_detail" "$response_suffix" "$hint" >&2
   else
-    printf 'lmline-engine: request failed: provider reported a failed response%s%s\n' "${response_id:+ (response $response_id)}" "$hint" >&2
+    printf 'lmline-engine: request failed: provider reported a failed response%s%s\n' "$response_suffix" "$hint" >&2
   fi
 }
 

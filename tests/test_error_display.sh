@@ -86,6 +86,29 @@ for stream in 0 1; do
   done
 done
 
+# Response IDs share the terminal-safe one-line display boundary with provider
+# details; ordinary text survives, while an OSC string and newline do not.
+response_id=$'r-test\e]52;c;synthetic\a\nforged'
+jq -cn --arg id "$response_id" --arg message 'provider failure' \
+  '{id:$id,status:"failed",error:{message:$message}}' >"$fixture"
+__lmline_report_provider_failure "$fixture" 2>"$work/id-detail"
+expected="lmline-engine: request failed: provider failure (response r-test forged)$hint"
+[[ $(cat "$work/id-detail") == "$expected" ]] || fail 'response ID sanitized in provider-detail branch'
+[[ $(wc -l <"$work/id-detail") -eq 1 ]] || fail 'response ID newline collapsed'
+! grep -Fq $'\e]52;c;synthetic\a' "$work/id-detail" || fail 'response ID OSC removed'
+jq -e --arg id "$response_id" '.id == $id' "$fixture" >/dev/null || fail 'raw response ID retained'
+
+# Exercise the reporter's no-detail branch as well: extraction remains
+# separate from the terminal-facing response ID.
+(
+  __lmline_response_error_detail() { :; }
+  __lmline_report_provider_failure "$fixture" 2>"$work/id-no-detail"
+)
+expected="lmline-engine: request failed: provider reported a failed response (response r-test forged)$hint"
+[[ $(cat "$work/id-no-detail") == "$expected" ]] || fail 'response ID sanitized in no-detail branch'
+[[ $(wc -l <"$work/id-no-detail") -eq 1 ]] || fail 'no-detail response ID newline collapsed'
+! grep -Fq $'\e]52;c;synthetic\a' "$work/id-no-detail" || fail 'no-detail response ID OSC removed'
+
 # Missing or failed renderers never fall back to raw text, even if a failed
 # renderer emitted a partial unsafe result. Trusted hints remain available.
 for renderer in missing failed; do
@@ -110,10 +133,16 @@ for renderer in missing failed; do
     fail "provider error fails closed without renderer (renderer=$renderer; header=$header; hint=$hint_present; provider_marker=$provider_marker)"
   fi
 
-  jq -cn --arg id r-test --arg message "$raw" '{id:$id,error:{message:$message},status:"failed"}' >"$fixture"
+  jq -cn --arg id "$response_id" --arg message "$raw" '{id:$id,error:{message:$message},status:"failed"}' >"$fixture"
   __lmline_report_provider_failure "$fixture" 2>"$work/direct"
   actual=$(cat "$work/direct")
-  expected="lmline-engine: request failed:  (response r-test)$hint"
-  [[ "$actual" == "$expected" ]] || fail 'streamed provider error fails closed without renderer diagnostics'
+  expected="lmline-engine: request failed: $hint"
+  [[ "$actual" == "$expected" ]] || fail 'streamed provider error fails closed without renderer diagnostics or raw ID'
+  (
+    __lmline_response_error_detail() { :; }
+    __lmline_report_provider_failure "$fixture" 2>"$work/no-detail-renderer"
+  )
+  expected="lmline-engine: request failed: provider reported a failed response$hint"
+  [[ $(cat "$work/no-detail-renderer") == "$expected" ]] || fail 'no-detail provider error fails closed without renderer or raw ID'
 done
 ok 'terminal-safe provider error display'
