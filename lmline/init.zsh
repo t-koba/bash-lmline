@@ -97,6 +97,17 @@ __lmline_zsh_load_all_config() {
 
 typeset -g __LMLINE_ZSH_SETTINGS_CKSUM=
 
+# Keep the opt-in prompt hook synchronized with reloaded interactive settings.
+__lmline_zsh_sync_async_notify_hook() {
+  typeset -ga precmd_functions
+  if [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 1 ]]; then
+    (( ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 )) &&
+      precmd_functions+=(__lmline_zsh_async_prompt_check)
+  else
+    precmd_functions=(${precmd_functions:#__lmline_zsh_async_prompt_check})
+  fi
+}
+
 # Mirrors __lmline_reload_settings_if_changed for the zsh environment: re-exports
 # settings.bash values when the file content changed, so "lmline config set"
 # applies to the next widget invocation without restarting the shell. Content
@@ -110,9 +121,13 @@ __lmline_zsh_reload_settings_if_changed() {
     # A deleted file is also a change: reload so file-owned values are dropped.
     sum="no-settings-file"
   fi
-  [[ "$sum" == "$__LMLINE_ZSH_SETTINGS_CKSUM" ]] && return 0
+  if [[ "$sum" == "$__LMLINE_ZSH_SETTINGS_CKSUM" ]]; then
+    __lmline_zsh_sync_async_notify_hook
+    return 0
+  fi
   __LMLINE_ZSH_SETTINGS_CKSUM=$sum
   __lmline_zsh_load_all_config
+  __lmline_zsh_sync_async_notify_hook
   return 0
 }
 
@@ -872,7 +887,4 @@ if [[ "${LMLINE_BIND_KEYS:-1}" == 1 ]]; then
   done
 fi
 
-if [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 1 ]]; then
-  typeset -ga precmd_functions
-  (( ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 )) && precmd_functions+=(__lmline_zsh_async_prompt_check)
-fi
+__lmline_zsh_sync_async_notify_hook

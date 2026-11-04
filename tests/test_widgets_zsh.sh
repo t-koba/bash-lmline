@@ -1242,8 +1242,32 @@ EOF
     printf "%s\n" "export LMLINE_ASYNC_NOTIFY=0" >"$cfg/settings.bash"
     __lmline_zsh_async_prompt_check 2>"$tmp_out"
     [[ "${LMLINE_ASYNC_NOTIFY:-}" == 0 && ! -s "$tmp_out" && \
-      $__LMLINE_ZSH_ASYNC_NOTIFIED == 0 ]]
+      $__LMLINE_ZSH_ASYNC_NOTIFIED == 0 && \
+      ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 ]]
   ' _ "$repo_dir" "$zsh_tmp/config-notify-revoked" || fail "zsh async notify opt-out reload"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-notify-enabled" zsh -efic '
+    cfg=$2
+    mkdir -p "$cfg" || exit 81
+    unset LMLINE_ASYNC_NOTIFY
+    : >"$cfg/settings.bash"
+    source "$1/lmline/init.zsh"
+    [[ "${LMLINE_ASYNC_NOTIFY:-0}" == 0 && \
+      ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} == 0 ]] || exit 82
+    printf "%s\n" "export LMLINE_ASYNC_NOTIFY=1" >"$cfg/settings.bash"
+    __lmline_zsh_reload_settings_if_changed
+    [[ "$LMLINE_ASYNC_NOTIFY" == 1 && \
+      ${precmd_functions[(Ie)__lmline_zsh_async_prompt_check]} -gt 0 ]] || exit 83
+    ready="$cfg/completed-result"
+    tmp_out="$cfg/notify.out"
+    trap "rm -f \"$ready\" \"$tmp_out\"" EXIT
+    print -r -- candidate >"$ready"
+    __LMLINE_ZSH_ASYNC_FILE=$ready
+    __LMLINE_ZSH_ASYNC_PID=2147483647
+    __LMLINE_ZSH_ASYNC_NOTIFIED=0
+    __lmline_zsh_async_prompt_check 2>"$tmp_out"
+    out=$(<"$tmp_out")
+    [[ "$out" == *"suggestion ready"* && $__LMLINE_ZSH_ASYNC_NOTIFIED == 1 ]]
+  ' _ "$repo_dir" "$zsh_tmp/config-notify-enabled" || fail "zsh async notify opt-in reload"
   rm -rf "$zsh_tmp"
   ok "zsh integration"
 else
