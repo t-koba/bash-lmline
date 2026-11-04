@@ -79,11 +79,11 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(len(manifest), 76)
         self.assertEqual(len(set(manifest)), 76)
         declarations = [(p, d) for p in manifest for d in c.sources(p, set(manifest))]
-        self.assertEqual(len(declarations), 137)
+        self.assertEqual(len(declarations), 138)
         self.assertTrue(all(d["in_manifest"] for _, d in declarations))
-        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 133)
+        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 134)
         groups = [{p} | {d["resolved"] for d in c.sources(p, set(manifest))} for p in manifest]
-        self.assertEqual(max(map(len, groups)), 10)
+        self.assertEqual(max(map(len, groups)), 11)
 
     def test_chain_relative_absolute_duplicates_and_null(self):
         a, b, d = [str(self.root / name) for name in ("a.sh", "b.sh", "c.sh")]
