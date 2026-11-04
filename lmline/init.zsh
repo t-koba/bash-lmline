@@ -721,7 +721,8 @@ __lmline_zsh_apply_index() {
 
 __lmline_zsh_bridge_candidates() {
   local label=$1 action=$2 mode=$3 line=$4 point=$5 bridge_status output
-  __lmline_zsh_reload_settings_if_changed
+  # Public widget entrypoints reload settings before routing; this inner helper
+  # uses that snapshot instead of hashing the same file again.
   bridge_status=0
   __lmline_zsh_run_bridge "$label" "$action" "$mode" "$line" "$point" || bridge_status=$?
   output=$__LMLINE_ZSH_BRIDGE_OUTPUT
@@ -767,6 +768,7 @@ lmline-zsh-rewrite-widget() {
     zle redisplay 2>/dev/null || true
     return 0
   fi
+  __lmline_zsh_reload_settings_if_changed
   __LMLINE_ZSH_LAST_ORIGINAL=$line
   __LMLINE_ZSH_LAST_MODE=rewrite
   __LMLINE_ZSH_INDEX=1
@@ -829,6 +831,7 @@ lmline-zsh-fix-widget() {
     zle redisplay 2>/dev/null || true
     return 0
   fi
+  __lmline_zsh_reload_settings_if_changed
   __LMLINE_ZSH_LAST_ORIGINAL=$line
   __LMLINE_ZSH_LAST_MODE=fix
   __LMLINE_ZSH_INDEX=1

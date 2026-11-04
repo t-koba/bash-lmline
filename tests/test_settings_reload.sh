@@ -273,6 +273,28 @@ if command -v zsh >/dev/null 2>&1; then
     kill -0 "$pid" 2>/dev/null && exit 63
     exit 0
   ' _ "$repo_dir" "$reload_tmp/zsh-async-config" || fail "zsh re-source preserves pending async state"
+  # Each public widget refreshes settings once before routing. Generate used
+  # to repeat the checksum inside bridge_candidates after its entry check.
+  LMLINE_CONFIG_DIR="$reload_tmp/zsh-widget-reload" zsh -fic '
+    source "$1/lmline/init.zsh"
+    typeset -gi __LMLINE_ZSH_RELOAD_CALLS=0
+    __lmline_zsh_reload_settings_if_changed() {
+      __LMLINE_ZSH_RELOAD_CALLS=$((__LMLINE_ZSH_RELOAD_CALLS + 1))
+    }
+    __lmline_zsh_run_bridge() { __LMLINE_ZSH_BRIDGE_OUTPUT=""; return 0; }
+    __lmline_zsh_hint() { :; }
+    LMLINE_ASYNC=0
+    BUFFER="printf ok"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget
+    [[ $__LMLINE_ZSH_RELOAD_CALLS == 1 ]] || exit 70
+    __LMLINE_ZSH_RELOAD_CALLS=0
+    lmline-zsh-rewrite-widget
+    [[ $__LMLINE_ZSH_RELOAD_CALLS == 1 ]] || exit 71
+    __LMLINE_ZSH_RELOAD_CALLS=0
+    lmline-zsh-fix-widget
+    [[ $__LMLINE_ZSH_RELOAD_CALLS == 1 ]] || exit 72
+  ' _ "$repo_dir" || fail "Zsh widgets reload settings once before routing"
 fi
 
 ok "settings reload drops obsolete values"
