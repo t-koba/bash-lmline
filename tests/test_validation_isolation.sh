@@ -180,11 +180,13 @@ ok "backends agree and candidates never execute"
   __LMLINE_TEST_ZSH_BATCH_CALLS=0
   __LMLINE_TEST_ZSH_SINGLE_CALLS=0
   __LMLINE_TEST_ZSH_BATCH_WORDS=
+  # shellcheck disable=SC2329
   __lmline_words_available_in_zsh() {
     __LMLINE_TEST_ZSH_BATCH_CALLS=$((__LMLINE_TEST_ZSH_BATCH_CALLS + 1))
     __LMLINE_TEST_ZSH_BATCH_WORDS="$*"
     return 0
   }
+  # shellcheck disable=SC2329
   __lmline_word_available_in_zsh() {
     __LMLINE_TEST_ZSH_SINGLE_CALLS=$((__LMLINE_TEST_ZSH_SINGLE_CALLS + 1))
     return 0
