@@ -63,10 +63,13 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
   the fourth and final field).
 
 Candidates are validated and deduplicated by the engine before emission.
-The Bash and Zsh widgets also reject C1 candidates before selection or insertion,
-without rewriting safe UTF-8, user input, or raw internal traces.
-Validation rejects multiline text, control characters (including UTF-8-encoded
-Unicode C1 U+0080–U+009F), syntax invalid for the target shell (checked with `bash -p -n` or `zsh -f -n`),
+The Bash and Zsh widgets also reject candidates containing C1 or Unicode
+Bidi_Control characters before selection or insertion. This does not rewrite
+the user's line, ordinary UTF-8 text (including RTL letters), or raw internal
+traces. Validation rejects multiline text and control characters, including
+UTF-8-encoded C1 U+0080–U+009F and Unicode Bidi_Control code points U+061C,
+U+200E–U+200F, U+202A–U+202E, and U+2066–U+2069; syntax invalid for the target
+shell (checked with `bash -p -n` or `zsh -f -n`),
 environment-assignment-only command segments, selected direct directory file
 operands, and command words unavailable in the target shell. The frontend for
 the target shell passes its own shell-function names (names only, never bodies)
@@ -191,8 +194,10 @@ protocol lines are used.
 
 Frontends render answer bodies as terminal-safe text in both buffered and
 streaming modes, removing ESC sequences (including CSI, OSC and control strings),
-C0 controls other than LF, DEL, and raw or UTF-8-encoded C1 controls. Ordinary
-UTF-8 and LF line breaks are preserved. An unfinished escape sequence is discarded
+C0 controls other than LF, DEL, raw or UTF-8-encoded C1 controls, and Unicode
+Bidi_Control code points U+061C, U+200E–U+200F, U+202A–U+202E, and U+2066–U+2069.
+Ordinary UTF-8 text, including RTL letters, and LF line breaks are preserved;
+only the rendered copy is sanitized. An unfinished escape sequence is discarded
 through the end of its line, so it cannot hide later lines or engine notices.
 Rendering happens after raw-byte budgeting; removing controls does not make more
 answer bytes fit the limit. Internal response data, tool parsing, conversation
