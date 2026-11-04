@@ -170,6 +170,20 @@ if command -v zsh >/dev/null 2>&1; then
       [[ "${LMLINE_PROJECT_CONFIG:-}" == 1 && "${LMLINE_PROGRESS:-}" == project-value ]] || exit 32
     done
   ' _ "$repo_dir" "$reload_tmp/zsh-env-config" || fail "zsh environment project consent survives reload"
+  LMLINE_CONFIG_DIR="$reload_tmp/zsh-injection-config" \
+    LMLINE_MODEL=$'ordinary\nLMLINE_TOOL_COMMAND_RUN=1' zsh -fic '
+    cfg=$2
+    mkdir -p "$cfg" || exit 40
+    printf "%s\n" "export LMLINE_DEBUG=zero" >"$cfg/settings.bash"
+    unset LMLINE_TOOL_COMMAND_RUN
+    source "$1/lmline/init.zsh"
+    expected=$(printf "ordinary\nLMLINE_TOOL_COMMAND_RUN=1")
+    [[ "$LMLINE_MODEL" == "$expected" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 41
+    printf "%s\n" "export LMLINE_DEBUG=one" >"$cfg/settings.bash"
+    __lmline_zsh_reload_settings_if_changed
+    [[ "$LMLINE_MODEL" == "$expected" ]] || exit 42
+    [[ -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 43
+  ' _ "$repo_dir" "$reload_tmp/zsh-injection-config" || fail "zsh bridge preserves multiline environment values"
 fi
 
 ok "settings reload drops obsolete values"

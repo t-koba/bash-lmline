@@ -37,7 +37,7 @@ __lmline_zsh_capture_env_baseline() {
 }
 
 __lmline_zsh_load_all_config() {
-  local exports line key new_keys old_keys cur stamp ref base uk
+  local export_file key value new_keys old_keys cur stamp ref base uk
   local project_config_baseline_set=0 project_config_baseline_value=
   __lmline_zsh_capture_env_baseline
   old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
@@ -46,7 +46,8 @@ __lmline_zsh_load_all_config() {
     project_config_baseline_set=1
     project_config_baseline_value=${(P)base}
   fi
-  exports=$(LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
+  export_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-config.XXXXXX") || return 1
+  if ! LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
     __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
     __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
     __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" bash -c '
@@ -57,16 +58,21 @@ __lmline_zsh_load_all_config() {
       export LMLINE_PROJECT_CONFIG
     fi
     __lmline_load_all_config
-    env | awk -F= "/^LMLINE_[A-Z0-9_]*=/ { print }"
-  ' _ "$LMLINE_DIR") || return 1
+    while IFS= read -r key; do
+      [[ "$key" == LMLINE_* ]] || continue
+      printf "%s\0%s\0" "$key" "${!key}"
+    done < <(compgen -e LMLINE_)
+  ' _ "$LMLINE_DIR" >"$export_file"; then
+    rm -f "$export_file"
+    return 1
+  fi
   new_keys=
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" == LMLINE_*=* ]] || continue
-    key=${line%%=*}
-    typeset -gx "$line"
+  while IFS= read -r -d "" key && IFS= read -r -d "" value; do
+    typeset -gx "$key=$value"
     new_keys+="$key"$'\n'
     typeset -g "__LMLINE_ZSHSTAMP_$key=${(P)key}"
-  done <<<"$exports"
+  done <"$export_file"
+  rm -f "$export_file"
   # Drop values the files no longer define: restore the pre-bridge
   # environment value (or unset), but only while the shell still holds the
   # value the bridge provided, so intentional user changes are never cleared.
