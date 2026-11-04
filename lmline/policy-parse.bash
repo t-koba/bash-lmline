@@ -1733,6 +1733,7 @@ __lmline_validate_commands_available() {
   local cmd=$1 shell=${2:-bash}
   local word words line caller_list functions="" __lmline_trap_caller_functions __lmline_candidate_defined_functions=""
   local __lmline_exported_functions
+  local -a zsh_words=()
   __lmline_exported_functions=$(__lmline_exported_function_names)
   caller_list=$(__lmline_caller_functions_data)
   [[ "$shell" != bash ]] || caller_list+=$'\n'"$__lmline_exported_functions"
@@ -1755,9 +1756,16 @@ __lmline_validate_commands_available() {
     __lmline_word_is_policy_skip "$word" && continue
     # Active caller/candidate functions were resolved by the scanner. Any
     # remaining word must have a real target-shell builtin/PATH fallback;
-    # policy helpers in this Bash process are not candidate bindings.
-    __lmline_word_available_without_functions "$word" "$shell" && continue
-    return 1
+    # policy helpers in this Bash process are not candidate bindings. Zsh
+    # shares one clean lookup process across the candidate's command words.
+    if [[ "$shell" == zsh ]]; then
+      zsh_words+=("$word")
+    else
+      __lmline_word_available_without_functions "$word" "$shell" || return 1
+    fi
   done <<<"$words"
+  if [[ "$shell" == zsh ]]; then
+    __lmline_words_available_in_zsh ${zsh_words[@]+"${zsh_words[@]}"} || return 1
+  fi
   return 0
 }

@@ -172,3 +172,28 @@ side_effect_path=$iso_tmp/candidate-side-effect
   done
 )
 ok "backends agree and candidates never execute"
+
+# 8. Main candidate validation sends all Zsh command words through one clean
+# lookup; the words remain data and no per-word shell is started.
+(
+  PATH=/usr/bin:/bin
+  __LMLINE_TEST_ZSH_BATCH_CALLS=0
+  __LMLINE_TEST_ZSH_SINGLE_CALLS=0
+  __LMLINE_TEST_ZSH_BATCH_WORDS=
+  __lmline_words_available_in_zsh() {
+    __LMLINE_TEST_ZSH_BATCH_CALLS=$((__LMLINE_TEST_ZSH_BATCH_CALLS + 1))
+    __LMLINE_TEST_ZSH_BATCH_WORDS="$*"
+    return 0
+  }
+  __lmline_word_available_in_zsh() {
+    __LMLINE_TEST_ZSH_SINGLE_CALLS=$((__LMLINE_TEST_ZSH_SINGLE_CALLS + 1))
+    return 0
+  }
+  __lmline_validate_commands_available \
+    'printf ok && grep foo README.md && wc -l README.md' zsh \
+    || fail "batched Zsh command availability failed"
+  [[ $__LMLINE_TEST_ZSH_BATCH_CALLS == 1 ]] || fail "Zsh words were not checked in one batch"
+  [[ $__LMLINE_TEST_ZSH_BATCH_WORDS == 'printf grep wc' ]] || fail "unexpected Zsh batch words: $__LMLINE_TEST_ZSH_BATCH_WORDS"
+  [[ $__LMLINE_TEST_ZSH_SINGLE_CALLS == 0 ]] || fail "per-word Zsh lookups were still used"
+)
+ok "Zsh candidate command lookups are batched"
