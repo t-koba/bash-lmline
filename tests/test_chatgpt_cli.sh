@@ -136,7 +136,7 @@ for arg in "$@"; do
 done
 printf 'called\n' >>"${LMLINE_FAKE_CURL_LOG:?}"
 if [[ -n "$header" && -r "$header" ]] && grep -q 'Bearer plan-token' "$header"; then
-  printf '%s\n' '{"models":[{"slug":"gpt-plan-one","display_name":"Plan One","visibility":"list"},{"slug":"gpt-plan-hidden","display_name":"Hidden","visibility":"hidden"},{"slug":"gpt-plan-no-visibility","display_name":"No Visibility"}]}'
+  printf '%s\n' '{"models":[{"slug":"gpt-plan-one","display_name":"Plan One","visibility":"list"},{"slug":"gpt-plan-hidden","display_name":"Hidden","visibility":"hidden"},{"slug":"gpt-plan-hidden-unregistered","display_name":"Unregistered Hidden","visibility":"hidden"},{"slug":"gpt-plan-no-visibility","display_name":"No Visibility"}]}'
   exit 0
 fi
 printf 'the catalog request carried no plan token\n' >&2
@@ -153,6 +153,7 @@ plan_models=$(lmline model list plan)
 grep -q $'^plan\tgpt-plan-one\t' <<<"$plan_models" || fail "the plan model is missing: $plan_models"
 grep -q $'\tresponses$' <<<"$plan_models" || fail "the plan model has no Responses format: $plan_models"
 grep -q $'^plan\tgpt-plan-hidden\t' <<<"$plan_models" || fail "a manually added hidden model was removed"
+! grep -q 'gpt-plan-hidden-unregistered' <<<"$plan_models" || fail "an unregistered hidden model is imported"
 ! grep -q 'gpt-plan-no-visibility' <<<"$plan_models" || fail "a model without visibility is imported"
 ok "the plan endpoint reads its account model catalog"
 
