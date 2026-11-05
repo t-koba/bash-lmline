@@ -394,15 +394,10 @@ else
   fi
 fi
 if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
-  python3 "$repo_dir/tools/shellcheck-per-file-poc/test_full_batch_experiment.py" \
-    || fail "full-manifest batch comparison selftest"
-  # Fake-harness tests must not inherit the opt-in real-run experiment hook.
-  LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT=0 SHELLCHECK="$(command -v shellcheck)" \
+  SHELLCHECK="$(command -v shellcheck)" \
     python3 "$repo_dir/tools/shellcheck-per-file-poc/test_candidate.py" \
     CandidateTests.test_manifest_matches_shell_harness_without_running_it \
-    CandidateTests.test_bounded_batch_comparison \
     ProgressTests.test_regular_harness_pinned_route_and_failure_artifact \
-    ProgressTests.test_full_batch_summary_is_saved_without_raw_paths \
     ProgressTests.test_regular_harness_local_failure_shows_actionable_diagnostics \
     ProgressTests.test_regular_harness_local_success_cleans_temporary_report \
     ProgressTests.test_regular_harness_uses_configured_child_bounds \
@@ -459,12 +454,6 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
   fi
   if ((pipeline_status[0] != 0)); then
     fail "shellcheck findings or incomplete report"
-  fi
-  # One-off diagnostic only, after authoritative success and before local cleanup.
-  if [[ "${LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT:-0}" == 1 ]]; then
-    python3 "$repo_dir/tools/shellcheck-per-file-poc/full_batch_experiment.py" \
-      "$report_dir/manifest.jsonl" "$(command -v shellcheck)" 2>/dev/null \
-      | tee "$report_dir/batch-summary.json" || true
   fi
   if [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
     rm -rf -- "$report_dir" 2>/dev/null || true

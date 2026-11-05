@@ -4,7 +4,6 @@ from collections import Counter
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
-import math
 import os
 from pathlib import Path
 import signal
@@ -148,83 +147,6 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(report["complete"], report)
         self.assert_rows(report["target_diagnostics"], self.combined(files, rc=False))
         self.assertEqual(report["target_diagnostics"], [])
-
-    def test_bounded_batch_comparison(self):
-        # One-off diagnostic: exact per-target c.run versus one combined
-        # c.measure over the same canonical direct-source union. Parity is
-        # data only; it never changes the authoritative per-file acceptance.
-        targets = (
-            "tests/test_policy_caller_functions.sh", "tests/test_policy_case.sh",
-            "tests/test_policy_eval.sh", "tests/test_policy_functions.sh",
-            "tests/test_policy_hash.sh", "tests/test_policy_path.sh",
-            "tests/test_policy_shell_c.sh", "tests/test_policy_trap.sh",
-            "tests/test_privacy_scan.sh",
-        )
-        def num(value):
-            return value if type(value) in (int, float) and 0 <= value < 2**64 and math.isfinite(value) else None
-        def emit(payload):
-            try:
-                line = "shellcheck-batch-comparison " + json.dumps(payload, allow_nan=False, sort_keys=True)
-            except (ValueError, TypeError):
-                line = 'shellcheck-batch-comparison {"parity": "inconclusive"}'
-            if len(line.encode()) > 4096:
-                line = 'shellcheck-batch-comparison {"parity": "inconclusive"}'
-            print(line, flush=True)
-        try:
-            manifest = list(dict.fromkeys(map(c.canonical, c.production_manifest())))
-            members = set(manifest)
-            groups = {p: {p} | {d["resolved"] for d in c.sources(p, members) if d["in_manifest"]} for p in manifest}
-            selected = {c.canonical(p) for p in targets}
-            union = [p for p in manifest if p in set().union(*(groups[p] for p in selected & members))] if selected <= members else []
-            sizes = {p: Path(p).stat().st_size for p in manifest}
-            nbytes = sum(sizes[p] for p in union)
-            max_n = max((len(g) for g in groups.values()), default=0)
-            max_b = max((sum(sizes[p] for p in g) for g in groups.values()), default=0)
-            timeout = float(os.environ.get(c.TIMEOUT_ENV, c.TIMEOUT))
-            cap = int(os.environ.get(c.OUTPUT_CAP_ENV, c.OUTPUT_CAP))
-            base = dict(selected_count=len(selected), union_count=len(union), union_bytes=num(nbytes),
-                        max_direct_count=num(max_n), max_direct_bytes=num(max_b))
-            if not (selected and selected <= members and len(union) <= max_n and nbytes <= max_b
-                    and math.isfinite(timeout) and timeout > 0 and cap > 0):
-                emit(dict(base, route_invocations=0, per_invocations=0, combined_invocations=0,
-                          per_status=None, combined_status=None, per_elapsed_s=None,
-                          combined_elapsed_s=None, per_peak_rss_kib=None,
-                          combined_peak_rss_kib=None, parity="inconclusive"))
-                return
-            # Production discovers .shellcheckrc implicitly via cwd=ROOT; never pass --rcfile.
-            report = c.run(union, self.shellcheck, timeout=timeout, cap=cap)
-            combined = c.measure([self.shellcheck, "-s", "bash", "--format=json"] + union, timeout=timeout, cap=cap)
-            per = [t for t in report["targets"] if t["target"] in selected]
-            def metrics(items):
-                elapsed = [num(m.get("elapsed_s")) for m in items]
-                rss = [num(m.get("peak_rss_kib")) for m in items]
-                return (num(sum(elapsed)) if elapsed and None not in elapsed else None,
-                        max(rss) if rss and None not in rss else None)
-            per_elapsed, per_rss = metrics([t["measurement"] or {} for t in per])
-            combined_elapsed, combined_rss = metrics([combined])
-            parity, status = "inconclusive", combined.get("status")
-            status = status if type(status) is int and -255 <= status <= 255 else None
-            try:
-                rows = json.loads(combined["stdout"], parse_constant=lambda _v: (_ for _ in ()).throw(ValueError("non-JSON")))
-                required = {"file", "line", "column", "endLine", "endColumn", "level", "code", "message"}
-                valid = isinstance(rows, list) and all(isinstance(r, dict) and required <= r.keys() and r["file"] in union for r in rows)
-                groups_ok = all(set(t.get("group", ())) == groups[t["target"]] for t in per)
-                if valid and groups_ok and status in (0, 1) and status == int(bool(rows)) and not combined["errors"] and not combined["stderr"] and report["complete"] and {t["target"] for t in per} == selected:
-                    expected = Counter(json.dumps(r, sort_keys=True, allow_nan=False) for t in per for r in t["target_diagnostics"])
-                    actual = Counter(json.dumps(r, sort_keys=True, allow_nan=False) for r in rows if r["file"] in selected)
-                    parity = "parity" if expected == actual else "non_parity"
-            except (ValueError, TypeError, KeyError):
-                pass
-            emit(dict(base, route_invocations=len(report["targets"]), per_invocations=len(per),
-                      combined_invocations=1, per_status=report["status"], combined_status=status,
-                      per_elapsed_s=per_elapsed, combined_elapsed_s=combined_elapsed,
-                      per_peak_rss_kib=per_rss, combined_peak_rss_kib=combined_rss, parity=parity))
-        except Exception:
-            emit(dict(selected_count=len(targets), union_count=0, union_bytes=None,
-                      max_direct_count=None, max_direct_bytes=None, route_invocations=0,
-                      per_invocations=0, combined_invocations=0, per_status=None,
-                      combined_status=None, per_elapsed_s=None, combined_elapsed_s=None,
-                      per_peak_rss_kib=None, combined_peak_rss_kib=None, parity="inconclusive"))
 
     def fake(self, body):
         path = Path(self.file("fake-shellcheck", f'#!{sys.executable}\nimport sys, json, os, signal\n'
@@ -559,30 +481,6 @@ print("[]")
                 measurement_log = reports[-1].parent / "measurement.log"
                 self.assertEqual(measurement_log.read_text(), live)
                 self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/measurement.log", upload)
-                comparison = workflow.split("      - name: Retain ShellCheck batch comparison\n", 1)[1]
-                comparison = comparison.split("      - name:", 1)[0]
-                self.assertIn("steps.run_tests_ubuntu.outputs.batch_experiment == '1'", comparison)
-                self.assertIn("continue-on-error: true", comparison)
-                self.assertIn("name: shellcheck-batch-comparison", comparison)
-                self.assertIn("batch-summary.json", comparison)
-                self.assertIn("retention-days: 7", comparison)
-                ubuntu = workflow.split("      - name: Run tests (Ubuntu)\n", 1)[1]
-                ubuntu = ubuntu.split("      - name:", 1)[0]
-                self.assertIn("echo 'batch_experiment=1' >> \"$GITHUB_OUTPUT\"", ubuntu)
-
-    def test_full_batch_summary_is_saved_without_raw_paths(self):
-        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
-        result, reports = self.regular_harness(
-            self.fake('print("[]")\n'), files, pinned=True,
-            extra_env={"LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT": "1"})
-        self.assertEqual(result.returncode, 0, result)
-        summary_path = reports[-1].parent / "batch-summary.json"
-        summary_text = summary_path.read_text()
-        summary = json.loads(summary_text)
-        self.assertEqual(summary["parity"], "inconclusive")  # Fixture manifest is not production.
-        self.assertNotIn(str(self.root), summary_text)
-        self.assertIn(summary_text.rstrip(), result.stdout.splitlines())
-
     def regular_harness(self, fake, files, pinned, fail_tee=False, github_actions=True, extra_env=None):
         # Exercise the actual pinned/unpinned route with a two-file fixture
         # manifest; the unpinned case also covers the monitor. No real lint of
