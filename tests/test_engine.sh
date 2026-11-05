@@ -497,6 +497,11 @@ JSON
 {"model":"gpt-oss-120b","usage":{"prompt_tokens":11,"completion_tokens":3,"total_tokens":14},"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"echo sakura-ok"}}]}
 JSON
     ;;
+  https://api.test.invalid/v1/chat/completions)
+    cat >"$out" <<'JSON'
+{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"echo safe\u0000; printf hidden"}}]}
+JSON
+    ;;
   *) echo "unexpected url: $url" >&2; exit 8 ;;
 esac
 printf '200'
@@ -508,6 +513,11 @@ gemini_response_out=$(PATH="$fake_bin:$PATH" LMLINE_BASE_URL=https://generativel
 [[ "$(candidates_of <<<"$gemini_response_out")" == "echo gemini-ok" ]] || fail "gemini response content array"
 sakura_response_out=$(PATH="$fake_bin:$PATH" LMLINE_BASE_URL=https://api.ai.sakura.ad.jp/v1 LMLINE_MODEL=gpt-oss-120b LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/response-config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$sakura_response_out")" == "echo sakura-ok" ]] || fail "sakura response content"
+if PATH="$fake_bin:$PATH" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model LMLINE_TOOL_MODE=none LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/nul-response-config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/nul-response.out" 2>"$cfg_tmp/nul-response.err"; then
+  fail "NUL-bearing provider candidate unexpectedly accepted"
+fi
+! grep -q 'lmline-candidate:' "$cfg_tmp/nul-response.out" || fail "NUL-bearing provider candidate emitted"
+grep -q 'embedded NUL in response content' "$cfg_tmp/nul-response.err" || fail "NUL-bearing provider response diagnostic"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=

@@ -695,11 +695,13 @@ __lmline_post_chat() {
 __lmline_response_content() {
   local response=$1
   jq -r '
-    .choices[0].message.content as $content |
-    if ($content | type) == "string" then $content
-    elif ($content | type) == "array" then
-      [$content[]? | if type == "string" then . else (.text // empty) end] | join("")
-    else empty end
+    (.choices[0].message.content as $content |
+      if ($content | type) == "string" then $content
+      elif ($content | type) == "array" then
+        [$content[]? | if type == "string" then . else (.text // empty) end] | join("")
+      else empty end
+    ) as $text |
+    if ($text | explode | index(0) != null) then error("embedded NUL in response content") else $text end
   ' "$response"
 }
 

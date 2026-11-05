@@ -23,6 +23,10 @@ for byte in {128..159}; do
   printf -v control '\302%b' "\\$octal"
   [[ $(__lmline_candidate_rejection_reason "echo $control") == control-character ]]
 done
+# NUL cannot be represented by the line buffer: discard NUL-bearing raw
+# candidate records before awk normalization or Bash reads can drop the byte.
+nul_candidates=$(printf '%b\n' '\0echo hidden-first' 'echo hidden-middle\0 text' 'echo hidden-end\0' 'echo nul-safe-companion' | __lmline_valid_candidates)
+[[ "$nul_candidates" == "echo nul-safe-companion" ]]
 for control in $'\001' $'\033' $'\177'; do
   [[ $(__lmline_candidate_rejection_reason "echo $control") == control-character ]]
 done

@@ -96,7 +96,10 @@ __lmline_normalize_candidate_line() {
 }
 
 __lmline_filter_candidates() {
-  awk '{
+  # Reject NUL while candidate text is still raw; Bash variables drop it.
+  awk 'BEGIN { nul = sprintf("%c", 0) }
+    {
+    if (index($0, nul)) next
     t=$0
     sub(/^[[:space:]]+/, "", t)
     sub(/[[:space:]]+$/, "", t)
