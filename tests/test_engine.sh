@@ -569,7 +569,9 @@ count=0; [[ -f "$state" ]] && read -r count <"$state"
 count=$((count + 1)); printf '%s\n' "$count" >"$state"
 if (( count == 1 )); then
   jq -e 'has("tools")' "$data" >/dev/null || { echo "first payload missing tools" >&2; exit 7; }
-  if [[ "${LMLINE_FAKE_CURL_FIRST_CODE:-500}" == 400 ]]; then
+  if [[ "${LMLINE_FAKE_CURL_MULTI_DOCUMENT:-0}" == 1 ]]; then
+    printf '{"error":{"message":"invalid request"}}\n{"error":{"message":"second document"}}\n' >"$out"
+  elif [[ "${LMLINE_FAKE_CURL_FIRST_CODE:-500}" == 400 ]]; then
     printf '{"error":{"message":"invalid request"}}\n' >"$out"
   else
     printf '{"error":{"message":"upstream server failure"}}\n' >"$out"
@@ -588,6 +590,12 @@ if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLI
 fi
 [[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "auto mode repeated HTTP 500"
 [[ -z "$(candidates_of <"$cfg_tmp/auto-500.out")" ]] || fail "auto mode admitted a candidate after HTTP 500"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_FIRST_CODE=400 LMLINE_FAKE_CURL_MULTI_DOCUMENT=1 LMLINE_TOOL_MODE=auto LMLINE_HTTP_RETRIES=0 LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/auto-400-multi-document.out" 2>"$cfg_tmp/auto-400-multi-document.err"; then
+  fail "auto mode retried after a multi-document JSON HTTP 400"
+fi
+[[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "auto mode repeated a multi-document JSON HTTP 400"
+[[ -z "$(candidates_of <"$cfg_tmp/auto-400-multi-document.out")" ]] || fail "auto mode admitted a candidate after a multi-document JSON HTTP 400"
 printf '0\n' >"$cfg_tmp/fake-curl-state"
 positive_auto_retry_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_FIRST_CODE=400 LMLINE_TOOL_MODE=auto LMLINE_HTTP_RETRIES=0 LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$positive_auto_retry_out")" == "echo recovered-without-tools" ]] || fail "HTTP 400 auto fallback output"

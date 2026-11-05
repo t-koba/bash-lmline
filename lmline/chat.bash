@@ -693,7 +693,9 @@ __lmline_post_chat() {
       fi
       # Only a request rejection is evidence that native tools may be
       # incompatible; do not retry server or rate-limit failures without them.
-      if [[ "$http_code" == 400 && "$LMLINE_TOOL_MODE" == auto ]] && (( repeat_allowed == 1 )) &&
+      if [[ "$http_code" == 400 && "$LMLINE_TOOL_MODE" == auto ]] &&
+        (( repeat_allowed == 1 )) &&
+        __lmline_structured_error_retry_allowed "$content_type" "$response" &&
         jq -e 'has("tools")' "$payload" >/dev/null 2>&1; then
         retry_payload=$work_dir/payload.auto-text.json
         jq 'del(.tools, .tool_choice)' "$payload" >"$retry_payload" || return 1
