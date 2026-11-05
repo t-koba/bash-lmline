@@ -109,10 +109,10 @@ script_dir=$(cd -- "$script_dir" && pwd -P)
 # shellcheck source=lmline/config.bash
 source "$script_dir/config.bash"
 __lmline_load_all_config
-# Top-level help, basic config views and file operations need only config.bash;
-# route-derived views stay on the full setup path.
+# Explicit static help, basic config views and file operations need only
+# config.bash; route-derived views stay on the full setup path.
 case "${1-}:${2-}" in
-  -h:*|--help:*) : ;;
+  -h:*|--help:*|help:*|config:-h|config:--help) : ;;
   config:defaults|config:get|config:set|config:unset) : ;;
   config:project-get|config:project-set|config:project-unset) : ;;
   endpoint:*|model:add|model:list|model:remove|use:*|current:*|complete:endpoints|complete:models)
