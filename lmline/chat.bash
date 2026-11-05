@@ -110,10 +110,6 @@ __lmline_curl_chat_with_retry() {
   done
 }
 
-__lmline_warn_bad_json() {
-  printf 'lmline-progress: warning: provider returned unparseable JSON (%s)\n' "$1" >&2
-}
-
 __lmline_display_model_label() {
   local model=$1 display_model=
   model=${model//$'\t'/ }
@@ -312,14 +308,32 @@ __lmline_emit_status() {
   printf 'lmline-status: m=%s; %s\n' "$usage_model" "$extra_text" >&2
 }
 
+__lmline_single_json_object() {
+  # Streaming exactly-one-object check: jq consumes successive documents
+  # independently, so validate the whole body before any field is read.
+  # Uses input/inputs (not -s) to keep the check streaming.
+  jq -n -e '(input | type == "object") and isempty(inputs)' "${1-}" >/dev/null 2>&1
+}
+
+__lmline_structured_error_retry_allowed() {
+  # Structured JSON compat retries must not consume malformed or
+  # multi-document bodies. Non-JSON bodies keep plain-text handling.
+  local _content_type=${1-} _response=${2-}
+  case "$_content_type" in
+    *json*) __lmline_single_json_object "$_response" ;;
+    *) return 0 ;;
+  esac
+}
+
 __lmline_response_error_detail() {
   local response=$1 content_type=${2-} detail
   case "$content_type" in
     *json*)
-      # Providers disagree on the error field; try the common shapes first.
-      # A field that is present but not a string must not lose the message:
-      # a numeric code is read as its text, and any other shape is ignored.
-      if detail=$(jq -re '
+      # Malformed or multi-document JSON must not drive structured extraction:
+      # fall back to raw bytes (still sanitized below) without consuming jq results.
+      if ! __lmline_single_json_object "$response"; then
+        detail=$(cat "$response")
+      elif detail=$(jq -re '
           (.error.code? // "") as $code_raw
           | (.error.param? // "") as $param_raw
           | ($code_raw | if type == "string" then . elif type == "number" then tostring else "" end) as $code
@@ -479,6 +493,12 @@ __lmline_report_provider_failure() {
 
 __lmline_accept_response() {
   local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason_is_stream_ended=0 display_reason= provider_failed=0 max_tokens_advice=
+  # jq normally processes successive documents independently. Validate the
+  # whole body before any provider fields or normalized output are consumed.
+  if ! __lmline_single_json_object "$response"; then
+    printf 'lmline-engine: invalid provider response (%s): expected exactly one JSON object\n' "$label" >&2
+    return 1
+  fi
   if [[ "$api_format" == responses ]]; then
     if jq -e '((.status // "") == "failed") or ((.error? | type) == "object")' "$response" >/dev/null 2>&1; then
       provider_failed=1
@@ -502,7 +522,6 @@ __lmline_accept_response() {
     return 1
   }
   __lmline_trace_file "$label" "$response"
-  jq -e . "$response" >/dev/null 2>&1 || __lmline_warn_bad_json "$label"
   __lmline_record_usage "$response"
   # Command candidates must not be accepted when the provider explicitly
   # signals output truncation. Missing, null, and unfamiliar statuses remain
@@ -572,7 +591,8 @@ __lmline_post_chat() {
       # store:false is never silently dropped to a retention-defaulting omit.
       if [[ "$http_code" == 400 ]] \
         && (( repeat_allowed == 1 )) \
-        && jq -e 'has("store")' "$payload" >/dev/null 2>&1; then
+        && jq -e 'has("store")' "$payload" >/dev/null 2>&1 \
+        && __lmline_structured_error_retry_allowed "$content_type" "$response"; then
         store_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         store_lower=$(printf '%s' "$store_detail" | tr '[:upper:]' '[:lower:]')
         if __lmline_store_field_rejected "$store_lower"; then
@@ -603,7 +623,8 @@ __lmline_post_chat() {
       if [[ "$http_code" == 400 ]] \
         && (( repeat_allowed == 1 )) \
         && case "${LMLINE_API_FORMAT:-chat}" in chat|responses) true ;; *) false ;; esac \
-        && jq -e 'has("max_tokens") or has("max_output_tokens")' "$payload" >/dev/null 2>&1; then
+        && jq -e 'has("max_tokens") or has("max_output_tokens")' "$payload" >/dev/null 2>&1 \
+        && __lmline_structured_error_retry_allowed "$content_type" "$response"; then
         compat_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         compat_lower=$(printf '%s' "$compat_detail" | tr '[:upper:]' '[:lower:]')
         case "$compat_lower" in
@@ -636,7 +657,8 @@ __lmline_post_chat() {
       # native tools keep working. The switch persists for this process so
       # later tool rounds build responses payloads directly.
       if [[ "$http_code" == 400 && "${LMLINE_API_FORMAT:-chat}" == chat ]] &&
-        (( repeat_allowed == 1 )); then
+        (( repeat_allowed == 1 )) &&
+        __lmline_structured_error_retry_allowed "$content_type" "$response"; then
         responses_detail=$(__lmline_response_error_detail "$response" "$content_type" 2>/dev/null || true)
         responses_lower=$(printf '%s' "$responses_detail" | tr '[:upper:]' '[:lower:]')
         case "$responses_lower" in

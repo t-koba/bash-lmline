@@ -139,6 +139,18 @@ cat >"$case_dir/response.json" <<'JSON'
 JSON
 assert_truncated responses 'incomplete: max_output_tokens'
 
+# jq accepts multiple documents; a later completed response must not mask an
+# incomplete first response and admit its command text.
+init_case responses-multiple-documents responses
+jq '.output[0].content[0].text = "echo FROM_INCOMPLETE"' \
+  "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
+cat "$cfg_tmp/responses-complete/response.json" >>"$case_dir/response.json"
+invoke_engine
+[[ $engine_status != 0 ]] || fail "multiple response documents unexpectedly succeeded"
+[[ -z "$(candidates_of <<<"$engine_output")" ]] || fail "multiple response documents emitted candidate"
+[[ $(cache_count) == 0 ]] || fail "multiple response documents cached"
+grep -Fq 'expected exactly one JSON object' "$case_dir/stderr" || fail "multiple response documents diagnostic"
+
 # Provider-controlled reasons are rendered safely without changing the raw
 # equality check for the stream-ended recovery diagnostic.
 for reason in max_output_tokens stream_ended_without_completion; do

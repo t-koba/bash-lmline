@@ -72,6 +72,40 @@ store_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-st
 [[ "$(candidates_of <<<"$store_out")" == "echo store-fallback-ok" ]] || fail "store fallback output"
 [[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "store fallback count"
 grep -q 'retrying without store field' "$cfg_tmp/store.err" || fail "store fallback progress"
+# Multi-document JSON error bodies must not drive the store fallback even
+# when enabled: jq would otherwise read the first document's store rejection
+# and retry, then admit the retry candidate.
+cat >"$fake_bin/curl" <<'CURL'
+#!/usr/bin/env bash
+out=; data=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+if (( count == 1 )); then
+  jq -e 'has("store")' "$data" >/dev/null || { echo "first payload missing store" >&2; exit 7; }
+  printf '{"error":{"message":"Unrecognized request argument supplied: store"}}\n{"error":{"message":"second document"}}\n' >"$out"
+  printf '400\tapplication/json'
+else
+  printf '{"choices":[{"message":{"role":"assistant","content":"echo store-fallback-should-not-happen"}}]}\n' >"$out"
+  printf '200\tapplication/json'
+fi
+CURL
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_STORE_FALLBACK=1 LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/multi.out" 2>"$cfg_tmp/multi.err"; then
+  fail "multi-document store error unexpectedly succeeded"
+fi
+[[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "multi-document store error retried"
+! grep -q 'retrying without store field' "$cfg_tmp/multi.err" || fail "multi-document store error fallback"
+[[ -z "$(candidates_of <"$cfg_tmp/multi.out")" ]] || fail "multi-document store error emitted candidate"
 # Broad mention alone does not trigger the fallback even when enabled.
 cat >"$fake_bin/curl" <<'CURL'
 #!/usr/bin/env bash
