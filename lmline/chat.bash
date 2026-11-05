@@ -520,6 +520,9 @@ __lmline_accept_response() {
             fi
             # Classify the raw reason above; sanitize only terminal-facing text.
             display_reason=$(printf '%s\n' "$incomplete_reason" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_reason=
+            # The renderer preserves line feeds, so flatten the sanitized
+            # value to one diagnostic line; the raw reason above is unchanged.
+            display_reason=${display_reason//$'\n'/ }
             printf 'lmline-engine: provider returned an incomplete command response (%s%s); %s\n' \
               "${finish_status,,}" "${display_reason:+: $display_reason}" "$max_tokens_advice" >&2
           fi

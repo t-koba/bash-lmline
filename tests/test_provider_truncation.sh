@@ -149,6 +149,22 @@ for reason in max_output_tokens stream_ended_without_completion; do
   ! LC_ALL=C grep -q '[[:cntrl:]]' "$case_dir/stderr" || fail "responses reason emitted terminal controls"
 done
 
+# A provider reason containing LF must stay a single diagnostic line: the raw
+# value still drives the exact stream-ended comparison, but the sanitized
+# display value is flattened after safe rendering.
+init_case responses-reason-newline responses
+jq --arg reason $'max_output_tokens\nINJECTED: forged diagnostic' '.incomplete_details.reason = $reason' \
+  "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
+invoke_engine
+[[ $engine_status != 0 ]] || fail "responses reason newline unexpectedly succeeded"
+[[ -z "$(candidates_of <<<"$engine_output")" ]] || fail "responses reason newline emitted candidate"
+[[ $(cache_count) == 0 ]] || fail "responses reason newline cached a truncated response"
+grep -Fq "incomplete command response (incomplete:" "$case_dir/stderr" || fail "responses reason newline diagnostic"
+! LC_ALL=C grep -q '[[:cntrl:]]' "$case_dir/stderr" || fail "responses reason newline emitted terminal controls"
+! grep -q '^INJECTED' "$case_dir/stderr" || fail "responses reason newline split diagnostic line"
+[[ $(wc -l <"$case_dir/stderr") == 1 ]] || fail "responses reason newline split diagnostic"
+grep -Fq 'INJECTED: forged diagnostic' "$case_dir/stderr" || fail "responses reason newline lost sanitized detail"
+
 init_case responses-stream-ended responses
 jq '.incomplete_details.reason = "stream_ended_without_completion"' \
   "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
