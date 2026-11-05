@@ -129,7 +129,11 @@ ok "payload tools omit default-off tools unless exact 1"
 # --- dispatch: refused before any tool action (handlers stubbed, nothing executes or reads files) ---
 __lmline_tool_command_info() { printf 'STUB-CALLED command_info\n'; }
 __lmline_tool_git_status() { printf 'STUB-CALLED git_status\n'; }
-__lmline_tool_file_excerpt() { printf 'STUB-CALLED file_excerpt\n'; }
+file_excerpt_marker=$payload_tmp/file-excerpt-called
+__lmline_tool_file_excerpt() {
+  printf 'STUB-CALLED file_excerpt <%s> <%s>\n' "$1" "$2" >>"$file_excerpt_marker"
+  printf 'STUB-CALLED file_excerpt\n'
+}
 command_run_marker=$payload_tmp/command-run-called
 __lmline_tool_command_run() {
   printf 'STUB-CALLED command_run <%s>\n' "$1" >>"$command_run_marker"
@@ -171,7 +175,13 @@ out=$(__lmline_tool_output git_status '{}' 2>/dev/null)
 grep -q 'STUB-CALLED git_status' <<<"$out" || fail "enabled git_status did not dispatch"
 export LMLINE_TOOL_FILE_EXCERPT=1
 out=$(__lmline_tool_output file_excerpt '{"path":"some/file.txt"}' 2>/dev/null)
-grep -q 'STUB-CALLED file_excerpt' <<<"$out" || fail "enabled file_excerpt did not dispatch"
+grep -q 'STUB-CALLED file_excerpt' <<<"$out" || fail "enabled file_excerpt did not dispatch safe arguments"
+grep -Fq 'STUB-CALLED file_excerpt <some/file.txt> <>' "$file_excerpt_marker" || fail "enabled file_excerpt handler was not called"
+rm -f "$file_excerpt_marker"
+out=$(__lmline_tool_output file_excerpt '{"path":"README.md\u0000"}' 2>/dev/null)
+grep -qx 'error=invalid_tool_arguments' <<<"$out" || fail "NUL-bearing file_excerpt path was not refused"
+grep -qx 'reason=embedded_nul' <<<"$out" || fail "NUL-bearing file_excerpt rejection reason"
+[[ ! -e "$file_excerpt_marker" ]] || fail "NUL-bearing file_excerpt path reached handler"
 export LMLINE_TOOL_COMMAND_RUN=1
 out=$(__lmline_tool_output command_run '{"command":"echo hi"}' 2>/dev/null)
 grep -q 'STUB-CALLED command_run <echo hi>' <<<"$out" || fail "enabled command_run did not dispatch safe argument"
