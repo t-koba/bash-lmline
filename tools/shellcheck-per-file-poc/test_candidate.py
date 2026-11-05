@@ -559,6 +559,29 @@ print("[]")
                 measurement_log = reports[-1].parent / "measurement.log"
                 self.assertEqual(measurement_log.read_text(), live)
                 self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/measurement.log", upload)
+                comparison = workflow.split("      - name: Retain ShellCheck batch comparison\n", 1)[1]
+                comparison = comparison.split("      - name:", 1)[0]
+                self.assertIn("steps.run_tests_ubuntu.outputs.batch_experiment == '1'", comparison)
+                self.assertIn("continue-on-error: true", comparison)
+                self.assertIn("name: shellcheck-batch-comparison", comparison)
+                self.assertIn("batch-summary.json", comparison)
+                self.assertIn("retention-days: 7", comparison)
+                ubuntu = workflow.split("      - name: Run tests (Ubuntu)\n", 1)[1]
+                ubuntu = ubuntu.split("      - name:", 1)[0]
+                self.assertIn("echo 'batch_experiment=1' >> \"$GITHUB_OUTPUT\"", ubuntu)
+
+    def test_full_batch_summary_is_saved_without_raw_paths(self):
+        files = [self.file(name, "#!/bin/bash\n") for name in ("first.sh", "later.sh")]
+        result, reports = self.regular_harness(
+            self.fake('print("[]")\n'), files, pinned=True,
+            extra_env={"LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT": "1"})
+        self.assertEqual(result.returncode, 0, result)
+        summary_path = reports[-1].parent / "batch-summary.json"
+        summary_text = summary_path.read_text()
+        summary = json.loads(summary_text)
+        self.assertEqual(summary["parity"], "inconclusive")  # Fixture manifest is not production.
+        self.assertNotIn(str(self.root), summary_text)
+        self.assertIn(summary_text.rstrip(), result.stdout.splitlines())
 
     def regular_harness(self, fake, files, pinned, fail_tee=False, github_actions=True, extra_env=None):
         # Exercise the actual pinned/unpinned route with a two-file fixture

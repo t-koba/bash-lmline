@@ -462,7 +462,8 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
   # One-off diagnostic only, after authoritative success and before local cleanup.
   if [[ "${LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT:-0}" == 1 ]]; then
     python3 "$repo_dir/tools/shellcheck-per-file-poc/full_batch_experiment.py" \
-      "$report_dir/manifest.jsonl" "$(command -v shellcheck)" 2>/dev/null || true
+      "$report_dir/manifest.jsonl" "$(command -v shellcheck)" 2>/dev/null \
+      | tee "$report_dir/batch-summary.json" || true
   fi
   if [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
     rm -rf -- "$report_dir" 2>/dev/null || true

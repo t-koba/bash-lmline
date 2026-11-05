@@ -55,7 +55,18 @@ jobs:
         id: run_tests_ubuntu
         if: runner.os == 'Linux'
         # One-off full-manifest batch measurement; never changes lint outcomes.
-        run: LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT=1 LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
+        run: |
+          echo 'batch_experiment=1' >> "$GITHUB_OUTPUT"
+          LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT=1 LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
+      - name: Retain ShellCheck batch comparison
+        if: ${{ always() && runner.os == 'Linux' && steps.run_tests_ubuntu.outputs.batch_experiment == '1' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: shellcheck-batch-comparison
+          path: ${{ runner.temp }}/lmline-shellcheck-per-file.*/batch-summary.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Retain ShellCheck diagnostics
         if: ${{ always() && runner.os == 'Linux' && steps.run_tests_ubuntu.outcome != 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

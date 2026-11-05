@@ -48,8 +48,11 @@ declarations, 135 unique direct edges, maximum context group size 11.
 `LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT=1` opts the required-pin harness into a
 **diagnostic-only** comparison after the authoritative per-file report succeeds,
 before local report cleanup. Ubuntu CI temporarily enables it for the next
-measurement; remove the workflow flag after collecting that evidence. The runner,
-manifest, severity, rc discovery, options and pass/fail decisions are unchanged.
+measurement; remove the workflow flag after collecting that evidence. Its sanitized
+one-line JSON is also saved as `batch-summary.json` and uploaded as the
+`shellcheck-batch-comparison` artifact for seven days; upload failure is non-fatal.
+The runner, manifest, severity, rc discovery, options and pass/fail decisions are
+unchanged.
 
 `full_batch_experiment.py` reads that completed JSONL baseline (never rerunning
 per-target lint). In manifest order it greedily packs unions of the exact direct
