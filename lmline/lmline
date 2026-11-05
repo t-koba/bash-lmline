@@ -109,9 +109,13 @@ script_dir=$(cd -- "$script_dir" && pwd -P)
 # shellcheck source=lmline/config.bash
 source "$script_dir/config.bash"
 __lmline_load_all_config
-# The settings catalog and persisted-settings view need only config.bash.
+# Settings views need only config.bash; profile-only commands need no routes.
 case "${1-}:${2-}" in
   config:defaults|config:get) : ;;
+  endpoint:*|model:add|model:list|model:remove|use:*|current:*|complete:endpoints|complete:models)
+    # shellcheck source=lmline/profiles.bash
+    source "$script_dir/profiles.bash"
+    ;;
   *)
     # shellcheck source=lmline/http.bash
     source "$script_dir/http.bash"
