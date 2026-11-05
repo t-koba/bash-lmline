@@ -551,6 +551,47 @@ printf '0\n' >"$cfg_tmp/fake-curl-state"
 empty_auto_retry_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=auto LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$empty_auto_retry_out")" == "echo recovered-without-tools" ]] || fail "empty content auto retry"
 [[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "empty content auto retry count"
+# Auto mode may fall back after an HTTP 400 request rejection, but a server
+# error is not evidence that native tools are unsupported and must not repeat.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=; data=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w) shift 2 ;;
+    --data-binary) data=${2#@}; shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+if (( count == 1 )); then
+  jq -e 'has("tools")' "$data" >/dev/null || { echo "first payload missing tools" >&2; exit 7; }
+  if [[ "${LMLINE_FAKE_CURL_FIRST_CODE:-500}" == 400 ]]; then
+    printf '{"error":{"message":"invalid request"}}\n' >"$out"
+  else
+    printf '{"error":{"message":"upstream server failure"}}\n' >"$out"
+  fi
+  printf '%s\tapplication/json' "${LMLINE_FAKE_CURL_FIRST_CODE:-500}"
+else
+  jq -e 'has("tools")' "$data" >/dev/null && { echo "fallback payload still has tools" >&2; exit 8; }
+  printf '{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"echo recovered-without-tools"}}]}\n' >"$out"
+  printf '200\tapplication/json'
+fi
+EOF
+chmod +x "$fake_bin/curl"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_FIRST_CODE=500 LMLINE_TOOL_MODE=auto LMLINE_HTTP_RETRIES=0 LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/auto-500.out" 2>"$cfg_tmp/auto-500.err"; then
+  fail "auto mode retried after HTTP 500"
+fi
+[[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "auto mode repeated HTTP 500"
+[[ -z "$(candidates_of <"$cfg_tmp/auto-500.out")" ]] || fail "auto mode admitted a candidate after HTTP 500"
+printf '0\n' >"$cfg_tmp/fake-curl-state"
+positive_auto_retry_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CURL_FIRST_CODE=400 LMLINE_TOOL_MODE=auto LMLINE_HTTP_RETRIES=0 LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
+[[ "$(candidates_of <<<"$positive_auto_retry_out")" == "echo recovered-without-tools" ]] || fail "HTTP 400 auto fallback output"
+[[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "HTTP 400 auto fallback count"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
