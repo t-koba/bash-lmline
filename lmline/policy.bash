@@ -96,17 +96,85 @@ __lmline_normalize_candidate_line() {
 }
 
 __lmline_filter_candidates() {
-  # Reject NUL while candidate text is still raw; Bash variables drop it.
-  awk 'BEGIN { nul = sprintf("%c", 0) }
-    {
-    if (index($0, nul)) next
-    t=$0
-    sub(/^[[:space:]]+/, "", t)
-    sub(/[[:space:]]+$/, "", t)
-    if (length(t) > 0 && t !~ /^```[[:alpha:]]*[[:space:]]*$/) print
-  }' |
-    __lmline_normalize_candidate_line |
-    awk 'length > 0'
+  # Drop NUL-bearing records before any byte rewrite: Bash variables
+  # cannot hold NUL, so a clean $BASH -p child records NUL delimiters
+  # with read -r -d "" without storing NUL. Each NUL taints only its
+  # newline-delimited record: first/last newline splits discard that
+  # record and emit all other bytes unchanged, including unterminated
+  # finals and arbitrary bytes. NUL-free input is emitted directly.
+  # Buffer the result so a scanner/child or downstream failure admits
+  # nothing; raw NUL never enters a Bash variable.
+  local result
+  result=$(
+    set -o pipefail
+    "$BASH" -p -c '
+      LC_ALL=C
+      tainted=0
+      chunk=""
+      rest=""
+      tail=""
+      nl="
+"
+      process() {
+        if [[ $chunk == *"$nl"* ]]; then
+          if (( tainted )); then
+            rest=${chunk#*"$nl"}
+          else
+            rest=$chunk
+          fi
+          if [[ $rest == *"$nl"* ]]; then
+            tail=${rest##*"$nl"}
+            builtin printf "%s" "${rest:0:${#rest}-${#tail}}" || exit 1
+          else
+            tail=$rest
+          fi
+          if (( is_last )); then
+            if [[ -n $tail ]]; then
+              builtin printf "%s\n" "$tail" || exit 1
+            fi
+          else
+            tainted=1
+          fi
+        else
+          if (( is_last )); then
+            if (( ! tainted )) && [[ -n $chunk ]]; then
+              builtin printf "%s\n" "$chunk" || exit 1
+            fi
+          else
+            tainted=1
+          fi
+        fi
+      }
+      if IFS= builtin read -r -d "" chunk; then
+        is_last=0
+        process
+        while IFS= builtin read -r -d "" chunk; do
+          is_last=0
+          process
+        done
+        is_last=1
+        process
+      else
+        if [[ -n $chunk ]]; then
+          builtin printf "%s" "$chunk" || exit 1
+          if [[ $chunk != *"$nl" ]]; then
+            builtin printf "\n" || exit 1
+          fi
+        fi
+      fi
+    ' |
+      awk '{
+        t=$0
+        sub(/^[[:space:]]+/, "", t)
+        sub(/[[:space:]]+$/, "", t)
+        if (length(t) > 0 && t !~ /^```[[:alpha:]]*[[:space:]]*$/) print
+      }' |
+      __lmline_normalize_candidate_line |
+      awk 'length > 0'
+  ) || return
+  if [[ -n $result ]]; then
+    printf '%s\n' "$result"
+  fi
 }
 
 __lmline_candidate_truncated() {

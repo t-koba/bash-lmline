@@ -25,8 +25,84 @@ for byte in {128..159}; do
 done
 # NUL cannot be represented by the line buffer: discard NUL-bearing raw
 # candidate records before awk normalization or Bash reads can drop the byte.
-nul_candidates=$(printf '%b\n' '\0echo hidden-first' 'echo hidden-middle\0 text' 'echo hidden-end\0' 'echo nul-safe-companion' | __lmline_valid_candidates)
-[[ "$nul_candidates" == "echo nul-safe-companion" ]]
+nul_input() {
+  printf '%b\n' '\0echo hidden-first' 'echo hidden-middle\0 text' 'echo hidden-end\0' 'echo nul-safe-companion'
+  # A NUL-bearing final record without a newline must be dropped too.
+  printf 'echo hidden-eof\0'
+}
+for filter in __lmline_filter_candidates __lmline_valid_candidates; do
+  [[ $(nul_input | "$filter") == "echo nul-safe-companion" ]]
+done
+# Byte scanning must not decode/rewrite NUL-free UTF-8 or arbitrary bytes.
+raw=$'echo café-日本-一\377\001'
+[[ $(printf '%s' "$raw" | __lmline_filter_candidates) == "$raw" ]]
+# Multiple clean records around NULs are preserved byte-exact; only tainted
+# records are dropped, including those spanning NULs across newlines.
+for filter in __lmline_filter_candidates __lmline_valid_candidates; do
+  [[ $({ printf 'echo safe-before\n'; printf 'echo bad\0middle\n'; printf 'echo safe-middle\n'; printf 'a\0b\n'; printf 'echo safe-after\n'; } | "$filter") == $'echo safe-before\necho safe-middle\necho safe-after' ]]
+  [[ $({ printf 'echo safe-one\n'; printf '\0\n'; printf 'echo safe-two\n'; printf 'a\0\0b\n'; printf 'echo safe-three\n'; } | "$filter") == $'echo safe-one\necho safe-two\necho safe-three' ]]
+done
+# Newline positions: NUL-then-newline drops the tainted record, newline-then-NUL
+# drops only the NUL-bearing line, and unterminated finals behave the same.
+[[ $(printf 'a\0\nb\n' | __lmline_filter_candidates) == "b" ]]
+[[ $(printf 'a\n\0\nb\n' | __lmline_filter_candidates) == $'a\nb' ]]
+[[ $(printf 'a\nb\0' | __lmline_filter_candidates) == "a" ]]
+[[ -z $(printf 'a\0' | __lmline_filter_candidates) ]]
+[[ -z $(printf '\0' | __lmline_filter_candidates) ]]
+[[ -z $(printf '' | __lmline_filter_candidates) ]]
+[[ -z $(printf '\n' | __lmline_filter_candidates) ]]
+[[ -z $(printf '\n\n' | __lmline_filter_candidates) ]]
+[[ $(printf 'a\n\nb\n' | __lmline_filter_candidates) == $'a\nb' ]]
+# EOF without newline: clean finals gain a newline, NUL-bearing finals are dropped.
+[[ $(printf 'echo safe-eof' | __lmline_filter_candidates) == "echo safe-eof" ]]
+[[ -z $(printf 'echo bad-eof\0' | __lmline_filter_candidates) ]]
+for filter in __lmline_filter_candidates __lmline_valid_candidates; do
+  [[ $({ printf 'echo safe-first\n'; printf 'echo safe-eof'; } | "$filter") == $'echo safe-first\necho safe-eof' ]]
+  [[ $({ printf 'echo safe-first\n'; printf 'echo bad-eof\0'; } | "$filter") == "echo safe-first" ]]
+done
+# Invalid/high bytes are preserved byte-exact when NUL-free and dropped only
+# when tainted; safe companions prove no rewrite or leak.
+high=$'echo \377\001\xff\xfe-xyz'
+[[ $(printf '%s\n' "$high" | __lmline_filter_candidates) == "$high" ]]
+[[ $(printf '%s' "$high" | __lmline_filter_candidates) == "$high" ]]
+high_clean=$'echo \377\xff\xfe-xyz'
+for filter in __lmline_filter_candidates __lmline_valid_candidates; do
+  [[ $({ printf '%s\n' "$high_clean"; printf 'bad\0\n'; printf 'echo safe-high\n'; } | "$filter") == "$high_clean"$'\n'"echo safe-high" ]]
+done
+# A spoofed caller read function cannot alter byte scanning: the clean
+# $BASH -p child never imports it.
+(
+  read() { printf 'echo spoofed-via-read\n'; return 0; }
+  [[ $(printf 'echo safe\n' | __lmline_filter_candidates) == "echo safe" ]]
+  [[ $(nul_input | __lmline_filter_candidates) == "echo nul-safe-companion" ]]
+)
+# A scanner/child that produces output and then fails must admit nothing, even
+# without caller pipefail. Stubs run only in these subshells.
+for scanner in child awk; do
+  (
+    set +o pipefail
+    if [[ $scanner == child ]]; then
+      BASH=/bin/false
+    else
+      awk() { command awk "$@"; return 1; }
+    fi
+    if output=$(printf 'echo scanner-partial\n' | __lmline_filter_candidates); then
+      exit 1
+    fi
+    [[ -z $output ]]
+  )
+done
+# A child that emits partial output and then fails still admits nothing.
+(
+  set +o pipefail
+  printf '#!/usr/bin/env bash\nprintf "echo scanner-partial\\n"\nexit 1\n' >"$2/partial-bash"
+  chmod +x "$2/partial-bash"
+  BASH="$2/partial-bash"
+  if output=$(printf 'echo scanner-partial\n' | __lmline_filter_candidates); then
+    exit 1
+  fi
+  [[ -z $output ]]
+)
 for control in $'\001' $'\033' $'\177'; do
   [[ $(__lmline_candidate_rejection_reason "echo $control") == control-character ]]
 done
@@ -224,5 +300,28 @@ for shell in bash zsh; do
     grep -RFq "$bidi_bad" "$tmp/trace" || fail 'raw bidi trace was changed'
   done
 done
+# Provider JSON is checked before Bash extraction: unlike the record filter,
+# this boundary rejects the whole response, including any safe companion.
+for position in start middle end; do
+  jq -n --arg position "$position" '
+    "echo $(touch \"$LMLINE_TEST_EXEC_MARKER\")" as $cmd |
+    (if $position == "start" then "\u0000" + $cmd
+     elif $position == "middle" then "echo\u0000" + $cmd
+     else $cmd + "\u0000" end) as $bad |
+    {choices:[{message:{role:"assistant",content:($bad + "\necho nul-safe-companion")},finish_reason:"stop"}]}
+  ' >"$tmp/response.json"
+  if PATH="$tmp/bin:$PATH" LMLINE_TEST_RESPONSE="$tmp/response.json" \
+    LMLINE_CONFIG_DIR="$tmp/config-engine" LMLINE_BASE_URL=https://api.test.invalid/v1 \
+    LMLINE_MODEL=test-model LMLINE_TOOL_MODE=none \
+    "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" \
+      --point 0 --line-file "$tmp/line" --context-file "$tmp/context" --n 3 \
+      >"$tmp/engine.out" 2>"$tmp/engine.err"; then
+    fail "engine accepted NUL at $position"
+  fi
+  [[ -z $(candidates_of <"$tmp/engine.out") ]] || fail 'engine emitted altered NUL candidate'
+  grep -q 'embedded NUL in response content' "$tmp/engine.err" || fail 'missing NUL diagnostic'
+  ! grep -q 'touch\|nul-safe-companion' "$tmp/engine.out" "$tmp/engine.err" || fail 'NUL candidate display leak'
+done
 [[ ! -e "$LMLINE_TEST_EXEC_MARKER" ]] || fail 'candidate executed'
 ok 'C1/bidi engine rejection precedes truncation, retains raw traces, and emits only safe candidates'
+ok 'NUL at start/middle/end is rejected before engine extraction without execution or display leaks'
