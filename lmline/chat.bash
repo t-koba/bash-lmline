@@ -1056,6 +1056,13 @@ __lmline_execute_tool_round() {
   patterns_file=$(__lmline_condense_patterns_file) || return 1
   : >"$tool_messages_file"
   while IFS= read -r call; do
+    # `call` is JSON text, so NUL is escaped until jq decodes it. Reject it
+    # before command substitutions move provider-controlled fields into Bash.
+    if jq -e '[.. | strings | select(explode | index(0) != null)] | length > 0' \
+      <<<"$call" >/dev/null 2>&1; then
+      printf 'lmline-engine: refusing tool call with embedded NUL\n' >&2
+      return 1
+    fi
     call_id=$(printf '%s' "$call" | jq -r '.id')
     name=$(printf '%s' "$call" | jq -r '.function.name')
     args_json=$(printf '%s' "$call" | jq -r '.function.arguments // "{}"')

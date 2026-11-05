@@ -184,5 +184,17 @@ out=$(__lmline_tool_output command_run '{"command":"echo safe\u0000; printf hidd
 grep -qx 'allowed=0' <<<"$out" || fail "NUL-bearing command_run argument was not refused"
 grep -qx 'reason=invalid_command_arguments' <<<"$out" || fail "NUL-bearing command_run rejection reason"
 [[ ! -e "$command_run_marker" ]] || fail "NUL-bearing command_run argument reached handler"
+# Exercise the full tool-call path: the outer JSON contains a NUL in the
+# function.arguments string, before the command_run-specific JSON extraction.
+tool_calls_file=$payload_tmp/nul-tool-calls.jsonl
+tool_round=1
+tool_source=openai
+LMLINE_PROGRESS=0
+jq -cn '{id:"nul-call",type:"function",function:{name:"command_run",arguments:"{\"command\":\"echo safe\u0000; printf hidden\"}"}}' >"$tool_calls_file"
+if __lmline_execute_tool_round 2>"$payload_tmp/nul-tool-call.err"; then
+  fail "NUL-bearing provider tool call unexpectedly completed"
+fi
+grep -q 'refusing tool call with embedded NUL' "$payload_tmp/nul-tool-call.err" || fail "NUL-bearing provider tool call diagnostic"
+[[ ! -e "$command_run_marker" ]] || fail "NUL-bearing provider tool call reached command handler"
 clear_default_off
 ok "dispatch reaches handlers when exact 1"
