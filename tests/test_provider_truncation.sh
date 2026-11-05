@@ -139,6 +139,27 @@ cat >"$case_dir/response.json" <<'JSON'
 JSON
 assert_truncated responses 'incomplete: max_output_tokens'
 
+# Provider-controlled reasons are rendered safely without changing the raw
+# equality check for the stream-ended recovery diagnostic.
+for reason in max_output_tokens stream_ended_without_completion; do
+  init_case "responses-control-$reason" responses
+  jq --arg reason "$reason" '.incomplete_details.reason = ("\u001b[2J" + $reason)' \
+    "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
+  assert_truncated "responses control $reason" "incomplete: $reason"
+  ! LC_ALL=C grep -q '[[:cntrl:]]' "$case_dir/stderr" || fail "responses reason emitted terminal controls"
+done
+
+init_case responses-stream-ended responses
+jq '.incomplete_details.reason = "stream_ended_without_completion"' \
+  "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
+invoke_engine
+[[ $engine_status != 0 ]] || fail "responses stream-ended unexpectedly succeeded"
+[[ -z "$(candidates_of <<<"$engine_output")" ]] || fail "responses stream-ended emitted candidate"
+[[ $(cache_count) == 0 ]] || fail "responses stream-ended cached"
+grep -Fxq 'lmline-engine: the response stream ended before completion; the command response is incomplete and was not accepted' \
+  "$case_dir/stderr" || fail "responses exact stream-ended recovery diagnostic"
+! grep -Fq 'LMLINE_MAX_TOKENS' "$case_dir/stderr" || fail "responses stream-ended suggested an output cap"
+
 # A failed Responses body is a provider failure in every buffered mode,
 # including explain, where partial output must not be shown as an answer.
 init_case responses-failed responses

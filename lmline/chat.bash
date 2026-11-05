@@ -478,7 +478,7 @@ __lmline_report_provider_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason= provider_failed=0 max_tokens_advice=
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason= display_reason= provider_failed=0 max_tokens_advice=
   if [[ "$api_format" == responses ]]; then
     if jq -e '((.status // "") == "failed") or ((.error? | type) == "object")' "$response" >/dev/null 2>&1; then
       provider_failed=1
@@ -518,8 +518,10 @@ __lmline_accept_response() {
               [[ "$(__lmline_chatgpt_route_setting LMLINE_MAX_TOKENS '')" == 'not sent' ]]; then
               max_tokens_advice='the ChatGPT plan route does not send a local output cap (the cap is provider-side); shorten the request and retry'
             fi
+            # Classify the raw reason above; sanitize only terminal-facing text.
+            display_reason=$(printf '%s\n' "$incomplete_reason" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_reason=
             printf 'lmline-engine: provider returned an incomplete command response (%s%s); %s\n' \
-              "${finish_status,,}" "${incomplete_reason:+: $incomplete_reason}" "$max_tokens_advice" >&2
+              "${finish_status,,}" "${display_reason:+: $display_reason}" "$max_tokens_advice" >&2
           fi
           return 1
           ;;
