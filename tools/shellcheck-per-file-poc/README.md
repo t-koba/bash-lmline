@@ -40,8 +40,8 @@ per-child rather than cumulative RSS. JSONL tests check lossless reconstruction
 of the in-memory report, header/target visibility from running child processes,
 retention after later tool failure or cancellation, and fail-closed flush errors. The real three-file endpoint subset is a
 bounded regression test. A drift test checks the production argument list/order
-without invoking ShellCheck on that list: currently 76 unique inputs, 139 source
-declarations, 135 unique direct edges, maximum context group size 11.
+without invoking ShellCheck on that list: currently 77 unique inputs, 141 source
+declarations, 136 unique direct edges, maximum context group size 11.
 
 ## Runner entry points
 
