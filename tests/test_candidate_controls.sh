@@ -24,7 +24,7 @@ for byte in {128..159}; do
   [[ $(__lmline_candidate_rejection_reason "echo $control") == control-character ]]
 done
 # NUL cannot be represented by the line buffer: discard NUL-bearing raw
-# candidate records before awk normalization or Bash reads can drop the byte.
+# candidate records before normalization or Bash reads can drop the byte.
 nul_input() {
   printf '%b\n' '\0echo hidden-first' 'echo hidden-middle\0 text' 'echo hidden-end\0' 'echo nul-safe-companion'
   # A NUL-bearing final record without a newline must be dropped too.
@@ -67,8 +67,15 @@ high=$'echo \377\001\xff\xfe-xyz'
 [[ $(printf '%s' "$high" | __lmline_filter_candidates) == "$high" ]]
 high_clean=$'echo \377\xff\xfe-xyz'
 for filter in __lmline_filter_candidates __lmline_valid_candidates; do
-  [[ $({ printf '%s\n' "$high_clean"; printf 'bad\0\n'; printf 'echo safe-high\n'; } | "$filter") == "$high_clean"$'\n'"echo safe-high" ]]
+  output=$({ printf '%s\n' "$high_clean"; printf 'bad\0\n'; printf 'echo safe-high\n'; printf '  - 2. `%s`  \n' "$high_clean"; } | "$filter" 2>"$2/locale-error")
+  [[ $output == "$high_clean"$'\n'"echo safe-high"$'\n'"$high_clean" && ! -s $2/locale-error ]]
 done
+# Keep locale-aware UTF-8 whitespace normalization, not just byte preservation.
+locale_before=$LC_ALL
+space=' '
+[[ $LC_ALL == C ]] || space=$'\343\200\200' # U+3000 is UTF-8 whitespace.
+[[ $({ printf '%s```bash%s\n' "$space" "$space"; printf '%s- 2. `echo café-日本-一`%s\n' "$space" "$space"; } | __lmline_filter_candidates) == 'echo café-日本-一' ]]
+[[ $LC_ALL == "$locale_before" ]]
 # A spoofed caller read function cannot alter byte scanning: the clean
 # $BASH -p child never imports it.
 (
@@ -78,13 +85,13 @@ done
 )
 # A scanner/child that produces output and then fails must admit nothing, even
 # without caller pipefail. Stubs run only in these subshells.
-for scanner in child awk; do
+for scanner in child normalizer; do
   (
     set +o pipefail
     if [[ $scanner == child ]]; then
       BASH=/bin/false
     else
-      awk() { command awk "$@"; return 1; }
+      __lmline_normalize_candidate_line() { cat; return 1; }
     fi
     if output=$(printf 'echo scanner-partial\n' | __lmline_filter_candidates); then
       exit 1

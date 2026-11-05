@@ -86,13 +86,27 @@ __lmline_word_is_command_prefix() {
 }
 
 __lmline_normalize_candidate_line() {
-  sed -E \
-    -e 's/^[[:space:]]+//' \
-    -e 's/[[:space:]]+$//' \
-    -e 's/^[[:space:]]*[-*][[:space:]]+//' \
-    -e 's/^[[:space:]]*[0-9]+[.)][[:space:]]+//' \
-    -e 's/^`//' \
-    -e 's/`$//'
+  # Shell matching preserves locale-aware whitespace/letters without asking
+  # awk/sed to decode possibly invalid multibyte input. Other bytes stay raw.
+  local line prefix
+  while IFS= builtin read -r line || [[ -n $line ]]; do
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [[ -n $line ]] || continue
+    if [[ $line == '```'* && ${line#'```'} != *[![:alpha:]]* ]]; then continue; fi
+    if [[ $line == [-*][[:space:]]* ]]; then
+      line=${line:1}
+      line=${line#"${line%%[![:space:]]*}"}
+    fi
+    prefix=${line%%[!0-9]*}
+    if [[ -n $prefix && ${line#"$prefix"} == [.\)][[:space:]]* ]]; then
+      line=${line#"$prefix"?}
+      line=${line#"${line%%[![:space:]]*}"}
+    fi
+    line=${line#\`}
+    line=${line%\`}
+    [[ -z $line ]] || printf '%s\n' "$line" || return
+  done
 }
 
 __lmline_filter_candidates() {
@@ -163,14 +177,7 @@ __lmline_filter_candidates() {
         fi
       fi
     ' |
-      awk '{
-        t=$0
-        sub(/^[[:space:]]+/, "", t)
-        sub(/[[:space:]]+$/, "", t)
-        if (length(t) > 0 && t !~ /^```[[:alpha:]]*[[:space:]]*$/) print
-      }' |
-      __lmline_normalize_candidate_line |
-      awk 'length > 0'
+      __lmline_normalize_candidate_line
   ) || return
   if [[ -n $result ]]; then
     printf '%s\n' "$result"
