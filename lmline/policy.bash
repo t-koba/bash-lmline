@@ -113,10 +113,36 @@ __lmline_candidate_truncated() {
   (( byte_len > max_len ))
 }
 
+__lmline_truncate_bytes() {
+  local LC_ALL=C
+  local text=$1 max_len=$2 length index byte required=0
+  text=${text:0:max_len}
+  length=${#text}
+  index=$((length - 1))
+  # If the byte limit lands inside a UTF-8 sequence, omit that incomplete
+  # trailing code point. Other bytes are preserved; the input is not decoded.
+  while (( index >= 0 )); do
+    printf -v byte '%d' "'${text:index:1}"
+    (( byte >= 128 && byte <= 191 )) || break
+    index=$((index - 1))
+  done
+  if (( index >= 0 )); then
+    printf -v byte '%d' "'${text:index:1}"
+    if (( byte >= 194 && byte <= 223 )); then required=1
+    elif (( byte >= 224 && byte <= 239 )); then required=2
+    elif (( byte >= 240 && byte <= 244 )); then required=3
+    fi
+    if (( required > 0 && length - index - 1 < required )); then
+      text=${text:0:index}
+    fi
+  fi
+  printf '%s' "$text"
+}
+
 __lmline_truncate_candidate() {
   local cmd=$1 max_len=${LMLINE_MAX_CANDIDATE_BYTES:-4096}
   __lmline_clamp_int max_len 4096 0 1
-  printf '%s' "$cmd" | LC_ALL=C cut -c "1-$max_len"
+  __lmline_truncate_bytes "$cmd" "$max_len"
 }
 
 __lmline_truncated_comment_candidate() {
@@ -126,7 +152,7 @@ __lmline_truncated_comment_candidate() {
   body_len=$((max_len - prefix_len))
   (( body_len > 0 )) || { __lmline_truncate_candidate "$cmd"; return 0; }
   printf '%s' "$prefix"
-  printf '%s' "$cmd" | LC_ALL=C cut -c "1-$body_len"
+  __lmline_truncate_bytes "$cmd" "$body_len"
 }
 
 # Match C1 and Unicode Bidi_Control codepoints, not ordinary UTF-8 bytes.

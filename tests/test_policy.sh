@@ -532,6 +532,30 @@ bash -c '
   [[ "$LMLINE_MAX_CANDIDATE_BYTES" == 08 ]] || exit 33
   truncated_eight=$(LMLINE_MAX_CANDIDATE_BYTES=08 __lmline_truncate_candidate "$nine_bytes")
   [[ "${#truncated_eight}" == 8 ]]
+  # Byte limits must not create incomplete UTF-8 tails in either ordinary
+  # candidates or the marked fallback. Check every partial boundary for
+  # representative two-, three-, and four-byte code points.
+  printf -v utf8_two "\\303\\251"
+  printf -v utf8_three "\\346\\227\\245"
+  printf -v utf8_four "\\360\\237\\230\\200"
+  utf8_codepoints=("$utf8_two" "$utf8_three" "$utf8_four")
+  utf8_sizes=(2 3 4)
+  truncated_prefix="# TRUNCATED: "
+  truncated_prefix_bytes=${#truncated_prefix}
+  for index in "${!utf8_codepoints[@]}"; do
+    codepoint=${utf8_codepoints[index]}
+    size=${utf8_sizes[index]}
+    [[ $(LMLINE_MAX_CANDIDATE_BYTES=$size __lmline_truncate_candidate "$codepoint") == "$codepoint" ]]
+    for ((partial = 1; partial < size; partial++)); do
+      [[ -z $(LMLINE_MAX_CANDIDATE_BYTES=$partial __lmline_truncate_candidate "$codepoint") ]]
+      [[ $(LMLINE_MAX_CANDIDATE_BYTES=$((truncated_prefix_bytes + partial)) \
+        __lmline_truncated_comment_candidate "$codepoint") == "$truncated_prefix" ]]
+      normal_candidate="echo a$codepoint"
+      normal_output=$(printf "%s\n" "$normal_candidate" | \
+        LMLINE_MAX_CANDIDATE_BYTES=$((6 + partial)) __lmline_valid_candidates)
+      [[ "$normal_output" == "echo a" ]]
+    done
+  done
   LMLINE_MAX_CANDIDATE_BYTES=08
   ! __lmline_candidate_truncated "$seven_bytes"
   LMLINE_MAX_CANDIDATE_BYTES=bad
