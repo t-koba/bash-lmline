@@ -169,6 +169,31 @@ EOF
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-2.out 2>/tmp/lmline-zsh-widget-async-2.err
     [[ "$BUFFER" == "echo zsh-widget" ]]
   ' _ "$repo_dir" || fail "zsh async widget"
+  # The bridge supervisor runs in Bash, so inject failure through PATH.
+  mkdir "$zsh_tmp/fail-publish-bin"
+  cat >"$zsh_tmp/fail-publish-bin/mv" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" != */lmline-zsh-async.*.tmp.* ]] || exit 1
+exec "$LMLINE_TEST_REAL_MV" "$@"
+EOF
+  chmod +x "$zsh_tmp/fail-publish-bin/mv"
+  LMLINE_TEST_REAL_MV="$(command -v mv)" PATH="$zsh_tmp/fail-publish-bin:$PATH" \
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-publish-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine" zsh -efic '
+    source "$1/lmline/init.zsh"
+    BUFFER="# publish"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    async_file=$__LMLINE_ZSH_ASYNC_FILE
+    wait "$__LMLINE_ZSH_ASYNC_PID"
+    [[ $(cat "$async_file.status") == failed ]]
+    [[ ! -e "$async_file" ]]
+    stages=("$async_file.tmp."*(N))
+    [[ ${#stages} == 0 ]]
+    grep -qx "lmline-engine: async result publication failed" "$async_file.status.err"
+    lmline-zsh-generate-widget >/dev/null 2>"$2/publish-fail.err"
+    grep -q "async result publication failed" "$2/publish-fail.err"
+    [[ "$BUFFER" == "# publish" ]]
+  ' _ "$repo_dir" "$zsh_tmp" || fail "zsh async publication failure"
   # Both generations block on explicit gates; cancellation must stop the first
   # engine AND its child without releasing that gate or touching another job.
   cat >"$zsh_tmp/engine-cancel" <<'EOF'

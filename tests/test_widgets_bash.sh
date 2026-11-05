@@ -629,6 +629,31 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
   __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
+# Fail only the final async rename after the engine produced valid candidates.
+mkdir "$widget_tmp/fail-publish-bin"
+cat >"$widget_tmp/fail-publish-bin/mv" <<'EOF'
+#!/usr/bin/env bash
+[[ "$1" != */lmline-async.*.tmp.* ]] || exit 1
+exec "$LMLINE_TEST_REAL_MV" "$@"
+EOF
+chmod +x "$widget_tmp/fail-publish-bin/mv"
+LMLINE_TEST_REAL_MV="$(command -v mv)" PATH="$widget_tmp/fail-publish-bin:$PATH" \
+LMLINE_CONFIG_DIR="$widget_tmp/config-publish-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# publish"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  async_file=$__LMLINE_ASYNC_FILE
+  wait "$__LMLINE_ASYNC_PID"
+  [[ $(cat "$async_file.status") == failed ]]
+  [[ ! -e "$async_file" ]]
+  stages=("$async_file.tmp."*)
+  [[ ! -e "${stages[0]}" ]]
+  grep -qx "lmline-engine: async result publication failed" "$async_file.status.err"
+  __lmline_generate_widget >/dev/null 2>"$2/publish-fail.err"
+  grep -q "async result publication failed" "$2/publish-fail.err"
+  [[ "$READLINE_LINE" == "# publish" ]]
+' _ "$repo_dir" "$widget_tmp" || fail "async publication failure"
 # Both generations block on explicit gates; cancellation must stop the first
 # engine AND its child without releasing that gate or touching another job.
 cat >"$widget_tmp/engine-cancel" <<'EOF'

@@ -496,8 +496,13 @@ __lmline_async_start() {
     # TERM can arrive between installing the trap and assigning the child PID.
     (( cancelled == 0 )) || __lmline_cancel_worker
     if wait "$worker"; then
-      mv "$tmp_out" "$async_file"
-      printf 'ok\n' >"$async_status_file"
+      if mv "$tmp_out" "$async_file" 2>/dev/null; then
+        printf 'ok\n' >"$async_status_file"
+      else
+        rm -f "$tmp_out" "$async_file"
+        printf 'lmline-engine: async result publication failed\n' >"$async_status_file.err"
+        printf 'failed\n' >"$async_status_file"
+      fi
     else
       rm -f "$tmp_out"
       printf 'failed\n' >"$async_status_file"

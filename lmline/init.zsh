@@ -440,8 +440,13 @@ __lmline_zsh_bridge() {
       worker=$!
       (( cancelled == 0 )) || __lmline_cancel_worker
       if wait "$worker" && [[ -s "$tmp_out" ]]; then
-        mv "$tmp_out" "$async_file"
-        printf "ok\n" >"$async_file.status"
+        if mv "$tmp_out" "$async_file" 2>/dev/null; then
+          printf "ok\n" >"$async_file.status"
+        else
+          rm -f "$tmp_out" "$async_file"
+          printf "lmline-engine: async result publication failed\n" >"$async_file.status.err"
+          printf "failed\n" >"$async_file.status"
+        fi
       else
         rm -f "$tmp_out" "$async_file"
         printf "failed\n" >"$async_file.status"
