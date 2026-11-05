@@ -109,19 +109,25 @@ script_dir=$(cd -- "$script_dir" && pwd -P)
 # shellcheck source=lmline/config.bash
 source "$script_dir/config.bash"
 __lmline_load_all_config
-# shellcheck source=lmline/http.bash
-source "$script_dir/http.bash"
-# shellcheck source=lmline/chatgpt.bash
-source "$script_dir/chatgpt.bash"
-# shellcheck source=lmline/websearch.bash
-source "$script_dir/websearch.bash"
-# The ChatGPT client is resolved by the route, so the CLI and the engine use
-# the same client. The resolved path is exported for the child processes
-# that talk to the route.
-LMLINE_CHATGPT_CLIENT=$(__lmline_chatgpt_client_path)
-export LMLINE_CHATGPT_CLIENT
-# shellcheck source=lmline/profiles.bash
-source "$script_dir/profiles.bash"
+# The settings catalog and persisted-settings view need only config.bash.
+case "${1-}:${2-}" in
+  config:defaults|config:get) : ;;
+  *)
+    # shellcheck source=lmline/http.bash
+    source "$script_dir/http.bash"
+    # shellcheck source=lmline/chatgpt.bash
+    source "$script_dir/chatgpt.bash"
+    # shellcheck source=lmline/websearch.bash
+    source "$script_dir/websearch.bash"
+    # The ChatGPT client is resolved by the route, so the CLI and the engine use
+    # the same client. The resolved path is exported for the child processes
+    # that talk to the route.
+    LMLINE_CHATGPT_CLIENT=$(__lmline_chatgpt_client_path)
+    export LMLINE_CHATGPT_CLIENT
+    # shellcheck source=lmline/profiles.bash
+    source "$script_dir/profiles.bash"
+    ;;
+esac
 : "${LMLINE_CANDIDATE_COUNT:=3}"
 __lmline_init_dirs "$script_dir"
 : "${LMLINE_PS0:=🍋‍🟩 }"
