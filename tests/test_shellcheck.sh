@@ -402,6 +402,7 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
     CandidateTests.test_manifest_matches_shell_harness_without_running_it \
     CandidateTests.test_bounded_batch_comparison \
     ProgressTests.test_regular_harness_pinned_route_and_failure_artifact \
+    ProgressTests.test_full_batch_summary_is_saved_without_raw_paths \
     ProgressTests.test_regular_harness_local_failure_shows_actionable_diagnostics \
     ProgressTests.test_regular_harness_local_success_cleans_temporary_report \
     ProgressTests.test_regular_harness_uses_configured_child_bounds \
