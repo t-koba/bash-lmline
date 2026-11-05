@@ -194,6 +194,18 @@ out=$(__lmline_tool_output command_run '{"command":"echo safe\u0000; printf hidd
 grep -qx 'allowed=0' <<<"$out" || fail "NUL-bearing command_run argument was not refused"
 grep -qx 'reason=invalid_command_arguments' <<<"$out" || fail "NUL-bearing command_run rejection reason"
 [[ ! -e "$command_run_marker" ]] || fail "NUL-bearing command_run argument reached handler"
+# Reject empty, malformed, non-object, and multiple-document argument JSON
+# for both command_run and another local tool, before either handler runs.
+for args in '' '{' '{"command":"echo hi"} trailing' 'null' '[]' '"text"' '1' '{} {}'; do
+  out=$(__lmline_tool_output command_run "$args" 2>/dev/null)
+  grep -qx 'allowed=0' <<<"$out" || fail "invalid command_run JSON was not refused: $args"
+  grep -qx 'reason=invalid_command_arguments' <<<"$out" || fail "invalid command_run JSON rejection reason: $args"
+  [[ ! -e "$command_run_marker" ]] || fail "invalid command_run JSON reached handler: $args"
+  out=$(__lmline_tool_output file_excerpt "$args" 2>/dev/null)
+  grep -qx 'error=invalid_tool_arguments' <<<"$out" || fail "invalid file_excerpt JSON was not refused: $args"
+  grep -qx 'reason=invalid_json' <<<"$out" || fail "invalid file_excerpt JSON rejection reason: $args"
+  [[ ! -e "$file_excerpt_marker" ]] || fail "invalid file_excerpt JSON reached handler: $args"
+done
 # Exercise the full tool-call path: the outer JSON contains a NUL in the
 # function.arguments string, before the command_run-specific JSON extraction.
 tool_calls_file=$payload_tmp/nul-tool-calls.jsonl
@@ -206,5 +218,23 @@ if __lmline_execute_tool_round 2>"$payload_tmp/nul-tool-call.err"; then
 fi
 grep -q 'refusing tool call with embedded NUL' "$payload_tmp/nul-tool-call.err" || fail "NUL-bearing provider tool call diagnostic"
 [[ ! -e "$command_run_marker" ]] || fail "NUL-bearing provider tool call reached command handler"
+# Inner argument JSON is provider-controlled too: a second document must not
+# mask the first document's escaped NUL. The stub only records, never executes.
+LMLINE_DEFAULTS_DIR=$repo_dir/lmline/defaults
+LMLINE_USER_RULES_DIR=$payload_tmp
+LMLINE_TRACE_DIR=
+LMLINE_MAX_TOOL_CALLS_PER_ROUND=1
+LMLINE_MAX_TOOL_ROUNDS=1
+mode=generate
+tools_file=$payload_tmp/tools
+messages_file=$payload_tmp/messages.json
+printf '[]\n' >"$messages_file"
+jq -cn --arg arguments '{"command":"echo safe\u0000; printf hidden"} {"command":"echo companion"}' \
+  '{id:"multi-call",type:"function",function:{name:"command_run",arguments:$arguments}}' >"$tool_calls_file"
+__lmline_execute_tool_round 2>"$payload_tmp/multi-tool-call.err" || fail "multi-document rejection did not complete tool round"
+[[ ! -e "$command_run_marker" ]] || fail "multi-document provider arguments reached command handler"
+out=$(jq -r '.[] | select(.role == "tool") | .content' "$messages_file")
+grep -qx 'allowed=0' <<<"$out" || fail "multi-document provider arguments were not refused"
+grep -qx 'reason=invalid_command_arguments' <<<"$out" || fail "multi-document provider arguments rejection reason"
 clear_default_off
 ok "dispatch reaches handlers when exact 1"

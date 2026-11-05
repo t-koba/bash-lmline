@@ -1109,18 +1109,25 @@ __lmline_execute_tool_round() {
 }
 
 __lmline_tool_output() {
-  local name=$1 args_json=$2 commands_arg query path command_line
+  local name=$1 args_json=$2 commands_arg query path command_line invalid_reason=
   if ! __lmline_tool_enabled "$name"; then
     printf 'tool disabled by configuration: %s\n' "$name"
     return 0
   fi
-  # Check before per-field jq command substitutions, which would drop NUL.
-  if jq -e '[.. | strings | select(explode | index(0) != null)] | length > 0' \
+  # Require one object before scanning strings or extracting fields: jq -e
+  # otherwise uses the last document's result, and substitutions drop NUL.
+  if ! jq -se 'length == 1 and (.[0] | type == "object")' \
     <<<"$args_json" >/dev/null 2>&1; then
+    invalid_reason=invalid_json
+  elif jq -e '[.. | strings | select(explode | index(0) != null)] | length > 0' \
+    <<<"$args_json" >/dev/null 2>&1; then
+    invalid_reason=embedded_nul
+  fi
+  if [[ -n "$invalid_reason" ]]; then
     if [[ "$name" == command_run ]]; then
       printf 'allowed=0\nreason=invalid_command_arguments\n'
     else
-      printf 'error=invalid_tool_arguments\nreason=embedded_nul\n'
+      printf 'error=invalid_tool_arguments\nreason=%s\n' "$invalid_reason"
     fi
     return 0
   fi
