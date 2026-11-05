@@ -165,6 +165,22 @@ grep -Fq "incomplete command response (incomplete:" "$case_dir/stderr" || fail "
 [[ $(wc -l <"$case_dir/stderr") == 1 ]] || fail "responses reason newline split diagnostic"
 grep -Fq 'INJECTED: forged diagnostic' "$case_dir/stderr" || fail "responses reason newline lost sanitized detail"
 
+# A JSON NUL must not be dropped by Bash before the exact recovery test.
+init_case responses-reason-nul responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":"incomplete","incomplete_details":{"reason":"stream_ended_without_completion\u0000"},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+invoke_engine
+[[ $engine_status != 0 ]] || fail "responses NUL reason unexpectedly succeeded"
+[[ -z "$(candidates_of <<<"$engine_output")" ]] || fail "responses NUL reason emitted candidate"
+[[ $(cache_count) == 0 ]] || fail "responses NUL reason cached a truncated response"
+grep -Fq 'incomplete command response (incomplete: stream_ended_without_completion' "$case_dir/stderr" || fail "responses NUL reason generic diagnostic"
+grep -Fq 'LMLINE_MAX_TOKENS' "$case_dir/stderr" || fail "responses NUL reason generic advice"
+! grep -Fq 'response stream ended before completion' "$case_dir/stderr" || fail "responses NUL reason used exact recovery classification"
+! grep -Fq 'ignored null byte' "$case_dir/stderr" || fail "responses NUL reason entered a Bash variable"
+! LC_ALL=C grep -q '[[:cntrl:]]' "$case_dir/stderr" || fail "responses NUL reason emitted terminal controls"
+[[ $(wc -l <"$case_dir/stderr") == 1 ]] || fail "responses NUL reason split diagnostic"
+
 init_case responses-stream-ended responses
 jq '.incomplete_details.reason = "stream_ended_without_completion"' \
   "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
