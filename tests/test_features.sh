@@ -97,6 +97,38 @@ third_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "cache expired run
 [[ $(cat "$cfg_tmp/cache-state") == 2 ]] || fail "expired cache refetches"
 [[ "$(candidates_of <<<"$third_out")" == "echo cached-cmd" ]] || fail "expired cache output"
 
+# Optional cache writes must not retain a partial staging file when copy or
+# atomic rename fails; candidate delivery remains successful in both cases.
+real_cp=$(command -v cp)
+real_mv=$(command -v mv)
+cat >"$fake_bin/cp" <<'EOF'
+#!/usr/bin/env bash
+last=
+for last do :; done
+if [[ "${LMLINE_FAIL_CACHE_CP:-0}" == 1 && "$last" == *".tmp."* ]]; then
+  printf 'partial cache entry' >"$last"
+  exit 1
+fi
+exec "$LMLINE_REAL_CP" "$@"
+EOF
+cat >"$fake_bin/mv" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${LMLINE_FAIL_CACHE_MV:-0}" == 1 && "${1-}" == *".tmp."* ]]; then
+  exit 1
+fi
+exec "$LMLINE_REAL_MV" "$@"
+EOF
+chmod +x "$fake_bin/cp" "$fake_bin/mv"
+printf '0\n' >"$cfg_tmp/cache-copy-state"
+copy_failure_out=$(run_engine LMLINE_CONFIG_DIR="$cfg_tmp/cache-copy-config" LMLINE_TOOL_MODE=none LMLINE_FAKE_CURL_STATE="$cfg_tmp/cache-copy-state" LMLINE_CACHE_TTL=300 LMLINE_FAIL_CACHE_CP=1 LMLINE_REAL_CP="$real_cp" LMLINE_REAL_MV="$real_mv" 2>/dev/null) || fail "cache copy failure changed engine success"
+[[ "$(candidates_of <<<"$copy_failure_out")" == "echo cached-cmd" ]] || fail "cache copy failure lost candidate"
+[[ -z "$(find "$cfg_tmp/cache-copy-config/cache" -maxdepth 1 -type f -print -quit)" ]] || fail "cache copy failure retained a staging file"
+printf '0\n' >"$cfg_tmp/cache-rename-state"
+rename_failure_out=$(run_engine LMLINE_CONFIG_DIR="$cfg_tmp/cache-rename-config" LMLINE_TOOL_MODE=none LMLINE_FAKE_CURL_STATE="$cfg_tmp/cache-rename-state" LMLINE_CACHE_TTL=300 LMLINE_FAIL_CACHE_MV=1 LMLINE_REAL_CP="$real_cp" LMLINE_REAL_MV="$real_mv" 2>/dev/null) || fail "cache rename failure changed engine success"
+[[ "$(candidates_of <<<"$rename_failure_out")" == "echo cached-cmd" ]] || fail "cache rename failure lost candidate"
+[[ -z "$(find "$cfg_tmp/cache-rename-config/cache" -maxdepth 1 -type f -print -quit)" ]] || fail "cache rename failure retained a staging file"
+rm -f "$fake_bin/cp" "$fake_bin/mv"
+
 # Cache hits re-apply current risk policy: permissive entry cached as low
 # must serve as high after a strict policy change without refetching.
 cat >"$fake_bin/curl" <<'EOF'

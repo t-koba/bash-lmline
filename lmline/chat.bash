@@ -1500,11 +1500,14 @@ __lmline_cache_emit() {
 }
 
 __lmline_cache_store() {
-  local source_file=$1
+  local source_file=$1 temp_file
   [[ -n "$cache_file" && -s "$source_file" ]] || return 0
   mkdir -p "$cache_dir" 2>/dev/null || return 0
   chmod 700 "$cache_dir" 2>/dev/null || true
-  { (umask 077; cp "$source_file" "$cache_file.tmp.$$" 2>/dev/null) && mv "$cache_file.tmp.$$" "$cache_file" 2>/dev/null; } || true
+  temp_file=$cache_file.tmp.$$
+  if ! { (umask 077; cp "$source_file" "$temp_file" 2>/dev/null) && mv "$temp_file" "$cache_file" 2>/dev/null; }; then
+    rm -f "$temp_file" 2>/dev/null || true
+  fi
   # Opportunistic prune of expired entries.
   find "$cache_dir" -maxdepth 1 -type f -mmin +"$(((LMLINE_CACHE_TTL + 59) / 60))" -delete 2>/dev/null || true
 }
