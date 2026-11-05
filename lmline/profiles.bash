@@ -34,8 +34,8 @@ profile_require_url() {
   local value=$1
   profile_require_field base_url "$value"
   case "$value" in
-    http://*|https://*) ;;
-    *) printf 'lmline: invalid base_url: expected http:// or https:// URL\n' >&2; exit 2 ;;
+    [hH][tT][tT][pP]://*|[hH][tT][tT][pP][sS]://*) ;;
+    *) printf 'lmline: invalid base_url: expected an explicit HTTP or HTTPS URL\n' >&2; exit 2 ;;
   esac
   [[ "$value" != *[[:space:]]* ]] || {
     printf 'lmline: invalid base_url: whitespace is not allowed\n' >&2

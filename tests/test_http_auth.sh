@@ -26,7 +26,7 @@ while (($#)); do
     -H) [[ "$2" != @* ]] || auth=1; shift 2 ;;
     -o) out=$2; shift 2 ;;
     -w|--max-time|--data-binary) shift 2 ;;
-    http://*|https://*) url=$1; shift ;;
+    [hH][tT][tT][pP]://*|[hH][tT][tT][pP][sS]://*) url=$1; shift ;;
     *) shift ;;
   esac
 done
@@ -68,9 +68,14 @@ check_route() {
   : >"$tmp/requests"
   run_route >"$tmp/output" 2>&1 || status=$?
   ! grep -Fq -e "$canary" -e "$context_canary" "$tmp/output" "$tmp/requests" || fail "$route: credential or context in diagnostics"
-  if [[ "$expectation" == deny ]]; then
-    [[ "$status" != 0 && ! -s "$tmp/requests" ]] || fail "$route: plaintext request was not blocked"
-    grep -q 'refusing.*plaintext HTTP.*LMLINE_ALLOW_INSECURE_HTTP=1' "$tmp/output" || fail "$route: missing safe guidance"
+  if [[ "$expectation" == deny || "$expectation" == invalid ]]; then
+    [[ "$status" != 0 && ! -s "$tmp/requests" ]] || fail "$route: unsafe request was not blocked"
+    if [[ "$expectation" == invalid ]]; then
+      grep -q 'refusing destination: an explicit https://' "$tmp/output" || fail "$route: missing scheme guidance"
+      ! grep -Fq -e "$LMLINE_BASE_URL" -e "$LMLINE_MODELS_URL" "$tmp/output" || fail "$route: URL in diagnostics"
+    else
+      grep -q 'refusing.*plaintext HTTP.*LMLINE_ALLOW_INSECURE_HTTP=1' "$tmp/output" || fail "$route: missing safe guidance"
+    fi
   else
     [[ "$status" == 0 ]] || fail "$route: permitted request failed"
     [[ "$route" != discover ]] || count=2
@@ -119,7 +124,27 @@ for route in generate discover refresh doctor; do
   done
 done
 
+# Actual engine paths must reject curl's implicit HTTP and other protocols,
+# even with the HTTP opt-in; check both inference and catalog discovery.
+export LMLINE_ALLOW_INSECURE_HTTP=1 LMLINE_API_KEY_FILE="$tmp/key"
+printf '%s\n' "$canary" >"$LMLINE_API_KEY_FILE"
+for route in generate discover; do
+  for destination in '127.0.0.1:9/v1' 'ftp://api.test.invalid/v1'; do
+    export LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODELS_URL=https://catalog.test.invalid/models
+    if [[ "$route" == generate ]]; then
+      export LMLINE_BASE_URL=$destination
+    else
+      export LMLINE_MODELS_URL=$destination
+    fi
+    check_route invalid 0
+  done
+done
+
+# The unused catalog is empty in inference; mixed-case HTTPS must still pass.
 route=generate
+export LMLINE_BASE_URL=hTtPs://api.test.invalid/v1
+unset LMLINE_ALLOW_INSECURE_HTTP
+check_route allow 1
 export LMLINE_BASE_URL=http://api.test.invalid/v1
 for key in keyed empty absent; do
   export LMLINE_API_KEY_FILE="$tmp/key"

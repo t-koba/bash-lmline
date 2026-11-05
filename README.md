@@ -562,13 +562,15 @@ export LMLINE_MODEL=<model-id>
 export LMLINE_API_KEY_FILE=~/.config/lmline/secrets/api-key.secret
 ```
 
-The API-key route requires HTTPS by default, even without a key: request bodies
-contain shell/editor prompt context. This also covers alternate model catalog
-URLs used by discovery, `model refresh`, and `doctor --check-api`; HTTP requests
-are refused before sending. For a trusted HTTP endpoint (including a local
-server), explicitly set `LMLINE_ALLOW_INSECURE_HTTP=1` to allow requests without
-transport encryption; no other value opts in. This setting does not relax the
-separate ChatGPT subscription-route restrictions.
+The API-key route requires an explicit `https://` URL by default, even without a
+key: request bodies contain shell/editor prompt context. This also covers
+alternate model catalog URLs used by discovery, `model refresh`, and
+`doctor --check-api`. For a trusted endpoint (including a local server), set
+`LMLINE_ALLOW_INSECURE_HTTP=1` to permit explicit `http://` URLs without transport
+encryption; no other value opts in. Scheme names are case-insensitive.
+Scheme-less URLs and other schemes are always refused before sending, even with
+the opt-in. This setting does not relax the separate ChatGPT subscription-route
+restrictions.
 
 ## Configuration
 
@@ -1350,7 +1352,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_API_KEY_FILE` | empty | file containing the API key |
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
-| `LMLINE_ALLOW_INSECURE_HTTP` | `0` | allow API-key route requests (including prompt context and any credentials) over plaintext HTTP only when exactly `1`; use only for trusted endpoints |
+| `LMLINE_ALLOW_INSECURE_HTTP` | `0` | allow API-key route requests (including prompt context and any credentials) over explicit `http://` only when exactly `1`; otherwise explicit `https://` is required; use only for trusted endpoints |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
 | `LMLINE_CHATGPT_CLIENT` | installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
 | `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger, so a waiter can always reclaim an abandoned lock |

@@ -250,7 +250,7 @@ LMLINE_MODELS_EXCLUDE	empty	drop discovered model candidates matching this exten
 LMLINE_API_KEY_FILE	empty	file containing the API key
 LMLINE_AUTH_HEADER	Authorization	authentication header name
 LMLINE_AUTH_SCHEME	Bearer	authentication scheme; empty means raw header value
-LMLINE_ALLOW_INSECURE_HTTP	0	allow API-key route requests over plaintext HTTP (1 opts in for trusted endpoints)
+LMLINE_ALLOW_INSECURE_HTTP	0	require explicit https:// for API-key requests; 1 also permits explicit http:// for trusted endpoints
 LMLINE_AUTH_MODE	api-key	authentication path: api-key or chatgpt (ChatGPT subscription)
 LMLINE_WEB_SEARCH	0	native provider web search (0 disables, 1 enables; responses format only)
 LMLINE_ENGINE_TIMEOUT	60	seconds per provider request

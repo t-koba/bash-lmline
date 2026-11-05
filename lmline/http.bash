@@ -15,10 +15,15 @@ __lmline_http_build_headers() {
   shift 4
   __LMLINE_HTTP_HEADERS=(-H 'Content-Type: application/json')
   for url in "$@"; do
-    if [[ "$url" == [hH][tT][tT][pP]://* && "${LMLINE_ALLOW_INSECURE_HTTP:-0}" != 1 ]]; then
-      printf 'lmline: refusing plaintext HTTP to protect prompt context and credentials; use HTTPS or set LMLINE_ALLOW_INSECURE_HTTP=1 for a trusted endpoint\n' >&2
-      return 1
-    fi
+    case "$url" in
+      ''|[hH][tT][tT][pP][sS]://*) continue ;;
+      [hH][tT][tT][pP]://*)
+        [[ "${LMLINE_ALLOW_INSECURE_HTTP:-0}" != 1 ]] || continue
+        printf 'lmline: refusing plaintext HTTP to protect prompt context and credentials; use HTTPS or set LMLINE_ALLOW_INSECURE_HTTP=1 for a trusted endpoint\n' >&2
+        ;;
+      *) printf 'lmline: refusing destination: an explicit https:// URL is required (http:// only with LMLINE_ALLOW_INSECURE_HTTP=1)\n' >&2 ;;
+    esac
+    return 1
   done
   if [[ -n "$api_key_file" && -r "$api_key_file" ]]; then
     IFS= read -r api_key <"$api_key_file" || true

@@ -12,6 +12,7 @@ config_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" confi
 grep -q "LMLINE_BASE_URL=.*https://api.openai.com/v1" <<<"$config_out" || fail "endpoint use base url"
 grep -q "LMLINE_MODEL=.*test-model" <<<"$config_out" || fail "endpoint use model"
 grep -q "LMLINE_API_KEY_FILE=" <<<"$config_out" || fail "secret file reference"
+LMLINE_CONFIG_DIR="$cfg_tmp/config-mixed-case" "$repo_dir/lmline/lmline" endpoint add mixed-case hTtPs://api.example.invalid/v1 --models-url HtTpS://catalog.example.invalid/models >/dev/null || fail "case-insensitive HTTP(S) schemes accepted"
 ! grep -q "redaction-sentinel" <<<"$config_out" || fail "secret redaction"
 # A row is stored byte for byte: a value holding an escape stays one line
 # and keeps the escape the user gave.
