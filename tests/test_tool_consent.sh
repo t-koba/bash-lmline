@@ -130,7 +130,11 @@ ok "payload tools omit default-off tools unless exact 1"
 __lmline_tool_command_info() { printf 'STUB-CALLED command_info\n'; }
 __lmline_tool_git_status() { printf 'STUB-CALLED git_status\n'; }
 __lmline_tool_file_excerpt() { printf 'STUB-CALLED file_excerpt\n'; }
-__lmline_tool_command_run() { printf 'STUB-CALLED command_run\n'; }
+command_run_marker=$payload_tmp/command-run-called
+__lmline_tool_command_run() {
+  printf 'STUB-CALLED command_run <%s>\n' "$1" >>"$command_run_marker"
+  printf 'STUB-CALLED command_run <%s>\n' "$1"
+}
 
 check_dispatch_refused() {
   local tool=$1 args=$2 label=$3 out
@@ -170,6 +174,15 @@ out=$(__lmline_tool_output file_excerpt '{"path":"some/file.txt"}' 2>/dev/null)
 grep -q 'STUB-CALLED file_excerpt' <<<"$out" || fail "enabled file_excerpt did not dispatch"
 export LMLINE_TOOL_COMMAND_RUN=1
 out=$(__lmline_tool_output command_run '{"command":"echo hi"}' 2>/dev/null)
-grep -q 'STUB-CALLED command_run' <<<"$out" || fail "enabled command_run did not dispatch"
+grep -q 'STUB-CALLED command_run <echo hi>' <<<"$out" || fail "enabled command_run did not dispatch safe argument"
+grep -Fq 'STUB-CALLED command_run <echo hi>' "$command_run_marker" || fail "enabled command_run handler was not called"
+rm -f "$command_run_marker"
+out=$(__lmline_tool_output command_run '{"command":"echo literal \\u0000"}' 2>/dev/null)
+grep -Fq 'STUB-CALLED command_run <echo literal \u0000>' <<<"$out" || fail "literal backslash-u command was rejected or changed"
+rm -f "$command_run_marker"
+out=$(__lmline_tool_output command_run '{"command":"echo safe\u0000; printf hidden"}' 2>/dev/null)
+grep -qx 'allowed=0' <<<"$out" || fail "NUL-bearing command_run argument was not refused"
+grep -qx 'reason=invalid_command_arguments' <<<"$out" || fail "NUL-bearing command_run rejection reason"
+[[ ! -e "$command_run_marker" ]] || fail "NUL-bearing command_run argument reached handler"
 clear_default_off
 ok "dispatch reaches handlers when exact 1"

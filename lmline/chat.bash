@@ -1138,8 +1138,17 @@ __lmline_tool_output() {
       __lmline_tool_file_excerpt "$path" "$query" 2>/dev/null || true
       ;;
     command_run)
-      command_line=$(printf '%s' "$args_json" | jq -r '.command // empty' 2>/dev/null || true)
-      __lmline_tool_command_run "$command_line"
+      # Validate before command substitution: Bash drops NUL from captured output.
+      if command_line=$(printf '%s' "$args_json" | jq -r '
+        (.command // empty) as $command
+        | if (($command | type) == "string") and (($command | explode | index(0)) != null)
+          then error("embedded NUL in command_run command")
+          else $command end
+      ' 2>/dev/null); then
+        __lmline_tool_command_run "$command_line"
+      else
+        printf 'allowed=0\nreason=invalid_command_arguments\n'
+      fi
       ;;
     *)
       printf 'unsupported tool: %s\n' "$name"
