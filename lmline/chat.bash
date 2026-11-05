@@ -319,6 +319,7 @@ __lmline_structured_error_retry_allowed() {
   # Structured JSON compat retries must not consume malformed or
   # multi-document bodies. Non-JSON bodies keep plain-text handling.
   local _content_type=${1-} _response=${2-}
+  _content_type=$(printf '%s' "$_content_type" | LC_ALL=C tr '[:upper:]' '[:lower:]')
   case "$_content_type" in
     *json*) __lmline_single_json_object "$_response" ;;
     *) return 0 ;;
