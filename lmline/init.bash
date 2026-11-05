@@ -348,20 +348,23 @@ __lmline_async_function_names_key() (
   # caller may have made it readonly.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   functions_remaining=$shell_functions
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   names_hash=$(printf 'shell-functions\n%s\nexported-functions\n%s\n' \
     "$shell_functions" "$exported_functions" | __lmline_hash_stdin 2>/dev/null) || return 1
   [[ -n "$names_hash" ]] || return 1
@@ -379,20 +382,23 @@ __lmline_async_settings_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   bash -p -c '
     set -o pipefail
     if command -v sha256sum >/dev/null 2>&1; then hash=sha256sum
@@ -425,20 +431,23 @@ __lmline_async_frontend_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   case $1 in
     generate) backend=${LMLINE_GENERATE_BACKEND:-engine} ;;
     rewrite) backend=${LMLINE_REWRITE_BACKEND:-engine} ;;

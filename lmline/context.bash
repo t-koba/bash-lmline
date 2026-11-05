@@ -94,20 +94,23 @@ __lmline_suggested_commands_key() (
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
   [[ -n "$digest" ]] || return 1
   # The async background worker does not expand caller aliases. Match that
@@ -140,20 +143,23 @@ __lmline_git_context_key() (
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   digest=$(printf '%s\0%s\0' "$__lmline_git_root" "$__lmline_git_branch" | __lmline_hash_stdin 2>/dev/null) || return 1
   [[ -n "$digest" ]] || return 1
   printf 'git:%s' "$digest"
@@ -874,20 +880,23 @@ __lmline_project_markers_key() (
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
   [[ -n "$digest" ]] || return 1
   presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
@@ -1443,20 +1452,23 @@ __lmline_context_settings_key() (
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   {
     for name in \
       LMLINE_INCLUDE_SHELL_CONTEXT \
@@ -1510,20 +1522,23 @@ __lmline_path_key() (
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
-  while [[ -n $functions_remaining ]]; do
-    name=${functions_remaining%%$'\n'*}
-    if [[ $functions_remaining == *$'\n'* ]]; then
-      functions_remaining=${functions_remaining#*$'\n'}
-    else
-      functions_remaining=
-    fi
-    [[ -n $name ]] || continue
-    if [[ -o posix ]]; then
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
       __lmline_unexport_function "$name" 2>/dev/null || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_unexport_function "$name" 2>/dev/null || return 1
-    fi
-  done
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
   digest=$(
     { if [[ -v PATH ]]; then printf 'set\0%s\0' "$PATH"; else printf 'unset\0'; fi; } |
       __lmline_hash_stdin 2>/dev/null

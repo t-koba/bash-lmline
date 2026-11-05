@@ -332,6 +332,11 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
         [[ -z "$failed" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+        # A collected name that cannot be unexported must also stop hashing.
+        __lmline_collect_shell_functions() { printf "%s\n" __lmline_missing_scrub_function; }
+        failed=$("${helpers[i]}" generate) && exit 1
+        [[ -z "$failed" ]]
+        [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
       )
     done
     unset -f "$shadow"
