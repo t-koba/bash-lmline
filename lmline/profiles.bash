@@ -547,7 +547,7 @@ profile_model_refresh() {
     __lmline_chatgpt_access_token "$token_file" || exit 1
     __lmline_http_build_headers "$token_file" "Authorization" "Bearer" "$header_tmp"
   else
-    __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp"
+    __lmline_http_build_headers "$api_key_file" "$auth_header" "$auth_scheme" "$header_tmp" "$catalog_url" || exit $?
   fi
   printf 'lmline: fetching model catalog from %s\n' "$catalog_url" >&2
   body=$(__lmline_http_get "$catalog_url" 20) || {

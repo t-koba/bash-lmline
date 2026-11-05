@@ -315,6 +315,10 @@ if [[ "$LMLINE_AUTH_MODE" == api-key ]] &&
   printf 'lmline-engine: could not read LMLINE_API_KEY_FILE: %s\n' "$LMLINE_API_KEY_FILE" >&2
   exit 1
 fi
+models_url=
+if [[ -z "$LMLINE_MODEL" && "$dry_run_payload" != 1 ]]; then
+  models_url=$(profile_model_catalog_url "$base" "$LMLINE_MODELS_URL")
+fi
 if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   __lmline_chatgpt_require_allowed_url "$base" || exit $?
   # The account catalog is read with the same plan token, so the route
@@ -322,7 +326,6 @@ if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   # is only read when no model is selected, so only then is its host asked
   # about.
   if [[ -z "$LMLINE_MODEL" && "$dry_run_payload" != 1 ]]; then
-    models_url=$(profile_model_catalog_url "$base" "$LMLINE_MODELS_URL")
     __lmline_chatgpt_require_allowed_url "$models_url" || exit $?
   fi
 fi
@@ -339,7 +342,7 @@ if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   __lmline_chatgpt_access_token "$chatgpt_token_file" || exit $?
   __lmline_http_build_headers "$chatgpt_token_file" "Authorization" "Bearer" "$work_dir/auth-header"
 else
-  __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLINE_AUTH_SCHEME" "$work_dir/auth-header"
+  __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLINE_AUTH_SCHEME" "$work_dir/auth-header" "$base" "$models_url" || exit $?
 fi
 curl_headers=("${__LMLINE_HTTP_HEADERS[@]}")
 if [[ ! -f "$work_dir/auth-header" ]]; then
@@ -418,7 +421,6 @@ fi
 
 if [[ -z "$LMLINE_MODEL" ]]; then
   model_record=
-  models_url=$(profile_model_catalog_url "$base" "$LMLINE_MODELS_URL")
   models_jq=$(profile_model_catalog_jq "${LMLINE_MODELS_JQ:-}" "$LMLINE_AUTH_MODE")
   # -q first: ignore implicit curlrc so only the catalog URL is contacted.
   models_body=$(curl -q -fsS --max-time "$LMLINE_ENGINE_TIMEOUT" "${curl_headers[@]}" "$models_url") || {

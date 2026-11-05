@@ -250,6 +250,7 @@ LMLINE_MODELS_EXCLUDE	empty	drop discovered model candidates matching this exten
 LMLINE_API_KEY_FILE	empty	file containing the API key
 LMLINE_AUTH_HEADER	Authorization	authentication header name
 LMLINE_AUTH_SCHEME	Bearer	authentication scheme; empty means raw header value
+LMLINE_ALLOW_INSECURE_HTTP_AUTH	0	allow API-key headers over plaintext HTTP (1 opts in for trusted endpoints)
 LMLINE_AUTH_MODE	api-key	authentication path: api-key or chatgpt (ChatGPT subscription)
 LMLINE_WEB_SEARCH	0	native provider web search (0 disables, 1 enables; responses format only)
 LMLINE_ENGINE_TIMEOUT	60	seconds per provider request
@@ -407,7 +408,7 @@ __lmline_setting_value_candidates() {
     LMLINE_EXPLAIN_DETAIL) printf '%s\n' brief normal detailed ;;
     LMLINE_TOOL_COMMAND_RUN_MAX_RISK|LMLINE_RISK_PIPED_SHELL_LEVEL|LMLINE_RISK_HISTORY_EXPANSION_LEVEL|LMLINE_RISK_UNRESOLVED_VAR_LEVEL|LMLINE_RISK_BRACE_CAPPED_LEVEL|LMLINE_RISK_RECURSIVE_REMOVE_LEVEL) printf '%s\n' low medium high ;;
     LMLINE_CLIPBOARD_PROVIDER) source_support_files; printf 'auto\n'; __lmline_clipboard_provider_names ;;
-    LMLINE_BIND_KEYS|LMLINE_ASYNC|LMLINE_ASYNC_NOTIFY|LMLINE_STREAM|LMLINE_STORE|LMLINE_STORE_FALLBACK|LMLINE_WEB_SEARCH|LMLINE_TOOL_RESULT_SUMMARIZE|LMLINE_INCLUDE_SHELL_CONTEXT|LMLINE_INCLUDE_CWD_CONTEXT|LMLINE_INCLUDE_GIT_CONTEXT|LMLINE_INCLUDE_PROJECT_CONTEXT|LMLINE_INCLUDE_EDITOR_CONTEXT|LMLINE_INCLUDE_LOCALE_CONTEXT|LMLINE_INCLUDE_SUGGESTED_COMMANDS|LMLINE_TOOL_COMMAND_EXISTS|LMLINE_TOOL_COMMANDS|LMLINE_TOOL_COMMAND_INFO|LMLINE_TOOL_FILES|LMLINE_TOOL_GIT_STATUS|LMLINE_TOOL_FILE_EXCERPT|LMLINE_TOOL_COMMAND_RUN|LMLINE_SPINNER|LMLINE_PROGRESS|LMLINE_DEBUG|LMLINE_FIX_ALLOW_MEDIUM|LMLINE_NO_LOCK|LMLINE_PROJECT_CONFIG|LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION|LMLINE_CHATGPT_NO_BROWSER)
+    LMLINE_ALLOW_INSECURE_HTTP_AUTH|LMLINE_BIND_KEYS|LMLINE_ASYNC|LMLINE_ASYNC_NOTIFY|LMLINE_STREAM|LMLINE_STORE|LMLINE_STORE_FALLBACK|LMLINE_WEB_SEARCH|LMLINE_TOOL_RESULT_SUMMARIZE|LMLINE_INCLUDE_SHELL_CONTEXT|LMLINE_INCLUDE_CWD_CONTEXT|LMLINE_INCLUDE_GIT_CONTEXT|LMLINE_INCLUDE_PROJECT_CONTEXT|LMLINE_INCLUDE_EDITOR_CONTEXT|LMLINE_INCLUDE_LOCALE_CONTEXT|LMLINE_INCLUDE_SUGGESTED_COMMANDS|LMLINE_TOOL_COMMAND_EXISTS|LMLINE_TOOL_COMMANDS|LMLINE_TOOL_COMMAND_INFO|LMLINE_TOOL_FILES|LMLINE_TOOL_GIT_STATUS|LMLINE_TOOL_FILE_EXCERPT|LMLINE_TOOL_COMMAND_RUN|LMLINE_SPINNER|LMLINE_PROGRESS|LMLINE_DEBUG|LMLINE_FIX_ALLOW_MEDIUM|LMLINE_NO_LOCK|LMLINE_PROJECT_CONFIG|LMLINE_EXPERIMENTAL_DEFAULT_COMPLETION|LMLINE_CHATGPT_NO_BROWSER)
       printf '%s\n' 0 1
       ;;
   esac
@@ -1399,15 +1400,16 @@ case "$cmd" in
     if [[ "${1-}" == "--check-api" ]]; then
       printf '\napi_check\n'
       api_base=${LMLINE_BASE_URL:-}
+      api_url=$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")
       __lmline_mktemp api_header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
       # ${VAR-default} (no colon): an explicitly empty scheme means raw key.
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \
-        "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp"
+        "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp" "$api_url" || exit $?
       if [[ -n "$api_base" ]]; then
         # -q first: ignore implicit curlrc so the probe contacts only the provider.
         api_code=$(curl -q -sS -o /dev/null -w '%{http_code}' --max-time 5 \
           "${__LMLINE_HTTP_HEADERS[@]}" \
-          "$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")" 2>/dev/null) || api_code=000
+          "$api_url" 2>/dev/null) || api_code=000
         case "$api_code" in
           2??) printf '  connection=ok (HTTP %s)\n' "$api_code" ;;
           401|403)

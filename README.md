@@ -557,10 +557,17 @@ Direct environment configuration also works for keys that are not overridden by
 settings files:
 
 ```bash
-export LMLINE_BASE_URL=http://127.0.0.1:1234/v1
+export LMLINE_BASE_URL=https://api.example.com/v1
 export LMLINE_MODEL=<model-id>
 export LMLINE_API_KEY_FILE=~/.config/lmline/secrets/api-key.secret
 ```
+
+API-key headers require HTTPS by default, including alternate model catalog
+URLs used by discovery, `model refresh`, and `doctor --check-api`. HTTP still
+works without a key. For a trusted HTTP endpoint only, explicitly set
+`LMLINE_ALLOW_INSECURE_HTTP_AUTH=1` to send a nonempty key without transport
+encryption; no other value opts in. This setting does not relax the separate
+ChatGPT subscription-route restrictions.
 
 ## Configuration
 
@@ -1342,6 +1349,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_API_KEY_FILE` | empty | file containing the API key |
 | `LMLINE_AUTH_HEADER` | `Authorization` | authentication header name |
 | `LMLINE_AUTH_SCHEME` | `Bearer` | authentication scheme; empty means raw header value |
+| `LMLINE_ALLOW_INSECURE_HTTP_AUTH` | `0` | allow nonempty API-key headers over plaintext HTTP only when exactly `1`; use only for trusted endpoints |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
 | `LMLINE_CHATGPT_CLIENT` | installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
 | `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger, so a waiter can always reclaim an abandoned lock |
