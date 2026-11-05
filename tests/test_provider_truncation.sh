@@ -174,7 +174,8 @@ invoke_engine
 grep -Fq "incomplete command response (incomplete:" "$case_dir/stderr" || fail "responses reason newline diagnostic"
 ! LC_ALL=C grep -q '[[:cntrl:]]' "$case_dir/stderr" || fail "responses reason newline emitted terminal controls"
 ! grep -q '^INJECTED' "$case_dir/stderr" || fail "responses reason newline split diagnostic line"
-[[ $(wc -l <"$case_dir/stderr") == 1 ]] || fail "responses reason newline split diagnostic"
+# grep -c avoids BSD wc's padded scalar output in these string comparisons.
+[[ $(grep -c '^' "$case_dir/stderr") == 1 ]] || fail "responses reason newline split diagnostic"
 grep -Fq 'INJECTED: forged diagnostic' "$case_dir/stderr" || fail "responses reason newline lost sanitized detail"
 
 # A JSON NUL must not be dropped by Bash before the exact recovery test.
@@ -191,7 +192,7 @@ grep -Fq 'LMLINE_MAX_TOKENS' "$case_dir/stderr" || fail "responses NUL reason ge
 ! grep -Fq 'response stream ended before completion' "$case_dir/stderr" || fail "responses NUL reason used exact recovery classification"
 ! grep -Fq 'ignored null byte' "$case_dir/stderr" || fail "responses NUL reason entered a Bash variable"
 ! LC_ALL=C grep -q '[[:cntrl:]]' "$case_dir/stderr" || fail "responses NUL reason emitted terminal controls"
-[[ $(wc -l <"$case_dir/stderr") == 1 ]] || fail "responses NUL reason split diagnostic"
+[[ $(grep -c '^' "$case_dir/stderr") == 1 ]] || fail "responses NUL reason split diagnostic"
 
 init_case responses-stream-ended responses
 jq '.incomplete_details.reason = "stream_ended_without_completion"' \
