@@ -109,8 +109,8 @@ script_dir=$(cd -- "$script_dir" && pwd -P)
 # shellcheck source=lmline/config.bash
 source "$script_dir/config.bash"
 __lmline_load_all_config
-# Explicit static help, basic config views and file operations need only
-# config.bash; route-derived views stay on the full setup path.
+# Static help, completion queries and basic config operations avoid route setup;
+# profile operations still load profiles, and route-derived views stay full.
 case "${1-}:${2-}:${3-}" in
   -h:*|--help:*|help:*|config:-h:*|config:--help:*) : ;;
   sandbox:setup:-h|sandbox:setup:--help|\
@@ -122,6 +122,8 @@ case "${1-}:${2-}:${3-}" in
   payload:generate:-h|payload:generate:--help) : ;;
   config:defaults:*|config:get:*|config:set:*|config:unset:*) : ;;
   config:project-get:*|config:project-set:*|config:project-unset:*) : ;;
+  complete:commands:*|complete:subcommands:*|complete:settings:*|\
+  complete:setting-values:*|complete:clipboard-providers:*) : ;;
   endpoint:*:*|model:add:*|model:list:*|model:remove:*|use:*:*|current:*:*|complete:endpoints:*|complete:models:*)
     # shellcheck source=lmline/profiles.bash
     source "$script_dir/profiles.bash"
