@@ -394,6 +394,8 @@ else
   fi
 fi
 if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
+  python3 "$repo_dir/tools/shellcheck-per-file-poc/test_full_batch_experiment.py" \
+    || fail "full-manifest batch comparison selftest"
   SHELLCHECK="$(command -v shellcheck)" python3 "$repo_dir/tools/shellcheck-per-file-poc/test_candidate.py" \
     CandidateTests.test_manifest_matches_shell_harness_without_running_it \
     CandidateTests.test_bounded_batch_comparison \
@@ -448,14 +450,20 @@ if [[ "${LMLINE_REQUIRE_SHELLCHECK:-0}" == 1 ]]; then
     if [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
       __lmline_shellcheck_print_local_diagnostics "$report_dir/manifest.jsonl"
     fi
-  elif [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
-    rm -rf -- "$report_dir" 2>/dev/null || true
   fi
   if ((pipeline_status[1] != 0)); then
     fail "ShellCheck progress logging failed"
   fi
   if ((pipeline_status[0] != 0)); then
     fail "shellcheck findings or incomplete report"
+  fi
+  # One-off diagnostic only, after authoritative success and before local cleanup.
+  if [[ "${LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT:-0}" == 1 ]]; then
+    python3 "$repo_dir/tools/shellcheck-per-file-poc/full_batch_experiment.py" \
+      "$report_dir/manifest.jsonl" "$(command -v shellcheck)" 2>/dev/null || true
+  fi
+  if [[ "${GITHUB_ACTIONS:-false}" != true ]]; then
+    rm -rf -- "$report_dir" 2>/dev/null || true
   fi
 else
   # The 30-second interval caps local telemetry at 60 samples (30 minutes);

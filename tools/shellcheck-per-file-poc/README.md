@@ -40,8 +40,44 @@ per-child rather than cumulative RSS. JSONL tests check lossless reconstruction
 of the in-memory report, header/target visibility from running child processes,
 retention after later tool failure or cancellation, and fail-closed flush errors. The real three-file endpoint subset is a
 bounded regression test. A drift test checks the production argument list/order
-without invoking ShellCheck on that list: currently 76 unique inputs, 138 source
-declarations, 134 unique direct edges, maximum context group size 11.
+without invoking ShellCheck on that list: currently 76 unique inputs, 139 source
+declarations, 135 unique direct edges, maximum context group size 11.
+
+## One-off full-manifest batch experiment
+
+`LMLINE_SHELLCHECK_FULL_BATCH_EXPERIMENT=1` opts the required-pin harness into a
+**diagnostic-only** comparison after the authoritative per-file report succeeds,
+before local report cleanup. Ubuntu CI temporarily enables it for the next
+measurement; remove the workflow flag after collecting that evidence. The runner,
+manifest, severity, rc discovery, options and pass/fail decisions are unchanged.
+
+`full_batch_experiment.py` reads that completed JSONL baseline (never rerunning
+per-target lint). In manifest order it greedily packs unions of the exact direct
+in-manifest source groups, bounded by both the largest existing group's file
+count and byte size. It version-checks ShellCheck 0.11.0 and runs the same
+`-s bash --format=json` command with implicit rc discovery from the repository
+root. This is a static input bound, **not** proof of memory safety or speed.
+
+Each batch's rows are filtered back into every target's original group and target
+rows, comparing full JSON-object multisets (including fixes and duplicates) and
+statuses. One numeric JSON summary reports target/batch/call counts, group bounds,
+summed lint-call elapsed seconds and maximum child peak RSS in KiB for both
+routes; version-probe measurements are excluded. No diagnostics, messages,
+commands or paths are printed. The outcome is `parity`, `non_parity`, or
+`inconclusive`. Errors, unexpected stderr/statuses, malformed/incomplete evidence,
+timeouts and caps cannot yield parity; none can fail the authoritative test.
+Costs include attempted batch calls, stopping at the first inconclusive call;
+`batch_calls` identifies that coverage. Unavailable metrics are `null` rather
+than inferred.
+
+The experiment reuses the runner's configured per-child timeout and per-stream
+output cap. `LMLINE_SHELLCHECK_BATCH_REPORT_CAP_BYTES` separately bounds the input
+JSONL read (default 268435456 bytes, or 256 MiB). Invalid settings are inconclusive.
+The bounded fake-CLI checks require no ShellCheck installation:
+
+```bash
+python3 tools/shellcheck-per-file-poc/test_full_batch_experiment.py
+```
 
 ## Runner entry points
 
