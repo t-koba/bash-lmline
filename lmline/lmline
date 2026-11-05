@@ -111,11 +111,18 @@ source "$script_dir/config.bash"
 __lmline_load_all_config
 # Explicit static help, basic config views and file operations need only
 # config.bash; route-derived views stay on the full setup path.
-case "${1-}:${2-}" in
-  -h:*|--help:*|help:*|config:-h|config:--help) : ;;
-  config:defaults|config:get|config:set|config:unset) : ;;
-  config:project-get|config:project-set|config:project-unset) : ;;
-  endpoint:*|model:add|model:list|model:remove|use:*|current:*|complete:endpoints|complete:models)
+case "${1-}:${2-}:${3-}" in
+  -h:*|--help:*|help:*|config:-h:*|config:--help:*) : ;;
+  sandbox:setup:-h|sandbox:setup:--help|\
+  config:describe:-h|config:describe:--help|\
+  endpoint:add:-h|endpoint:add:--help|\
+  model:refresh:-h|model:refresh:--help|\
+  history:show:-h|history:show:--help|\
+  debug:trace:-h|debug:trace:--help|\
+  payload:generate:-h|payload:generate:--help) : ;;
+  config:defaults:*|config:get:*|config:set:*|config:unset:*) : ;;
+  config:project-get:*|config:project-set:*|config:project-unset:*) : ;;
+  endpoint:*:*|model:add:*|model:list:*|model:remove:*|use:*:*|current:*:*|complete:endpoints:*|complete:models:*)
     # shellcheck source=lmline/profiles.bash
     source "$script_dir/profiles.bash"
     ;;
