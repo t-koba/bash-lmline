@@ -342,7 +342,12 @@ if [[ "$LMLINE_AUTH_MODE" == chatgpt ]]; then
   __lmline_chatgpt_access_token "$chatgpt_token_file" || exit $?
   __lmline_http_build_headers "$chatgpt_token_file" "Authorization" "Bearer" "$work_dir/auth-header"
 else
-  __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLINE_AUTH_SCHEME" "$work_dir/auth-header" "$base" "$models_url" || exit $?
+  if [[ "$dry_run_payload" == 1 ]]; then
+    # A payload preview does not contact either configured endpoint.
+    __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLINE_AUTH_SCHEME" "$work_dir/auth-header" || exit $?
+  else
+    __lmline_http_build_headers "$LMLINE_API_KEY_FILE" "$LMLINE_AUTH_HEADER" "$LMLINE_AUTH_SCHEME" "$work_dir/auth-header" "$base" "$models_url" || exit $?
+  fi
 fi
 curl_headers=("${__LMLINE_HTTP_HEADERS[@]}")
 if [[ ! -f "$work_dir/auth-header" ]]; then

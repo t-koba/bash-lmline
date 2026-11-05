@@ -8,22 +8,22 @@
 # When an API key is present it is written into header_file (user-only
 # permissions) and passed to curl as "-H @file" so the key never appears in
 # the curl argv, which other local users can read via ps. API-key callers pass
-# every destination URL after header_file; subscription callers keep their
-# separate route policy.
+# every destination URL after header_file, checked even without a key to
+# protect prompt context; subscription callers keep their separate route policy.
 __lmline_http_build_headers() {
   local api_key_file=$1 auth_header=$2 auth_scheme=$3 header_file=$4 api_key= url
   shift 4
   __LMLINE_HTTP_HEADERS=(-H 'Content-Type: application/json')
+  for url in "$@"; do
+    if [[ "$url" == [hH][tT][tT][pP]://* && "${LMLINE_ALLOW_INSECURE_HTTP:-0}" != 1 ]]; then
+      printf 'lmline: refusing plaintext HTTP to protect prompt context and credentials; use HTTPS or set LMLINE_ALLOW_INSECURE_HTTP=1 for a trusted endpoint\n' >&2
+      return 1
+    fi
+  done
   if [[ -n "$api_key_file" && -r "$api_key_file" ]]; then
     IFS= read -r api_key <"$api_key_file" || true
   fi
   [[ -n "$api_key" ]] || return 0
-  for url in "$@"; do
-    if [[ "$url" == [hH][tT][tT][pP]://* && "${LMLINE_ALLOW_INSECURE_HTTP_AUTH:-0}" != 1 ]]; then
-      printf 'lmline: refusing to send an API key over plaintext HTTP; use HTTPS or set LMLINE_ALLOW_INSECURE_HTTP_AUTH=1 for a trusted endpoint\n' >&2
-      return 1
-    fi
-  done
   if [[ -n "$auth_scheme" ]]; then
     (umask 077; printf '%s: %s %s\n' "$auth_header" "$auth_scheme" "$api_key" >"$header_file")
   else

@@ -37,8 +37,7 @@ with an actionable message instead of billing an API key.
 | Authentication mode | Endpoint | Result |
 | --- | --- | --- |
 | `api-key` | an HTTPS OpenAI-compatible base URL | supported |
-| `api-key` | an HTTP base or model catalog URL, without a key | supported |
-| `api-key` | an HTTP base or model catalog URL, with a nonempty key | unsupported by default — inference, auto-discovery, model refresh, and `doctor --check-api` refuse before sending a request; set `LMLINE_ALLOW_INSECURE_HTTP_AUTH=1` only for trusted endpoints to opt in (other values do not enable it) |
+| `api-key` | an HTTP base or model catalog URL, with or without a key | unsupported by default to protect prompt context and credentials — inference, auto-discovery, model refresh, and `doctor --check-api` refuse before sending a request; set `LMLINE_ALLOW_INSECURE_HTTP=1` only for trusted endpoints to opt in (other values do not enable it) |
 | `chatgpt` | `https://api.openai.com/v1` (a port on that host is accepted) | allowed, unverified — the request shape and the host rule are proven offline; that a real plan accepts the request and bills it needs a real ChatGPT account |
 | `chatgpt` | a loopback proxy (`http://127.0.0.1:PORT/v1`, `http://localhost:PORT/v1`, `http://[::1]:PORT/v1`) | allowed, unverified — the base is accepted and the token stays on the machine, but the proxy forwards it to whoever runs it, and the plan access is not proven offline |
 | `chatgpt` | any other host | unsupported — the subscription token is only sent to the OpenAI API; the engine and the account catalog refresh refuse the request before it is sent |

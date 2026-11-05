@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-# Risk: every API-key request path must refuse plaintext credentials before curl.
+# Risk: every API-key request path must refuse plaintext context and credentials before curl.
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-http-auth-test.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
@@ -12,7 +12,8 @@ export LMLINE_FAKE_HTTP_LOG="$tmp/requests"
 mkdir -p "$tmp/bin"
 export PATH="$tmp/bin:$PATH"
 printf '# list files\n' >"$tmp/line"
-printf '## available_tools\n' >"$tmp/context"
+context_canary=SYNTHETIC-HTTP-CONTEXT-TEST
+printf '## available_tools\n%s\n' "$context_canary" >"$tmp/context"
 engine_args=(--mode generate --shell bash --cwd "$tmp" --point 0 --line-file "$tmp/line" --context-file "$tmp/context" --n 1)
 
 # Never record header contents, only whether an auth header would be sent.
@@ -42,22 +43,20 @@ CURL
 chmod +x "$tmp/bin/curl"
 
 cli="$repo_dir/lmline/lmline"
-"$cli" endpoint add catalog https://api.test.invalid/v1 --auth-header X-Test-Key --auth-scheme ''
 canary=SYNTHETIC-HTTP-AUTH-TEST
-printf '%s\n' "$canary" | "$cli" endpoint set-secret catalog >/dev/null 2>&1
 
 run_route() {
   case "$route" in
     generate) "$repo_dir/lmline/engine" "${engine_args[@]}" ;;
     discover) LMLINE_MODEL= "$repo_dir/lmline/engine" "${engine_args[@]}" ;;
-    refresh) "$cli" model refresh catalog ;;
+    refresh) "$cli" model refresh "$endpoint" ;;
     doctor) "$cli" doctor --check-api ;;
     boundary)
       # Exercise the shell-local setting allowlist, not just exported env.
       bash -p -c '
         source "$1"; shift
-        LMLINE_ALLOW_INSECURE_HTTP_AUTH=1
-        export -n LMLINE_ALLOW_INSECURE_HTTP_AUTH
+        LMLINE_ALLOW_INSECURE_HTTP=1
+        export -n LMLINE_ALLOW_INSECURE_HTTP
         __lmline_validation_run entry "$@"
       ' _ "$repo_dir/lmline/validation-boundary.bash" "$repo_dir/lmline/engine" "${engine_args[@]}"
       ;;
@@ -68,10 +67,10 @@ check_route() {
   local expectation=$1 expected_auth=$2 count=1 status=0
   : >"$tmp/requests"
   run_route >"$tmp/output" 2>&1 || status=$?
-  ! grep -Fq "$canary" "$tmp/output" "$tmp/requests" || fail "$route: credential in diagnostics"
+  ! grep -Fq -e "$canary" -e "$context_canary" "$tmp/output" "$tmp/requests" || fail "$route: credential or context in diagnostics"
   if [[ "$expectation" == deny ]]; then
     [[ "$status" != 0 && ! -s "$tmp/requests" ]] || fail "$route: plaintext request was not blocked"
-    grep -q 'refusing.*plaintext HTTP.*LMLINE_ALLOW_INSECURE_HTTP_AUTH=1' "$tmp/output" || fail "$route: missing safe guidance"
+    grep -q 'refusing.*plaintext HTTP.*LMLINE_ALLOW_INSECURE_HTTP=1' "$tmp/output" || fail "$route: missing safe guidance"
   else
     [[ "$status" == 0 ]] || fail "$route: permitted request failed"
     [[ "$route" != discover ]] || count=2
@@ -80,45 +79,62 @@ check_route() {
     case "$route" in
       generate|discover|boundary) grep -q 'echo secured' "$tmp/output" || fail "$route: candidate missing" ;;
       doctor) grep -q 'connection=ok' "$tmp/output" || fail 'doctor: probe failed' ;;
-      refresh) "$cli" model list catalog | grep -q test-model || fail 'refresh: model missing' ;;
+      refresh) "$cli" model list "$endpoint" | grep -q test-model || fail 'refresh: model missing' ;;
     esac
   fi
 }
 
 for route in generate discover refresh doctor; do
-  for scenario in deny opt-in https empty; do
-    export LMLINE_BASE_URL=https://api.test.invalid/v1
-    export LMLINE_MODELS_URL=http://catalog.test.invalid/models
-    unset LMLINE_ALLOW_INSECURE_HTTP_AUTH
-    printf '%s\n' "$canary" >"$LMLINE_API_KEY_FILE"
-    # Inference checks its base; the other paths check an alternate catalog.
-    [[ "$route" != generate ]] || export LMLINE_BASE_URL=http://api.test.invalid/v1
-    case "$scenario" in
-      opt-in) export LMLINE_ALLOW_INSECURE_HTTP_AUTH=1 ;;
-      https) export LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODELS_URL=https://catalog.test.invalid/models ;;
-      empty) : >"$LMLINE_API_KEY_FILE" ;;
-    esac
-    if [[ "$route" == refresh ]]; then
-      "$cli" endpoint add catalog "$LMLINE_BASE_URL" --models-url "$LMLINE_MODELS_URL"
-      cp "$LMLINE_API_KEY_FILE" "$LMLINE_CONFIG_DIR/secrets/endpoint-catalog-api-key.secret"
-    fi
-    case "$scenario" in
-      deny) check_route deny 1 ;;
-      empty) check_route allow 0 ;;
-      *) check_route allow 1 ;;
-    esac
+  for key in keyed empty absent; do
+    for scenario in deny opt-in https; do
+      export LMLINE_BASE_URL=https://api.test.invalid/v1
+      export LMLINE_MODELS_URL=http://catalog.test.invalid/models
+      unset LMLINE_ALLOW_INSECURE_HTTP
+      export LMLINE_API_KEY_FILE="$tmp/key"
+      printf '%s\n' "$canary" >"$LMLINE_API_KEY_FILE"
+      expected_auth=1
+      case "$key" in
+        empty) : >"$LMLINE_API_KEY_FILE"; expected_auth=0 ;;
+        absent) export LMLINE_API_KEY_FILE=; expected_auth=0 ;;
+      esac
+      # Inference checks its base; the other paths check an alternate catalog.
+      [[ "$route" != generate ]] || export LMLINE_BASE_URL=http://api.test.invalid/v1
+      case "$scenario" in
+        opt-in) export LMLINE_ALLOW_INSECURE_HTTP=1 ;;
+        https) export LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODELS_URL=https://catalog.test.invalid/models ;;
+      esac
+      if [[ "$route" == refresh ]]; then
+        endpoint=catalog-$key
+        "$cli" endpoint add "$endpoint" "$LMLINE_BASE_URL" --models-url "$LMLINE_MODELS_URL" --auth-header X-Test-Key --auth-scheme ''
+        if [[ "$key" != absent ]]; then
+          printf '%s\n' "$canary" | "$cli" endpoint set-secret "$endpoint" >/dev/null 2>&1
+          cp "$LMLINE_API_KEY_FILE" "$LMLINE_CONFIG_DIR/secrets/endpoint-$endpoint-api-key.secret"
+        fi
+      fi
+      case "$scenario" in
+        deny) check_route deny "$expected_auth" ;;
+        *) check_route allow "$expected_auth" ;;
+      esac
+    done
   done
 done
 
 route=generate
 export LMLINE_BASE_URL=http://api.test.invalid/v1
-printf '%s\n' "$canary" >"$LMLINE_API_KEY_FILE"
-for value in '' 0 true 01 2; do
-  export LMLINE_ALLOW_INSECURE_HTTP_AUTH=$value
-  check_route deny 1
+for key in keyed empty absent; do
+  export LMLINE_API_KEY_FILE="$tmp/key"
+  printf '%s\n' "$canary" >"$LMLINE_API_KEY_FILE"
+  case "$key" in
+    empty) : >"$LMLINE_API_KEY_FILE" ;;
+    absent) export LMLINE_API_KEY_FILE= ;;
+  esac
+  for value in '' 0 true 01 2; do
+    export LMLINE_ALLOW_INSECURE_HTTP=$value
+    check_route deny 0
+  done
 done
-# No key file remains compatible with anonymous HTTP too.
-LMLINE_API_KEY_FILE= check_route allow 0
 route=boundary
+export LMLINE_API_KEY_FILE="$tmp/key"
+printf '%s\n' "$canary" >"$LMLINE_API_KEY_FILE"
 check_route allow 1
-ok 'API-key HTTP transport policy covers inference, discovery, refresh, and doctor'
+ok 'API-key HTTP transport policy protects context and credentials across inference, discovery, refresh, and doctor'

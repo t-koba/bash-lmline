@@ -969,7 +969,7 @@ doctor_api_bin="$cfg_tmp/doctor-api-bin"
 mkdir -p "$doctor_api_bin"
 printf '#!/usr/bin/env bash\nexit 7\n' >"$doctor_api_bin/curl"
 chmod +x "$doctor_api_bin/curl"
-doctor_api_out=$(PATH="$doctor_api_bin:$PATH" LMLINE_BASE_URL=http://127.0.0.1:9/v1 LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor --check-api)
+doctor_api_out=$(LMLINE_ALLOW_INSECURE_HTTP=1 PATH="$doctor_api_bin:$PATH" LMLINE_BASE_URL=http://127.0.0.1:9/v1 LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor --check-api)
 grep -q 'connection=failed' <<<"$doctor_api_out" || fail "doctor api failure"
 grep -q 'lmline use ENDPOINT MODEL' <<<"$doctor_api_out" || fail "doctor api hint"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" debug trace on
