@@ -46,6 +46,26 @@ for startup_shell in bash zsh; do
   done
 done
 
+# init.bash already resolves this source root physically; its modules reuse
+# that exact root, while standalone module sourcing still resolves symlinks.
+path_link=$reload_tmp/lmline-link
+ln -s "$repo_dir/lmline" "$path_link"
+expected_lmline_dir=$(cd -P -- "$path_link" && pwd -P)
+mkdir -p "$reload_tmp/path-init-config"
+LMLINE_CONFIG_DIR="$reload_tmp/path-init-config" bash --norc -ic '
+  source "$1/init.bash"
+  [[ "$__LMLINE_DIR" == "$2" && "$__LMLINE_CONTEXT_DIR" == "$2" && \
+    "$__LMLINE_POLICY_DIR" == "$2" && "$__LMLINE_ACTIONS_DIR" == "$2" ]]
+' _ "$path_link" "$expected_lmline_dir" >/dev/null 2>&1 || fail "Bash init reuses its canonical source root"
+bash --noprofile --norc -c '
+  unset __LMLINE_DIR
+  source "$1/context.bash"
+  source "$1/policy.bash"
+  source "$1/actions.bash"
+  [[ "$__LMLINE_CONTEXT_DIR" == "$2" && "$__LMLINE_POLICY_DIR" == "$2" && \
+    "$__LMLINE_ACTIONS_DIR" == "$2" ]]
+' _ "$path_link" "$expected_lmline_dir" || fail "standalone modules retain physical path resolution"
+
 # Long-lived Bash shell: removed file values must not linger, while
 # intentional environment values are never cleared.
 LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '

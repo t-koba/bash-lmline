@@ -5,7 +5,9 @@
 
 __LMLINE_ACTIONS_DIR=${BASH_SOURCE[0]%/*}
 [[ $__LMLINE_ACTIONS_DIR == "${BASH_SOURCE[0]}" ]] && __LMLINE_ACTIONS_DIR=.
-__LMLINE_ACTIONS_DIR=$(cd -- "$__LMLINE_ACTIONS_DIR" && pwd -P)
+if [[ ${__LMLINE_DIR-} != "$__LMLINE_ACTIONS_DIR" ]]; then
+  __LMLINE_ACTIONS_DIR=$(cd -- "$__LMLINE_ACTIONS_DIR" && pwd -P)
+fi
 if ! declare -F __lmline_engine_error_message >/dev/null 2>&1; then
   # shellcheck source=lmline/http.bash
   source "$__LMLINE_ACTIONS_DIR/http.bash"

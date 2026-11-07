@@ -4,7 +4,9 @@
 
 __LMLINE_POLICY_DIR=${BASH_SOURCE[0]%/*}
 [[ $__LMLINE_POLICY_DIR == "${BASH_SOURCE[0]}" ]] && __LMLINE_POLICY_DIR=.
-__LMLINE_POLICY_DIR=$(cd -- "$__LMLINE_POLICY_DIR" && pwd -P)
+if [[ ${__LMLINE_DIR-} != "$__LMLINE_POLICY_DIR" ]]; then
+  __LMLINE_POLICY_DIR=$(cd -- "$__LMLINE_POLICY_DIR" && pwd -P)
+fi
 if ! declare -F __lmline_resolve_data_file >/dev/null 2>&1; then
   # shellcheck source=lmline/config.bash
   source "$__LMLINE_POLICY_DIR/config.bash"
