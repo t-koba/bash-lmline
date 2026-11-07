@@ -139,7 +139,37 @@ __lmline_display_encoded_model_label() {
 }
 
 __lmline_record_usage() {
-  local response=$1 model prompt completion total
+  local response=$1 model prompt completion total summary
+  # Only frame separator-free fields from one object. Keep a derived row, not
+  # all input documents; unsafe shapes and parse errors use the legacy path
+  # below so its validation, diagnostics and command substitutions stay intact.
+  if summary=$(jq -enr '
+    def safe_token:
+      type == "number" or
+      (type == "string" and length > 0 and (test("[^0-9]") | not));
+    def usage_row:
+      if type != "object" then null
+      elif (.usage != null and (.usage | type) != "object") then null
+      else
+        (.usage.prompt_tokens // .usage.input_tokens // 0) as $p |
+        (.usage.completion_tokens // .usage.output_tokens // 0) as $c |
+        if ([$p, $c] | all(.[]; safe_token)) then
+          (.usage.total_tokens // ($p + $c) // 0) as $t |
+          if ($t | safe_token) then
+            [(if .model == null or .model == "" then "-"
+              else "b64:" + ((.model | tostring) | @base64) end), $p, $c, $t]
+            | map(tostring) | join("\t")
+          else null end
+        else null end
+      end;
+    reduce inputs as $doc ({count: 0, row: null};
+      .count = ([.count + 1, 2] | min) |
+      .row = (if .count == 1 then ($doc | usage_row) else null end)) |
+    select(.count == 1 and .row != null) | .row
+  ' "$response" 2>/dev/null); then
+    printf '%s\n' "$summary" >>"$usage_file"
+    return $?
+  fi
   jq -e . "$response" >/dev/null 2>&1 || return 0
   # Encode the provider label so arbitrary bytes remain intact in its TSV
   # field without shifting the numeric usage columns.
