@@ -139,6 +139,17 @@ cat >"$case_dir/response.json" <<'JSON'
 JSON
 assert_truncated responses 'incomplete: max_output_tokens'
 
+# Falsy reason values are treated as absent and do not add display text.
+init_case responses-false-reason responses
+jq '.incomplete_details.reason = false' \
+  "$cfg_tmp/responses-truncated/response.json" >"$case_dir/response.json"
+invoke_engine
+[[ $engine_status != 0 ]] || fail "responses false reason unexpectedly succeeded"
+grep -Fq 'incomplete command response (incomplete); increase LMLINE_MAX_TOKENS' \
+  "$case_dir/stderr" || fail "responses false reason diagnostic"
+! grep -Fq 'incomplete: false' "$case_dir/stderr" \
+  || fail "responses false reason was displayed"
+
 # jq accepts multiple documents; a later completed response must not mask an
 # incomplete first response and admit its command text.
 init_case responses-multiple-documents responses

@@ -525,7 +525,9 @@ __lmline_report_provider_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason_is_stream_ended=0 display_reason= provider_failed=0 response_flags max_tokens_advice=
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}}
+  local finish_status incomplete_reason_is_stream_ended=0 display_reason= display_reason_needed=0 provider_failed=0
+  local response_flags flags_provider_failed flags_stream_ended flags_reason_present max_tokens_advice=
   # jq normally processes successive documents independently. Validate the
   # whole body before any provider fields or normalized output are consumed.
   if ! __lmline_single_json_object "$response"; then
@@ -538,12 +540,25 @@ __lmline_accept_response() {
     # changes the response file, and keep raw bytes out of Bash variables.
     response_flags=$(jq -r '[
       (try (((.status // "") == "failed") or ((.error? | type) == "object")) catch false),
-      (try (.incomplete_details.reason == "stream_ended_without_completion") catch false)
+      (try (.incomplete_details.reason == "stream_ended_without_completion") catch false),
+      (try ((.incomplete_details.reason // "") != "") catch false)
     ] | @tsv' "$response" 2>/dev/null) || response_flags=
-    [[ ${response_flags%%$'\t'*} == true ]] && provider_failed=1
-    [[ ${response_flags#*$'\t'} == true ]] && incomplete_reason_is_stream_ended=1
-    display_reason=$(jq -r '.incomplete_details.reason // ""' "$response" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_reason=
-    display_reason=${display_reason//$'\n'/ }
+    if [[ -n $response_flags ]]; then
+      flags_provider_failed=${response_flags%%$'\t'*}
+      response_flags=${response_flags#*$'\t'}
+      flags_stream_ended=${response_flags%%$'\t'*}
+      flags_reason_present=${response_flags#*$'\t'}
+      [[ $flags_provider_failed == true ]] && provider_failed=1
+      [[ $flags_stream_ended == true ]] && incomplete_reason_is_stream_ended=1
+      [[ $flags_reason_present == true ]] && display_reason_needed=1
+    else
+      # Preserve the legacy fallback if the combined metadata query fails.
+      display_reason_needed=1
+    fi
+    if ((display_reason_needed)); then
+      display_reason=$(jq -r '.incomplete_details.reason // ""' "$response" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_reason=
+      display_reason=${display_reason//$'\n'/ }
+    fi
   fi
   __lmline_web_search_report "$response"
   if (( provider_failed )); then
