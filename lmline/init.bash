@@ -580,7 +580,10 @@ __lmline_load_candidates_from_file() {
 __lmline_record_suggestion() {
   local mode=$1 original=$2 candidate=$3 date_id timestamp
   # The log holds the user's own command lines, so it stays user-only.
-  mkdir -p "$LMLINE_HISTORY_DIR" 2>/dev/null || true
+  # Skip the external mkdir on warm writes, but retain a shell-function override.
+  if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$LMLINE_HISTORY_DIR" ]]; then
+    mkdir -p "$LMLINE_HISTORY_DIR" 2>/dev/null || true
+  fi
   chmod 700 "$LMLINE_HISTORY_DIR" 2>/dev/null || true
   # Bash 4.2+ printf %T avoids two external date processes. Keep the normal
   # command path when either utility is overridden by a shell function.

@@ -500,7 +500,22 @@ TZ=America/Los_Angeles LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=
   [[ $TZ == "$tz_before" ]]
   [[ $(ls -ld "$LMLINE_HISTORY_DIR" | cut -c2-10) == rwx------ ]]
   [[ $(ls -l "$LMLINE_HISTORY_DIR/suggestions.log" | cut -c2-10) == rw------- ]]
-' _ "$repo_dir" || fail "the suggestion log keeps UTC records and user-only permissions"
+  chmod 777 "$LMLINE_HISTORY_DIR"
+  chmod 666 "$LMLINE_HISTORY_DIR/suggestions.log"
+  __lmline_record_suggestion "generate" "# say two" "echo two"
+  [[ $(ls -ld "$LMLINE_HISTORY_DIR" | cut -c2-10) == rwx------ ]]
+  [[ $(ls -l "$LMLINE_HISTORY_DIR/suggestions.log" | cut -c2-10) == rw------- ]]
+  target="$LMLINE_HISTORY_DIR-target"
+  link="$LMLINE_HISTORY_DIR-link"
+  mkdir "$target"
+  chmod 777 "$target"
+  ln -s "$target" "$link"
+  LMLINE_HISTORY_DIR=$link
+  __lmline_record_suggestion "generate" "# say three" "echo three"
+  [[ -L $LMLINE_HISTORY_DIR ]]
+  [[ $(ls -ld "$target" | cut -c2-10) == rwx------ ]]
+  [[ $(ls -l "$link/suggestions.log" | cut -c2-10) == rw------- ]]
+' _ "$repo_dir" || fail "the suggestion log keeps UTC records, symlink behavior and user-only permissions"
 LMLINE_CONFIG_DIR="$widget_tmp/config-date-function" LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-date-function" bash --norc -e -i -c '
   date() { printf custom-date; }
   source "$1/lmline/init.bash"
@@ -508,6 +523,14 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-date-function" LMLINE_ENGINE="$widget_tmp/
   [[ $__LMLINE_LAST_SUGGESTION_ID == "custom-date-$$" ]]
   grep -q "^timestamp=custom-date$" "$LMLINE_HISTORY_DIR/suggestions.log"
 ' _ "$repo_dir" || fail "suggestion timestamp formatting respects a shell date override"
+LMLINE_CONFIG_DIR="$widget_tmp/config-mkdir-function" LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mkdir-function" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  mkdir -p "$LMLINE_HISTORY_DIR"
+  mkdir_calls=0
+  mkdir() { ((++mkdir_calls)); command mkdir "$@"; }
+  __lmline_record_suggestion "generate" "original" "candidate"
+  [[ $mkdir_calls == 1 ]]
+' _ "$repo_dir" || fail "suggestion history honors a shell mkdir override on warm paths"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: curl: (28) Operation timed out after 12003 milliseconds with 0 bytes received\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
 LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
