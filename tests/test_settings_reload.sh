@@ -110,7 +110,7 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   R
   [[ -z "${LMLINE_MAX_CANDIDATE_BYTES-}" ]] || exit 23
   # H: reconciliation keeps first-seen key order and last values without AWK.
-  awk() { printf 'unexpected\n' >>"$cfg/awk-passes"; return 29; }
+  awk() { printf "unexpected\n" >>"$cfg/awk-passes"; return 29; }
   R() {
     : >"$cfg/awk-passes"
     __lmline_reload_settings_if_changed "$cfg"
