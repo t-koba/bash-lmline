@@ -49,30 +49,14 @@ __lmline_web_search_request_done() {
 # candidate JSON. The provider controls the query, the URL, and the page title,
 # so control characters are removed before they are printed.
 __lmline_web_search_report() {
-  local body=$1 report_pid jq_status=0 loop_status=0 kind value title
+  local body=$1 report count kind value title
   [[ -s "$body" ]] || return 0
   # One slurped pass emits the count, search details, then citations. The
   # engine rejects multi-document bodies before reporting; direct-helper
   # inputs retain document order, and only a single-document count advances
   # the global, matching the previous numeric count gate. Search extraction stays
   # isolated so malformed queries cannot suppress independently found citations.
-  if while IFS=$'\t' read -r kind value title; do
-    case "$kind" in
-      count)
-        if [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 )); then
-          __lmline_search_calls=$(( ${__lmline_search_calls:-0} + value ))
-        fi
-        ;;
-      search)
-        [[ -n "$value" ]] || continue
-        printf 'lmline-search: %s\n' "$value" >&2
-        ;;
-      citation)
-        [[ -n "$value" ]] || continue
-        printf 'lmline-citation: %s\t%s\n' "$value" "$title" >&2
-        ;;
-    esac
-  done < <(jq -s -r '
+  if report=$(jq -s -r '
     def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"; ""));
     def items:
       if (.output | type) == "array" then .output
@@ -93,19 +77,77 @@ __lmline_web_search_report() {
             + "\t" + ((.title // "") | clean))
       )
   ' "$body" 2>/dev/null); then
-    loop_status=0
-  else
-    loop_status=$?
+    if while IFS=$'\t' read -r kind value title; do
+      case "$kind" in
+        count)
+          if [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 )); then
+            __lmline_search_calls=$(( ${__lmline_search_calls:-0} + value ))
+          fi
+          ;;
+        search)
+          [[ -n "$value" ]] || continue
+          printf 'lmline-search: %s\n' "$value" >&2
+          ;;
+        citation)
+          [[ -n "$value" ]] || continue
+          printf 'lmline-citation: %s\t%s\n' "$value" "$title" >&2
+          ;;
+      esac
+    done <<<"$report"; then
+      return 0
+    else
+      return $?
+    fi
   fi
-  # The read loop runs in this shell; wait for the process-substitution jq so
-  # pipefail-enabled callers retain the old extraction error status.
-  report_pid=$!
-  if wait "$report_pid"; then
-    jq_status=0
-  else
-    jq_status=$?
+
+  # If the combined pass encounters malformed provider structure, discard its
+  # buffered output and use the prior isolated passes. That lets the citation
+  # stream emit earlier entries before its own jq error, without slowing the
+  # valid one-pass path or converting malformed input into success.
+  count=$(jq -r '
+    def items:
+      if (.output | type) == "array" then .output
+      else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
+      end;
+    [items[] | select(.type == "web_search_call")] | length
+  ' "$body" 2>/dev/null || printf '0')
+  if [[ "$count" =~ ^[0-9]+$ ]] && (( count > 0 )); then
+    __lmline_search_calls=$(( ${__lmline_search_calls:-0} + count ))
   fi
-  if ((loop_status)); then return "$loop_status"; fi
-  if ((jq_status)) && shopt -qo pipefail; then return "$jq_status"; fi
-  return 0
+  if jq -s -r '
+    def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"; ""));
+    def items:
+      if (.output | type) == "array" then .output
+      else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
+      end;
+    (try (.[] | items[]
+      | select(.type == "web_search_call")
+      | .action
+      | select(. != null)
+      | (.query // .queries // .url // .type // "search")
+      | if type == "array" then join(" ") else tostring end
+      | clean) catch empty),
+    (.[] | items[]
+      | select(.type == "message")
+      | (.content // [])[]?
+      | (.annotations // [])[]?
+      | select(.type == "url_citation")
+      | ((.url // "") | clean) + "\t" + ((.title // "") | clean))
+  ' "$body" 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+      *$'\t'*)
+        IFS=$'\t' read -r url title <<< "$line"
+        [[ -n "$url" ]] || continue
+        printf 'lmline-citation: %s\t%s\n' "$url" "$title" >&2
+        ;;
+      *)
+        [[ -n "$line" ]] || continue
+        printf 'lmline-search: %s\n' "$line" >&2
+        ;;
+    esac
+  done; then
+    return 0
+  else
+    return $?
+  fi
 }

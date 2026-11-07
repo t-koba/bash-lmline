@@ -253,6 +253,29 @@ cmp -s "$ws_tmp/malformed-query.expected" "$ws_tmp/malformed-query.err" \
 [[ "$__lmline_search_calls" == 2 ]] || fail 'malformed search query changed search count'
 ok 'malformed search queries do not suppress citations'
 
+# A later non-object item must not discard a citation already emitted before
+# the citation jq reports its structural error.
+cat >"$ws_tmp/malformed-item.json" <<'JSON'
+{"output":[
+  {"type":"message","content":[{"annotations":[{"type":"url_citation","url":"https://example.test","title":"T"}]}]},
+  "not-an-object"
+]}
+JSON
+__lmline_search_calls=0
+if __lmline_web_search_report "$ws_tmp/malformed-item.json" \
+    >"$ws_tmp/malformed-item.out" 2>"$ws_tmp/malformed-item.err"; then
+  fail 'malformed output item unexpectedly succeeded'
+else
+  malformed_item_status=$?
+fi
+[[ "$malformed_item_status" == 5 ]] || fail 'malformed output item jq status changed'
+printf 'lmline-citation: https://example.test\tT\n' >"$ws_tmp/malformed-item.expected"
+cmp -s "$ws_tmp/malformed-item.expected" "$ws_tmp/malformed-item.err" \
+  || fail 'malformed output item suppressed an earlier citation'
+[[ ! -s "$ws_tmp/malformed-item.out" ]] || fail 'malformed item report wrote to stdout'
+[[ "$__lmline_search_calls" == 0 ]] || fail 'malformed output item changed search count'
+ok 'malformed output items preserve prior citations and jq status'
+
 # Malformed JSON remains silent and preserves the jq status under pipefail.
 printf '%s\n%s\n' '{"output":[]}' '{bad' >"$ws_tmp/malformed-body.json"
 __lmline_search_calls=0
