@@ -143,6 +143,8 @@ __lmline_record_usage() {
   # Only frame separator-free fields from one object. Keep a derived row, not
   # all input documents; unsafe shapes and parse errors use the legacy path
   # below so its validation, diagnostics and command substitutions stay intact.
+  # Some jq versions can succeed without emitting a result; only a nonempty row
+  # is safe to append on the fast path.
   if summary=$(jq -enr '
     def safe_token:
       type == "number" or
@@ -166,7 +168,7 @@ __lmline_record_usage() {
       .count = ([.count + 1, 2] | min) |
       .row = (if .count == 1 then ($doc | usage_row) else null end)) |
     select(.count == 1 and .row != null) | .row
-  ' "$response" 2>/dev/null); then
+  ' "$response" 2>/dev/null) && [[ -n $summary ]]; then
     printf '%s\n' "$summary" >>"$usage_file"
     return $?
   fi

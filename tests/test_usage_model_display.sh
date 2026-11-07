@@ -47,6 +47,9 @@ __lmline_emit_meta 2>"$work/meta"
 # one pass, while unsafe or multi-document inputs still run the legacy body.
 jq() {
   printf '.\n' >>"$work/jq-calls"
+  if [[ ${simulate_empty_classifier_success:-0} == 1 && ${1-} == -enr && ! -s "${@: -1}" ]]; then
+    return 0
+  fi
   command jq "$@"
 }
 usage_case() {
@@ -80,7 +83,20 @@ usage_case 'multiple valid documents' $'{}\n{}' $'-\n-\t0\n0\t0\n0\t0\n0\n' 6
 usage_case 'false document' 'false' '' 2
 usage_case 'null document' 'null' '' 2
 usage_case 'malformed suffix' '{} trailing' '' 2
-usage_case 'empty input' '' $'\t\t\t\n' 6
+# Match the installed jq's legacy empty-input validation behavior, then force
+# the fast classifier to succeed without a row to cover jq-version differences.
+: >"$work/empty.json"
+if command jq -e . "$work/empty.json" >/dev/null 2>&1; then
+  empty_expected=$'\t\t\t\n'
+  empty_jq_calls=6
+else
+  empty_expected=''
+  empty_jq_calls=2
+fi
+usage_case 'empty input' '' "$empty_expected" "$empty_jq_calls"
+simulate_empty_classifier_success=1
+usage_case 'empty successful classifier' '' "$empty_expected" "$empty_jq_calls"
+unset simulate_empty_classifier_success
 # A failed append must return its failure without retrying through fallback.
 printf '{}' >"$work/response.json"
 : >"$work/jq-calls"
