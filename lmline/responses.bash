@@ -16,23 +16,34 @@
 # survive.
 __lmline_responses_body_from_sse() {
   local sse_file=$1 out=$2
-  jq -R -s '
-    [ splits("\n")
+  jq -R -n '
+    reduce (
+      inputs
       | sub("\r$"; "")
       | select(startswith("data:"))
       | ltrimstr("data:")
       | sub("^ "; "")
       | select(. != "[DONE]")
-      | (fromjson? // empty) ] as $events
-    | ([$events[] | select(.type == "response.completed") | .response] | last) as $done
-    | ([$events[] | select(.type == "response.failed") | .response] | last) as $failed
-    | ([$events[] | select(.type == "response.incomplete") | .response] | last) as $incomplete
-    | ([$events[] | select(.type == "response.created") | .response] | first) as $start
-    | if $done != null then $done
-      elif $failed != null then ($failed + {status: "failed"})
-      elif $incomplete != null then ($incomplete + {status: "incomplete"})
-      else (($start // {}) + {
-              output: [$events[] | select(.type == "response.output_item.done") | .item],
+      | (fromjson? // empty)
+    ) as $event
+    (
+      {done: null, failed: null, incomplete: null, start: null,
+       start_seen: false, items: []};
+      if $event.type == "response.completed" then .done = $event.response
+      elif $event.type == "response.failed" then .failed = $event.response
+      elif $event.type == "response.incomplete" then .incomplete = $event.response
+      elif $event.type == "response.created" and (.start_seen | not) then
+        .start = $event.response | .start_seen = true
+      elif $event.type == "response.output_item.done" then
+        .items += [$event.item]
+      else .
+      end
+    )
+    | if .done != null then .done
+      elif .failed != null then (.failed + {status: "failed"})
+      elif .incomplete != null then (.incomplete + {status: "incomplete"})
+      else ((.start // {}) + {
+              output: .items,
               status: "incomplete",
               incomplete_details: {reason: "stream_ended_without_completion"}})
       end

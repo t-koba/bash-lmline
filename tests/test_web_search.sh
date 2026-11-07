@@ -349,7 +349,27 @@ __lmline_responses_body_from_sse "$ws_tmp/malformed-crlf.sse" "$ws_tmp/malformed
   || fail "malformed CRLF SSE response reconstruction"
 jq -e '.id == "resp_crlf" and .status == "incomplete"' \
   "$ws_tmp/malformed-crlf.json" >/dev/null || fail "malformed CRLF SSE response"
-ok "failed, incomplete, interrupted, and malformed SSE responses are reconstructed"
+cat >"$ws_tmp/duplicate-terminal.sse" <<'SSE'
+data: {"type":"response.completed","response":{"id":"done_first"}}
+data: {"type":"response.failed","response":{"id":"failed_first"}}
+data: {"type":"response.completed","response":{"id":"done_last"}}
+data: {"type":"response.failed","response":{"id":"failed_last"}}
+data: [DONE]
+SSE
+__lmline_responses_body_from_sse "$ws_tmp/duplicate-terminal.sse" "$ws_tmp/duplicate-terminal.json" \
+  || fail "duplicate terminal SSE reconstruction"
+jq -e '.id == "done_last"' "$ws_tmp/duplicate-terminal.json" >/dev/null \
+  || fail "last completed SSE response takes precedence"
+cat >"$ws_tmp/first-created-null.sse" <<'SSE'
+data: {"type":"response.created","response":null}
+data: {"type":"response.created","response":{"id":"must-not-appear"}}
+data: {"type":"response.output_item.done","item":{"type":"message","id":"saved"}}
+SSE
+__lmline_responses_body_from_sse "$ws_tmp/first-created-null.sse" "$ws_tmp/first-created-null.json" \
+  || fail "first-created-null SSE reconstruction"
+jq -e '.id == null and .output[0].id == "saved"' "$ws_tmp/first-created-null.json" >/dev/null \
+  || fail "first created response is kept even when null"
+ok "failed, incomplete, interrupted, malformed, and precedence SSE responses are reconstructed"
 
 # 6. Retrieved pages are untrusted data: the request says so, and only when
 # the search is enabled.
