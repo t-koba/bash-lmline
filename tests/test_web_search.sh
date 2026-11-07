@@ -217,6 +217,7 @@ jq -cn '
     ]}
 ' >"$ws_tmp/bidi-response.json"
 cp "$ws_tmp/bidi-response.json" "$ws_tmp/bidi-original.json"
+__lmline_search_calls=0
 for shape in native replay; do
   body="$ws_tmp/bidi-response.json"
   if [[ "$shape" == replay ]]; then
@@ -227,6 +228,7 @@ for shape in native replay; do
   expected=$'lmline-search: שלום مرحبا\nlmline-search: second\nlmline-citation: https://example.test/שלום\tשלוםمرحبا\nlmline-citation: https://example.test/empty-title\t\nlmline-citation: title-only\t'
   [[ $(cat "$ws_tmp/bidi-report") == "$expected" ]] || fail "search report order, fields and bidi-free RTL ($shape)"
 done
+[[ "$__lmline_search_calls" == 0 ]] || fail 'multi-document helper count changed'
 cmp -s "$ws_tmp/bidi-original.json" "$ws_tmp/bidi-response.json" || fail 'raw search response retained'
 ok 'search display preserves order, empty fields and bidi-free RTL text'
 
@@ -250,6 +252,21 @@ cmp -s "$ws_tmp/malformed-query.expected" "$ws_tmp/malformed-query.err" \
 [[ ! -s "$ws_tmp/malformed-query.out" ]] || fail 'search report wrote to stdout'
 [[ "$__lmline_search_calls" == 2 ]] || fail 'malformed search query changed search count'
 ok 'malformed search queries do not suppress citations'
+
+# Malformed JSON remains silent and preserves the jq status under pipefail.
+printf '%s\n%s\n' '{"output":[]}' '{bad' >"$ws_tmp/malformed-body.json"
+__lmline_search_calls=0
+if __lmline_web_search_report "$ws_tmp/malformed-body.json" \
+    >"$ws_tmp/malformed-body.out" 2>"$ws_tmp/malformed-body.err"; then
+  fail 'malformed search body unexpectedly succeeded'
+else
+  malformed_status=$?
+fi
+[[ "$malformed_status" == 4 ]] || fail 'malformed search body status changed'
+[[ "$__lmline_search_calls" == 0 ]] || fail 'malformed search body changed search count'
+[[ ! -s "$ws_tmp/malformed-body.out" && ! -s "$ws_tmp/malformed-body.err" ]] \
+  || fail 'malformed search body was displayed'
+ok 'malformed search bodies remain silent with their jq status'
 
 # 1. Default off: no provider-native search tool in the request, one call.
 reset_fake

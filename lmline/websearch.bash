@@ -44,65 +44,68 @@ __lmline_web_search_request_done() {
   __lmline_search_requested=1
 }
 
-# Number of provider-side search calls in a response body.
-__lmline_web_search_count() {
-  local body=$1
-  [[ -s "$body" ]] || { printf '0'; return 0; }
-  jq -r '
-    def items:
-      if (.output | type) == "array" then .output
-      else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
-      end;
-    [items[] | select(.type == "web_search_call")] | length
-  ' "$body" 2>/dev/null || printf '0'
-}
-
 # Emits the search events and the cited URLs of a response body on the stderr
 # side channel. Citations stay out of the candidate text and out of the
-# candidate JSON. The provider controls the query, the URL, and the page
-# title, so control characters are removed before they are printed.
+# candidate JSON. The provider controls the query, the URL, and the page title,
+# so control characters are removed before they are printed.
 __lmline_web_search_report() {
-  local body=$1 count
+  local body=$1 report_pid jq_status=0 loop_status=0 kind value title
   [[ -s "$body" ]] || return 0
-  count=$(__lmline_web_search_count "$body")
-  if [[ "$count" =~ ^[0-9]+$ ]] && (( count > 0 )); then
-    __lmline_search_calls=$(( ${__lmline_search_calls:-0} + count ))
-  fi
-  # Single slurped pass: searches first, then citations. The engine rejects
-  # malformed and multi-document bodies before reporting, so no per-document
-  # status emulation is needed here; slurp only keeps valid multi-document
-  # direct-helper input in document order. Search extraction errors are
-  # isolated so they cannot suppress independently extracted citations.
-  jq -s -r '
+  # One slurped pass emits the count, search details, then citations. The
+  # engine rejects multi-document bodies before reporting; direct-helper
+  # inputs retain document order, and only a single-document count advances
+  # the global, matching the previous numeric count gate. Search extraction stays
+  # isolated so malformed queries cannot suppress independently found citations.
+  if while IFS=$'\t' read -r kind value title; do
+    case "$kind" in
+      count)
+        if [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 )); then
+          __lmline_search_calls=$(( ${__lmline_search_calls:-0} + value ))
+        fi
+        ;;
+      search)
+        [[ -n "$value" ]] || continue
+        printf 'lmline-search: %s\n' "$value" >&2
+        ;;
+      citation)
+        [[ -n "$value" ]] || continue
+        printf 'lmline-citation: %s\t%s\n' "$value" "$title" >&2
+        ;;
+    esac
+  done < <(jq -s -r '
     def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"; ""));
     def items:
       if (.output | type) == "array" then .output
       else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
       end;
-    (try (.[] | items[]
-      | select(.type == "web_search_call")
-      | .action
-      | select(. != null)
-      | (.query // .queries // .url // .type // "search")
-      | if type == "array" then join(" ") else tostring end
-      | clean) catch empty),
-    (.[] | items[]
-      | select(.type == "message")
-      | (.content // [])[]?
-      | (.annotations // [])[]?
-      | select(.type == "url_citation")
-      | ((.url // "") | clean) + "\t" + ((.title // "") | clean))
-  ' "$body" 2>/dev/null | while IFS= read -r line; do
-    case "$line" in
-      *$'\t'*)
-        IFS=$'\t' read -r url title <<< "$line"
-        [[ -n "$url" ]] || continue
-        printf 'lmline-citation: %s\t%s\n' "$url" "$title" >&2
-        ;;
-      *)
-        [[ -n "$line" ]] || continue
-        printf 'lmline-search: %s\n' "$line" >&2
-        ;;
-    esac
-  done
+    . as $docs
+    | [ $docs[] | items[] | select(.type == "web_search_call") ] as $calls
+    | (
+        "count\t" + (if ($docs | length) == 1 then ($calls | length | tostring) else "0" end),
+        (try ($calls[] | .action | select(. != null)
+          | (.query // .queries // .url // .type // "search")
+          | if type == "array" then join(" ") else tostring end
+          | clean | "search\t" + .) catch empty),
+        ($docs[] | items[] | select(.type == "message")
+          | (.content // [])[]? | (.annotations // [])[]?
+          | select(.type == "url_citation")
+          | "citation\t" + ((.url // "") | clean)
+            + "\t" + ((.title // "") | clean))
+      )
+  ' "$body" 2>/dev/null); then
+    loop_status=0
+  else
+    loop_status=$?
+  fi
+  # The read loop runs in this shell; wait for the process-substitution jq so
+  # pipefail-enabled callers retain the old extraction error status.
+  report_pid=$!
+  if wait "$report_pid"; then
+    jq_status=0
+  else
+    jq_status=$?
+  fi
+  if ((loop_status)); then return "$loop_status"; fi
+  if ((jq_status)) && shopt -qo pipefail; then return "$jq_status"; fi
+  return 0
 }
