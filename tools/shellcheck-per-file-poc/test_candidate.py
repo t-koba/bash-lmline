@@ -80,9 +80,9 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(len(set(manifest)), 77)
         declarations = [(p, d) for p in manifest for d in c.sources(p, set(manifest))]
         # The conditional CLI profile import is part of the declared source graph.
-        self.assertEqual(len(declarations), 141)
+        self.assertEqual(len(declarations), 142)
         self.assertTrue(all(d["in_manifest"] for _, d in declarations))
-        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 136)
+        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 137)
         groups = [{p} | {d["resolved"] for d in c.sources(p, set(manifest))} for p in manifest]
         self.assertEqual(max(map(len, groups)), 11)
 
