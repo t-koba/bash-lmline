@@ -227,6 +227,27 @@ done
 cmp -s "$ws_tmp/bidi-original.json" "$ws_tmp/bidi-response.json" || fail 'raw search response retained'
 ok 'search display preserves order, empty fields and bidi-free RTL text'
 
+# A malformed query stops search extraction, not independent URL citations.
+cat >"$ws_tmp/malformed-query.json" <<'JSON'
+{"output":[
+  {"type":"web_search_call","action":{"query":"first"}},
+  {"type":"web_search_call","action":{"queries":[{"bad":1}]}},
+  {"type":"message","content":[{"annotations":[{"type":"url_citation","url":"https://example.test/page","title":"Example Page"}]}]}
+]}
+JSON
+__lmline_search_calls=0
+if ! __lmline_web_search_report "$ws_tmp/malformed-query.json" \
+    >"$ws_tmp/malformed-query.out" 2>"$ws_tmp/malformed-query.err"; then
+  fail 'malformed search query report status'
+fi
+printf 'lmline-search: first\nlmline-citation: https://example.test/page\tExample Page\n' \
+  >"$ws_tmp/malformed-query.expected"
+cmp -s "$ws_tmp/malformed-query.expected" "$ws_tmp/malformed-query.err" \
+  || fail 'malformed search query suppressed or changed citation report'
+[[ ! -s "$ws_tmp/malformed-query.out" ]] || fail 'search report wrote to stdout'
+[[ "$__lmline_search_calls" == 2 ]] || fail 'malformed search query changed search count'
+ok 'malformed search queries do not suppress citations'
+
 # 1. Default off: no provider-native search tool in the request, one call.
 reset_fake
 if ! run_engine LMLINE_API_FORMAT=responses LMLINE_WEB_SEARCH=0 \

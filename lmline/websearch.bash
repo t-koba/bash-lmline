@@ -71,20 +71,21 @@ __lmline_web_search_report() {
   # Single slurped pass: searches first, then citations. The engine rejects
   # malformed and multi-document bodies before reporting, so no per-document
   # status emulation is needed here; slurp only keeps valid multi-document
-  # direct-helper input in document order.
+  # direct-helper input in document order. Search extraction errors are
+  # isolated so they cannot suppress independently extracted citations.
   jq -s -r '
     def clean: (tostring | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"; ""));
     def items:
       if (.output | type) == "array" then .output
       else ((.choices[0].message.responses_replay // []) | if type == "array" then . else [] end)
       end;
-    (.[] | items[]
+    (try (.[] | items[]
       | select(.type == "web_search_call")
       | .action
       | select(. != null)
       | (.query // .queries // .url // .type // "search")
       | if type == "array" then join(" ") else tostring end
-      | clean),
+      | clean) catch empty),
     (.[] | items[]
       | select(.type == "message")
       | (.content // [])[]?
