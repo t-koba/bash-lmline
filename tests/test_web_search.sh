@@ -495,17 +495,21 @@ assert_safe_search_display "$ws_tmp/t10s.err" streamed
 [[ "$(candidates_of <"$ws_tmp/t10s.out")" == "echo hello" ]] || fail "streamed control data changed the candidate"
 ok "web search events and citations drop control characters in buffered and streamed responses"
 
-# 11. The protocol documents the two lines, and the shell frontends strip
-# them like the other informational lines.
+# 11. The protocol documents the two lines. Bash frontends strip them with
+# sed; Zsh uses one AWK pass where supported and its Darwin compatibility path.
 grep -q '^lmline-search: ' "$repo_dir/docs/engine-protocol.md" \
   || fail "the protocol does not document the search line"
 grep -q '^lmline-citation: ' "$repo_dir/docs/engine-protocol.md" \
   || fail "the protocol does not document the citation line"
-for frontend in "$repo_dir/lmline/init.bash" "$repo_dir/lmline/init.zsh" "$repo_dir/lmline/actions.bash"; do
-  grep -q '/\^lmline-search: /d' "$frontend" || fail "the frontend keeps the search line: $frontend"
-  grep -q '/\^lmline-citation: /d' "$frontend" || fail "the frontend keeps the citation line: $frontend"
+for frontend in "$repo_dir/lmline/init.bash" "$repo_dir/lmline/actions.bash"; do
+  grep -Fq '/^lmline-search: /d' "$frontend" || fail "the frontend keeps the search line: $frontend"
+  grep -Fq '/^lmline-citation: /d' "$frontend" || fail "the frontend keeps the citation line: $frontend"
 done
-ok "the protocol documents the search lines and the frontends strip them"
+grep -Fq '/^lmline-search: /' "$repo_dir/lmline/init.zsh" || fail "the Zsh frontend keeps the search line"
+grep -Fq '/^lmline-citation: /' "$repo_dir/lmline/init.zsh" || fail "the Zsh frontend keeps the citation line"
+grep -Fq '/^lmline-search: /d' "$repo_dir/lmline/init.zsh" || fail "the Darwin Zsh fallback keeps the search line"
+grep -Fq '/^lmline-citation: /d' "$repo_dir/lmline/init.zsh" || fail "the Darwin Zsh fallback keeps the citation line"
+ok "the protocol documents the search lines and each frontend strips them"
 
 # 12. An empty answer is not asked again on a search-enabled route: the
 # repeat would bill another search.

@@ -241,12 +241,22 @@ __lmline_zsh_read_meta() {
   __LMLINE_ZSH_STATUS_LINE=$(awk '/^lmline-status: / { sub(/^lmline-status: /, ""); last=$0 } END { print last }' "$file" 2>/dev/null)
 }
 
-# Extract status and user-facing output in one pass over the bridge log.
+__lmline_zsh_strip_progress_lines() {
+  sed '/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d; /^lmline-search: /d; /^lmline-citation: /d'
+}
+
+# The Darwin combined AWK path fails the bridge byte-parity test, so retain the
+# original status-extraction and sed-filtering path there.
 __lmline_zsh_process_bridge_output() {
   local file=$1 status_file=$2
   __LMLINE_ZSH_STATUS_LINE=
   __LMLINE_ZSH_BRIDGE_OUTPUT=
   [[ -f "$file" ]] || return 0
+  if [[ "$OSTYPE" == darwin* ]]; then
+    __lmline_zsh_read_meta "$file"
+    __LMLINE_ZSH_BRIDGE_OUTPUT=$(__lmline_zsh_strip_progress_lines <"$file" 2>/dev/null)
+    return 0
+  fi
   __LMLINE_ZSH_BRIDGE_OUTPUT=$(LMLINE_ZSH_STATUS_FILE="$status_file" awk '
     /^lmline-status: / { sub(/^lmline-status: /, ""); last=$0; next }
     /^lmline-progress: / || /^lmline-meta: / || /^lmline-search: / || /^lmline-citation: / { next }
