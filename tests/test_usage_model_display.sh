@@ -46,8 +46,10 @@ __lmline_emit_meta 2>"$work/meta"
 # Count JSON processes as well as checking exact rows: ordinary responses use
 # one pass, while unsafe or multi-document inputs still run the legacy body.
 jq() {
+  local last_arg=
+  for last_arg; do :; done
   printf '.\n' >>"$work/jq-calls"
-  if [[ ${simulate_empty_classifier_success:-0} == 1 && ${1-} == -enr && ! -s "${@: -1}" ]]; then
+  if [[ ${simulate_empty_classifier_success:-0} == 1 && ${1-} == -enr && ! -s $last_arg ]]; then
     return 0
   fi
   command jq "$@"
