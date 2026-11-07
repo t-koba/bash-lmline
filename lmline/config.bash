@@ -97,14 +97,19 @@ __lmline_capture_env_baseline() {
 # changes made meanwhile are never cleared.
 __lmline_reconcile_config_load() {
   local old_keys=$__LMLINE_FILE_KEYS new_keys= k cur stamp ref base
+  local IFS=$'\n'
   if [[ -n "$__LMLINE_LOAD_KEYS" ]]; then
-    while IFS= read -r k; do
+    local -A seen_keys=()
+    # Loaders append only validated LMLINE_* names, so split on newlines here.
+    # shellcheck disable=SC2086
+    for k in $__LMLINE_LOAD_KEYS; do
       [[ -n "$k" ]] || continue
-      if __lmline_key_in_list "$new_keys" "$k"; then
+      if [[ -n "${seen_keys[$k]-}" ]]; then
         continue
       fi
+      seen_keys[$k]=1
       new_keys+="$k"$'\n'
-    done <<<"$__LMLINE_LOAD_KEYS"
+    done
     new_keys=${new_keys%$'\n'}
   fi
   for k in $old_keys; do
