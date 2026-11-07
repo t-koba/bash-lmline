@@ -234,6 +234,66 @@ printf 'date -r\n' >"$cfg_tmp/line-explain"
 explain_multi_round_out=$(PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=openai LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode explain --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line-explain" --context-file "$cfg_tmp/context" --n 1)
 [[ "$explain_multi_round_out" == "echo multi-round" ]] || fail "explain multi-round tool output"
 [[ $(cat "$cfg_tmp/fake-curl-state") == 3 ]] || fail "explain multi-round tool count"
+# Extraction errors retain native calls/diagnostics only when the silent
+# detection still finds an array. Otherwise discard partial output and use text.
+parse_bin="$cfg_tmp/parse-bin"
+mkdir -p "$parse_bin"
+{
+  printf '#!/usr/bin/env bash\nreal_jq=%q\n' "$(command -v jq)"
+  cat <<'EOF'
+if [[ "$1" == -c && "$2" == *'.choices[0].message.tool_calls'* ]] &&
+  grep -q 'tool-parse-fixture' "${@: -1}"; then
+  # A completed call can precede a write/parse failure. Keep it for a valid
+  # native array, but never let it leak into the text fallback.
+  printf '%s\n' '{"id":"call_parse","type":"function","function":{"name":"command_exists","arguments":"{\"commands\":\"echo\"}"}}'
+  printf 'jq: simulated extraction failure\n' >&2
+  exit 5
+fi
+exec "$real_jq" "$@"
+EOF
+} >"$parse_bin/jq"
+cat >"$parse_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -w|--data-binary) shift 2 ;;
+    *) shift ;;
+  esac
+done
+state=${LMLINE_FAKE_CURL_STATE:?}
+read -r count <"$state"
+printf '%s\n' "$((count + 1))" >"$state"
+if [[ "$count" == 0 ]]; then
+  cp "${state%/*}/tool-parse-fixture.json" "$out"
+else
+  printf '%s\n' '{"choices":[{"message":{"role":"assistant","content":"echo parse-recovered"}}]}' >"$out"
+fi
+printf '200'
+EOF
+chmod +x "$parse_bin/jq" "$parse_bin/curl"
+for parse_case in native fallback; do
+  if [[ "$parse_case" == native ]]; then
+    parse_calls='[{"id":"call_parse","type":"function","function":{"name":"command_exists","arguments":"{\"commands\":\"echo\"}"}}]'
+  else
+    parse_calls='{"invalid":"not an array"}'
+  fi
+  printf '{"fixture":"tool-parse-fixture","choices":[{"message":{"role":"assistant","content":"tool command_info echo","tool_calls":%s}}]}\n' "$parse_calls" >"$cfg_tmp/tool-parse-fixture.json"
+  printf '0\n' >"$cfg_tmp/fake-curl-state"
+  parse_out=$(PATH="$parse_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=auto LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 2>"$cfg_tmp/parse.err")
+  [[ "$(candidates_of <<<"$parse_out")" == 'echo parse-recovered' ]] || fail "tool extraction error output: $parse_case"
+  [[ $(cat "$cfg_tmp/fake-curl-state") == 2 ]] || fail "tool extraction error rounds: $parse_case"
+  if [[ "$parse_case" == native ]]; then
+    [[ $(grep -c '^jq: simulated extraction failure$' "$cfg_tmp/parse.err") == 1 ]] || fail "native extraction diagnostic"
+    grep -q '^lmline-progress: tool command-exists (openai, round 1/4)$' "$cfg_tmp/parse.err" || fail "native extraction error source"
+    ! grep -q 'tool command-info' "$cfg_tmp/parse.err" || fail "native extraction error fell back to text"
+  else
+    ! grep -q 'simulated extraction failure' "$cfg_tmp/parse.err" || fail "fallback extraction diagnostic leaked"
+    grep -q '^lmline-progress: tool command-info (text, round 1/4)$' "$cfg_tmp/parse.err" || fail "extraction error text fallback"
+    ! grep -q 'tool command-exists' "$cfg_tmp/parse.err" || fail "partial native call leaked into fallback"
+  fi
+done
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=

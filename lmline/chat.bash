@@ -1907,13 +1907,23 @@ __lmline_chat_run() {
     tool_source=none
     tool_calls_file=$work_dir/tool-calls.round-${tool_round}.jsonl
     : >"$tool_calls_file"
-    if [[ "$LMLINE_TOOL_MODE" == openai || "$LMLINE_TOOL_MODE" == auto ]] &&
-      jq -e '.choices[0].message.tool_calls | type == "array" and length > 0' "$body_file" >/dev/null 2>&1; then
-      jq -c '.choices[0].message.tool_calls[]' "$body_file" >"$tool_calls_file"
-      tool_source=openai
-    elif [[ "$LMLINE_TOOL_MODE" == text || "$LMLINE_TOOL_MODE" == auto ]] &&
-      __lmline_text_tool_requests "$body_file" "$tool_calls_file"; then
-      tool_source=text
+    if [[ "$LMLINE_TOOL_MODE" == openai || "$LMLINE_TOOL_MODE" == auto ]]; then
+      if jq -c '.choices[0].message.tool_calls | if type == "array" and length > 0 then .[] else empty end' \
+        "$body_file" >"$tool_calls_file" 2>"$work_dir/tool-calls.err"; then
+        [[ ! -s "$tool_calls_file" ]] || tool_source=openai
+      elif jq -e '.choices[0].message.tool_calls | type == "array" and length > 0' "$body_file" >/dev/null 2>&1; then
+        # Malformed input was silently ignored by detection; extraction/write
+        # failures on a valid array instead keep its diagnostic and source.
+        cat "$work_dir/tool-calls.err" >&2
+        tool_source=openai
+      fi
+    fi
+    if [[ "$tool_source" == none ]]; then
+      : >"$tool_calls_file"
+      if [[ "$LMLINE_TOOL_MODE" == text || "$LMLINE_TOOL_MODE" == auto ]] &&
+        __lmline_text_tool_requests "$body_file" "$tool_calls_file"; then
+        tool_source=text
+      fi
     fi
     if [[ "$tool_source" == none ]]; then
       break
