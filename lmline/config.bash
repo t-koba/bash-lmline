@@ -189,8 +189,8 @@ __lmline_load_all_config() {
     if [[ -f "$PWD/.lmline.bash" ]]; then
       __lmline_load_export_file "$PWD/.lmline.bash"
     fi
+    __lmline_reconcile_config_load
   fi
-  __lmline_reconcile_config_load
   return 0
 }
 
