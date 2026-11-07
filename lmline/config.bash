@@ -7,14 +7,15 @@ __lmline_quote_single() {
   printf "'%s'" "${value//\'/\'\\\'\'}"
 }
 
+# An output variable avoids a command substitution in the config loader; callers
+# without one keep the original stdout form.
 __lmline_parse_export_value() {
-  local raw=$1 value
+  local raw=$1 output_var=${2-} parsed
   case "$raw" in
     \'*\')
-      value=${raw#\'}
-      value=${value%\'}
-      value=${value//\'\\\'\'/\'}
-      printf '%s\n' "$value"
+      parsed=${raw#\'}
+      parsed=${parsed%\'}
+      parsed=${parsed//\'\\\'\'/\'}
       ;;
     \"*\")
       return 1
@@ -23,9 +24,14 @@ __lmline_parse_export_value() {
       return 1
       ;;
     *)
-      printf '%s\n' "$raw"
+      parsed=$raw
       ;;
   esac
+  if [[ -n "$output_var" ]]; then
+    printf -v "$output_var" '%s' "$parsed"
+  else
+    printf '%s\n' "$parsed"
+  fi
 }
 
 __lmline_load_export_file() {
@@ -37,7 +43,7 @@ __lmline_load_export_file() {
     key=${line%%=*}
     raw=${line#*=}
     [[ "$key" =~ ^LMLINE_[A-Z0-9_]+$ && "$line" == *=* ]] || continue
-    value=$(__lmline_parse_export_value "$raw") || continue
+    __lmline_parse_export_value "$raw" value || continue
     printf -v "$key" '%s' "$value"
     export "$key"
     __LMLINE_LOAD_KEYS+="$key"$'\n'

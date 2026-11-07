@@ -52,6 +52,22 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   set -euo pipefail
   export LMLINE_PROGRESS=env-value
   source "$1/lmline/config.bash"
+  # The config parser can assign directly into its caller without a subshell,
+  # while its original stdout form remains available for compatibility.
+  parse_output_test() {
+    local cfg=$1 quoted=$2 double_quoted=$3 out_value=sentinel parse_output
+    mkdir -p "$cfg" || return 36
+    __lmline_parse_export_value "$quoted" out_value >"$cfg/parser.stdout" || return 37
+    [[ "$out_value" == "with spaces" && ! -s "$cfg/parser.stdout" ]] || return 38
+    out_value=sentinel
+    if __lmline_parse_export_value "$double_quoted" out_value >"$cfg/parser.stdout" 2>"$cfg/parser.stderr"; then
+      return 39
+    fi
+    [[ "$out_value" == sentinel && ! -s "$cfg/parser.stdout" && ! -s "$cfg/parser.stderr" ]] || return 40
+    parse_output=$(__lmline_parse_export_value plain) || return 41
+    [[ "$parse_output" == plain ]]
+  }
+  parse_output_test "$2" "$4" "$5" || exit $?
   # Prefix enumeration preserves normal output and the custom-IFS fallback.
   (
     for baseline_key in "${!LMLINE_@}"; do
@@ -173,7 +189,7 @@ LMLINE_PROGRESS"
   rm "$cfg/settings.bash"
   R
   [[ -z "${LMLINE_DEBUG-}" && "${LMLINE_PROGRESS:-}" == env-value ]] || exit 31
-' _ "$repo_dir" "$reload_tmp/bash-config" "$repo_dir/lmline/lmline" || fail "Bash settings reload drops obsolete values"
+' _ "$repo_dir" "$reload_tmp/bash-config" "$repo_dir/lmline/lmline" "'with spaces'" '"double quoted"' || fail "Bash settings reload drops obsolete values"
 
 if command -v zsh >/dev/null 2>&1; then
   # Same coverage through the zsh integration and its bridge loader.
