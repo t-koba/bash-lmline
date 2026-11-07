@@ -10,11 +10,12 @@
 # body untouched. Search events and URL citations live in the response
 # object, so both survive the rebuild.
 
-# Extracts the JSON payloads of a server-sent event stream: one JSON object
-# per line in $2.
-__lmline_responses_sse_events() {
+# Rebuilds the response object directly from a server-sent event stream. A
+# completed stream carries the whole response; an interrupted one is rebuilt
+# from the output items that were delivered, so search events and citations
+# survive.
+__lmline_responses_body_from_sse() {
   local sse_file=$1 out=$2
-  : >"$out"
   jq -R -s '
     [ splits("\n")
       | sub("\r$"; "")
@@ -22,30 +23,20 @@ __lmline_responses_sse_events() {
       | ltrimstr("data:")
       | sub("^ "; "")
       | select(. != "[DONE]")
-      | (fromjson? // empty) ]
-    | .[]
-  ' "$sse_file" >>"$out" 2>/dev/null || return 1
-}
-
-# Rebuilds the response object from the collected events. A completed stream
-# carries the whole response; an interrupted one is rebuilt from the output
-# items that were delivered, so search events and citations survive.
-__lmline_responses_body_from_events() {
-  local events=$1 out=$2
-  jq -s '
-    ([.[] | select(.type == "response.completed") | .response] | last) as $done
-    | ([.[] | select(.type == "response.failed") | .response] | last) as $failed
-    | ([.[] | select(.type == "response.incomplete") | .response] | last) as $incomplete
-    | ([.[] | select(.type == "response.created") | .response] | first) as $start
+      | (fromjson? // empty) ] as $events
+    | ([$events[] | select(.type == "response.completed") | .response] | last) as $done
+    | ([$events[] | select(.type == "response.failed") | .response] | last) as $failed
+    | ([$events[] | select(.type == "response.incomplete") | .response] | last) as $incomplete
+    | ([$events[] | select(.type == "response.created") | .response] | first) as $start
     | if $done != null then $done
       elif $failed != null then ($failed + {status: "failed"})
       elif $incomplete != null then ($incomplete + {status: "incomplete"})
       else (($start // {}) + {
-              output: [.[] | select(.type == "response.output_item.done") | .item],
+              output: [$events[] | select(.type == "response.output_item.done") | .item],
               status: "incomplete",
               incomplete_details: {reason: "stream_ended_without_completion"}})
       end
-  ' "$events" >"$out"
+  ' "$sse_file" >"$out"
 }
 
 # True when the body is a server-sent event stream.
@@ -61,7 +52,7 @@ __lmline_responses_is_event_stream() {
 # like __lmline_curl_chat.
 __lmline_responses_fetch() {
   local response=$1 payload=$2
-  local raw=$work_dir/responses.raw.sse events=$work_dir/responses.events.jsonl meta
+  local raw=$work_dir/responses.raw.sse meta
   meta=$(curl -q -sS -N --max-time "$LMLINE_ENGINE_TIMEOUT" \
     -o "$raw" -w '%{http_code}\t%{content_type}' \
     "${curl_headers[@]}" \
@@ -69,8 +60,7 @@ __lmline_responses_fetch() {
     --data-binary @"$payload" \
     "$base$(__lmline_api_path responses)" 2>"$err_file") || return 1
   if __lmline_responses_is_event_stream "$raw"; then
-    __lmline_responses_sse_events "$raw" "$events" || return 1
-    __lmline_responses_body_from_events "$events" "$response" || return 1
+    __lmline_responses_body_from_sse "$raw" "$response" || return 1
   else
     cp "$raw" "$response"
   fi

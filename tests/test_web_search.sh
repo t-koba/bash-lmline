@@ -2,6 +2,9 @@
 # shellcheck source=tests/lib.sh
 # shellcheck disable=SC1091
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# shellcheck source=lmline/responses.bash
+# shellcheck disable=SC1091
+source "$repo_dir/lmline/responses.bash"
 # Risk: native web search stays opt-in and provider-side; a billed search is not repeated by default.
 
 ws_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-web-search-test.XXXXXX")
@@ -314,6 +317,39 @@ streamed_candidate=$(candidates_of <"$ws_tmp/t5.out")
 [[ "$streamed_candidate" != *example.test* ]] || fail "streamed candidate carries the citation url"
 [[ "$streamed_candidate" != *"how to list files"* ]] || fail "streamed candidate carries the search query"
 ok "streamed web search reports events and citations"
+
+# The direct SSE parser preserves explicit failed/incomplete results, rebuilds
+# an interrupted result from delivered items, and ignores malformed CRLF lines.
+cat >"$ws_tmp/failed.sse" <<'SSE'
+data: {"type":"response.failed","response":{"id":"resp_failed","status":"in_progress","error":{"message":"provider failure"},"output":[]}}
+data: [DONE]
+SSE
+__lmline_responses_body_from_sse "$ws_tmp/failed.sse" "$ws_tmp/failed.json" \
+  || fail "failed SSE response reconstruction"
+jq -e '.status == "failed" and .error.message == "provider failure"' \
+  "$ws_tmp/failed.json" >/dev/null || fail "failed SSE response status"
+cat >"$ws_tmp/incomplete.sse" <<'SSE'
+data: {"type":"response.incomplete","response":{"id":"resp_incomplete","status":"in_progress","incomplete_details":{"reason":"max_output_tokens"},"output":[]}}
+data: [DONE]
+SSE
+__lmline_responses_body_from_sse "$ws_tmp/incomplete.sse" "$ws_tmp/incomplete.json" \
+  || fail "incomplete SSE response reconstruction"
+jq -e '.status == "incomplete" and .incomplete_details.reason == "max_output_tokens"' \
+  "$ws_tmp/incomplete.json" >/dev/null || fail "incomplete SSE response status"
+cat >"$ws_tmp/interrupted.sse" <<'SSE'
+data: {"type":"response.created","response":{"id":"resp_partial","status":"in_progress"}}
+data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_partial","role":"assistant","content":[]}}
+SSE
+__lmline_responses_body_from_sse "$ws_tmp/interrupted.sse" "$ws_tmp/interrupted.json" \
+  || fail "interrupted SSE response reconstruction"
+jq -e '.status == "incomplete" and .incomplete_details.reason == "stream_ended_without_completion" and .output[0].id == "msg_partial"' \
+  "$ws_tmp/interrupted.json" >/dev/null || fail "interrupted SSE response items"
+printf 'event: response.created\r\ndata: {"type":"response.created","response":{"id":"resp_crlf","status":"in_progress"}}\r\ndata: not-json\r\ndata: [DONE]\r\n' >"$ws_tmp/malformed-crlf.sse"
+__lmline_responses_body_from_sse "$ws_tmp/malformed-crlf.sse" "$ws_tmp/malformed-crlf.json" \
+  || fail "malformed CRLF SSE response reconstruction"
+jq -e '.id == "resp_crlf" and .status == "incomplete"' \
+  "$ws_tmp/malformed-crlf.json" >/dev/null || fail "malformed CRLF SSE response"
+ok "failed, incomplete, interrupted, and malformed SSE responses are reconstructed"
 
 # 6. Retrieved pages are untrusted data: the request says so, and only when
 # the search is enabled.
