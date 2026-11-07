@@ -1841,7 +1841,7 @@ __lmline_retry_worthy_rejections() {
 }
 
 __lmline_chat_run() {
-  local stream_status
+  local stream_status content_result content_ready=0 content_present=0
   payload_file=$work_dir/payload.json
   body_file=$work_dir/body.json
   err_file=$work_dir/curl.err
@@ -1934,8 +1934,28 @@ __lmline_chat_run() {
     __lmline_trace_file "request.round-${tool_round}.json" "$payload_file"
   done
 
-  if [[ "$LMLINE_TOOL_MODE" == auto ]] &&
-    ! __lmline_response_has_content "$body_file" &&
+  if [[ "$LMLINE_TOOL_MODE" == auto ]]; then
+    # Prefix the raw-length presence bit before command substitution trims
+    # newlines. Failed extraction stays silent here and uses the original
+    # helpers for the retry decision and the final diagnostic below.
+    if content_result=$(jq -r '
+      .choices[0].message.content as $content |
+      (if ($content | type) == "string" then $content
+       elif ($content | type) == "array" then
+         [$content[]? | if type == "string" then . else (.text // empty) end] | join("")
+       else "" end) as $text |
+      if ($text | explode | index(0) != null) then error("embedded NUL in response content")
+      else (if ($text | length) > 0 then "1" else "0" end) + $text end
+    ' "$body_file" 2>/dev/null); then
+      content_present=${content_result:0:1}
+      text=${content_result:1}
+      content_ready=1
+    elif __lmline_response_has_content "$body_file"; then
+      content_present=1
+    fi
+  fi
+
+  if [[ "$LMLINE_TOOL_MODE" == auto && "$content_present" == 0 ]] &&
     jq -e 'has("tools")' "$payload_file" >/dev/null 2>&1 &&
     __lmline_response_empty_retryable "$body_file"; then
     if __lmline_request_repeat_allowed; then
@@ -1945,15 +1965,18 @@ __lmline_chat_run() {
       jq 'del(.tools, .tool_choice)' "$payload_file" >"$work_dir/payload.empty-content-auto-text.json" || exit 1
       __lmline_trace_file request.empty-content-auto-text.json "$work_dir/payload.empty-content-auto-text.json"
       __lmline_post_chat "$work_dir/payload.empty-content-auto-text.json" "$body_file" response.empty-content-auto-text.json || exit 1
+      content_ready=0
     else
       __lmline_progress "the provider returned an empty answer; the request was not repeated because a repeated request can spend the plan or repeat a billed search"
     fi
   fi
 
-  text=$(__lmline_response_content "$body_file") || {
-    printf 'lmline-engine: invalid response JSON\n' >&2
-    exit 1
-  }
+  if (( content_ready == 0 )); then
+    text=$(__lmline_response_content "$body_file") || {
+      printf 'lmline-engine: invalid response JSON\n' >&2
+      exit 1
+    }
+  fi
   [[ -n "$text" ]] || {
     problem=$(__lmline_response_problem "$body_file")
     printf 'lmline-engine: response did not contain usable choices[0].message.content%s%s\n' \

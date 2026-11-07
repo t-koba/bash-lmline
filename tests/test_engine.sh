@@ -518,6 +518,53 @@ if PATH="$fake_bin:$PATH" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MOD
 fi
 ! grep -q 'lmline-candidate:' "$cfg_tmp/nul-response.out" || fail "NUL-bearing provider candidate emitted"
 grep -q 'embedded NUL in response content' "$cfg_tmp/nul-response.err" || fail "NUL-bearing provider response diagnostic"
+# Auto-mode presence uses raw length, while extracted text keeps command
+# substitution's newline trimming. Errors must remain deferred to the old
+# extraction path, not leak an extra diagnostic from the combined parse.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+while (($#)); do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+count=0
+[[ ! -f "$LMLINE_FAKE_CURL_STATE" ]] || count=$(cat "$LMLINE_FAKE_CURL_STATE")
+printf '%s\n' "$((count + 1))" >"$LMLINE_FAKE_CURL_STATE"
+cat "$LMLINE_FAKE_CONTENT_FIXTURE" >"$out"
+printf '200'
+EOF
+chmod +x "$fake_bin/curl"
+while IFS=$'\t' read -r content_case content_json expected_candidate expected_calls diagnostic; do
+  printf '{"choices":[{"message":{"role":"assistant","content":%s}}]}\n' "$content_json" >"$cfg_tmp/content-fixture.json"
+  rm -f "$cfg_tmp/fake-curl-state"
+  content_status=0
+  PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_FAKE_CONTENT_FIXTURE="$cfg_tmp/content-fixture.json" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model LMLINE_TOOL_MODE=auto LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/content.out" 2>"$cfg_tmp/content.err" || content_status=$?
+  [[ $(cat "$cfg_tmp/fake-curl-state") == "$expected_calls" ]] || fail "auto content request count: $content_case"
+  if [[ "$expected_candidate" != - ]]; then
+    [[ "$content_status" == 0 ]] || fail "auto content status: $content_case"
+    [[ "$(candidates_of <"$cfg_tmp/content.out")" == "$expected_candidate" ]] || fail "auto content extraction: $content_case"
+    ! grep -q 'jq: error' "$cfg_tmp/content.err" || fail "auto content parse diagnostic: $content_case"
+  else
+    [[ "$content_status" == 1 ]] || fail "auto content failure status: $content_case"
+    [[ -z "$(candidates_of <"$cfg_tmp/content.out")" ]] || fail "auto invalid content emitted: $content_case"
+    grep -q "$diagnostic" "$cfg_tmp/content.err" || fail "auto content failure diagnostic: $content_case"
+    if [[ "$content_case" == nul || "$content_case" == bad-array ]]; then
+      # One from the pre-existing text-tool probe, one at final extraction.
+      [[ $(grep -c 'jq: error' "$cfg_tmp/content.err") == 2 ]] || fail "auto content early extraction error: $content_case"
+      grep -q 'lmline-engine: invalid response JSON' "$cfg_tmp/content.err" || fail "auto content final extraction error: $content_case"
+    fi
+  fi
+  ! grep -q 'ignored null byte' "$cfg_tmp/content.err" || fail "auto content leaked NUL to shell: $content_case"
+done <<'CASES'
+trailing	"echo combined\n\n"	echo combined	1	-
+array	["echo ",{"text":"array"},{"text":7},{"text":false},{"text":null},"\n\n"]	echo array7	1	-
+newline	"\n\n"	-	1	response did not contain usable
+nul	"echo safe\u0000; printf hidden"	-	1	embedded NUL in response content
+bad-array	["echo ",true]	-	2	Cannot index boolean
+malformed	{	-	1	expected exactly one JSON object
+CASES
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
