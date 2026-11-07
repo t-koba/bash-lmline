@@ -139,6 +139,39 @@ cat >"$case_dir/response.json" <<'JSON'
 JSON
 assert_truncated responses 'incomplete: max_output_tokens'
 
+# Responses finish-status extraction follows the normalizer's exact // precedence.
+init_case responses-finish-reason-fallback responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":null,"finish_reason":"LeNgTh","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+assert_truncated responses 'length'
+
+init_case responses-numeric-status-precedence responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":0,"finish_reason":"length","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+assert_complete responses numeric-status-precedence
+
+init_case responses-empty-status-precedence responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":"","finish_reason":"length","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+assert_complete responses empty-status-precedence
+
+# Unusual status strings use the legacy normalized-path query so Bash's
+# command-substitution handling of trailing newlines and NULs is unchanged.
+init_case responses-trailing-newline-status responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":"length\n","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+assert_truncated responses length
+
+init_case responses-nul-status responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":"\u0000INCOMPLETE","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+assert_truncated responses incomplete
+
 # Falsy reason values are treated as absent and do not add display text.
 init_case responses-false-reason responses
 jq '.incomplete_details.reason = false' \

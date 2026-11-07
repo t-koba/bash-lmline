@@ -526,8 +526,8 @@ __lmline_report_provider_failure() {
 
 __lmline_accept_response() {
   local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}}
-  local finish_status incomplete_reason_is_stream_ended=0 display_reason= display_reason_needed=0 provider_failed=0
-  local response_flags flags_provider_failed flags_stream_ended flags_reason_present max_tokens_advice=
+  local finish_status finish_status_from_flags=0 incomplete_reason_is_stream_ended=0 display_reason= display_reason_needed=0 provider_failed=0
+  local response_flags flags_provider_failed flags_stream_ended flags_reason_present flags_finish_status max_tokens_advice=
   # jq normally processes successive documents independently. Validate the
   # whole body before any provider fields or normalized output are consumed.
   if ! __lmline_single_json_object "$response"; then
@@ -541,16 +541,33 @@ __lmline_accept_response() {
     response_flags=$(jq -r '[
       (try (((.status // "") == "failed") or ((.error? | type) == "object")) catch false),
       (try (.incomplete_details.reason == "stream_ended_without_completion") catch false),
-      (try ((.incomplete_details.reason // "") != "") catch false)
+      (try ((.incomplete_details.reason // "") != "") catch false),
+      (try (
+        (.status // .finish_reason // "stop") as $status |
+        if ($status | type) != "string" then ""
+        elif ($status | test("[^A-Za-z_]")) then "__FALLBACK__"
+        else
+          ($status | ascii_downcase) as $lower |
+          if (["length", "max_tokens", "incomplete", "failed", "model_context_window_exceeded"] | index($lower))
+          then $lower else "" end
+        end
+      ) catch "__FALLBACK__")
     ] | @tsv' "$response" 2>/dev/null) || response_flags=
     if [[ -n $response_flags ]]; then
       flags_provider_failed=${response_flags%%$'\t'*}
       response_flags=${response_flags#*$'\t'}
       flags_stream_ended=${response_flags%%$'\t'*}
-      flags_reason_present=${response_flags#*$'\t'}
+      response_flags=${response_flags#*$'\t'}
+      flags_reason_present=${response_flags%%$'\t'*}
+      response_flags=${response_flags#*$'\t'}
+      flags_finish_status=$response_flags
       [[ $flags_provider_failed == true ]] && provider_failed=1
       [[ $flags_stream_ended == true ]] && incomplete_reason_is_stream_ended=1
       [[ $flags_reason_present == true ]] && display_reason_needed=1
+      if [[ $flags_finish_status != __FALLBACK__ ]]; then
+        finish_status=$flags_finish_status
+        finish_status_from_flags=1
+      fi
     else
       # Preserve the legacy fallback if the combined metadata query fails.
       display_reason_needed=1
@@ -578,10 +595,12 @@ __lmline_accept_response() {
   # compatible; only these exact terminal values are known truncation signals.
   case "$mode" in
     generate|rewrite|fix)
-      finish_status=$(jq -r '
-        .choices[0].finish_reason as $status |
-        if ($status | type) == "string" then $status else "" end
-      ' "$response" 2>/dev/null) || finish_status=
+      if ((finish_status_from_flags == 0)); then
+        finish_status=$(jq -r '
+          .choices[0].finish_reason as $status |
+          if ($status | type) == "string" then $status else "" end
+        ' "$response" 2>/dev/null) || finish_status=
+      fi
       case "${finish_status,,}" in
         length|max_tokens|incomplete)
           if [[ "${finish_status,,}" == incomplete && $incomplete_reason_is_stream_ended == 1 ]]; then
