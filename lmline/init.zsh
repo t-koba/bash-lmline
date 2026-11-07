@@ -69,8 +69,9 @@ __lmline_zsh_remove_temp_file() {
 
 __lmline_zsh_load_all_config() {
   local export_file key value new_keys old_keys cur stamp ref base uk
-  local system_features sysopen_fd
-  local system_was_loaded=0 sysopen_added=0 sysopen_available=0 temp_file_created=0
+  local system_features feature export_fd export_path
+  local -a system_restore
+  local system_was_loaded=0 sysopen_available=1 anonymous_export=0
   local project_config_baseline_set=0 project_config_baseline_value=
   __lmline_zsh_capture_env_baseline
   old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
@@ -79,62 +80,87 @@ __lmline_zsh_load_all_config() {
     project_config_baseline_set=1
     project_config_baseline_value=${(P)base}
   fi
-  # Exclusive creation makes the PID name safe; collisions fall back to mktemp.
-  # Module presence alone does not guarantee that sysopen itself is loaded.
+  # Keep the exclusively created file open and unlink it before exporting any
+  # values: a writable TMPDIR must not let pathname replacement redirect I/O.
   if system_features=$(builtin zmodload -L -F zsh/system 2>/dev/null); then
     system_was_loaded=1
   else
     system_features=
   fi
-  if [[ " $system_features " == *" b:sysopen "* ]]; then
-    sysopen_available=1
-  elif builtin zmodload -F zsh/system b:sysopen 2>/dev/null; then
-    sysopen_available=1
-    sysopen_added=1
-  fi
-  if (( sysopen_available )); then
-    export_file="${TMPDIR:-/tmp}/lmline-zsh-config.$$"
-    if builtin sysopen -w -o creat -o excl -m 600 -u sysopen_fd "$export_file" 2>/dev/null; then
-      exec {sysopen_fd}>&-
-      temp_file_created=1
+  {
+    for feature in sysopen sysseek; do
+      [[ " $system_features " == *" b:$feature "* ]] && continue
+      if builtin zmodload -F zsh/system "b:$feature" 2>/dev/null; then
+        system_restore+=("-b:$feature")
+      else
+        sysopen_available=0
+        break
+      fi
+    done
+    if (( sysopen_available )); then
+      export_path="${TMPDIR:-/tmp}/lmline-zsh-config.$$"
+      if builtin sysopen -r -w -o creat -o excl -m 600 -u export_fd "$export_path" 2>/dev/null; then
+        export_file=$export_path
+        anonymous_export=1
+        __lmline_zsh_remove_temp_file "$export_file"
+        [[ ! -e "$export_file" && ! -L "$export_file" ]] || return 1
+      fi
     fi
-  fi
-  if (( sysopen_added )); then
-    if (( system_was_loaded )); then
-      builtin zmodload -F zsh/system -b:sysopen 2>/dev/null || true
+    if (( ! anonymous_export )); then
+      # Restore even a partially successful feature load before falling back.
+      if (( ${#system_restore} )); then
+        if (( system_was_loaded )); then
+          builtin zmodload -F zsh/system "${system_restore[@]}" 2>/dev/null || true
+        else
+          builtin zmodload -u zsh/system 2>/dev/null || true
+        fi
+        system_restore=()
+      fi
+      export_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-config.XXXXXX") || return 1
+      exec {export_fd}>"$export_file" || return 1
+    fi
+    if ! LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
+      __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
+      __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
+      __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" bash -c '
+      source "$1/config.bash"
+      __lmline_forget_bridge_keys
+      if [[ "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET:-0}" == 1 ]]; then
+        printf -v LMLINE_PROJECT_CONFIG "%s" "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE-}"
+        export LMLINE_PROJECT_CONFIG
+      fi
+      __lmline_load_all_config
+      while IFS= read -r key; do
+        [[ "$key" =~ ^LMLINE_[A-Z0-9_]*$ ]] || continue
+        printf "%s\0%s\0" "$key" "${!key}"
+      done < <(compgen -e LMLINE_)
+    ' _ "$LMLINE_DIR" >&$export_fd; then
+      return 1
+    fi
+    if (( anonymous_export )); then
+      builtin sysseek -u $export_fd 0 || return 1
     else
-      builtin zmodload -u zsh/system 2>/dev/null || true
+      exec {export_fd}>&-
+      export_fd=
+      exec {export_fd}<"$export_file" || return 1
     fi
-  fi
-  if (( ! temp_file_created )); then
-    export_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-config.XXXXXX") || return 1
-  fi
-  if ! LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
-    __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
-    __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
-    __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" bash -c '
-    source "$1/config.bash"
-    __lmline_forget_bridge_keys
-    if [[ "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET:-0}" == 1 ]]; then
-      printf -v LMLINE_PROJECT_CONFIG "%s" "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE-}"
-      export LMLINE_PROJECT_CONFIG
+    new_keys=
+    while IFS= read -r -d "" -u $export_fd key && IFS= read -r -d "" -u $export_fd value; do
+      typeset -gx "$key=$value"
+      new_keys+="$key"$'\n'
+      typeset -g "__LMLINE_ZSHSTAMP_$key=${(P)key}"
+    done
+  } always {
+    [[ -z "$export_fd" ]] || exec {export_fd}>&-
+    [[ -z "$export_file" ]] || __lmline_zsh_remove_temp_file "$export_file"
+    if (( ${#system_restore} )); then
+      if (( system_was_loaded )); then
+        builtin zmodload -F zsh/system "${system_restore[@]}" 2>/dev/null || true
+      else
+        builtin zmodload -u zsh/system 2>/dev/null || true
+      fi
     fi
-    __lmline_load_all_config
-    while IFS= read -r key; do
-      [[ "$key" =~ ^LMLINE_[A-Z0-9_]*$ ]] || continue
-      printf "%s\0%s\0" "$key" "${!key}"
-    done < <(compgen -e LMLINE_)
-  ' _ "$LMLINE_DIR" >"$export_file"; then
-    __lmline_zsh_remove_temp_file "$export_file"
-    return 1
-  fi
-  new_keys=
-  while IFS= read -r -d "" key && IFS= read -r -d "" value; do
-    typeset -gx "$key=$value"
-    new_keys+="$key"$'\n'
-    typeset -g "__LMLINE_ZSHSTAMP_$key=${(P)key}"
-  done <"$export_file"
-  __lmline_zsh_remove_temp_file "$export_file"
+  }
   # Drop values the files no longer define: restore the pre-bridge
   # environment value (or unset), but only while the shell still holds the
   # value the bridge provided, so intentional user changes are never cleared.

@@ -49,7 +49,7 @@ if command -v zsh >/dev/null 2>&1; then
     [[ $(whence -w rm) == "rm: command" && $(whence -w mv) == "mv: builtin" ]] || exit 94
   ' _ "$repo_dir" || fail "zsh config cleanup preserves partial zsh/files features"
   [[ -z "$(find "$zsh_tmp/tmp-cleanup-partial" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config cleanup handles partial zsh/files state"
-  if zsh -f -c 'builtin zmodload -F zsh/system b:sysopen >/dev/null 2>&1' >/dev/null 2>&1; then
+  if zsh -f -c 'builtin zmodload -F zsh/system b:sysopen b:sysseek >/dev/null 2>&1' >/dev/null 2>&1; then
     mkdir -p "$zsh_tmp/config-sysopen" "$zsh_tmp/tmp sysopen" "$zsh_tmp/sysopen-bin"
     cat >"$zsh_tmp/sysopen-bin/mktemp" <<'EOF'
 #!/bin/sh
@@ -60,35 +60,66 @@ EOF
     sysopen_real_bash=$(command -v bash)
     cat >"$zsh_tmp/sysopen-bin/bash" <<EOF
 #!/bin/sh
-for file in "\$TMPDIR"/lmline-zsh-config.*; do
-  [ -f "\$file" ] || continue
-  mode=\$(stat -c '%a' "\$file" 2>/dev/null) || mode=\$(stat -f '%Lp' "\$file" 2>/dev/null) || exit 95
-  [ "\$mode" = 600 ] || exit 96
- done
+case "\${2-}" in
+  *BASH_VERSINFO*) exec "$sysopen_real_bash" "\$@" ;;
+esac
+[ ! -e "\$LMLINE_TEST_EXPORT_PATH" ] && [ ! -L "\$LMLINE_TEST_EXPORT_PATH" ] || exit 95
+mode=\$(stat -L -c '%a' /dev/fd/1 2>/dev/null) || mode=\$(stat -L -f '%Lp' /dev/fd/1 2>/dev/null) || exit 96
+[ "\$mode" = 600 ] || exit 97
+ln -s "\$LMLINE_TEST_VICTIM" "\$LMLINE_TEST_EXPORT_PATH" || exit 98
+[ "\${LMLINE_TEST_EXPORT_FAIL:-0}" = 0 ] || exit 79
 exec "$sysopen_real_bash" "\$@"
 EOF
     chmod +x "$zsh_tmp/sysopen-bin/bash"
-    LMLINE_CONFIG_DIR="$zsh_tmp/config-sysopen" TMPDIR="$zsh_tmp/tmp sysopen" LMLINE_TEST_MKTEMP_MARKER="$zsh_tmp/mktemp-called" PATH="$zsh_tmp/sysopen-bin:$PATH" zsh -fic '
+    printf 'sentinel victim\n' >"$zsh_tmp/sysopen-victim"
+    printf 'export LMLINE_TEST_PATH_REPLACEMENT=imported\n' >"$zsh_tmp/config-sysopen/settings.bash"
+    for system_state in unloaded sysread sysopen sysseek full; do
+      LMLINE_CONFIG_DIR="$zsh_tmp/config-sysopen" TMPDIR="$zsh_tmp/tmp sysopen" LMLINE_TEST_VICTIM="$zsh_tmp/sysopen-victim" LMLINE_TEST_MKTEMP_MARKER="$zsh_tmp/mktemp-called" PATH="$zsh_tmp/sysopen-bin:$PATH" zsh -fic '
+        builtin zmodload -u zsh/system 2>/dev/null || true
+        case "$2" in
+          unloaded) ;;
+          full) builtin zmodload zsh/system || exit 90 ;;
+          *) builtin zmodload -F zsh/system "b:$2" || exit 90 ;;
+        esac
+        before_features=$(builtin zmodload -L -F zsh/system 2>/dev/null) || before_features=
+        export LMLINE_TEST_EXPORT_PATH="$TMPDIR/lmline-zsh-config.$$"
+        RANDOM=21971
+        first=$RANDOM expected_next=$RANDOM
+        RANDOM=21971
+        first=$RANDOM
+        source "$1/lmline/init.zsh" || exit 92
+        [[ "$LMLINE_TEST_PATH_REPLACEMENT" == imported ]] || exit 93
+        after_features=$(builtin zmodload -L -F zsh/system 2>/dev/null) || after_features=
+        [[ "$after_features" == "$before_features" ]] || exit 94
+        [[ $RANDOM == "$expected_next" ]] || exit 98
+      ' _ "$repo_dir" "$system_state" || fail "zsh sysopen imports through a private unlinked descriptor and preserves $system_state system features"
+      [[ $(<"$zsh_tmp/sysopen-victim") == 'sentinel victim' ]] || fail "zsh sysopen pathname replacement cannot overwrite victim"
+      [[ -z "$(find "$zsh_tmp/tmp sysopen" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh sysopen replacement path is cleaned after bridge load"
+    done
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-sysopen" TMPDIR="$zsh_tmp/tmp sysopen" LMLINE_TEST_VICTIM="$zsh_tmp/sysopen-victim" LMLINE_TEST_EXPORT_FAIL=1 LMLINE_TEST_MKTEMP_MARKER="$zsh_tmp/mktemp-called" PATH="$zsh_tmp/sysopen-bin:$PATH" zsh -fic '
       builtin zmodload -u zsh/system 2>/dev/null || true
-      builtin zmodload -F zsh/system b:sysread || exit 90
+      builtin zmodload -F zsh/system b:sysseek || exit 90
       before_features=$(builtin zmodload -L -F zsh/system) || exit 91
-      RANDOM=21971
-      first=$RANDOM expected_next=$RANDOM
-      RANDOM=21971
-      first=$RANDOM
-      source "$1/lmline/init.zsh" || exit 92
+      export LMLINE_TEST_EXPORT_PATH="$TMPDIR/lmline-zsh-config.$$"
+      source "$1/lmline/init.zsh"
+      if __lmline_zsh_load_all_config; then exit 92; fi
       after_features=$(builtin zmodload -L -F zsh/system) || exit 93
       [[ "$after_features" == "$before_features" ]] || exit 94
-      [[ $RANDOM == "$expected_next" ]] || exit 98
-    ' _ "$repo_dir" || fail "zsh sysopen preserves partial system features and creates a private export"
+    ' _ "$repo_dir" || fail "zsh sysopen child failure restores system features"
+    [[ $(<"$zsh_tmp/sysopen-victim") == 'sentinel victim' ]] || fail "zsh sysopen failure leaves victim unchanged"
+    [[ -z "$(find "$zsh_tmp/tmp sysopen" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh sysopen replacement path is cleaned after child failure"
     [[ ! -e "$zsh_tmp/mktemp-called" ]] || fail "zsh sysopen avoids external mktemp when available"
-    [[ -z "$(find "$zsh_tmp/tmp sysopen" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh sysopen export is cleaned after bridge load"
 
     mkdir -p "$zsh_tmp/config-sysopen-collision" "$zsh_tmp/tmp-sysopen-collision"
     LMLINE_CONFIG_DIR="$zsh_tmp/config-sysopen-collision" TMPDIR="$zsh_tmp/tmp-sysopen-collision" zsh -fic '
+      builtin zmodload -u zsh/system 2>/dev/null || true
+      builtin zmodload -F zsh/system b:sysopen || exit 89
+      before_features=$(builtin zmodload -L -F zsh/system)
       collision="$TMPDIR/lmline-zsh-config.$$"
       print -r -- sentinel >"$collision"
       source "$1/lmline/init.zsh" || exit 90
+      after_features=$(builtin zmodload -L -F zsh/system)
+      [[ "$after_features" == "$before_features" ]] || exit 93
       IFS= read -r content <"$collision"
       [[ "$content" == sentinel ]] || exit 91
       for file in "$TMPDIR"/lmline-zsh-config.*; do
