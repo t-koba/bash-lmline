@@ -1159,6 +1159,22 @@ EOF
     source "$1/lmline/init.zsh"
     [[ $(__lmline_zsh_bridge generate generate "# say one" 0) == "lmline-candidate: low"*"echo zsh-widget" ]]
   ' _ "$repo_dir" || fail "zsh bridge"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-output" zsh -efic '
+    source "$1/lmline/init.zsh"
+    output_file="$2/bridge-output"
+    status_file="$2/bridge-status"
+    trap "rm -f \"$output_file\" \"$status_file\"" EXIT
+    printf "ordinary diagnostic\nlmline-progress: progress\nlmline-meta: meta\nlmline-status: old\nlmline-search: search\nlmline-citation: citation\nlmline-status: m=zsh; tok=80/8/88\nlmline-candidate: low\tno risk\t-\techo one\nlast without newline" >"$output_file"
+    __lmline_zsh_process_bridge_output "$output_file" "$status_file"
+    [[ "$__LMLINE_ZSH_STATUS_LINE" == "m=zsh; tok=80/8/88" ]]
+    expected_output=$(printf "ordinary diagnostic\nlmline-candidate: low\tno risk\t-\techo one\nlast without newline")
+    [[ "$__LMLINE_ZSH_BRIDGE_OUTPUT" == "$expected_output" ]]
+    printf "%b" "before\\0binary\nlmline-status: m=nul\nlmline-progress: hidden\nend\\0tail" >"$output_file"
+    expected_status=$(awk "/^lmline-status: / { sub(/^lmline-status: /, \"\"); last=\$0 } END { print last }" "$output_file" 2>/dev/null)
+    expected_output=$(sed "/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d; /^lmline-search: /d; /^lmline-citation: /d" "$output_file" 2>/dev/null)
+    __lmline_zsh_process_bridge_output "$output_file" "$status_file"
+    [[ "$__LMLINE_ZSH_STATUS_LINE" == "$expected_status" && "$__LMLINE_ZSH_BRIDGE_OUTPUT" == "$expected_output" ]]
+  ' _ "$repo_dir" "$zsh_tmp" || fail "zsh bridge output filtering"
   printf '#!/usr/bin/env bash\nmode=\nwhile (($#)); do case "$1" in --mode) mode=$2; shift 2;; *) shift;; esac; done\nif [[ "$mode" == explain ]]; then printf "zsh explained\\n"; else printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"; fi\n' >"$zsh_tmp/engine-explain"
   chmod +x "$zsh_tmp/engine-explain"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-explain" LMLINE_PS0="[lm] " LMLINE_ENGINE="$zsh_tmp/engine-explain" zsh -efic '

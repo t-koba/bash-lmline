@@ -233,16 +233,27 @@ __lmline_zsh_progress_label() {
   print -nr -- "${label:-$fallback}"
 }
 
-__lmline_zsh_strip_progress_lines() {
-  sed '/^lmline-progress: /d; /^lmline-meta: /d; /^lmline-status: /d; /^lmline-search: /d; /^lmline-citation: /d'
-}
-
 # The engine emits one preformatted "lmline-status:" line; display it verbatim.
 __lmline_zsh_read_meta() {
   local file=$1
   __LMLINE_ZSH_STATUS_LINE=
   [[ -f "$file" ]] || return 0
   __LMLINE_ZSH_STATUS_LINE=$(awk '/^lmline-status: / { sub(/^lmline-status: /, ""); last=$0 } END { print last }' "$file" 2>/dev/null)
+}
+
+# Extract status and user-facing output in one pass over the bridge log.
+__lmline_zsh_process_bridge_output() {
+  local file=$1 status_file=$2
+  __LMLINE_ZSH_STATUS_LINE=
+  __LMLINE_ZSH_BRIDGE_OUTPUT=
+  [[ -f "$file" ]] || return 0
+  __LMLINE_ZSH_BRIDGE_OUTPUT=$(LMLINE_ZSH_STATUS_FILE="$status_file" awk '
+    /^lmline-status: / { sub(/^lmline-status: /, ""); last=$0; next }
+    /^lmline-progress: / || /^lmline-meta: / || /^lmline-search: / || /^lmline-citation: / { next }
+    { print }
+    END { printf "%s", last > ENVIRON["LMLINE_ZSH_STATUS_FILE"] }
+  ' "$file" 2>/dev/null)
+  IFS= read -r __LMLINE_ZSH_STATUS_LINE <"$status_file" || :
 }
 
 __lmline_zsh_meta_status() {
@@ -366,9 +377,8 @@ __lmline_zsh_run_bridge() {
   __LMLINE_ZSH_BRIDGE_STATUS=0
   __lmline_zsh_wait_with_spinner "$pid" "$label" "$output_file" || __LMLINE_ZSH_BRIDGE_STATUS=$?
   __lmline_zsh_clear_hint
-  __lmline_zsh_read_meta "$output_file"
+  __lmline_zsh_process_bridge_output "$output_file" "$tmp/status"
   (( had_monitor == 1 )) && setopt monitor
-  __LMLINE_ZSH_BRIDGE_OUTPUT=$(__lmline_zsh_strip_progress_lines <"$output_file" 2>/dev/null)
   rm -rf "$tmp"
   return "$__LMLINE_ZSH_BRIDGE_STATUS"
 }
