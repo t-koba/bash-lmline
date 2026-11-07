@@ -109,8 +109,8 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   "$cli" config unset LMLINE_MAX_CANDIDATE_BYTES >/dev/null
   R
   [[ -z "${LMLINE_MAX_CANDIDATE_BYTES-}" ]] || exit 23
-  # H: count reconciliation AWK passes across consent changes. Log to a
-  # file because reconciliation invokes AWK inside command substitution.
+  # H: empty key lists skip AWK; non-empty lists still deduplicate in the
+  # command substitution used by reconciliation.
   awk() { printf "pass\n" >>"$cfg/awk-passes"; command awk "$@"; }
   R() {
     : >"$cfg/awk-passes"
@@ -129,14 +129,17 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   # Revoking consent drops project-owned values before checking the gate,
   # even when the project file itself still tries to enable project config.
   : >"$cfg/settings.bash"
-  R 1
+  R 0
   [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 25
   R 0
   [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 26
-  printf "%s\n" "export LMLINE_DEBUG=1" >"$cfg/settings.bash"
+  printf "%s\n" "export LMLINE_DEBUG=0" "export LMLINE_DEBUG=1" >"$cfg/settings.bash"
   R 1
   [[ "${LMLINE_DEBUG:-}" == 1 ]] || exit 27
   [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 28
+  rm "$cfg/settings.bash"
+  R 0
+  [[ -z "${LMLINE_DEBUG-}" ]] || exit 31
 ' _ "$repo_dir" "$reload_tmp/bash-config" "$repo_dir/lmline/lmline" || fail "Bash settings reload drops obsolete values"
 
 if command -v zsh >/dev/null 2>&1; then
