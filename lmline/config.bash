@@ -84,7 +84,13 @@ __lmline_capture_env_baseline() {
   fi
   __LMLINE_ENV_BASELINE_SET=1
   local k
-  for k in $(compgen -v LMLINE_ 2>/dev/null); do
+  local -a baseline_keys=()
+  if [[ ${IFS-} == $' \t\n' ]]; then
+    baseline_keys=( "${!LMLINE_@}" )
+  else
+    baseline_keys=( $(compgen -v LMLINE_ 2>/dev/null) )
+  fi
+  for k in "${baseline_keys[@]}"; do
     [[ "$k" =~ ^LMLINE_[A-Z0-9_]+$ ]] || continue
     __LMLINE_ENV_BASELINE_KEYS+="$k"$'\n'
     printf -v "__LMLINE_ENV_BASELINE_$k" '%s' "${!k}"

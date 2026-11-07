@@ -52,6 +52,34 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   set -euo pipefail
   export LMLINE_PROGRESS=env-value
   source "$1/lmline/config.bash"
+  # Prefix enumeration preserves normal output and the custom-IFS fallback.
+  (
+    for baseline_key in "${!LMLINE_@}"; do
+      unset "$baseline_key"
+    done
+    original_ifs=$IFS
+    LMLINE_ZETA="z value"
+    LMLINE_ALPHA="a value"
+    export LMLINE_ZETA LMLINE_ALPHA
+    __LMLINE_ENV_BASELINE_SET=0
+    __LMLINE_ENV_BASELINE_KEYS=
+    __lmline_capture_env_baseline
+    printf -v expected_baseline_keys "%s\n%s\n" LMLINE_ALPHA LMLINE_ZETA
+    [[ "$__LMLINE_ENV_BASELINE_KEYS" == "$expected_baseline_keys" ]] || exit 33
+    [[ "${__LMLINE_ENV_BASELINE_LMLINE_ALPHA-}" == "a value" ]] || exit 34
+    [[ "${__LMLINE_ENV_BASELINE_LMLINE_ZETA-}" == "z value" ]] || exit 35
+    IFS=:
+    __LMLINE_ENV_BASELINE_SET=0
+    __LMLINE_ENV_BASELINE_KEYS=
+    __lmline_capture_env_baseline
+    [[ -z "$__LMLINE_ENV_BASELINE_KEYS" ]] || exit 36
+    IFS=$original_ifs
+    unset LMLINE_ALPHA LMLINE_ZETA
+    __LMLINE_ENV_BASELINE_SET=0
+    __LMLINE_ENV_BASELINE_KEYS=
+    __lmline_capture_env_baseline
+    [[ -z "$__LMLINE_ENV_BASELINE_KEYS" ]]
+  )
   cfg=$2
   cli=$3
   R() { __lmline_reload_settings_if_changed "$cfg"; }
