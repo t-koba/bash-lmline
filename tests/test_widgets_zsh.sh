@@ -7,6 +7,14 @@ if command -v zsh >/dev/null 2>&1; then
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")
   printf '#!/usr/bin/env bash\nsleep 0.2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"\n' >"$zsh_tmp/engine"
   chmod +x "$zsh_tmp/engine"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-baseline" LMLINE_BASELINE_PROBE=baseline-value LMLINE_bad=ignored LMLINE_=ignored \
+    zsh -efic '
+      source "$1/lmline/init.zsh"
+      [[ "$__LMLINE_ZSHBASE_LMLINE_BASELINE_PROBE" == baseline-value ]]
+      __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_BASELINE_PROBE
+      ! __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_bad
+      ! __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_
+    ' _ "$repo_dir" || fail "zsh baseline captures only regex-matching environment keys"
   cat >"$zsh_tmp/engine-function" <<'EOF'
 #!/usr/bin/env bash
 if ! printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'lmline/widget-function-probe'; then

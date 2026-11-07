@@ -29,7 +29,14 @@ __lmline_zsh_capture_env_baseline() {
   [[ "$__LMLINE_ZSH_BASELINE_SET" == 1 ]] && return 0
   __LMLINE_ZSH_BASELINE_SET=1
   local k
-  for k in ${(k)parameters}; do
+  local -a baseline_names
+  # KSH_ARRAYS changes this special-parameter expansion; preserve its old path.
+  if [[ -o KSH_ARRAYS ]]; then
+    baseline_names=( "${(@k)parameters}" )
+  else
+    baseline_names=( "${(@k)parameters[(I)LMLINE_*]}" )
+  fi
+  for k in "${baseline_names[@]}"; do
     [[ "$k" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
     __LMLINE_ZSH_BASELINE_KEYS+="$k"$'\n'
     typeset -g "__LMLINE_ZSHBASE_$k=${(P)k}"
