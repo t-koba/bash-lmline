@@ -87,7 +87,8 @@ closed() { ! ( : <&"$1" ) 2>/dev/null; }
 check_hint() {
   polls=$((polls + 1))
   case $polls in
-    1|2|5) expected=fallback ;;
+    1) if [[ $mode == nocasematch ]]; then expected=good; else expected=fallback; fi ;;
+    2|5) expected=fallback ;;
     3) expected=par ;;
     4) expected=partial ;;
     6|7) expected=$'carriage\r' ;;
@@ -123,23 +124,33 @@ sleep() {
     7) printf 'lmline-progress: later\n' ;;
   esac >>"$log"
 }
-for mode in normal binary missing disabled; do
+modes=(normal binary missing disabled)
+if [[ $shell == bash ]]; then modes+=(nocasematch); fi
+for mode in "${modes[@]}"; do
   polls=0 enabled=1 limit=8
   [[ $mode != normal ]] || limit=6
+  [[ $mode != nocasematch ]] || limit=1
   log=$work/$mode.log
   : >"$log"
   : >"$work/awk-calls"
   [[ $mode != missing ]] || rm "$log"
   [[ $mode != disabled ]] || enabled=0
+  if [[ $shell == bash && $mode == nocasematch ]]; then
+    # Preserve the prior case-sensitive awk selection despite this caller option.
+    shopt -s nocasematch
+    printf 'lmline-progress: good\nLMLINE-PROGRESS: bogus\n' >"$log"
+  fi
   ( exit 37 ) & child=$!
   result=0
   spinner "$child" fallback "$log" || result=$?
+  if [[ $shell == bash && $mode == nocasematch ]]; then shopt -u nocasematch; fi
   [[ $result == 37 ]] || exit 85
   case $mode in
     normal) calls=0; closed "$saved_read" && closed "$saved_guard" || exit 86 ;;
     binary) calls=2 ;;
     missing) calls=0 ;; # The helper does not invoke awk for a missing file.
     disabled) calls=0; [[ $polls == 0 ]] || exit 87 ;;
+    nocasematch) calls=0 ;;
   esac
   [[ $(command awk 'END { print NR+0 }' "$work/awk-calls") == "$calls" ]] || exit 88
   [[ $mode == disabled || $polls == "$limit" ]] || exit 89

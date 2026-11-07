@@ -204,7 +204,7 @@ __lmline_append_original_candidate() {
 
 __lmline_wait_with_spinner() {
   local pid=$1 label=$2 progress_file=${3:-} frame_index=0 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label status=0
-  local progress_fd= guard_fd= line partial= last_label=
+  local progress_fd= guard_fd= line partial= last_label= progress_prefix='lmline-progress: '
   local -a frames=('.  ' '.. ' '...')
   if ! __lmline_spinner_enabled; then
     wait "$pid" || status=$?
@@ -226,7 +226,7 @@ __lmline_wait_with_spinner() {
       while IFS= read -r -u "$progress_fd" line; do
         line=$partial$line
         partial=
-        [[ "$line" == 'lmline-progress: '* ]] && last_label=${line#lmline-progress: }
+        builtin test "${line:0:${#progress_prefix}}" = "$progress_prefix" && last_label=${line#"$progress_prefix"}
       done
       partial=$partial$line
       # Check after draining so a concurrent append cannot hide a NUL in the
@@ -238,7 +238,7 @@ __lmline_wait_with_spinner() {
       else
         line=
         current_label=$last_label
-        [[ "$partial" == 'lmline-progress: '* ]] && current_label=${partial#lmline-progress: }
+        builtin test "${partial:0:${#progress_prefix}}" = "$progress_prefix" && current_label=${partial#"$progress_prefix"}
         current_label=${current_label:-$label}
       fi
     fi
