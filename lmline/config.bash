@@ -98,7 +98,14 @@ __lmline_capture_env_baseline() {
 __lmline_reconcile_config_load() {
   local old_keys=$__LMLINE_FILE_KEYS new_keys= k cur stamp ref base
   if [[ -n "$__LMLINE_LOAD_KEYS" ]]; then
-    new_keys=$(printf '%s' "$__LMLINE_LOAD_KEYS" | awk 'NF && !seen[$0]++')
+    while IFS= read -r k; do
+      [[ -n "$k" ]] || continue
+      if __lmline_key_in_list "$new_keys" "$k"; then
+        continue
+      fi
+      new_keys+="$k"$'\n'
+    done <<<"$__LMLINE_LOAD_KEYS"
+    new_keys=${new_keys%$'\n'}
   fi
   for k in $old_keys; do
     [[ -n "$k" ]] || continue

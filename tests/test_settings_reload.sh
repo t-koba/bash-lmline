@@ -109,37 +109,42 @@ LMLINE_CONFIG_DIR="$reload_tmp/bash-config" bash --norc -c '
   "$cli" config unset LMLINE_MAX_CANDIDATE_BYTES >/dev/null
   R
   [[ -z "${LMLINE_MAX_CANDIDATE_BYTES-}" ]] || exit 23
-  # H: empty key lists skip AWK; non-empty lists still deduplicate in the
-  # command substitution used by reconciliation.
-  awk() { printf "pass\n" >>"$cfg/awk-passes"; command awk "$@"; }
+  # H: reconciliation keeps first-seen key order and last values without AWK.
+  awk() { printf 'unexpected\n' >>"$cfg/awk-passes"; return 29; }
   R() {
     : >"$cfg/awk-passes"
     __lmline_reload_settings_if_changed "$cfg"
-    [[ $(wc -l <"$cfg/awk-passes") -eq "$1" ]] || exit 29
+    [[ ! -s "$cfg/awk-passes" ]] || exit 29
   }
   printf "%s\n" "export LMLINE_PROJECT_CONFIG=0" >"$cfg/settings.bash"
   printf "%s\n" \
     "export LMLINE_PROJECT_CONFIG=1" \
     "export LMLINE_TOOL_COMMAND_RUN=1" >"$PWD/.lmline.bash"
-  R 1
+  R
   [[ "$LMLINE_PROJECT_CONFIG" == 0 && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 30
   printf "%s\n" "export LMLINE_PROJECT_CONFIG=1" >"$cfg/settings.bash"
-  R 2
+  R
   [[ "${LMLINE_PROJECT_CONFIG:-}" == 1 && "${LMLINE_TOOL_COMMAND_RUN:-}" == 1 ]] || exit 24
   # Revoking consent drops project-owned values before checking the gate,
   # even when the project file itself still tries to enable project config.
   : >"$cfg/settings.bash"
-  R 0
+  R
   [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 25
-  R 0
+  R
   [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 26
-  printf "%s\n" "export LMLINE_DEBUG=0" "export LMLINE_DEBUG=1" >"$cfg/settings.bash"
-  R 1
-  [[ "${LMLINE_DEBUG:-}" == 1 ]] || exit 27
+  printf "%s\n" \
+    "export LMLINE_DEBUG=0" \
+    "export LMLINE_PROGRESS=first" \
+    "export LMLINE_DEBUG=1" >"$cfg/settings.bash"
+  R
+  [[ "${LMLINE_DEBUG:-}" == 1 && "${LMLINE_PROGRESS:-}" == first ]] || exit 27
+  expected_keys="LMLINE_DEBUG
+LMLINE_PROGRESS"
+  [[ "$__LMLINE_FILE_KEYS" == "$expected_keys" ]] || exit 32
   [[ -z "${LMLINE_PROJECT_CONFIG-}" && -z "${LMLINE_TOOL_COMMAND_RUN-}" ]] || exit 28
   rm "$cfg/settings.bash"
-  R 0
-  [[ -z "${LMLINE_DEBUG-}" ]] || exit 31
+  R
+  [[ -z "${LMLINE_DEBUG-}" && "${LMLINE_PROGRESS:-}" == env-value ]] || exit 31
 ' _ "$repo_dir" "$reload_tmp/bash-config" "$repo_dir/lmline/lmline" || fail "Bash settings reload drops obsolete values"
 
 if command -v zsh >/dev/null 2>&1; then
