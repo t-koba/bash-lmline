@@ -69,8 +69,9 @@ __lmline_zsh_remove_temp_file() {
 
 __lmline_zsh_load_all_config() {
   local export_file key value new_keys old_keys cur stamp ref base uk
-  local system_features feature export_fd export_path
-  local -a system_restore
+  local system_features feature export_fd export_path export_script export_status status_key
+  local status_seen=0 invalid_export=0
+  local -a system_restore export_pairs
   local system_was_loaded=0 sysopen_available=1 anonymous_export=0
   local project_config_baseline_set=0 project_config_baseline_value=
   __lmline_zsh_capture_env_baseline
@@ -106,23 +107,7 @@ __lmline_zsh_load_all_config() {
         [[ ! -e "$export_file" && ! -L "$export_file" ]] || return 1
       fi
     fi
-    if (( ! anonymous_export )); then
-      # Restore even a partially successful feature load before falling back.
-      if (( ${#system_restore} )); then
-        if (( system_was_loaded )); then
-          builtin zmodload -F zsh/system "${system_restore[@]}" 2>/dev/null || true
-        else
-          builtin zmodload -u zsh/system 2>/dev/null || true
-        fi
-        system_restore=()
-      fi
-      export_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-config.XXXXXX") || return 1
-      exec {export_fd}>"$export_file" || return 1
-    fi
-    if ! LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
-      __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
-      __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
-      __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" bash -c '
+    export_script='
       source "$1/config.bash"
       __lmline_forget_bridge_keys
       if [[ "${__LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET:-0}" == 1 ]]; then
@@ -134,18 +119,46 @@ __lmline_zsh_load_all_config() {
         [[ "$key" =~ ^LMLINE_[A-Z0-9_]*$ ]] || continue
         printf "%s\0%s\0" "$key" "${!key}"
       done < <(compgen -e LMLINE_)
-    ' _ "$LMLINE_DIR" >&$export_fd; then
-      return 1
-    fi
+    '
     if (( anonymous_export )); then
+      LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
+        __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
+        __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
+        __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" \
+        bash -c "$export_script" _ "$LMLINE_DIR" >&$export_fd || return 1
       builtin sysseek -u $export_fd 0 || return 1
+      export_status=0
     else
-      exec {export_fd}>&-
-      export_fd=
-      exec {export_fd}<"$export_file" || return 1
+      # No pathname fallback: retain the caller's coprocess, and report Bash's
+      # status separately from its output. This key cannot be an exported key.
+      status_key="__lmline_zsh_export_status_$$"
+      exec {export_fd}< <(
+        local child_status=0
+        LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
+          __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
+          __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
+          __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_VALUE="$project_config_baseline_value" \
+          bash -c "$export_script" _ "$LMLINE_DIR" || child_status=$?
+        printf '%s\0%s\0' "$status_key" "$child_status"
+      ) || return 1
     fi
+    # Drain the pipe before importing anything: even a child that emits valid
+    # pairs and then fails (or exits without a status record) is failure-atomic.
+    while IFS= read -r -d "" -u $export_fd key; do
+      IFS= read -r -d "" -u $export_fd value || return 1
+      if (( status_seen )); then
+        invalid_export=1
+      elif (( ! anonymous_export )) && [[ "$key" == "$status_key" ]]; then
+        status_seen=1
+        export_status=$value
+      else
+        export_pairs+=("$key" "$value")
+      fi
+    done
+    (( anonymous_export || status_seen )) &&
+      [[ -z "$key" && "$export_status" == 0 && "$invalid_export" == 0 ]] || return 1
     new_keys=
-    while IFS= read -r -d "" -u $export_fd key && IFS= read -r -d "" -u $export_fd value; do
+    for key value in "${export_pairs[@]}"; do
       typeset -gx "$key=$value"
       new_keys+="$key"$'\n'
       typeset -g "__LMLINE_ZSHSTAMP_$key=${(P)key}"

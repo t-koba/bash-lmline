@@ -49,7 +49,9 @@ if command -v zsh >/dev/null 2>&1; then
     [[ $(whence -w rm) == "rm: command" && $(whence -w mv) == "mv: builtin" ]] || exit 94
   ' _ "$repo_dir" || fail "zsh config cleanup preserves partial zsh/files features"
   [[ -z "$(find "$zsh_tmp/tmp-cleanup-partial" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config cleanup handles partial zsh/files state"
+  config_fallbacks=(unavailable)
   if zsh -f -c 'builtin zmodload -F zsh/system b:sysopen b:sysseek >/dev/null 2>&1' >/dev/null 2>&1; then
+    config_fallbacks+=(collision)
     mkdir -p "$zsh_tmp/config-sysopen" "$zsh_tmp/tmp sysopen" "$zsh_tmp/sysopen-bin"
     cat >"$zsh_tmp/sysopen-bin/mktemp" <<'EOF'
 #!/bin/sh
@@ -109,36 +111,77 @@ EOF
     [[ $(<"$zsh_tmp/sysopen-victim") == 'sentinel victim' ]] || fail "zsh sysopen failure leaves victim unchanged"
     [[ -z "$(find "$zsh_tmp/tmp sysopen" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh sysopen replacement path is cleaned after child failure"
     [[ ! -e "$zsh_tmp/mktemp-called" ]] || fail "zsh sysopen avoids external mktemp when available"
-
-    mkdir -p "$zsh_tmp/config-sysopen-collision" "$zsh_tmp/tmp-sysopen-collision"
-    LMLINE_CONFIG_DIR="$zsh_tmp/config-sysopen-collision" TMPDIR="$zsh_tmp/tmp-sysopen-collision" zsh -fic '
-      builtin zmodload -u zsh/system 2>/dev/null || true
-      builtin zmodload -F zsh/system b:sysopen || exit 89
-      before_features=$(builtin zmodload -L -F zsh/system)
-      collision="$TMPDIR/lmline-zsh-config.$$"
-      print -r -- sentinel >"$collision"
-      source "$1/lmline/init.zsh" || exit 90
-      after_features=$(builtin zmodload -L -F zsh/system)
-      [[ "$after_features" == "$before_features" ]] || exit 93
-      IFS= read -r content <"$collision"
-      [[ "$content" == sentinel ]] || exit 91
-      for file in "$TMPDIR"/lmline-zsh-config.*; do
-        [[ "$file" == "$collision" ]] || exit 92
-      done
-      command rm -f "$collision"
-    ' _ "$repo_dir" || fail "zsh sysopen collision falls back without modifying the existing file"
   fi
-  if ! zsh -f -c 'builtin zmodload -u zsh/system 2>/dev/null || true; module_path=(); builtin zmodload -F zsh/system b:sysopen' >/dev/null 2>&1; then
-    mkdir -p "$zsh_tmp/config-sysopen-fallback" "$zsh_tmp/tmp-sysopen-fallback"
-    LMLINE_CONFIG_DIR="$zsh_tmp/config-sysopen-fallback" TMPDIR="$zsh_tmp/tmp-sysopen-fallback" zsh -fic '
+  mkdir -p "$zsh_tmp/pipe-bin" "$zsh_tmp/config-pipe" "$zsh_tmp/tmp-pipe"
+  cat >"$zsh_tmp/pipe-bin/mktemp" <<'EOF'
+#!/bin/sh
+printf 'called\n' >>"$LMLINE_TEST_MKTEMP_MARKER"
+ln -s "$LMLINE_TEST_VICTIM" "$LMLINE_TEST_MKTEMP_PATH" || exit 98
+printf '%s\n' "$LMLINE_TEST_MKTEMP_PATH"
+EOF
+  pipe_real_bash=$(command -v bash)
+  cat >"$zsh_tmp/pipe-bin/bash" <<EOF
+#!/bin/sh
+case "\${2-}" in
+  *BASH_VERSINFO*) exec "$pipe_real_bash" "\$@" ;;
+esac
+if [ "\${LMLINE_TEST_PIPE_FAIL:-0}" = 1 ]; then
+  printf 'LMLINE_TEST_PIPE_VALUE\\0changed\\0LMLINE_TEST_PIPE_NEW\\0partial\\0'
+  exit 79
+fi
+exec "$pipe_real_bash" "\$@"
+EOF
+  chmod +x "$zsh_tmp/pipe-bin/"*
+  cat >"$zsh_tmp/config-pipe/settings.bash" <<'EOF'
+export LMLINE_TEST_PIPE_VALUE='pipe imported'
+EOF
+  printf 'sentinel victim\n' >"$zsh_tmp/pipe-victim"
+  for fallback in "${config_fallbacks[@]}"; do
+    for array_mode in default ksh; do
+      LMLINE_CONFIG_DIR="$zsh_tmp/config-pipe" TMPDIR="$zsh_tmp/tmp-pipe" \
+      LMLINE_TEST_VICTIM="$zsh_tmp/pipe-victim" LMLINE_TEST_MKTEMP_PATH="$zsh_tmp/tmp-pipe/substituted" \
+      LMLINE_TEST_MKTEMP_MARKER="$zsh_tmp/pipe-mktemp-called" PATH="$zsh_tmp/pipe-bin:$PATH" zsh -fic '
+      [[ "$3" == ksh ]] && setopt KSH_ARRAYS
       builtin zmodload zsh/parameter zsh/regex zsh/zle || exit 89
       builtin zmodload -u zsh/system 2>/dev/null || true
-      module_path=()
-      source "$1/lmline/init.zsh" || exit 90
-      if builtin zmodload -e zsh/system >/dev/null 2>&1; then exit 91; fi
-    ' _ "$repo_dir" || fail "zsh config bridge falls back to mktemp without zsh/system"
-    [[ -z "$(find "$zsh_tmp/tmp-sysopen-fallback" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh fallback temp export is cleaned"
-  fi
+      if [[ "$2" == collision ]]; then
+        builtin zmodload -F zsh/system b:sysopen || exit 90
+        collision="$TMPDIR/lmline-zsh-config.$$"
+        print -r -- sentinel >"$collision"
+      else
+        module_path=()
+      fi
+      before_features=$(builtin zmodload -L -F zsh/system 2>/dev/null) || before_features=
+      export LMLINE_TEST_PIPE_ENV=$'line one\nline two\n'
+      export LMLINE_TEST_PIPE_EMPTY=
+      coproc { IFS= read -r request; print -r -- "reply:$request"; }
+      source "$1/lmline/init.zsh" || exit 91
+      [[ "$LMLINE_TEST_PIPE_VALUE" == "pipe imported" &&
+         "$LMLINE_TEST_PIPE_ENV" == $'line one\nline two\n' &&
+         -v LMLINE_TEST_PIPE_EMPTY && -z "$LMLINE_TEST_PIPE_EMPTY" ]] || exit 92
+      print -rp -- preserved
+      IFS= read -rp reply
+      [[ "$reply" == reply:preserved ]] || exit 93
+      before_keys=$__LMLINE_ZSH_BRIDGE_KEYS
+      before_stamp=$__LMLINE_ZSHSTAMP_LMLINE_TEST_PIPE_VALUE
+      export LMLINE_TEST_PIPE_FAIL=1
+      if __lmline_zsh_load_all_config; then exit 94; fi
+      [[ "$LMLINE_TEST_PIPE_VALUE" == "$before_stamp" && ! -v LMLINE_TEST_PIPE_NEW &&
+         "$__LMLINE_ZSH_BRIDGE_KEYS" == "$before_keys" &&
+         "$__LMLINE_ZSHSTAMP_LMLINE_TEST_PIPE_VALUE" == "$before_stamp" ]] || exit 95
+      after_features=$(builtin zmodload -L -F zsh/system 2>/dev/null) || after_features=
+      [[ "$after_features" == "$before_features" ]] || exit 96
+      if [[ -n "$collision" ]]; then
+        IFS= read -r content <"$collision"
+        [[ "$content" == sentinel ]] || exit 97
+        command rm -f "$collision"
+      fi
+    ' _ "$repo_dir" "$fallback" "$array_mode" || fail "zsh $fallback pipe fallback imports atomically and preserves $array_mode arrays, module state and coprocess"
+      [[ $(<"$zsh_tmp/pipe-victim") == 'sentinel victim' ]] || fail "zsh $fallback fallback cannot truncate victim"
+      [[ ! -e "$zsh_tmp/pipe-mktemp-called" ]] || fail "zsh $fallback fallback never invokes mktemp"
+      [[ -z "$(find "$zsh_tmp/tmp-pipe" -mindepth 1 -print -quit)" ]] || fail "zsh $fallback fallback leaves no temporary path"
+    done
+  done
   real_bash=$(command -v bash)
   cat >"$zsh_tmp/fail-cleanup-bin/bash" <<EOF
 #!/bin/sh
