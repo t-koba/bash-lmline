@@ -38,6 +38,17 @@ if command -v zsh >/dev/null 2>&1; then
     if (( was_loaded )); then builtin zmodload -e zsh/files >/dev/null 2>&1 || exit 88; fi
   ' _ "$repo_dir" || fail "zsh config bridge preserves a preloaded files module"
   [[ -z "$(find "$zsh_tmp/tmp-cleanup-preloaded" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config bridge removes temporary export with preloaded module"
+  mkdir -p "$zsh_tmp/config-cleanup-partial" "$zsh_tmp/tmp-cleanup-partial"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cleanup-partial" TMPDIR="$zsh_tmp/tmp-cleanup-partial" zsh -fic '
+    builtin zmodload -u zsh/files 2>/dev/null || true
+    builtin zmodload -F zsh/files b:mv || exit 90
+    before_features=$(builtin zmodload -L -F zsh/files) || exit 91
+    source "$1/lmline/init.zsh"
+    after_features=$(builtin zmodload -L -F zsh/files) || exit 92
+    [[ "$after_features" == "$before_features" ]] || exit 93
+    [[ $(whence -w rm) == "rm: command" && $(whence -w mv) == "mv: builtin" ]] || exit 94
+  ' _ "$repo_dir" || fail "zsh config cleanup preserves partial zsh/files features"
+  [[ -z "$(find "$zsh_tmp/tmp-cleanup-partial" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config cleanup handles partial zsh/files state"
   real_bash=$(command -v bash)
   cat >"$zsh_tmp/fail-cleanup-bin/bash" <<EOF
 #!/bin/sh

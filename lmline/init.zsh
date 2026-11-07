@@ -43,14 +43,25 @@ __lmline_zsh_capture_env_baseline() {
   done
 }
 
-# Avoid a subprocess for private cleanup without changing `rm` lookup when the
-# user did not already load zsh/files.
+# Avoid a subprocess for private cleanup without changing `rm` lookup or any
+# zsh/files features the user already loaded.
 __lmline_zsh_remove_temp_file() {
-  if builtin zmodload -e zsh/files 2>/dev/null; then
-    builtin rm -f "$1"
-  elif builtin zmodload zsh/files 2>/dev/null; then
-    builtin rm -f "$1"
-    builtin zmodload -u zsh/files 2>/dev/null || true
+  # zsh/files can be loaded with only a subset of its builtin features.
+  local features module_was_loaded=0
+  if features=$(builtin zmodload -L -F zsh/files 2>/dev/null); then
+    module_was_loaded=1
+  else
+    features=
+  fi
+  if [[ " $features " == *" b:rm "* ]]; then
+    builtin rm -f "$1" 2>/dev/null || command rm -f "$1"
+  elif builtin zmodload -F zsh/files b:rm 2>/dev/null; then
+    builtin rm -f "$1" 2>/dev/null || command rm -f "$1"
+    if (( module_was_loaded )); then
+      builtin zmodload -F zsh/files -b:rm 2>/dev/null || true
+    else
+      builtin zmodload -u zsh/files 2>/dev/null || true
+    fi
   else
     command rm -f "$1"
   fi
