@@ -578,14 +578,23 @@ __lmline_load_candidates_from_file() {
 }
 
 __lmline_record_suggestion() {
-  local mode=$1 original=$2 candidate=$3
+  local mode=$1 original=$2 candidate=$3 date_id timestamp
   # The log holds the user's own command lines, so it stays user-only.
   mkdir -p "$LMLINE_HISTORY_DIR" 2>/dev/null || true
   chmod 700 "$LMLINE_HISTORY_DIR" 2>/dev/null || true
-  __LMLINE_LAST_SUGGESTION_ID=$(date +%Y%m%d%H%M%S)-$$
+  # Bash 4.2+ printf %T avoids two external date processes. Keep the normal
+  # command path when either utility is overridden by a shell function.
+  if builtin declare -F date >/dev/null 2>&1 || builtin declare -F printf >/dev/null 2>&1; then
+    date_id=$(date +%Y%m%d%H%M%S)
+    timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+  else
+    printf -v date_id '%(%Y%m%d%H%M%S)T' -1
+    TZ=UTC0 printf -v timestamp '%(%Y-%m-%dT%H:%M:%SZ)T' -1
+  fi
+  __LMLINE_LAST_SUGGESTION_ID=$date_id-$$
   {
     printf 'id=%q\n' "$__LMLINE_LAST_SUGGESTION_ID"
-    printf 'timestamp=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'timestamp=%q\n' "$timestamp"
     printf 'cwd=%q\n' "$PWD"
     printf 'mode=%q\n' "$mode"
     printf 'original=%q\n' "$original"

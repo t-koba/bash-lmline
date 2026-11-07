@@ -490,13 +490,24 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-copilot-token" LMLINE_ASYNC=0 LMLINE_ENGIN
   ! grep -q "candidate-truncated" /tmp/lmline-widget-copilot-token.err
 ' _ "$repo_dir" || fail "a copilot token does not mark the candidate truncated"
 # The suggestion log holds the user own command lines, so it stays user-only.
-LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mode" bash --norc -e -i -c '
+TZ=America/Los_Angeles LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mode" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
+  tz_before=$TZ
   __lmline_record_suggestion "generate" "# say one" "echo one"
   [[ -f "$LMLINE_HISTORY_DIR/suggestions.log" ]]
+  [[ $__LMLINE_LAST_SUGGESTION_ID == *"-$BASHPID" ]]
+  grep -Eq "^timestamp=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" "$LMLINE_HISTORY_DIR/suggestions.log"
+  [[ $TZ == "$tz_before" ]]
   [[ $(ls -ld "$LMLINE_HISTORY_DIR" | cut -c2-10) == rwx------ ]]
   [[ $(ls -l "$LMLINE_HISTORY_DIR/suggestions.log" | cut -c2-10) == rw------- ]]
-' _ "$repo_dir" || fail "the suggestion log stays user-only"
+' _ "$repo_dir" || fail "the suggestion log keeps UTC records and user-only permissions"
+LMLINE_CONFIG_DIR="$widget_tmp/config-date-function" LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-date-function" bash --norc -e -i -c '
+  date() { printf custom-date; }
+  source "$1/lmline/init.bash"
+  __lmline_record_suggestion "generate" "original" "candidate"
+  [[ $__LMLINE_LAST_SUGGESTION_ID == "custom-date-$$" ]]
+  grep -q "^timestamp=custom-date$" "$LMLINE_HISTORY_DIR/suggestions.log"
+' _ "$repo_dir" || fail "suggestion timestamp formatting respects a shell date override"
 printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: curl: (28) Operation timed out after 12003 milliseconds with 0 bytes received\\n" >&2\nexit 1\n' >"$widget_tmp/engine-fail"
 chmod +x "$widget_tmp/engine-fail"
 LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-fail" bash --norc -e -i -c '
