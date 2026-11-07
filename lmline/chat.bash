@@ -493,7 +493,7 @@ __lmline_report_provider_failure() {
 }
 
 __lmline_accept_response() {
-  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason_is_stream_ended=0 display_reason= provider_failed=0 max_tokens_advice=
+  local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}} finish_status incomplete_reason_is_stream_ended=0 display_reason= provider_failed=0 response_flags max_tokens_advice=
   # jq normally processes successive documents independently. Validate the
   # whole body before any provider fields or normalized output are consumed.
   if ! __lmline_single_json_object "$response"; then
@@ -501,13 +501,15 @@ __lmline_accept_response() {
     return 1
   fi
   if [[ "$api_format" == responses ]]; then
-    if jq -e '((.status // "") == "failed") or ((.error? | type) == "object")' "$response" >/dev/null 2>&1; then
-      provider_failed=1
-    fi
     # Compare the reason inside jq so Bash never drops a NUL before the exact
     # classification decision; render the display copy before normalization
     # changes the response file, and keep raw bytes out of Bash variables.
-    jq -e '.incomplete_details.reason == "stream_ended_without_completion"' "$response" >/dev/null 2>&1 && incomplete_reason_is_stream_ended=1
+    response_flags=$(jq -r '[
+      (try (((.status // "") == "failed") or ((.error? | type) == "object")) catch false),
+      (try (.incomplete_details.reason == "stream_ended_without_completion") catch false)
+    ] | @tsv' "$response" 2>/dev/null) || response_flags=
+    [[ ${response_flags%%$'\t'*} == true ]] && provider_failed=1
+    [[ ${response_flags#*$'\t'} == true ]] && incomplete_reason_is_stream_ended=1
     display_reason=$(jq -r '.incomplete_details.reason // ""' "$response" 2>/dev/null | __lmline_display_answer 2>/dev/null) || display_reason=
     display_reason=${display_reason//$'\n'/ }
   fi

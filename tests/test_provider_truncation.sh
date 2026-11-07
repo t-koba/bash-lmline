@@ -218,6 +218,17 @@ grep -Fq 'request failed: server_error: boom' "$case_dir/stderr" || fail "respon
 ! grep -Fq 'partial-candidate' "$case_dir/stderr" || fail "responses failed response leaked content"
 ok "responses failure rejects explain"
 
+init_case responses-failed-malformed-incomplete responses
+cat >"$case_dir/response.json" <<'JSON'
+{"status":"failed","error":{"code":"server_error","message":"boom"},"incomplete_details":"malformed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"echo provider-candidate"}]}]}
+JSON
+invoke_engine
+[[ $engine_status != 0 ]] || fail "responses malformed incomplete metadata masked provider failure"
+[[ -z "$(candidates_of <<<"$engine_output")" ]] || fail "responses failed malformed incomplete metadata emitted candidate"
+[[ $(cache_count) == 0 ]] || fail "responses failed malformed incomplete metadata cached"
+[[ $(cat "$case_dir/curl-count") == 1 ]] || fail "responses failed malformed incomplete metadata retried"
+[[ $(cat "$case_dir/stderr") == 'lmline-engine: request failed: server_error: boom; full error: lmline debug trace on' ]] || fail "responses failed malformed incomplete metadata diagnostic"
+
 # Compatibility: absent/null statuses and unfamiliar provider statuses are
 # not rejected by a broad success allowlist.
 init_case missing-status chat
