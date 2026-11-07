@@ -288,19 +288,54 @@ __lmline_zsh_set_candidates() {
 
 __lmline_zsh_wait_with_spinner() {
   local pid=$1 label=$2 progress_file=${3:-} frame_index=1 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label wait_status=0
+  local progress_fd= guard_fd= line partial= last_label=
   local -a frames=('.  ' '.. ' '...')
   if ! __lmline_zsh_spinner_enabled; then
     wait "$pid" || wait_status=$?
     return "$wait_status"
   fi
+  # Only regular engine logs can be drained without blocking. Keep independent
+  # offsets because line reads may discard NULs and change prefix matching.
+  if [[ -f "$progress_file" ]]; then
+    { exec {progress_fd}<"$progress_file"; } 2>/dev/null || progress_fd=
+    if [[ -n "$progress_fd" ]]; then
+      { exec {guard_fd}<"$progress_file"; } 2>/dev/null || {
+        exec {progress_fd}<&-
+        progress_fd=
+      }
+    fi
+  fi
   while kill -0 "$pid" 2>/dev/null; do
-    current_label=$(__lmline_zsh_progress_label "$progress_file" "$label")
+    if [[ -n "$progress_fd" ]]; then
+      while IFS= read -r -u "$progress_fd" line; do
+        line=$partial$line
+        partial=
+        [[ "$line" == 'lmline-progress: '* ]] && last_label=${line#lmline-progress: }
+      done
+      partial=$partial$line
+      # Check after draining so a concurrent append cannot hide a NUL in the
+      # bytes just read. Once found, retain awk's exact binary-file semantics.
+      if IFS= read -r -d '' -u "$guard_fd" line; then
+        line=
+        exec {progress_fd}<&- {guard_fd}<&-
+        progress_fd=
+      else
+        line=
+        current_label=$last_label
+        [[ "$partial" == 'lmline-progress: '* ]] && current_label=${partial#lmline-progress: }
+        current_label=${current_label:-$label}
+      fi
+    fi
+    if [[ -z "$progress_fd" ]]; then
+      current_label=$(__lmline_zsh_progress_label "$progress_file" "$label")
+    fi
     __lmline_zsh_hint "${LMLINE_PS0}${current_label}${frames[$frame_index]} ${elapsed}s"
     sleep "$interval"
     frame_index=$(( (frame_index % ${#frames[@]}) + 1 ))
     tick=$((tick + 1))
     (( tick % 5 == 0 )) && elapsed=$((elapsed + 1))
   done
+  [[ -n "$progress_fd" ]] && exec {progress_fd}<&- {guard_fd}<&-
   wait "$pid" || wait_status=$?
   return "$wait_status"
 }
