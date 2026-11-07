@@ -1934,8 +1934,8 @@ __lmline_chat_run() {
     __lmline_trace_file "request.round-${tool_round}.json" "$payload_file"
   done
 
-  if ! __lmline_response_has_content "$body_file" &&
-    [[ "$LMLINE_TOOL_MODE" == auto ]] &&
+  if [[ "$LMLINE_TOOL_MODE" == auto ]] &&
+    ! __lmline_response_has_content "$body_file" &&
     jq -e 'has("tools")' "$payload_file" >/dev/null 2>&1 &&
     __lmline_response_empty_retryable "$body_file"; then
     if __lmline_request_repeat_allowed; then
