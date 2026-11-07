@@ -69,6 +69,8 @@ __lmline_zsh_remove_temp_file() {
 
 __lmline_zsh_load_all_config() {
   local export_file key value new_keys old_keys cur stamp ref base uk
+  local system_features sysopen_fd
+  local system_was_loaded=0 sysopen_added=0 sysopen_available=0 temp_file_created=0
   local project_config_baseline_set=0 project_config_baseline_value=
   __lmline_zsh_capture_env_baseline
   old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
@@ -77,7 +79,36 @@ __lmline_zsh_load_all_config() {
     project_config_baseline_set=1
     project_config_baseline_value=${(P)base}
   fi
-  export_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-config.XXXXXX") || return 1
+  # Exclusive creation makes the PID name safe; collisions fall back to mktemp.
+  # Module presence alone does not guarantee that sysopen itself is loaded.
+  if system_features=$(builtin zmodload -L -F zsh/system 2>/dev/null); then
+    system_was_loaded=1
+  else
+    system_features=
+  fi
+  if [[ " $system_features " == *" b:sysopen "* ]]; then
+    sysopen_available=1
+  elif builtin zmodload -F zsh/system b:sysopen 2>/dev/null; then
+    sysopen_available=1
+    sysopen_added=1
+  fi
+  if (( sysopen_available )); then
+    export_file="${TMPDIR:-/tmp}/lmline-zsh-config.$$"
+    if builtin sysopen -w -o creat -o excl -m 600 -u sysopen_fd "$export_file" 2>/dev/null; then
+      exec {sysopen_fd}>&-
+      temp_file_created=1
+    fi
+  fi
+  if (( sysopen_added )); then
+    if (( system_was_loaded )); then
+      builtin zmodload -F zsh/system -b:sysopen 2>/dev/null || true
+    else
+      builtin zmodload -u zsh/system 2>/dev/null || true
+    fi
+  fi
+  if (( ! temp_file_created )); then
+    export_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-config.XXXXXX") || return 1
+  fi
   if ! LMLINE_CONFIG_DIR="$LMLINE_CONFIG_DIR" \
     __LMLINE_ZSH_PREV_KEYS="$__LMLINE_ZSH_BRIDGE_KEYS" \
     __LMLINE_ZSH_PROJECT_CONFIG_BASELINE_SET="$project_config_baseline_set" \
