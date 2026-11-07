@@ -578,7 +578,7 @@ __lmline_load_candidates_from_file() {
 }
 
 __lmline_record_suggestion() {
-  local mode=$1 original=$2 candidate=$3 date_id timestamp
+  local mode=$1 original=$2 candidate=$3 date_id timestamp tz_declaration tz_attributes
   # The log holds the user's own command lines, so it stays user-only.
   # Skip the external mkdir on warm writes, but retain a shell-function override.
   if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$LMLINE_HISTORY_DIR" ]]; then
@@ -592,7 +592,14 @@ __lmline_record_suggestion() {
     timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
   else
     printf -v date_id '%(%Y%m%d%H%M%S)T' -1
-    TZ=UTC0 printf -v timestamp '%(%Y-%m-%dT%H:%M:%SZ)T' -1
+    # A readonly TZ cannot be temporarily overridden for UTC formatting.
+    tz_declaration=$(builtin declare -p TZ 2>/dev/null) || tz_declaration=
+    tz_attributes=${tz_declaration#declare }
+    tz_attributes=${tz_attributes%% *}
+    case $tz_attributes in
+      -*r*) timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) ;;
+      *) TZ=UTC0 printf -v timestamp '%(%Y-%m-%dT%H:%M:%SZ)T' -1 ;;
+    esac
   fi
   __LMLINE_LAST_SUGGESTION_ID=$date_id-$$
   {

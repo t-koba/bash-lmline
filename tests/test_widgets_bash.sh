@@ -523,6 +523,16 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-date-function" LMLINE_ENGINE="$widget_tmp/
   [[ $__LMLINE_LAST_SUGGESTION_ID == "custom-date-$$" ]]
   grep -q "^timestamp=custom-date$" "$LMLINE_HISTORY_DIR/suggestions.log"
 ' _ "$repo_dir" || fail "suggestion timestamp formatting respects a shell date override"
+mkdir -p "$widget_tmp/bin-readonly-tz"
+printf '#!/bin/sh\nprintf "2030-01-02T03:04:05Z\\n"\n' >"$widget_tmp/bin-readonly-tz/date"
+chmod +x "$widget_tmp/bin-readonly-tz/date"
+PATH="$widget_tmp/bin-readonly-tz:$PATH" TZ=America/Los_Angeles LMLINE_CONFIG_DIR="$widget_tmp/config-readonly-tz" LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-readonly-tz" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  readonly TZ
+  __lmline_record_suggestion "generate" "original" "candidate"
+  grep -q "^timestamp=2030-01-02T03:04:05Z$" "$LMLINE_HISTORY_DIR/suggestions.log"
+  [[ $TZ == America/Los_Angeles ]]
+' _ "$repo_dir" || fail "readonly TZ retains a UTC suggestion timestamp"
 LMLINE_CONFIG_DIR="$widget_tmp/config-mkdir-function" LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mkdir-function" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   mkdir -p "$LMLINE_HISTORY_DIR"
