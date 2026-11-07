@@ -43,6 +43,19 @@ __lmline_zsh_capture_env_baseline() {
   done
 }
 
+# Avoid a subprocess for private cleanup without changing `rm` lookup when the
+# user did not already load zsh/files.
+__lmline_zsh_remove_temp_file() {
+  if builtin zmodload -e zsh/files 2>/dev/null; then
+    builtin rm -f "$1"
+  elif builtin zmodload zsh/files 2>/dev/null; then
+    builtin rm -f "$1"
+    builtin zmodload -u zsh/files 2>/dev/null || true
+  else
+    command rm -f "$1"
+  fi
+}
+
 __lmline_zsh_load_all_config() {
   local export_file key value new_keys old_keys cur stamp ref base uk
   local project_config_baseline_set=0 project_config_baseline_value=
@@ -70,7 +83,7 @@ __lmline_zsh_load_all_config() {
       printf "%s\0%s\0" "$key" "${!key}"
     done < <(compgen -e LMLINE_)
   ' _ "$LMLINE_DIR" >"$export_file"; then
-    rm -f "$export_file"
+    __lmline_zsh_remove_temp_file "$export_file"
     return 1
   fi
   new_keys=
@@ -79,7 +92,7 @@ __lmline_zsh_load_all_config() {
     new_keys+="$key"$'\n'
     typeset -g "__LMLINE_ZSHSTAMP_$key=${(P)key}"
   done <"$export_file"
-  rm -f "$export_file"
+  __lmline_zsh_remove_temp_file "$export_file"
   # Drop values the files no longer define: restore the pre-bridge
   # environment value (or unset), but only while the shell still holds the
   # value the bridge provided, so intentional user changes are never cleared.

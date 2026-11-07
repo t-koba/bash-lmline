@@ -15,6 +15,44 @@ if command -v zsh >/dev/null 2>&1; then
       ! __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_bad
       ! __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_
     ' _ "$repo_dir" || fail "zsh baseline captures only regex-matching environment keys"
+  mkdir -p "$zsh_tmp/config-cleanup" "$zsh_tmp/tmp-cleanup" "$zsh_tmp/config-cleanup-preloaded" "$zsh_tmp/tmp-cleanup-preloaded" "$zsh_tmp/fail-cleanup-bin" "$zsh_tmp/tmp-cleanup-failed"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cleanup" TMPDIR="$zsh_tmp/tmp-cleanup" zsh -fic '
+    was_loaded=0
+    builtin zmodload -e zsh/files >/dev/null 2>&1 && was_loaded=1
+    before=$(whence -w rm)
+    source "$1/lmline/init.zsh"
+    [[ $(whence -w rm) == "$before" ]] || exit 84
+    if (( was_loaded )); then
+      builtin zmodload -e zsh/files >/dev/null 2>&1 || exit 85
+    else
+      if builtin zmodload -e zsh/files >/dev/null 2>&1; then exit 86; fi
+    fi
+  ' _ "$repo_dir" || fail "zsh config bridge cleanup restores rm resolution"
+  [[ -z "$(find "$zsh_tmp/tmp-cleanup" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config bridge removes its temporary export file"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cleanup-preloaded" TMPDIR="$zsh_tmp/tmp-cleanup-preloaded" zsh -fic '
+    was_loaded=0
+    builtin zmodload zsh/files >/dev/null 2>&1 && was_loaded=1
+    before=$(whence -w rm)
+    source "$1/lmline/init.zsh"
+    [[ $(whence -w rm) == "$before" ]] || exit 87
+    if (( was_loaded )); then builtin zmodload -e zsh/files >/dev/null 2>&1 || exit 88; fi
+  ' _ "$repo_dir" || fail "zsh config bridge preserves a preloaded files module"
+  [[ -z "$(find "$zsh_tmp/tmp-cleanup-preloaded" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config bridge removes temporary export with preloaded module"
+  real_bash=$(command -v bash)
+  cat >"$zsh_tmp/fail-cleanup-bin/bash" <<EOF
+#!/bin/sh
+case "\${2-}" in
+  *BASH_VERSINFO*) exec "$real_bash" "\$@" ;;
+  *) exit 79 ;;
+esac
+EOF
+  chmod +x "$zsh_tmp/fail-cleanup-bin/bash"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cleanup-failed" TMPDIR="$zsh_tmp/tmp-cleanup-failed" PATH="$zsh_tmp/fail-cleanup-bin:$PATH" zsh -fic '
+    before=$(whence -w rm)
+    source "$1/lmline/init.zsh"
+    [[ $(whence -w rm) == "$before" ]] || exit 89
+  ' _ "$repo_dir" || fail "zsh config bridge failure cleanup preserves rm resolution"
+  [[ -z "$(find "$zsh_tmp/tmp-cleanup-failed" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh config bridge removes temporary export after child failure"
   cat >"$zsh_tmp/engine-function" <<'EOF'
 #!/usr/bin/env bash
 if ! printf '%s\n' "${LMLINE_SHELL_FUNCTIONS-}" | grep -Fxq 'lmline/widget-function-probe'; then
