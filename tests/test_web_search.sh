@@ -193,16 +193,24 @@ assert_safe_search_display() {
 }
 
 # Exact Bidi_Control set is untrusted in queries, URLs and titles; rendering
-# must preserve RTL letters and must not mutate the raw provider response.
+# must preserve RTL letters and raw data. All searches precede citations,
+# even across documents; joined queries and empty citation fields stay exact.
 # shellcheck source=lmline/websearch.bash
 source "$repo_dir/lmline/websearch.bash"
 jq -cn '
   "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069" as $controls
   | {output:[
-      {type:"web_search_call",action:{query:("שלום" + $controls + "مرحبا")}},
       {type:"message",content:[{annotations:[{type:"url_citation",
         url:("https://example.test/" + $controls + "שלום"),
-        title:("שלום" + $controls + "مرحبا")}]}]}
+        title:("שלום" + $controls + "مرحبا")}]}]},
+      {type:"web_search_call",action:{queries:[("שלום" + $controls), "مرحبا"]}}
+    ]},
+    {output:[
+      {type:"web_search_call",action:{query:"second"}},
+      {type:"message",content:[{annotations:[
+        {type:"url_citation",url:"https://example.test/empty-title"},
+        {type:"url_citation",url:"",title:"title-only"},
+        {type:"url_citation",url:"",title:""}]}]}
     ]}
 ' >"$ws_tmp/bidi-response.json"
 cp "$ws_tmp/bidi-response.json" "$ws_tmp/bidi-original.json"
@@ -213,11 +221,11 @@ for shape in native replay; do
     body="$ws_tmp/bidi-replay.json"
   fi
   __lmline_web_search_report "$body" 2>"$ws_tmp/bidi-report"
-  expected=$'lmline-search: שלוםمرحبا\nlmline-citation: https://example.test/שלום\tשלוםمرحبا'
-  [[ $(cat "$ws_tmp/bidi-report") == "$expected" ]] || fail "bidi-free search events/citations preserve RTL ($shape)"
+  expected=$'lmline-search: שלום مرحبا\nlmline-search: second\nlmline-citation: https://example.test/שלום\tשלוםمرحبا\nlmline-citation: https://example.test/empty-title\t\nlmline-citation: title-only\t'
+  [[ $(cat "$ws_tmp/bidi-report") == "$expected" ]] || fail "search report order, fields and bidi-free RTL ($shape)"
 done
 cmp -s "$ws_tmp/bidi-original.json" "$ws_tmp/bidi-response.json" || fail 'raw search response retained'
-ok 'search display removes bidi controls and preserves RTL text'
+ok 'search display preserves order, empty fields and bidi-free RTL text'
 
 # 1. Default off: no provider-native search tool in the request, one call.
 reset_fake
