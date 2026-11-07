@@ -285,7 +285,16 @@ if __lmline_web_search_report "$ws_tmp/malformed-body.json" \
 else
   malformed_status=$?
 fi
-[[ "$malformed_status" == 4 ]] || fail 'malformed search body status changed'
+# jq versions can assign different nonzero codes to the same parse failure.
+# Compare the helper with jq's parser status in this environment rather than
+# baking in one release's code.
+if jq -s -r 'empty' "$ws_tmp/malformed-body.json" >/dev/null 2>/dev/null; then
+  malformed_jq_status=0
+else
+  malformed_jq_status=$?
+fi
+[[ "$malformed_jq_status" != 0 ]] || fail 'malformed search fixture unexpectedly parsed'
+[[ "$malformed_status" == "$malformed_jq_status" ]] || fail 'malformed search body status changed'
 [[ "$__lmline_search_calls" == 0 ]] || fail 'malformed search body changed search count'
 [[ ! -s "$ws_tmp/malformed-body.out" && ! -s "$ws_tmp/malformed-body.err" ]] \
   || fail 'malformed search body was displayed'
