@@ -48,31 +48,23 @@ proc expect_required_spinner_and_explanation {release_file} {
   }
 }
 
-# Explain gate (Zsh): no Expect-side release. The Zsh bridge captures all of
-# its output (including the "command: " header) in a file and prints it only
-# after wait, and widget hints go through "zle -M", which only reaches the
-# terminal once the widget finishes. Nothing the PTY shows before engine
-# completion can therefore release the fake engine from outside: waiting for
-# "command: " observes post-completion output, so the engine's own bounded
-# wait would be the real releaser. Instead the test sources a wrapper that
-# redefines __lmline_zsh_hint to create the release file when the spinner
-# loop actually emits the fallback "explaining" hint; the fake engine records
-# gated=1 when it observes the file before its bounded wait expires (gated=0
-# on fallback timeout, asserted after the PTY run). Expect then only asserts
-# both final outputs appear: the engine answer and the flushed spinner text.
+# Explain gate (Zsh): no Expect-side release. The bridge buffers engine
+# output until wait completes, while zle -M spinner text may be displayed
+# during the wait; PTY delivery order is not a reliable gate. Instead the test
+# wraps __lmline_zsh_hint and writes the release file when the spinner loop
+# actually emits the fallback "explaining" hint. The fake engine records
+# gated=1 when it observes that file before its bounded wait expires (gated=0
+# on fallback timeout, asserted after the PTY run). Expect requires both final
+# outputs in either order, without coupling the test to prompt redraw timing.
 # Every wait still fails closed on timeout or EOF.
 proc expect_required_zsh_explanation {} {
-  # Preserve messages even if frequent spinner redraws overrun Expect's
-  # small default buffer while the async display is finishing.
+  # The spinner can arrive before the bridge's buffered explanation. Require
+  # both messages without assuming their PTY order; gated=1 separately proves
+  # the spinner hint released the fake engine before its bounded fallback.
   match_max 16384
   expect {
-    -re {explained pty} {}
-    timeout {puts stderr {timed out waiting for explanation}; exit 1}
-    eof {puts stderr {PTY process exited before explanation}; exit 1}
-  }
-  expect {
-    -re {explaining} {}
-    timeout {puts stderr {timed out waiting for spinner}; exit 1}
-    eof {puts stderr {PTY process exited before spinner}; exit 1}
+    -re {(?s)(explained pty.*explaining|explaining.*explained pty)} {}
+    timeout {puts stderr {timed out waiting for explanation and spinner}; exit 1}
+    eof {puts stderr {PTY process exited before explanation and spinner}; exit 1}
   }
 }

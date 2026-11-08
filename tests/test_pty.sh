@@ -331,11 +331,10 @@ expect eof
 EOF
     mkdir -p "$pty_tmp/zsh-spinner-config"
     # Test-local instrumentation (no product change): release the gated fake
-    # engine when the Zsh spinner loop actually emits the fallback hint.
-    # Neither the "command: " header (captured in the bridge output file until
-    # wait finishes) nor zle -M spinner text (flushed after the widget returns)
-    # is visible on the PTY before engine completion, so Expect cannot release
-    # this gate causally from outside.
+    # engine when the Zsh spinner loop actually emits the fallback hint. The
+    # bridge buffers its answer while zle -M may display spinner text during the
+    # wait, so PTY visibility/order is not a reliable gate; this wrapper proves
+    # the real hint call released the engine before its bounded fallback.
     cat >"$pty_tmp/zsh-hint-gate.zsh" <<'WRAPPER'
 functions -c __lmline_zsh_hint __lmline_zsh_hint_orig
 __lmline_zsh_hint() {
