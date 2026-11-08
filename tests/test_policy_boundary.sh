@@ -9,6 +9,7 @@ boundary_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-boundary.XXXXXX")
 trap 'status=$?; if [[ -e "$boundary_tmp/body-ran" ]]; then printf "ERROR: caller body ran; stop validation\n" >&2; else printf "boundary marker absent (status %s)\n" "$status" >&2; fi; rm -rf "$boundary_tmp"' EXIT
 export boundary_tmp
 (
+unset -f command
 # Install markers only after the protected launch and syntax probes exist.
 # shellcheck disable=SC2329
 read() { : >"$boundary_tmp/body-ran"; }
@@ -34,6 +35,26 @@ for name in read builtin bash declare compgen lmline_boundary_export; do
   [[ $'\n'"$names"$'\n' == *$'\n'"$name"$'\n'* ]] || exit 1
 done
 [[ "$names" != *body-ran* && "$names" != *lmline_boundary_local* ]] || exit 1
+[[ $'\n'"$names"$'\n' != *$'\n'command$'\n'* ]] || exit 1
+
+# The second view must distinguish a local command function from an exported
+# one without calling any shadow, exposing bodies, or changing caller exports.
+# Keep the exact first-view order and append only an exported command name.
+# shellcheck disable=SC2329
+command() { : >"$boundary_tmp/body-ran"; }
+for command_export in local exported; do
+  if [[ $command_export == exported ]]; then export -f command; fi
+  export_state=$(unset -f builtin; builtin declare -Fx)
+  command_names=$(__lmline_collect_exported_functions)
+  [[ ! -e "$boundary_tmp/body-ran" ]] || exit 1
+  [[ "$export_state" == "$(unset -f builtin; builtin declare -Fx)" ]] || exit 1
+  if [[ $command_export == local ]]; then
+    [[ "$command_names" == "$names" ]] || exit 1
+  else
+    [[ "$command_names" == "$names"$'\n'command ]] || exit 1
+  fi
+done
+unset -f command
 all_names=$(__lmline_collect_shell_functions)
 [[ ! -e "$boundary_tmp/body-ran" ]] || exit 1
 [[ $'\n'"$all_names"$'\n' == *$'\n'lmline_boundary_local$'\n'* ]] || exit 1

@@ -96,10 +96,14 @@ __lmline_collect_exported_functions() (
     ) || exit 1
     (
       unset -f builtin || exit 1
-      while IFS= builtin read -r declaration; do
-        name=${declaration##* }
-        if [[ $name == command ]]; then builtin printf '%s\n' "$name"; fi
-      done < <(builtin declare -Fx)
+      # Skip the second inventory when no live `command` function exists.
+      # `-F` alone inspects names without changing the export attribute.
+      if builtin declare -F command >/dev/null; then
+        while IFS= builtin read -r declaration; do
+          name=${declaration##* }
+          if [[ $name == command ]]; then builtin printf '%s\n' "$name"; fi
+        done < <(builtin declare -Fx)
+      fi
     ) || exit 1
     :
   fi
