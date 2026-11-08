@@ -182,6 +182,7 @@ printf x >>"$HASH_TEST_DIR/awk-counts"
 for fd_path in /dev/fd/*; do
   fd=${fd_path##*/}
   [[ $fd =~ ^[0-9]+$ && $fd -gt 2 ]] || continue
+  case " $HASH_TEST_BASE_FDS " in *" $fd "*) continue ;; esac
   if [[ $fd_path -ef $HASH_TEST_DIR/list || -p $fd_path ]]; then
     printf leaked >"$HASH_TEST_DIR/descriptor-leak"
     exit 1
@@ -210,8 +211,22 @@ case $HASH_TEST_SYSTEM_HASH_NAME in
 esac
 expected_file=${expected_file%% *}
 expected_membership=${expected_membership%% *}
+# Keep an unrelated inherited pipe open to ensure the privacy check only
+# attributes descriptors opened by this key helper.
+exec {unrelated_fd}< <(printf 'unrelated\n')
+# Ignore unrelated descriptors inherited from the CI/test runner; only new
+# file/pipe descriptors opened by the key helper are private inputs.
+HASH_TEST_BASE_FDS=' '
+for fd_path in /dev/fd/*; do
+  fd=${fd_path##*/}
+  if [[ $fd =~ ^[0-9]+$ && $fd -gt 2 ]]; then
+    HASH_TEST_BASE_FDS+="$fd "
+  fi
+done
+export HASH_TEST_BASE_FDS
 : >"$HASH_TEST_DIR/awk-counts"
 key=$(__lmline_suggested_commands_key)
+exec {unrelated_fd}<&-
 [[ $key == "$expected_file:$expected_membership" && $(<"$HASH_TEST_DIR/awk-counts") == x ]]
 CHECK
 rm -f "$hash_tmp/descriptor-leak"
