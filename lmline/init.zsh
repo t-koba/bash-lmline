@@ -617,8 +617,37 @@ __lmline_zsh_bridge() {
 # function names (never bodies) travel only on stdin, with explicit framing.
 # Component entry points below share this path for focused identity checks.
 __lmline_zsh_identity_key() {
+  setopt localoptions pipefail noxtrace noallexport
   local action=$1 mode=${2-} line=${3-} point=${4-} key caller_functions
-  setopt localoptions pipefail
+  local +x __lmline_env_record __lmline_env_name __lmline_env_status
+  local -a __lmline_env_unset=()
+  # Zsh retains Bash function transport even though bash -p ignores it. Strip
+  # it before Bash can launch any children. Only names enter env's argv; raw
+  # records stay in unexported locals with tracing disabled. The empty record
+  # and status trailer distinguish successful enumeration from a partial read.
+  while builtin true; do
+    IFS= builtin read -r -d '' __lmline_env_record || return 1
+    if [[ -z "$__lmline_env_record" ]]; then
+      IFS= builtin read -r -d '' __lmline_env_status && [[ "$__lmline_env_status" == 0 ]] || return 1
+      break
+    fi
+    [[ "$__lmline_env_record" == *=* ]] || return 1
+    __lmline_env_name=${__lmline_env_record%%=*}
+    [[ -n "$__lmline_env_name" ]] || return 1
+    # The exact legacy serialization header is reserved Bash 4.2 transport;
+    # unrelated values beginning with (), such as ()example, are ordinary data.
+    if [[ "$__lmline_env_name" == BASH_FUNC_*%% || "${__lmline_env_record#*=}" == '() {'* ]]; then
+      __lmline_env_unset+=(-u "$__lmline_env_name")
+      # Hide legacy scalar parameters locally too: explicit framing fields
+      # (for example the prompt version) must not serialize their bodies.
+      if [[ "$__lmline_env_name" =~ '^[A-Za-z_][A-Za-z0-9_]*$' ]]; then
+        local +x -- "$__lmline_env_name" || return 1
+        unset -- "$__lmline_env_name" || return 1
+      fi
+    fi
+  done < <(/usr/bin/env -0; builtin printf '\0%s\0' "$?")
+  # Avoid changing shell command resolution when there is nothing to remove.
+  (( ${#__lmline_env_unset} == 0 )) || __lmline_env_unset=(/usr/bin/env "${__lmline_env_unset[@]}")
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   {
     # Preserve logical PWD even if Bash resets it after a directory rename.
@@ -632,7 +661,7 @@ __lmline_zsh_identity_key() {
       printf '%s\0%s\0' "$key" "${(P)key}"
     done
     printf '\0'
-  } | bash -p -c '
+  } | "${__lmline_env_unset[@]}" bash -p -c '
     set -o pipefail
     IFS= read -r -d "" logical_pwd &&
       IFS= read -r -d "" path_set && IFS= read -r -d "" caller_path &&

@@ -765,6 +765,117 @@ EOF
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
   ' _ "$repo_dir" || fail "zsh git context identity"
 
+  # A real Bash parent exports a harmless body. Zsh retains its transport, so
+  # inspect both raw records and import at the actual suggested-key hash child.
+  mkdir "$zsh_tmp/identity-bin" "$zsh_tmp/identity-rules"
+  printf 'printf\n' >"$zsh_tmp/identity-rules/suggested_commands.txt"
+  cat >"$zsh_tmp/identity-bin/sha256sum" <<'EOF_HASH'
+#!/usr/bin/env bash
+raw=0 imported=0 ordinary=0 scratch=0
+while IFS= read -r -d '' record; do
+  case ${record%%=*} in
+    BASH_FUNC_*%%|lmline_inherited_probe|lmline_legacy_probe|LMLINE_LEGACY_PROBE) raw=1 ;;
+    __lmline_env_record|__lmline_env_name|__lmline_env_status|__lmline_env_unset) scratch=1 ;;
+  esac
+done < <(/usr/bin/env -0)
+if declare -F lmline_inherited_probe >/dev/null || declare -F lmline_legacy_probe >/dev/null; then imported=1; fi
+[[ ${TEXT-} == '()example' && ${ORDINARY-} == $'value=with\nnewlines\n' ]] && ordinary=1
+printf 'raw=%s imported=%s ordinary=%s scratch=%s\n' "$raw" "$imported" "$ordinary" "$scratch" >>"$LMLINE_TEST_IDENTITY_LOG"
+exec cksum
+EOF_HASH
+  chmod +x "$zsh_tmp/identity-bin/sha256sum"
+  cat >"$zsh_tmp/identity-probe.zsh" <<'EOF_ZSH'
+source "$1/lmline/init.zsh"
+typeset -g LMLINE_USER_RULES_DIR=$2/identity-rules
+typeset +x LMLINE_USER_RULES_DIR
+PATH="$2/identity-bin:$PATH"
+# The launch boundary may pass names, but never transport values, in argv.
+function /usr/bin/env() {
+  local arg
+  for arg in "$@"; do
+    [[ $arg != *inherited-body-marker* && $arg != *legacy-body-marker* ]] || return 1
+  done
+  command /usr/bin/env "$@"
+}
+# Caller shell state, including the inherited transport, must remain intact.
+parent_records() {
+  local record found=0
+  while IFS= read -r -d '' record; do
+    [[ ${record%%=*} == BASH_FUNC_*%% || ${record%%=*} == lmline_inherited_probe || ${record%%=*} == lmline_legacy_probe ]] && found=1
+  done < <(/usr/bin/env -0)
+  print -r -- "$found"
+}
+[[ $(parent_records) == $3 ]]
+key=$(__lmline_zsh_suggested_commands_key)
+[[ -n "$key" && "$key" == "$(__lmline_zsh_suggested_commands_key)" ]]
+[[ $(parent_records) == $3 ]]
+print -r -- "$key"
+# A legacy LMLINE_* function must not enter the framed settings snapshot.
+__lmline_zsh_settings_key
+print
+# Reserved transport in explicitly framed settings must not become stdin or
+# argv data either. Treat it exactly like absent settings, without mutation.
+(
+  unset LMLINE_PROMPT_VERSION LMLINE_CANDIDATE_COUNT
+  clean=$(__lmline_zsh_request_key generate input 0)
+  export LMLINE_PROMPT_VERSION="() { : legacy-body-marker; }"
+  export LMLINE_CANDIDATE_COUNT="() { : legacy-body-marker; }"
+  [[ "$clean" == "$(__lmline_zsh_request_key generate input 0)" ]]
+  [[ $LMLINE_PROMPT_VERSION == *legacy-body-marker* && $LMLINE_CANDIDATE_COUNT == *legacy-body-marker* ]]
+)
+# Tracing and allexport must not expose scanner values, and must be restored.
+(
+  setopt xtrace allexport
+  __lmline_zsh_suggested_commands_key >"$2/traced.key"
+  [[ -o xtrace && -o allexport ]]
+) 2>"$2/identity.trace"
+[[ $(<"$2/traced.key") == "$key" ]]
+# Simulate failed, unterminated and missing-status enumeration, then failed
+# sanitation. No failure may invoke an identity child or produce a key.
+identity_failure_marker=$2/unexpected-identity
+for failure in status partial missing sanitation; do
+  (
+    function /usr/bin/env() {
+      if [[ $failure == sanitation ]]; then
+        [[ $1 == -0 ]] && { command /usr/bin/env "$@"; return; }
+        return 1
+      fi
+      builtin printf 'PARTIAL=value'
+      [[ $failure == partial ]] && exit 0
+      builtin printf '\0'
+      [[ $failure == missing ]] && exit 0
+      return 1
+    }
+    bash() { print invoked >"$identity_failure_marker"; return 1; }
+    # A clean environment needs no sanitation; test that failure only dirty.
+    [[ $failure != sanitation || $3 == 1 ]] || exit 0
+    failed=$(__lmline_zsh_suggested_commands_key) && exit 1
+    [[ -z "$failed" && ! -e "$2/unexpected-identity" ]]
+  )
+done
+EOF_ZSH
+  for inherited in 0 1; do
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-identity" LMLINE_TEST_IDENTITY_LOG="$zsh_tmp/identity.log" \
+      bash --noprofile --norc -ec '
+        export TEXT="()example" __lmline_env_record=scratch-collision __lmline_env_name=scratch-collision __lmline_env_status=scratch-collision __lmline_env_unset=scratch-collision ORDINARY=$'"'"'value=with\nnewlines\n'"'"'
+        if [[ $3 == 1 ]]; then
+          lmline_inherited_probe() { : inherited-body-marker; }
+          export -f lmline_inherited_probe
+          export lmline_legacy_probe="() { : legacy-body-marker; }"
+          export LMLINE_LEGACY_PROBE="() { : legacy-body-marker; }"
+        fi
+        exec zsh -efi "$2/identity-probe.zsh" "$1" "$2" "$3"
+      ' _ "$repo_dir" "$zsh_tmp" "$inherited" >"$zsh_tmp/identity-$inherited.key" || fail "zsh inherited function boundary ($inherited)"
+    mv "$zsh_tmp/identity.log" "$zsh_tmp/identity-$inherited.log"
+    [[ -s "$zsh_tmp/identity-$inherited.log" ]] || fail "zsh inherited function hash child ran"
+    if grep -qv '^raw=0 imported=0 ordinary=1 scratch=0$' "$zsh_tmp/identity-$inherited.log"; then
+      fail "zsh inherited function hash child privacy and ordinary environment"
+    fi
+    if grep -Eq 'inherited-body-marker|legacy-body-marker|PARTIAL=value' "$zsh_tmp/identity.trace"; then
+      fail "zsh inherited function scanner trace privacy"
+    fi
+  done
+  cmp -s "$zsh_tmp/identity-0.key" "$zsh_tmp/identity-1.key" || fail "zsh inherited function exact suggested key parity"
   # The same unexported resolver settings must select the bridge list.
   mkdir "$zsh_tmp/suggested" "$zsh_tmp/suggested/rules"
   mkdir "$zsh_tmp/suggested/privacy-bin"
