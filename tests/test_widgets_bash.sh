@@ -24,6 +24,49 @@ chmod +x "$widget_tmp/fail-hash-bin/cksum"
 mkdir "$widget_tmp/fail-sort-bin"
 printf '#!/bin/sh\nprintf "LMLINE_MODEL\\n"\nexit 1\n' >"$widget_tmp/fail-sort-bin/sort"
 chmod +x "$widget_tmp/fail-sort-bin/sort"
+# Model a valid custom hash executable that ignores filename arguments and
+# hashes only stdin, as the pre-batching interface allowed.
+mkdir "$widget_tmp/stdin-hash-bin"
+if test_hash_real=$(builtin command -p -v sha256sum 2>/dev/null); then
+  test_hash_name=sha256sum
+  test_hash_mode=sha256sum
+elif test_hash_real=$(builtin command -p -v shasum 2>/dev/null); then
+  test_hash_name=shasum
+  test_hash_mode=shasum
+else
+  test_hash_real=$(builtin command -p -v cksum 2>/dev/null) || fail "system cksum for stdin-wrapper test"
+  test_hash_name=cksum
+  test_hash_mode=cksum
+fi
+cat >"$widget_tmp/stdin-hash-bin/$test_hash_name" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$#" >>"$TEST_LMLINE_HASH_ARG_LOG"
+if [ "$TEST_LMLINE_HASH_MODE" = shasum ]; then
+  exec "$TEST_LMLINE_REAL_HASH" -a 256
+fi
+exec "$TEST_LMLINE_REAL_HASH"
+EOF
+chmod +x "$widget_tmp/stdin-hash-bin/$test_hash_name"
+TEST_LMLINE_REAL_HASH="$test_hash_real" \
+TEST_LMLINE_HASH_MODE="$test_hash_mode" \
+TEST_LMLINE_HASH_ARG_LOG="$widget_tmp/hash-arg-counts" \
+LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  export PATH="$2/stdin-hash-bin:$PATH"
+  export LMLINE_INCLUDE_SUGGESTED_COMMANDS=1
+  export LMLINE_SUGGESTED_COMMANDS_FILE="$2/suggested-stdin.txt"
+  printf "echo from custom stdin hasher\n" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+  [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
+  file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+  membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
+  expected=$file_digest:$membership_digest
+  actual=$(__lmline_suggested_commands_key </dev/null)
+  [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
+  [[ -s "$TEST_LMLINE_HASH_ARG_LOG" ]]
+  while IFS= read -r arg_count; do [[ $arg_count == 0 ]]; done <"$TEST_LMLINE_HASH_ARG_LOG"
+' _ "$repo_dir" "$widget_tmp" "$test_hash_name" || fail "stdin-only custom hash executable compatibility"
+ok "stdin-only custom hash executable compatibility"
 mkdir -p "$widget_tmp/function-names/privacy-bin"
 cat >"$widget_tmp/function-names/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
@@ -1198,11 +1241,11 @@ mkdir "$widget_tmp/suggested"
 mkdir "$widget_tmp/suggested/privacy-bin"
 cat >"$widget_tmp/suggested/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if [[ $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ]] || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
+if [[ $# != 0 ]] || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
   printf leaked >"$LMLINE_TEST_SUGGESTED_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_SUGGESTED_DIR/checked"
-exec cksum "$@"
+exec cksum
 EOF
 chmod +x "$widget_tmp/suggested/privacy-bin/sha256sum"
 mkfifo "$widget_tmp/suggested/printf.gate" "$widget_tmp/suggested/sleep.gate"

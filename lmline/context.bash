@@ -79,7 +79,7 @@ __lmline_suggested_commands_file() {
 # arguments/output, and exclude function bodies.
 __lmline_suggested_commands_key() (
   set -o pipefail
-  local file digest membership_digest name file_fd membership_fd producer status=0
+  local file digest membership_digest name file_fd membership_fd producer status=0 hash_path system_hash_path
   local -a hash_command
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || { printf disabled; return 0; }
   file=$(__lmline_suggested_commands_file 2>/dev/null) || return 1
@@ -127,9 +127,14 @@ __lmline_suggested_commands_key() (
   else
     hash_command=(cksum)
   fi
-  # Preserve stdin-based overrides supplied as shell functions; only external
-  # hash tools support the multi-file descriptor interface below.
-  if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1; then
+  # Keep stdin-only shell functions and custom PATH executables on the
+  # established interface. Batch only when PATH selects the same executable
+  # as Bash's default system-tool search; wrappers may ignore filename args and
+  # read caller stdin instead.
+  hash_path=$(builtin type -P "${hash_command[0]}" 2>/dev/null) || hash_path=
+  system_hash_path=$(builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
+  if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
+      [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
     digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
     [[ -n "$digest" ]] || return 1
     membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1

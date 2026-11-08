@@ -16,9 +16,9 @@ cat >"$hash_tmp/record-hash" <<'TOOL'
 /usr/bin/env -0 >>"$HASH_TEST_DIR/environment"
 printf '%s\n' "${0##*/} $*" >>"$HASH_TEST_DIR/calls"
 case ${0##*/} in
-  cksum) exec "$HASH_REAL_CKSUM" "$@" ;;
-  sha256sum) exec "$HASH_REAL_SHA256SUM" "$@" ;;
-  shasum) exec "$HASH_REAL_SHASUM" "$@" ;;
+  cksum) exec "$HASH_REAL_CKSUM" ;;
+  sha256sum) exec "$HASH_REAL_SHA256SUM" ;;
+  shasum) exec "$HASH_REAL_SHASUM" -a 256 ;;
 esac
 TOOL
 chmod +x "$hash_tmp/record-hash"
@@ -73,8 +73,8 @@ else
   [[ $(__lmline_sandbox_hash <"$LMLINE_CONFIG_DIR/settings.bash") == "$sandbox_expected" ]]
   [[ $(__lmline_async_frontend_key generate) == "$frontend_expected" ]]
   [[ -n $(__lmline_async_settings_key) ]]
-  # Batch exactly two private streams once, preserving separate raw-byte and
-  # membership digests even for NUL bytes that shell variables cannot hold.
+  # Custom PATH executables retain the established stdin-only interface;
+  # hash raw bytes and freshly collected membership separately, preserving NULs.
   membership=$(printf 'printf\n' | "$real" "${args[@]}")
   membership=${membership%% *}
   previous=
@@ -84,8 +84,16 @@ else
     : >"$HASH_TEST_DIR/calls"
     key=$(__lmline_suggested_commands_key)
     [[ $key == "${expected%% *}:$membership" && $key != "$previous" ]]
-    IFS= read -r call <"$HASH_TEST_DIR/calls"
-    [[ $call == "$3 "*'/dev/fd/'*' /dev/fd/'* && $(<"$HASH_TEST_DIR/calls") == "$call" ]]
+    calls_for_key=0
+    while IFS= read -r call; do
+      if [[ $3 == shasum ]]; then
+        [[ $call == 'shasum -a 256' ]] || exit 1
+      else
+        [[ $call == "$3 " ]] || exit 1
+      fi
+      calls_for_key=$((calls_for_key + 1))
+    done <"$HASH_TEST_DIR/calls"
+    [[ $calls_for_key == 2 ]]
     previous=$key
   done
   # An stdin-based shell-function hasher retains the former two-call contract.
@@ -156,27 +164,64 @@ for selected in cksum shasum sha256sum; do
     grep -q "^$selected " "$hash_tmp/calls" || fail "custom PATH not used ($selected)"
   done
 done
-# The output parser must not inherit descriptors carrying the private streams.
-rm "$hash_tmp/bin/awk"
+# Exercise the system-tool batch path through an inode-identical PATH symlink.
+# Its parser must not inherit the private file or membership descriptors.
+if system_hash_real=$(builtin command -p -v sha256sum 2>/dev/null); then
+  system_hash_name=sha256sum
+elif system_hash_real=$(builtin command -p -v shasum 2>/dev/null); then
+  system_hash_name=shasum
+else
+  system_hash_real=$(builtin command -p -v cksum 2>/dev/null) || fail "system hash for descriptor test"
+  system_hash_name=cksum
+fi
+rm -f "$hash_tmp/bin/$system_hash_name" "$hash_tmp/bin/awk"
+ln -s "$system_hash_real" "$hash_tmp/bin/$system_hash_name"
 cat >"$hash_tmp/bin/awk" <<'AWK'
 #!/usr/bin/env bash
-case ${1-} in
-  'NR == 1 '*)
-    IFS=' ' read -r tool file_fd membership_fd <"$HASH_TEST_DIR/calls" || exit 1
-    if [[ $file_fd -ef $HASH_TEST_DIR/list || -p $membership_fd ]]; then
-      printf leaked >"$HASH_TEST_DIR/awk-leak"
-      exit 1
-    fi
-    ;;
-esac
+printf x >>"$HASH_TEST_DIR/awk-counts"
+for fd_path in /dev/fd/*; do
+  fd=${fd_path##*/}
+  [[ $fd =~ ^[0-9]+$ && $fd -gt 2 ]] || continue
+  if [[ $fd_path -ef $HASH_TEST_DIR/list || -p $fd_path ]]; then
+    printf leaked >"$HASH_TEST_DIR/descriptor-leak"
+    exit 1
+  fi
+done
 exec "$HASH_REAL_AWK" "$@"
 AWK
 chmod +x "$hash_tmp/bin/awk"
-rm -f "$hash_tmp/calls" "$hash_tmp/environment" "$hash_tmp/awk-leak"
+cat >"$hash_tmp/batch-check.bash" <<'CHECK'
+set -e
+source "$1/lmline/init.bash"
+LMLINE_SUGGESTED_COMMANDS_FILE=$HASH_TEST_DIR/list
+case $HASH_TEST_SYSTEM_HASH_NAME in
+  sha256sum)
+    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+    expected_membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL")
+    ;;
+  shasum)
+    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" -a 256 <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+    expected_membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL" -a 256)
+    ;;
+  cksum)
+    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+    expected_membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL")
+    ;;
+esac
+expected_file=${expected_file%% *}
+expected_membership=${expected_membership%% *}
+: >"$HASH_TEST_DIR/awk-counts"
+key=$(__lmline_suggested_commands_key)
+[[ $key == "$expected_file:$expected_membership" && $(<"$HASH_TEST_DIR/awk-counts") == x ]]
+CHECK
+rm -f "$hash_tmp/descriptor-leak"
+HASH_TEST_SYSTEM_HASH_NAME=$system_hash_name \
+HASH_TEST_SYSTEM_HASH_REAL=$system_hash_real \
 PATH="$hash_tmp/bin" bash --noprofile --norc -i \
-  "$hash_tmp/check.bash" "$repo_dir" clean sha256sum \
-  >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "hash stream descriptor isolation"
-[[ ! -e $hash_tmp/awk-leak ]] || fail "private file/membership descriptor reached awk"
+  "$hash_tmp/batch-check.bash" "$repo_dir" \
+  >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "system hash descriptor isolation"
+[[ ! -e $hash_tmp/descriptor-leak ]] || fail "system hash parser received private descriptors"
+
 # Modules must also provide safe hashing when sourced without interactive init.
 PATH="$hash_tmp/bin" bash --noprofile --norc -ec '
   source "$1/lmline/sandbox.bash"
