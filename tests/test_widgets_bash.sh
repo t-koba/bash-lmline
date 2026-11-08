@@ -49,6 +49,24 @@ fi
 [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
 [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
 EOF
+cat >"$widget_tmp/function-names/protected-name-collision-check.bash" <<'EOF'
+set -e
+source "$1/lmline/init.bash"
+foo%bar() { :; }
+for helper in __lmline_async_function_names_key __lmline_path_key; do
+  rm -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+  if "$helper" >/dev/null 2>&1; then exit 1; fi
+  [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+  [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+done
+EOF
+cat >"$widget_tmp/function-names/protected-malformed-name-check.bash" <<'EOF'
+set -e
+source "$1/lmline/init.bash"
+if __lmline_path_key >/dev/null 2>&1; then exit 1; fi
+[[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+[[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+EOF
 LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   (
@@ -380,6 +398,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
 ' _ "$repo_dir" "$widget_tmp" || fail "sibling identities resist read/compgen collisions"
 # Special-builtin lookup must not depend on caller export/builtin/command
 # functions. Keep every assertion boolean-only, including the fake hasher.
+malformed_function_record=$'BASH_FUNC_bad\nname%%=() { printf malformed-protected-body; }'
 LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   LMLINE_TEST_FUNCTION_NAMES_DIR="$widget_tmp/function-names" \
   PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
@@ -504,7 +523,15 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   /usr/bin/env "$inherited_record" \
     "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-name-check.bash" "$1" \
     || exit 1
-' _ "$repo_dir" || fail "async identity sanitization resists builtin name collisions"
+  rm -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+  /usr/bin/env "$inherited_record" \
+    "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-name-collision-check.bash" "$1" \
+    || exit 1
+  rm -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+  /usr/bin/env "$2" \
+    "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-malformed-name-check.bash" "$1" \
+    || exit 1
+' _ "$repo_dir" "$malformed_function_record" || fail "async identity sanitization resists builtin name collisions"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"

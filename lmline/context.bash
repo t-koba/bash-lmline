@@ -1516,6 +1516,35 @@ __lmline_context_settings_key() (
 )
 
 __lmline_hash_stdin() {
+  # Protected Bash does not import inherited functions, and export -nf cannot
+  # remove an inherited raw record when a live function later reuses its name.
+  # Check the post-scrub environment at the common hash boundary so no hash
+  # implementation receives a residual function transport record.
+  if [[ -o privileged ]]; then
+    (
+      [[ -o posix ]] || POSIXLY_CORRECT=1 || exit 1
+      set +x
+      unset -f command || exit 1
+      command builtin local entry name_part value fd producer found
+      command builtin export -n entry name_part value fd producer found || exit 1
+      found=0
+      command builtin exec {fd}< <(command /usr/bin/env -0) || exit 1
+      producer=$!
+      while IFS= command builtin read -r -d '' entry <&"$fd"; do
+        case "$entry" in
+          BASH_FUNC_*%%=*) found=1 ;;
+          *=*)
+            name_part=${entry%%=*}
+            value=${entry#*=}
+            case "$value" in '() {'*) found=1 ;; esac
+            ;;
+        esac
+      done
+      command builtin exec {fd}<&- || exit 1
+      command builtin wait "$producer" || exit 1
+      (( found == 0 ))
+    ) || return 1
+  fi
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then
