@@ -312,7 +312,14 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
   foo%bar() { printf '%s' foo-percent-sensitive-body; }
   export -f foo%bar
   exported_probe_names=$(__lmline_collect_exported_functions)
-  [[ $'\n'"$exported_probe_names"$'\n' == *$'\n'foo%bar$'\n'* ]]
+  exported_probe_found=0
+  while IFS= read -r exported_probe_name; do
+    if [[ $exported_probe_name == foo%bar ]]; then
+      exported_probe_found=1
+      break
+    fi
+  done <<< "$exported_probe_names"
+  [[ $exported_probe_found == 1 ]]
   helpers=(__lmline_async_function_names_key __lmline_async_settings_key
     __lmline_async_frontend_key __lmline_context_settings_key
     __lmline_suggested_commands_key __lmline_project_markers_key
