@@ -3,8 +3,8 @@
 # instead of stopping at the first failing file, and exits non-zero if any
 # file failed. Individual files fail fast internally via lib.sh fail().
 # With no arguments runs every test. With exactly --skip-shellcheck, skips
-# the full pinned lint (which runs once on Ubuntu) but still runs the bounded
-# monitor regression; macOS separately provisions the pinned Darwin asset.
+# the full pinned lint but still runs the bounded monitor regression; macOS CI
+# runs the complete pinned lint.
 set -u
 
 skip_shellcheck=0

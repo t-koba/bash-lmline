@@ -143,7 +143,9 @@ ok "unmatched words require target-shell builtin/PATH fallbacks"
 (
   export TEXT="()example"
   export LEGACY_PROBE="() { :; }"
-  foo%bar() { printf protected-percent-body; }
+  # Bash accepts `%` in function names, but ShellCheck cannot parse that
+  # declaration literally; this constant eval keeps the real-shell regression.
+  eval 'foo%bar() { printf protected-percent-body; }'
   export -f foo%bar
   legacy_names=$(bash -p -c 'source "$1/validation-boundary.bash"; __lmline_collect_inherited_exported_functions' _ "$repo_dir/lmline") \
     || fail "protected inherited collector failed"

@@ -472,8 +472,18 @@ print("[]")
                 workflow = (c.ROOT / ".github/workflows/ci.yml").read_text()
                 upload = workflow.split("      - name: Retain ShellCheck diagnostics\n", 1)[1]
                 upload = upload.split("      - name:", 1)[0]
-                self.assertIn("always() && runner.os == 'Linux'", upload)
-                self.assertIn("steps.run_tests_ubuntu.outcome != 'success'", upload)
+                self.assertIn("always() && runner.os == 'macOS'", upload)
+                self.assertIn("steps.run_tests_macos.outcome != 'success'", upload)
+                ubuntu = workflow.split("      - name: Run tests (Ubuntu)\n", 1)[1].split(
+                    "      - name: Run tests (macOS)\n", 1)[0]
+                macos = workflow.split("      - name: Run tests (macOS)\n", 1)[1].split(
+                    "      - name: Retain ShellCheck diagnostics\n", 1)[0]
+                self.assertIn("if: runner.os == 'Linux'", ubuntu)
+                self.assertIn("run: bash tests/run.sh --skip-shellcheck", ubuntu)
+                self.assertNotIn("LMLINE_REQUIRE_SHELLCHECK=1", ubuntu)
+                self.assertIn("if: runner.os == 'macOS'", macos)
+                self.assertIn("LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh", macos)
+                self.assertNotIn("--skip-shellcheck", macos)
                 self.assertIn("${{ runner.temp }}/lmline-shellcheck-per-file.*/manifest.jsonl", upload)
                 self.assertNotIn("lmline-shellcheck-diagnostics.log", upload)
                 # The exact upload glob covers every newly retained report.

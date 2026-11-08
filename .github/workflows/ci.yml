@@ -22,10 +22,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu runs the full suite and the sole full pinned ShellCheck lint;
-        # macOS runs the pinned Darwin provisioning smoke plus the non-lint suite
-        # for native OS/terminal/shell differences. Together both jobs retain full
-        # coverage, and base-branch runs remain the flake catch.
+        # Both platforms run the full test suite. macOS owns the full pinned
+        # ShellCheck lint because Ubuntu's release-asset download has been
+        # intermittently unavailable; Ubuntu skips only that lint while retaining
+        # its bounded monitor regression. Both jobs keep native OS coverage.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -54,9 +54,15 @@ jobs:
       - name: Run tests (Ubuntu)
         id: run_tests_ubuntu
         if: runner.os == 'Linux'
-        run: LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
+        run: bash tests/run.sh --skip-shellcheck
+      - name: Run tests (macOS)
+        id: run_tests_macos
+        if: runner.os == 'macOS'
+        run: |
+          export PATH="$(brew --prefix)/bin:$PATH"
+          LMLINE_REQUIRE_SHELLCHECK=1 bash tests/run.sh
       - name: Retain ShellCheck diagnostics
-        if: ${{ always() && runner.os == 'Linux' && steps.run_tests_ubuntu.outcome != 'success' }}
+        if: ${{ always() && runner.os == 'macOS' && steps.run_tests_macos.outcome != 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: shellcheck-per-file-evidence
@@ -65,17 +71,6 @@ jobs:
             ${{ runner.temp }}/lmline-shellcheck-per-file.*/measurement.log
           if-no-files-found: ignore
           retention-days: 7
-      - name: Provision pinned ShellCheck (macOS smoke)
-        if: runner.os == 'macOS'
-        run: |
-          export PATH="$(brew --prefix)/bin:$PATH"
-          bash tests/test_shellcheck.sh --provision-only
-      - name: Run tests (macOS)
-        id: run_tests_macos
-        if: runner.os == 'macOS'
-        run: |
-          export PATH="$(brew --prefix)/bin:$PATH"
-          bash tests/run.sh --skip-shellcheck
       - name: Retry PTY test after a macOS suite failure for diagnostics
         if: ${{ always() && steps.run_tests_macos.outcome == 'failure' && runner.os == 'macOS' }}
         run: |

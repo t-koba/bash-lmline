@@ -1,22 +1,26 @@
 # Per-file ShellCheck runner
 
-Pinned Linux CI uses this sequential runner for the full manifest in
-`tests/test_shellcheck.sh`. Every manifest occurrence is linted in order with
-the current `.shellcheckrc` and direct annotated source context; inputs and
-warnings are not dropped. The required ShellCheck 0.11.0 pin is version-checked,
-and the existing installer verifies the download digest. Local runs without the
-required-pin setting continue to use one batched invocation of an installed
-ShellCheck, or skip when it is unavailable. The separate macOS smoke path only
-provisions the pin. Python 3.9+ is required for the per-file route.
+macOS CI uses this sequential runner for the full manifest in
+`tests/test_shellcheck.sh`; Ubuntu skips only that full lint while retaining the
+bounded monitor regression and all other tests. Every manifest occurrence is
+linted in order with the current `.shellcheckrc` and direct annotated source
+context; inputs and warnings are not dropped. The required ShellCheck 0.11.0 pin
+is version-checked, and the existing installer verifies the platform asset's
+digest. Local runs without the required-pin setting continue to use one batched
+invocation of an installed ShellCheck, or skip when it is unavailable. Python
+3.9+ is required for the per-file route.
 
-The Linux route writes sanitized bounded progress to live CI output and
+The required route writes sanitized bounded progress to live CI output and
 `measurement.log`; the complete per-target stdout, stderr, parsed diagnostics,
-status, and resource measurements stay in a JSONL report. CI uploads the report
-and progress log on failure with seven-day retention once the per-file run
-starts. A local required-pin run prints file/line/rule/message diagnostics and
-the retained report path on failure; successful local runs remove their temporary
-report directory. GitHub Actions never replays raw diagnostic text to live logs.
-The optional cgroup guard is off in normal CI.
+status, and resource measurements stay in a JSONL report. The macOS CI job
+uploads the report and progress log on failure with seven-day retention once
+the per-file run starts. A local required-pin run prints file/line/rule/message
+diagnostics and the retained report path on failure; successful local runs
+remove their temporary report directory. GitHub Actions never replays raw
+diagnostic text to live logs. The optional cgroup guard is off in normal CI.
+The shell-level monitor's `/proc` and cgroup samples are unavailable on macOS,
+while its process-status and elapsed-time checks still run; the per-file runner
+uses platform-normalized `wait4` peak RSS.
 
 ## Focused checks
 
