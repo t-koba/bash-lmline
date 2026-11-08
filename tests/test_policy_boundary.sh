@@ -137,6 +137,33 @@ for target in bash zsh; do
 done
 ok "unmatched words require target-shell builtin/PATH fallbacks"
 
+# Protected collection names only the exact legacy header `NAME=() {`;
+# an ordinary `TEXT=()example` value stays data. Bodies are never evaluated,
+# imported, or leaked as names.
+(
+  export TEXT="()example"
+  export LEGACY_PROBE="() { :; }"
+  legacy_names=$(bash -p -c 'source "$1/validation-boundary.bash"; __lmline_collect_inherited_exported_functions' _ "$repo_dir/lmline") \
+    || fail "protected inherited collector failed"
+  [[ $'\n'"$legacy_names"$'\n' == *$'\n'LEGACY_PROBE$'\n'* ]] \
+    || fail "protected collector missed exact legacy transport: $legacy_names"
+  [[ $'\n'"$legacy_names"$'\n' != *$'\n'TEXT$'\n'* ]] \
+    || fail "protected collector misclassified ordinary TEXT value: $legacy_names"
+  [[ "$legacy_names" != *'()'* ]] || fail "protected collector leaked a body: $legacy_names"
+  [[ ! -e "$boundary_tmp/body-ran" ]] || fail "protected collector evaluated a body"
+  if bash -p -c 'declare -F LEGACY_PROBE >/dev/null 2>&1'; then
+    fail "protected child imported a legacy body"
+  fi
+  legacy_names=$(bash -p -c 'source "$1/validation-boundary.bash"; __lmline_collect_exported_functions' _ "$repo_dir/lmline") \
+    || fail "protected exported collector failed"
+  [[ $'\n'"$legacy_names"$'\n' == *$'\n'LEGACY_PROBE$'\n'* ]] \
+    || fail "protected exported collector missed exact legacy transport: $legacy_names"
+  [[ $'\n'"$legacy_names"$'\n' != *$'\n'TEXT$'\n'* ]] \
+    || fail "protected exported collector misclassified ordinary TEXT value: $legacy_names"
+  [[ "$legacy_names" != *'()'* ]] || fail "protected exported collector leaked a body: $legacy_names"
+)
+ok "protected collection keeps ordinary TEXT data but names exact legacy transport"
+
 # Sourcing the entry point retains readonly attributes, unlike an export.
 # The bootstrap must fail closed rather than dispatch this unremovable shadow.
 if "$BASH" -c '

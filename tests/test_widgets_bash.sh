@@ -327,13 +327,21 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
       # A failed names-only snapshot must not hash or establish an identity.
       rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
       (
-        __lmline_collect_shell_functions() { return 1; }
+        if [[ ${helpers[i]} == __lmline_suggested_commands_key ]]; then
+          __lmline_collect_exported_functions() { return 1; }
+        else
+          __lmline_collect_shell_functions() { return 1; }
+        fi
         failed=$("${helpers[i]}" generate) && exit 1
         [[ -z "$failed" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
         # A collected name that cannot be unexported must also stop hashing.
-        __lmline_collect_shell_functions() { printf "%s\n" __lmline_missing_scrub_function; }
+        if [[ ${helpers[i]} == __lmline_suggested_commands_key ]]; then
+          __lmline_collect_exported_functions() { printf "%s\n" __lmline_missing_scrub_function; }
+        else
+          __lmline_collect_shell_functions() { printf "%s\n" __lmline_missing_scrub_function; }
+        fi
         failed=$("${helpers[i]}" generate) && exit 1
         [[ -z "$failed" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]

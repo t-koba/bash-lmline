@@ -95,7 +95,7 @@ __lmline_suggested_commands_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}

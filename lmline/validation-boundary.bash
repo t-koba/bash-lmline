@@ -56,10 +56,12 @@ __lmline_collect_inherited_exported_functions() (
         name=${name%\%\%}
         ;;
       *)
-        # Legacy bash (4.2-4.3) exports functions as NAME=() {...}.
+        # Legacy bash (4.2-4.3) exports functions as NAME=() { ... }.
+        # The exact serialization header is reserved transport; unrelated
+        # values beginning with (), such as ()example, are ordinary data.
         # Opaque prefix check only; the body is never evaluated.
         case "$entry" in
-          "$name_part="'()'* ) name=$name_part ;;
+          "$name_part="'() {'* ) name=$name_part ;;
           *) continue ;;
         esac
         ;;
