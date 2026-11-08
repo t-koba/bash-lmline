@@ -66,8 +66,9 @@ __lmline_collect_inherited_exported_functions() (
         esac
         ;;
     esac
-    [[ -n $name ]] || continue
-    [[ $name =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || continue
+    # Preserve Bash's punctuation-bearing function names, but keep the
+    # newline-delimited transport unambiguous for inherited environment data.
+    [[ -n $name && $name != *[[:space:][:cntrl:]]* ]] || continue
     command builtin printf '%s\n' "$name"
   done
   command builtin exec {fd}<&- || exit 1
@@ -86,7 +87,10 @@ __lmline_collect_exported_functions() (
       unset -f command || exit 1
       while IFS= command builtin read -r declaration; do
         name=${declaration##* }
-        [[ $name =~ ^[A-Za-z0-9_/:.+@-]+$ ]] || continue
+        [[ -n $name ]] || continue
+        # `declare -Fx` is Bash's trusted live-function inventory. Do not
+        # narrow it to identifier syntax: exported function names may contain
+        # punctuation such as `%` and `,`.
         command builtin printf '%s\n' "$name"
       done < <(command builtin declare -Fx)
     ) || exit 1

@@ -372,7 +372,7 @@ __lmline_engine_error_hint() {
 # and exported function-name lists supplied to the engine; never evaluates,
 # serializes, or forwards bodies.
 __lmline_async_function_names_key() (
-  local shell_functions exported_functions names_hash name functions_remaining
+  local shell_functions exported_functions names_hash name functions_remaining needle
   shell_functions=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
   exported_functions=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   # Keep exported bodies out of the external hash process environment. The
@@ -386,6 +386,14 @@ __lmline_async_function_names_key() (
   # records that were never imported as functions; only live shell functions
   # can be safely unexported there.
   if [[ -o privileged ]]; then
+    # Protected Bash can report inherited names whose bodies were never
+    # imported. If any are not live shell functions, export -nf cannot remove
+    # their environment records, so fail before starting the hash child.
+    while IFS= read -r name; do
+      [[ -n $name ]] || continue
+      needle=$'\n'"$name"$'\n'
+      [[ $'\n'$shell_functions$'\n' == *"$needle"* ]] || return 1
+    done <<< "$exported_functions"
     functions_remaining=$shell_functions
   else
     functions_remaining=$exported_functions

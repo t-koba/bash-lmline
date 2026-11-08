@@ -38,6 +38,17 @@ printf checked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/checked"
 exec cksum
 EOF
 chmod +x "$widget_tmp/function-names/privacy-bin/sha256sum"
+cat >"$widget_tmp/function-names/protected-name-check.bash" <<'EOF'
+set -e
+source "$1/lmline/init.bash"
+inherited_names=$(__lmline_collect_exported_functions)
+[[ $'\n'$inherited_names$'\n' == *$'\n'foo%bar$'\n'* ]]
+if __lmline_async_function_names_key generate >/dev/null 2>&1; then
+  exit 1
+fi
+[[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+[[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+EOF
 LMLINE_CONFIG_DIR="$widget_tmp/config-hash" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   (
@@ -280,6 +291,10 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
   mkdir -p "$LMLINE_TEST_REQUEST_KEY_DIR"
   cd "$2/function-names/git"
   lmline_sibling_hash_privacy_probe() { :; }
+  foo%bar() { printf '%s' foo-percent-sensitive-body; }
+  export -f foo%bar
+  exported_probe_names=$(__lmline_collect_exported_functions)
+  [[ $'\n'"$exported_probe_names"$'\n' == *$'\n'foo%bar$'\n'* ]]
   helpers=(__lmline_async_function_names_key __lmline_async_settings_key
     __lmline_async_frontend_key __lmline_context_settings_key
     __lmline_suggested_commands_key __lmline_project_markers_key
@@ -311,7 +326,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
     expected_keys[0]=$(printf "shell-functions\n%s\nexported-functions\n%s\n" \
       "$shell_functions" "$exported_functions" | (
         POSIXLY_CORRECT=1
-        \export -nf "$shadow" lmline_sibling_hash_privacy_probe
+        \export -nf "$shadow" lmline_sibling_hash_privacy_probe foo%bar
         __lmline_hash_stdin
       ))
     for i in "${!helpers[@]}"; do
@@ -360,7 +375,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
       )
     done
     unset -f "$shadow"
-    export -nf lmline_sibling_hash_privacy_probe
+    export -nf lmline_sibling_hash_privacy_probe foo%bar
   done
 ' _ "$repo_dir" "$widget_tmp" || fail "sibling identities resist read/compgen collisions"
 # Special-builtin lookup must not depend on caller export/builtin/command
@@ -446,16 +461,19 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     after=$(declare -p POSIXLY_CORRECT; set +o)
     [[ "$before" == "$after" ]]
     [[ "$state_exported_functions" == "$(__lmline_collect_exported_functions)" ]]
-    if [[ $state == readonly-privileged ]]; then
-      # Protected Bash may report inherited names that were never imported;
-      # they are identity inputs, not live functions safe for `export -nf`.
-      (
-        __lmline_collect_exported_functions() { printf "%s\n" __lmline_unimported_probe; }
-        [[ -n "$(__lmline_async_function_names_key generate)" ]]
-      )
-    fi
     [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
     [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+    if [[ $state == readonly-privileged ]]; then
+      # Never hash when protected Bash reports a function name that was not
+      # imported and therefore cannot be unexported from the live shell.
+      rm -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+      (
+        __lmline_collect_exported_functions() { printf "%s\n" __lmline_unimported_probe; }
+        ! __lmline_async_function_names_key generate >/dev/null 2>&1
+        [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+        [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+      )
+    fi
   ); done
   # A readonly-but-unset variable is a distinct non-POSIX state. It cannot
   # enable special-builtin precedence by assignment, so keep failing closed.
@@ -479,6 +497,13 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   [[ -n "$(__lmline_path_key)" ]]
   [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
   [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+  # A raw inherited punctuation name is visible in protected mode but was
+  # never imported; identity hashing must fail closed before its hasher runs.
+  rm -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+  inherited_record="BASH_FUNC_foo%bar%%=() { printf protected-percent-body; }"
+  /usr/bin/env "$inherited_record" \
+    "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-name-check.bash" "$1" \
+    || exit 1
 ' _ "$repo_dir" || fail "async identity sanitization resists builtin name collisions"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
