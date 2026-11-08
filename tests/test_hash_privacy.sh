@@ -268,10 +268,24 @@ PATH="$hash_tmp/bin" bash --noprofile --norc -i \
 [[ ! -e $hash_tmp/descriptor-leak ]] || fail "system hash parser received private descriptors"
 
 # Modules must also provide safe hashing when sourced without interactive init.
+# Keep an unrelated pipe open, as runners may do; only helper-owned descriptors
+# opened after the standalone shell starts should count as privacy leaks.
+exec {standalone_unrelated_fd}< <(printf 'unrelated\n')
+standalone_status=0
 PATH="$hash_tmp/bin" bash --noprofile --norc -ec '
+  HASH_TEST_BASE_FDS=" "
+  for fd_path in /dev/fd/*; do
+    fd=${fd_path##*/}
+    if [[ $fd =~ ^[0-9]+$ && $fd -gt 2 ]]; then
+      HASH_TEST_BASE_FDS+="$fd "
+    fi
+  done
+  export HASH_TEST_BASE_FDS
   source "$1/lmline/sandbox.bash"
   [[ -n $(__lmline_sandbox_hash </dev/null) ]]
   source "$1/lmline/config.bash"
   [[ $(__lmline_settings_cksum </dev/null) == "$("$HASH_REAL_CKSUM" </dev/null)" ]]
-' _ "$repo_dir" || fail "standalone hash support"
+' _ "$repo_dir" || standalone_status=$?
+exec {standalone_unrelated_fd}<&-
+(( standalone_status == 0 )) || fail "standalone hash support"
 ok "Bash hash paths preserve exact digests, tool resolution, caller exports and ordinary data"
