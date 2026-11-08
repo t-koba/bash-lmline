@@ -648,32 +648,42 @@ __lmline_zsh_identity_key() {
   done < <(/usr/bin/env -0; builtin printf '\0%s\0' "$?")
   # Avoid changing shell command resolution when there is nothing to remove.
   (( ${#__lmline_env_unset} == 0 )) || __lmline_env_unset=(/usr/bin/env "${__lmline_env_unset[@]}")
-  caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
+  if [[ "$action" != path ]]; then
+    caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
+  fi
   {
     # Preserve logical PWD even if Bash resets it after a directory rename.
-    printf '%s\0' "$PWD" "${+PATH}" "${PATH-}" "$caller_functions" "${LMLINE_PROMPT_VERSION:-3}"
-    # The parameter type includes "local" for dynamically scoped locals, so
-    # these exact types select global scalars without a child per declaration.
-    for key in ${(ok)parameters}; do
-      [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
-      [[ "$key" == LMLINE_SHELL_FUNCTIONS || "$key" == LMLINE_EXPORTED_FUNCTIONS ]] && continue
-      [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
-      printf '%s\0%s\0' "$key" "${(P)key}"
-    done
-    printf '\0'
+    printf '%s\0' "$PWD" "${+PATH}" "${PATH-}"
+    [[ "$action" == path ]] || printf '%s\0' "$caller_functions"
+    printf '%s\0' "${LMLINE_PROMPT_VERSION:-3}"
+    # PATH identity needs neither function names nor the settings snapshot.
+    if [[ "$action" != path ]]; then
+      # The parameter type includes "local" for dynamically scoped locals, so
+      # these exact types select global scalars without a child per declaration.
+      for key in ${(ok)parameters}; do
+        [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
+        [[ "$key" == LMLINE_SHELL_FUNCTIONS || "$key" == LMLINE_EXPORTED_FUNCTIONS ]] && continue
+        [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
+        printf '%s\0%s\0' "$key" "${(P)key}"
+      done
+      printf '\0'
+    fi
   } | "${__lmline_env_unset[@]}" bash -p -c '
     set -o pipefail
     IFS= read -r -d "" logical_pwd &&
       IFS= read -r -d "" path_set && IFS= read -r -d "" caller_path &&
-      IFS= read -r -d "" caller_functions && IFS= read -r -d "" prompt_version || exit 1
+      { [[ "$2" == path ]] || IFS= read -r -d "" caller_functions; } &&
+      IFS= read -r -d "" prompt_version || exit 1
     settings=()
-    while :; do
-      IFS= read -r -d "" key || exit 1
-      [[ -n "$key" ]] || break
-      [[ "$key" =~ ^LMLINE_[A-Z0-9_]+$ ]] || exit 1
-      IFS= read -r -d "" value || exit 1
-      settings+=("$key" "$value")
-    done
+    if [[ "$2" != path ]]; then
+      while :; do
+        IFS= read -r -d "" key || exit 1
+        [[ -n "$key" ]] || break
+        [[ "$key" =~ ^LMLINE_[A-Z0-9_]+$ ]] || exit 1
+        IFS= read -r -d "" value || exit 1
+        settings+=("$key" "$value")
+      done
+    fi
     unset LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR \
       LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS \
       LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT \
