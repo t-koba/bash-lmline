@@ -682,9 +682,12 @@ EOF
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
   ' _ "$repo_dir" || fail "zsh project-marker content identity"
   # Git root and branch, but not working-tree status, determine pending identity.
-  mkdir "$zsh_tmp/git-probe" "$zsh_tmp/git-probe/repo"
+  mkdir "$zsh_tmp/git-probe" "$zsh_tmp/git-probe/repo" "$zsh_tmp/git-probe/combined-repo"
   git -C "$zsh_tmp/git-probe/repo" init -q
   git -C "$zsh_tmp/git-probe/repo" symbolic-ref HEAD refs/heads/one
+  git -C "$zsh_tmp/git-probe/combined-repo" init -q
+  git -C "$zsh_tmp/git-probe/combined-repo" symbolic-ref HEAD refs/heads/combined
+  real_git=$(type -P git)
   mkfifo "$zsh_tmp/git-probe/one.gate" "$zsh_tmp/git-probe/two.gate"
   cat >"$zsh_tmp/engine-git" <<'EOF'
 #!/usr/bin/env bash
@@ -698,7 +701,14 @@ IFS= read -r -t 20 -u 3 release
 printf 'lmline-candidate: low\t-\t-\techo %s\n' "$name"
 EOF
   chmod +x "$zsh_tmp/engine-git"
-  LMLINE_TEST_GIT_DIR="$zsh_tmp/git-probe" LMLINE_CONFIG_DIR="$zsh_tmp/config-git" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-git" zsh -efic '
+  mkdir "$zsh_tmp/git-probe/combined-bin"
+  cat >"$zsh_tmp/git-probe/combined-bin/git" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$LMLINE_GIT_CALLS"
+exec "$LMLINE_TEST_REAL_GIT" "$@"
+EOF
+  chmod +x "$zsh_tmp/git-probe/combined-bin/git"
+  LMLINE_TEST_GIT_DIR="$zsh_tmp/git-probe" LMLINE_TEST_REAL_GIT="$real_git" LMLINE_CONFIG_DIR="$zsh_tmp/config-git" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-git" zsh -efic '
     source "$1/lmline/init.zsh"
     cd "$LMLINE_TEST_GIT_DIR/repo"
     cleanup_git_probe() {
@@ -713,6 +723,19 @@ EOF
     ( cd "$LMLINE_TEST_GIT_DIR"; [[ "$(__lmline_zsh_git_context_key)" == absent ]] )
     key=$(__lmline_zsh_git_context_key)
     [[ "$key" != *one* && "$key" != *"$PWD"* ]]
+    (
+      export PATH="$LMLINE_TEST_GIT_DIR/combined-bin:$PATH"
+      export LMLINE_GIT_CALLS="$LMLINE_TEST_GIT_DIR/combined.calls"
+      : >"$LMLINE_GIT_CALLS"
+      cd "$LMLINE_TEST_GIT_DIR/combined-repo"
+      combined_one=$(__lmline_zsh_git_context_key)
+      combined_two=$(__lmline_zsh_git_context_key)
+      [[ -n "$combined_one" && "$combined_one" == "$combined_two" ]]
+      [[ $(grep -c "^rev-parse --is-inside-work-tree --show-toplevel$" "$LMLINE_GIT_CALLS") == 2 ]]
+      [[ $(grep -c "^branch --show-current$" "$LMLINE_GIT_CALLS") == 2 ]]
+      ! grep -Fqx "rev-parse --is-inside-work-tree" "$LMLINE_GIT_CALLS"
+      ! grep -Fqx "rev-parse --show-toplevel" "$LMLINE_GIT_CALLS"
+    )
     touch untracked
     [[ "$key" == "$(__lmline_zsh_git_context_key)" ]]
     BUFFER="# git"; CURSOR=${#BUFFER}

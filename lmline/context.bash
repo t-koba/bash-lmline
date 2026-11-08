@@ -130,13 +130,25 @@ __lmline_suggested_commands_key() (
 __lmline_git_context_key() (
   set -o pipefail
   unset __lmline_git_root __lmline_git_branch || return 1
-  local __lmline_git_root __lmline_git_branch digest name
+  local __lmline_git_root __lmline_git_branch digest name git_info
   __lmline_context_enabled LMLINE_INCLUDE_GIT_CONTEXT || { printf disabled; return 0; }
-  if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! command -v git >/dev/null 2>&1; then
     printf absent
     return 0
   fi
-  __lmline_git_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  # Keep the common repository check and root lookup in one Git process.
+  # Fall back to the original probes when a wrapper or Git version does not
+  # return the documented two-line response, preserving failure semantics.
+  if git_info=$(git rev-parse --is-inside-work-tree --show-toplevel 2>/dev/null) &&
+      [[ "$git_info" == true$'\n'* || "$git_info" == false$'\n'* ]]; then
+    __lmline_git_root=${git_info#*$'\n'}
+  else
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      printf absent
+      return 0
+    fi
+    __lmline_git_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  fi
   __lmline_git_branch=$(git branch --show-current 2>/dev/null) || return 1
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX

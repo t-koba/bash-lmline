@@ -995,6 +995,21 @@ EOF
 chmod +x "$widget_tmp/git-probe/privacy-bin/sha256sum"
 git -C "$widget_tmp/git-probe/repo" init -q
 git -C "$widget_tmp/git-probe/repo" symbolic-ref HEAD refs/heads/one
+mkdir -p "$widget_tmp/git-probe/bare.git"
+git -C "$widget_tmp/git-probe/bare.git" init -q --bare
+detached_repo="$widget_tmp/git-probe/detached"
+mkdir -p "$detached_repo"
+git -C "$detached_repo" init -q
+git -C "$detached_repo" config user.name lmline-test
+git -C "$detached_repo" config user.email lmline@example.invalid
+printf probe >"$detached_repo/probe"
+git -C "$detached_repo" add probe
+git -C "$detached_repo" commit -q -m probe
+git -C "$detached_repo" checkout -q --detach HEAD
+newline_repo="$widget_tmp/git-probe/"$'newline\nrepo'
+mkdir -p "$newline_repo"
+git -C "$newline_repo" init -q
+git -C "$newline_repo" symbolic-ref HEAD refs/heads/newline
 mkfifo "$widget_tmp/git-probe/one.gate" "$widget_tmp/git-probe/two.gate"
 cat >"$widget_tmp/engine-git" <<'EOF'
 #!/usr/bin/env bash
@@ -1008,7 +1023,7 @@ IFS= read -r -t 20 -u 3 release
 printf 'lmline-candidate: low\t-\t-\techo %s\n' "$name"
 EOF
 chmod +x "$widget_tmp/engine-git"
-LMLINE_TEST_GIT_DIR="$widget_tmp/git-probe" LMLINE_CONFIG_DIR="$widget_tmp/config-git" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-git" bash --norc -e -i -c '
+LMLINE_TEST_GIT_DIR="$widget_tmp/git-probe" LMLINE_TEST_NEWLINE_REPO="$newline_repo" LMLINE_CONFIG_DIR="$widget_tmp/config-git" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-git" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   cd "$LMLINE_TEST_GIT_DIR/repo"
   cleanup_git_probe() {
@@ -1027,6 +1042,24 @@ LMLINE_TEST_GIT_DIR="$widget_tmp/git-probe" LMLINE_CONFIG_DIR="$widget_tmp/confi
   ( __lmline_hash_stdin() { return 1; }; ! __lmline_git_context_key >/dev/null )
   ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 0;; "rev-parse --show-toplevel") printf root;; "branch --show-current") return 0;; esac; }; [[ -n "$(__lmline_git_context_key)" ]] )
   ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 1;; *) return 1;; esac; }; [[ "$(__lmline_git_context_key)" == absent ]] )
+  ( cd "$LMLINE_TEST_GIT_DIR/bare.git"; ! __lmline_git_context_key >/dev/null )
+  ( cd "$LMLINE_TEST_GIT_DIR/detached"
+    branch=$(git branch --show-current); [[ -z "$branch" ]]
+    root=$(git rev-parse --show-toplevel)
+    expected=$(printf "%s\0%s\0" "$root" "$branch" | __lmline_hash_stdin)
+    [[ "$(__lmline_git_context_key)" == "git:$expected" ]]
+  )
+  ( cd "$LMLINE_TEST_GIT_DIR/repo"
+    root_key=$(__lmline_git_context_key)
+    mkdir -p nested; cd nested
+    [[ "$root_key" == "$(__lmline_git_context_key)" ]]
+  )
+  ( cd "$LMLINE_TEST_NEWLINE_REPO"
+    root=$(git rev-parse --show-toplevel)
+    branch=$(git branch --show-current)
+    expected=$(printf "%s\0%s\0" "$root" "$branch" | __lmline_hash_stdin)
+    [[ "$(__lmline_git_context_key)" == "git:$expected" ]]
+  )
   ( __lmline_hash_stdin() { return 0; }; ! __lmline_git_context_key >/dev/null )
   ( git() { case "$*" in "rev-parse --is-inside-work-tree") return 0;; "rev-parse --show-toplevel") printf "%s" "$test_root";; "branch --show-current") printf "%s" "$test_branch";; esac; }
     test_root=a; test_branch=bc; framed=$(__lmline_git_context_key)
