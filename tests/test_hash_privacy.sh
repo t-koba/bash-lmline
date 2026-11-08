@@ -15,6 +15,11 @@ cat >"$hash_tmp/record-hash" <<'TOOL'
 #!/bin/sh
 /usr/bin/env -0 >>"$HASH_TEST_DIR/environment"
 printf '%s\n' "${0##*/} $*" >>"$HASH_TEST_DIR/calls"
+case ${HASH_TEST_FAILURE-} in
+  fail) exit 1 ;;
+  empty) exit 0 ;;
+  partial) printf 'partial\n'; exit 1 ;;
+esac
 case ${0##*/} in
   cksum) exec "$HASH_REAL_CKSUM" ;;
   sha256sum) exec "$HASH_REAL_SHA256SUM" ;;
@@ -40,6 +45,7 @@ fi
 before=$(declare -Fx)
 source "$1/lmline/init.bash"
 LMLINE_SUGGESTED_COMMANDS_FILE=$HASH_TEST_DIR/list
+LMLINE_PROJECT_MARKERS_FILE=$HASH_TEST_DIR/list
 if [[ $2 == blocked ]]; then
   [[ -z $__LMLINE_SETTINGS_CKSUM && ! -e $HASH_TEST_DIR/calls ]]
   __LMLINE_SETTINGS_CKSUM=unchanged
@@ -47,7 +53,7 @@ if [[ $2 == blocked ]]; then
   [[ $__LMLINE_SETTINGS_CKSUM == unchanged && ! -e $HASH_TEST_DIR/calls ]]
   for helper in __lmline_settings_cksum __lmline_sandbox_hash \
       __lmline_async_settings_key __lmline_async_frontend_key __lmline_hash_stdin \
-      __lmline_suggested_commands_key; do
+      __lmline_suggested_commands_key __lmline_project_markers_key; do
     if "$helper" generate <"$LMLINE_CONFIG_DIR/settings.bash"; then exit 1; fi
     [[ ! -e $HASH_TEST_DIR/calls ]]
   done
@@ -76,62 +82,77 @@ else
   [[ -n $(__lmline_async_settings_key) ]]
   # Custom PATH executables retain the established stdin-only interface;
   # hash raw bytes and freshly collected membership separately, preserving NULs.
-  membership=$(printf 'printf\n' | "$real" "${args[@]}")
-  membership=${membership%% *}
-  previous=
-  for bytes in first second; do
-    printf 'printf\n# raw\0%s\n' "$bytes" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
-    expected=$("$real" "${args[@]}" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
-    : >"$HASH_TEST_DIR/calls"
-    key=$(__lmline_suggested_commands_key)
-    [[ $key == "${expected%% *}:$membership" && $key != "$previous" ]]
-    calls_for_key=0
-    while IFS= read -r call; do
-      if [[ $3 == shasum ]]; then
-        [[ $call == 'shasum -a 256' ]] || exit 1
-      else
-        [[ $call == "$3 " ]] || exit 1
+  for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
+    membership=$(printf 'printf\n' | "$real" "${args[@]}")
+    if [[ $helper == __lmline_project_markers_key ]]; then
+      membership=$(printf 1 | "$real" "${args[@]}")
+    fi
+    membership=${membership%% *}
+    previous=
+    for bytes in first second; do
+      printf 'printf\n# raw\0%s\n' "$bytes" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+      if [[ $helper == __lmline_project_markers_key ]]; then
+        printf 'kind\t%s\n# raw\0%s\n' "$HASH_TEST_DIR/config" "$bytes" >"$LMLINE_PROJECT_MARKERS_FILE"
       fi
-      calls_for_key=$((calls_for_key + 1))
-    done <"$HASH_TEST_DIR/calls"
-    [[ $calls_for_key == 2 ]]
-    previous=$key
-  done
-  # A cached wrapper wins even when PATH names the real system executable.
-  # Neither lookup nor hashing may alter the caller's exact command cache.
-  (
-    PATH=$HASH_TEST_DIR/cached-bin
-    export PATH
-    hash -p "$HASH_TEST_DIR/bin/$3" "$3"
-    hash -p "$real" unrelated_cached_command
-    cache_before=$(builtin hash -l)
-    : >"$HASH_TEST_DIR/calls"
-    __lmline_suggested_commands_key >"$HASH_TEST_DIR/cached-key" || exit 1
-    key=$(<"$HASH_TEST_DIR/cached-key")
-    [[ $key == "${expected%% *}:$membership" ]] || exit 1
-    [[ $(builtin hash -l) == "$cache_before" ]] || exit 1
-    calls_for_key=0
-    while IFS= read -r call; do
-      if [[ $3 == shasum ]]; then
-        [[ $call == 'shasum -a 256' ]] || exit 1
-      else
-        [[ $call == "$3 " ]] || exit 1
-      fi
-      calls_for_key=$((calls_for_key + 1))
-    done <"$HASH_TEST_DIR/calls"
-    [[ $calls_for_key == 2 ]]
-  ) || exit 1
-  # An stdin-based shell-function hasher retains the former two-call contract.
-  if [[ $3 == sha256sum ]]; then
-    ( PATH="$PATH:/bin:/usr/bin"; export PATH
-      sha256sum() { cat; }
-      __lmline_prepare_hash_environment || exit 1
-      set -o pipefail
-      file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
-      membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
-      [[ $(__lmline_suggested_commands_key) == "$file_digest:$membership_digest" ]]
+      expected=$("$real" "${args[@]}" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+      : >"$HASH_TEST_DIR/calls"
+      key=$("$helper")
+      [[ $key == "${expected%% *}:$membership" && $key != "$previous" ]]
+      calls_for_key=0
+      while IFS= read -r call; do
+        if [[ $3 == shasum ]]; then
+          [[ $call == 'shasum -a 256' ]] || exit 1
+        else
+          [[ $call == "$3 " ]] || exit 1
+        fi
+        calls_for_key=$((calls_for_key + 1))
+      done <"$HASH_TEST_DIR/calls"
+      [[ $calls_for_key == 2 ]]
+      previous=$key
+    done
+    # A cached wrapper wins even when PATH names the real system executable.
+    # Neither lookup nor hashing may alter the caller's exact command cache.
+    (
+      PATH=$HASH_TEST_DIR/cached-bin
+      export PATH
+      hash -p "$HASH_TEST_DIR/bin/$3" "$3"
+      hash -p "$real" unrelated_cached_command
+      cache_before=$(builtin hash -l)
+      : >"$HASH_TEST_DIR/calls"
+      "$helper" >"$HASH_TEST_DIR/cached-key" || exit 1
+      key=$(<"$HASH_TEST_DIR/cached-key")
+      [[ $key == "${expected%% *}:$membership" ]] || exit 1
+      [[ $(builtin hash -l) == "$cache_before" ]] || exit 1
+      calls_for_key=0
+      while IFS= read -r call; do
+        if [[ $3 == shasum ]]; then
+          [[ $call == 'shasum -a 256' ]] || exit 1
+        else
+          [[ $call == "$3 " ]] || exit 1
+        fi
+        calls_for_key=$((calls_for_key + 1))
+      done <"$HASH_TEST_DIR/calls"
+      [[ $calls_for_key == 2 ]]
     ) || exit 1
-  fi
+    # An stdin-based shell-function hasher retains the former two-call contract.
+    if [[ $3 == sha256sum ]]; then
+      ( PATH="$PATH:/bin:/usr/bin"; export PATH
+        sha256sum() { cat; }
+        __lmline_prepare_hash_environment || exit 1
+        set -o pipefail
+        file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+        if [[ $helper == __lmline_project_markers_key ]]; then
+          membership_digest=$(__lmline_project_markers_scan "$LMLINE_PROJECT_MARKERS_FILE" presence | __lmline_hash_stdin)
+        else
+          membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
+        fi
+        [[ $("$helper") == "$file_digest:$membership_digest" ]]
+      ) || exit 1
+    fi
+    for failure in fail empty partial; do
+      if HASH_TEST_FAILURE=$failure "$helper" >/dev/null 2>&1; then exit 1; fi
+    done
+  done
   # A shell-local tool override still wins; all changes remain private.
   cksum() { printf 'custom checksum\n'; }
   export -f cksum
@@ -197,24 +218,23 @@ for selected in cksum shasum sha256sum; do
 done
 # Exercise the system-tool batch path through an inode-identical PATH symlink.
 # Its parser must not inherit the private file or membership descriptors.
-if system_hash_real=$(builtin command -p -v sha256sum 2>/dev/null); then
-  system_hash_name=sha256sum
-elif system_hash_real=$(builtin command -p -v shasum 2>/dev/null); then
-  system_hash_name=shasum
-else
-  system_hash_real=$(builtin command -p -v cksum 2>/dev/null) || fail "system hash for descriptor test"
-  system_hash_name=cksum
-fi
-rm -f "$hash_tmp/bin/$system_hash_name" "$hash_tmp/bin/awk"
-ln -s "$system_hash_real" "$hash_tmp/bin/$system_hash_name"
+rm -f "$hash_tmp/bin/awk"
 cat >"$hash_tmp/bin/awk" <<'AWK'
 #!/usr/bin/env bash
 printf x >>"$HASH_TEST_DIR/awk-counts"
+if [[ ${HASH_TEST_BATCH-} == 1 ]]; then
+  while IFS= read -r -d '' entry; do
+    case $entry in
+      LMLINE_CONFIG_DIR=*|LMLINE_USER_RULES_DIR=*|LMLINE_DEFAULTS_DIR=*|LMLINE_PROJECT_MARKERS_FILE=*|LMLINE_SUGGESTED_COMMANDS_FILE=*|LMLINE_INCLUDE_PROJECT_CONTEXT=*|LMLINE_INCLUDE_SUGGESTED_COMMANDS=*|BASH_FUNC_*%%=*)
+        printf leaked >"$HASH_TEST_DIR/descriptor-leak"; exit 1 ;;
+    esac
+  done < <(/usr/bin/env -0)
+fi
 for fd_path in /dev/fd/*; do
   fd=${fd_path##*/}
   [[ $fd =~ ^[0-9]+$ && $fd -gt 2 ]] || continue
   case " $HASH_TEST_BASE_FDS " in *" $fd "*) continue ;; esac
-  if [[ $fd_path -ef $HASH_TEST_DIR/list || -p $fd_path ]]; then
+  if [[ $fd_path -ef $HASH_TEST_DIR/list || $fd_path -ef $HASH_TEST_DIR/markers || -p $fd_path ]]; then
     printf leaked >"$HASH_TEST_DIR/descriptor-leak"
     exit 1
   fi
@@ -226,22 +246,21 @@ cat >"$hash_tmp/batch-check.bash" <<'CHECK'
 set -e
 source "$1/lmline/init.bash"
 LMLINE_SUGGESTED_COMMANDS_FILE=$HASH_TEST_DIR/list
-case $HASH_TEST_SYSTEM_HASH_NAME in
-  sha256sum)
-    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
-    expected_membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL")
-    ;;
-  shasum)
-    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" -a 256 <"$LMLINE_SUGGESTED_COMMANDS_FILE")
-    expected_membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL" -a 256)
-    ;;
-  cksum)
-    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
-    expected_membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL")
-    ;;
-esac
-expected_file=${expected_file%% *}
-expected_membership=${expected_membership%% *}
+LMLINE_PROJECT_MARKERS_FILE=$HASH_TEST_DIR/markers
+export HASH_TEST_BATCH=1
+printf 'printf\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+printf 'kind\tlist\n' >"$LMLINE_PROJECT_MARKERS_FILE"
+if [[ ${2-} == blocked ]]; then
+  : >"$HASH_TEST_DIR/awk-counts"
+  if __lmline_project_markers_key >/dev/null; then exit 1; fi
+  [[ ! -s $HASH_TEST_DIR/awk-counts ]]
+  exit
+fi
+export LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR
+hash_private_function() { : HASH_BODY_MARKER; }
+export -f hash_private_function
+hash_args=()
+[[ $HASH_TEST_SYSTEM_HASH_NAME != shasum ]] || hash_args=(-a 256)
 # Keep an unrelated inherited pipe open to ensure the privacy check only
 # attributes descriptors opened by this key helper.
 exec {unrelated_fd}< <(printf 'unrelated\n')
@@ -255,18 +274,70 @@ for fd_path in /dev/fd/*; do
   fi
 done
 export HASH_TEST_BASE_FDS
-: >"$HASH_TEST_DIR/awk-counts"
-key=$(__lmline_suggested_commands_key)
+for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
+  export -n LMLINE_PROJECT_MARKERS_FILE LMLINE_SUGGESTED_COMMANDS_FILE
+  export -n LMLINE_INCLUDE_PROJECT_CONTEXT LMLINE_INCLUDE_SUGGESTED_COMMANDS
+  if [[ $helper == __lmline_project_markers_key ]]; then
+    export LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT
+  else
+    export LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS
+  fi
+  previous=
+  for state in first changed absent; do
+    cd "$HASH_TEST_DIR"
+    # Change file bytes without changing parsed presence, then only presence.
+    if [[ $state != absent ]]; then
+      printf 'kind\tlist\n# raw\0%s\n' "$state" >"$LMLINE_PROJECT_MARKERS_FILE"
+    else
+      cd "$HASH_TEST_DIR/config"
+    fi
+    if [[ $helper == __lmline_project_markers_key ]]; then
+      file=$LMLINE_PROJECT_MARKERS_FILE
+      membership=$(__lmline_project_markers_scan "$file" presence | "$HASH_TEST_SYSTEM_HASH_REAL" "${hash_args[@]}")
+    else
+      file=$LMLINE_SUGGESTED_COMMANDS_FILE
+      membership=$(printf 'printf\n' | "$HASH_TEST_SYSTEM_HASH_REAL" "${hash_args[@]}")
+    fi
+    expected_file=$("$HASH_TEST_SYSTEM_HASH_REAL" "${hash_args[@]}" <"$file")
+    : >"$HASH_TEST_DIR/awk-counts"
+    path_before=$PATH pwd_before=$PWD exports_before=$(declare -Fx) cache_before=$(builtin hash -l)
+    key=$("$helper")
+    [[ $PATH == "$path_before" && $PWD == "$pwd_before" && $(declare -Fx) == "$exports_before" && $(builtin hash -l) == "$cache_before" ]]
+    [[ $key == "${expected_file%% *}:${membership%% *}" && $(<"$HASH_TEST_DIR/awk-counts") == x ]]
+    if [[ $helper == __lmline_project_markers_key ]]; then
+      [[ $key != "$previous" ]]
+      previous=$key
+    fi
+  done
+  # Fail closed on producer failure even after it emitted valid partial data.
+  if [[ $helper == __lmline_project_markers_key ]]; then
+    ( __lmline_project_markers_scan() { printf 1; return 1; }
+      ! "$helper" >/dev/null ) || exit 1
+  fi
+done
 exec {unrelated_fd}<&-
-[[ $key == "$expected_file:$expected_membership" && $(<"$HASH_TEST_DIR/awk-counts") == x ]]
+
 CHECK
-rm -f "$hash_tmp/descriptor-leak"
-HASH_TEST_SYSTEM_HASH_NAME=$system_hash_name \
-HASH_TEST_SYSTEM_HASH_REAL=$system_hash_real \
-PATH="$hash_tmp/bin" bash --noprofile --norc -i \
-  "$hash_tmp/batch-check.bash" "$repo_dir" \
-  >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "system hash descriptor isolation"
-[[ ! -e $hash_tmp/descriptor-leak ]] || fail "system hash parser received private descriptors"
+for system_hash_name in cksum shasum sha256sum; do
+  system_hash_real=$(builtin command -p -v "$system_hash_name" 2>/dev/null) || continue
+  rm -f "$hash_tmp/bin/sha256sum" "$hash_tmp/bin/shasum" "$hash_tmp/bin/cksum" "$hash_tmp/descriptor-leak"
+  ln -s "$system_hash_real" "$hash_tmp/bin/$system_hash_name"
+  HASH_TEST_SYSTEM_HASH_NAME=$system_hash_name \
+  HASH_TEST_SYSTEM_HASH_REAL=$system_hash_real \
+  PATH="$hash_tmp/bin" bash --noprofile --norc -i \
+    "$hash_tmp/batch-check.bash" "$repo_dir" \
+    >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "system hash parity and descriptor isolation ($system_hash_name)"
+  [[ ! -e $hash_tmp/descriptor-leak ]] || fail "system hash parser received private descriptors"
+  for record in 'BASH_FUNC_%%=HASH_BODY_MARKER' 'foo=() { : HASH_BODY_MARKER; }'; do
+    env "$record" HASH_TEST_SYSTEM_HASH_NAME="$system_hash_name" \
+      HASH_TEST_SYSTEM_HASH_REAL="$system_hash_real" PATH="$hash_tmp/bin" \
+      bash --noprofile --norc -p -i "$hash_tmp/batch-check.bash" "$repo_dir" blocked \
+      >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "system hash residual transport guard ($system_hash_name)"
+  done
+done
+# Standalone settings hashing below always uses cksum.
+rm -f "$hash_tmp/bin/cksum"
+ln -s "$HASH_REAL_CKSUM" "$hash_tmp/bin/cksum"
 
 # Modules must also provide safe hashing when sourced without interactive init.
 # Keep an unrelated pipe open, as runners may do; only helper-owned descriptors

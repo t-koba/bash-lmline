@@ -1057,8 +1057,8 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
   [[ "$user_key" != "$(__lmline_project_markers_key)" ]]
   LMLINE_DEFAULTS_DIR=$1/lmline/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
   ( __lmline_resolve_data_file() { return 1; }; ! __lmline_project_markers_key >/dev/null )
-  ( __lmline_hash_stdin() { return 1; }; ! __lmline_project_markers_key >/dev/null )
-  ( __lmline_hash_stdin() { return 0; }; ! __lmline_project_markers_key >/dev/null )
+  ( sha256sum() { return 1; }; ! __lmline_project_markers_key >/dev/null )
+  ( sha256sum() { return 0; }; ! __lmline_project_markers_key >/dev/null )
   ( __lmline_project_markers_scan() { return 1; }; ! __lmline_project_markers_key >/dev/null )
   ( LMLINE_PROJECT_MARKERS_FILE=$PWD/missing; ! __lmline_project_markers_key >/dev/null )
   mkfifo fifo

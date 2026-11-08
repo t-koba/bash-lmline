@@ -915,7 +915,8 @@ __lmline_project_markers_file() {
 # Hash the selected file and the presence of its parsed markers privately.
 __lmline_project_markers_key() (
   set -o pipefail
-  local file digest presence name
+  local file digest presence name file_fd presence_fd producer status=0 hash_path system_hash_path
+  local -a hash_command
   __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT || { printf disabled; return 0; }
   file=$(__lmline_project_markers_file 2>/dev/null) || return 1
   [[ -f "$file" && -r "$file" ]] || return 1
@@ -948,11 +949,43 @@ __lmline_project_markers_key() (
   else
     POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
   fi
-  digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
-  [[ -n "$digest" ]] || return 1
-  presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
-  [[ -n "$presence" ]] || return 1
-  printf '%s:%s' "$digest" "$presence"
+  if command -v sha256sum >/dev/null 2>&1; then
+    hash_command=(sha256sum)
+  elif command -v shasum >/dev/null 2>&1; then
+    hash_command=(shasum -a 256)
+  else
+    hash_command=(cksum)
+  fi
+  # As with suggested commands, only a verified system tool accepts descriptor
+  # arguments. Custom executables/functions keep the two stdin-only hashes.
+  hash_path=$(builtin command -v "${hash_command[0]}" 2>/dev/null) || hash_path=
+  system_hash_path=$(builtin hash -r && builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
+  if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
+      [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+    digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
+    [[ -n "$digest" ]] || return 1
+    presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+    [[ -n "$presence" ]] || return 1
+    printf '%s:%s' "$digest" "$presence"
+    return 0
+  fi
+  __lmline_check_no_function_transport 2>/dev/null || return 1
+  exec {presence_fd}< <(__lmline_project_markers_scan "$file" presence 2>/dev/null) || return 1
+  producer=$!
+  { exec {file_fd}<"$file"; } 2>/dev/null || {
+    exec {presence_fd}<&- 2>/dev/null || :
+    wait "$producer" 2>/dev/null || :
+    return 1
+  }
+  # Only descriptor names reach argv; close private inputs in the parser.
+  digest=$("${hash_command[@]}" /dev/fd/"$file_fd" /dev/fd/"$presence_fd" 2>/dev/null |
+    awk 'NR == 1 { first=$1 } NR == 2 { second=$1 }
+      END { if (NR != 2 || first == "" || second == "") exit 1
+        printf "%s:%s", first, second }' 2>/dev/null {file_fd}<&- {presence_fd}<&-) || status=1
+  exec {file_fd}<&- {presence_fd}<&- || status=1
+  wait "$producer" || status=1
+  (( status == 0 )) && [[ -n "$digest" ]] || return 1
+  printf '%s' "$digest"
 )
 
 # Both context and identity use exactly the same marker-list parsing.
