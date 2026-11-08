@@ -781,7 +781,7 @@ done < <(/usr/bin/env -0)
 if declare -F lmline_inherited_probe >/dev/null || declare -F lmline_legacy_probe >/dev/null; then imported=1; fi
 [[ ${TEXT-} == '()example' && ${ORDINARY-} == $'value=with\nnewlines\n' ]] && ordinary=1
 printf 'raw=%s imported=%s ordinary=%s scratch=%s\n' "$raw" "$imported" "$ordinary" "$scratch" >>"$LMLINE_TEST_IDENTITY_LOG"
-exec cksum
+exec cksum "$@"
 EOF_HASH
   chmod +x "$zsh_tmp/identity-bin/sha256sum"
   cat >"$zsh_tmp/identity-probe.zsh" <<'EOF_ZSH'
@@ -881,11 +881,11 @@ EOF_ZSH
   mkdir "$zsh_tmp/suggested/privacy-bin"
   cat >"$zsh_tmp/suggested/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if (($#)) || env | grep -Eq '^(LMLINE_USER_RULES_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
+if [[ $# != 0 && ( $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ) ]] || env | grep -Eq '^(LMLINE_USER_RULES_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
   printf leaked >"$LMLINE_TEST_SUGGESTED_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_SUGGESTED_DIR/checked"
-exec cksum
+exec cksum "$@"
 EOF
   chmod +x "$zsh_tmp/suggested/privacy-bin/sha256sum"
   mkfifo "$zsh_tmp/suggested/printf.gate" "$zsh_tmp/suggested/sleep.gate"

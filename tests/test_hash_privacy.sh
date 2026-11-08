@@ -7,6 +7,7 @@ trap 'rm -rf "$hash_tmp"' EXIT
 export HASH_TEST_DIR=$hash_tmp
 mkdir "$hash_tmp/bin" "$hash_tmp/config"
 printf 'export LMLINE_MODEL=hash-privacy\n' >"$hash_tmp/config/settings.bash"
+printf 'printf\n' >"$hash_tmp/list"
 export LMLINE_CONFIG_DIR=$hash_tmp/config LMLINE_BIND_KEYS=0 TEXT='()example'
 # /bin/sh does not silently discard protected transport before recording it.
 # Record NUL-delimited bytes, then use the real selected tool for exact output.
@@ -23,6 +24,7 @@ TOOL
 chmod +x "$hash_tmp/record-hash"
 export HASH_REAL_CKSUM
 HASH_REAL_CKSUM=$(command -v cksum)
+export HASH_REAL_AWK=$(command -v awk)
 # Keep only selected hash tools on PATH to exercise both SHA variants/fallback.
 for tool in bash awk sort cut; do ln -s "$(command -v "$tool")" "$hash_tmp/bin/$tool"; done
 ln -s "$hash_tmp/record-hash" "$hash_tmp/bin/cksum"
@@ -36,13 +38,15 @@ if [[ $2 == ordinary ]]; then
 fi
 before=$(declare -Fx)
 source "$1/lmline/init.bash"
+LMLINE_SUGGESTED_COMMANDS_FILE=$HASH_TEST_DIR/list
 if [[ $2 == blocked ]]; then
   [[ -z $__LMLINE_SETTINGS_CKSUM && ! -e $HASH_TEST_DIR/calls ]]
   __LMLINE_SETTINGS_CKSUM=unchanged
   __lmline_reload_settings_if_changed "$LMLINE_CONFIG_DIR"
   [[ $__LMLINE_SETTINGS_CKSUM == unchanged && ! -e $HASH_TEST_DIR/calls ]]
   for helper in __lmline_settings_cksum __lmline_sandbox_hash \
-      __lmline_async_settings_key __lmline_async_frontend_key __lmline_hash_stdin; do
+      __lmline_async_settings_key __lmline_async_frontend_key __lmline_hash_stdin \
+      __lmline_suggested_commands_key; do
     if "$helper" generate <"$LMLINE_CONFIG_DIR/settings.bash"; then exit 1; fi
     [[ ! -e $HASH_TEST_DIR/calls ]]
   done
@@ -53,6 +57,7 @@ else
   __LMLINE_SETTINGS_CKSUM=outdated
   __lmline_reload_settings_if_changed "$LMLINE_CONFIG_DIR"
   [[ $__LMLINE_SETTINGS_CKSUM == "$expected" ]]
+  real=$HASH_REAL_CKSUM; args=()
   if [[ $3 == cksum ]]; then
     sandbox_expected=${expected%% *}
     frontend_expected=$(printf '%s\0%s\0' "$LMLINE_ENGINE" engine | "$HASH_REAL_CKSUM")
@@ -68,6 +73,32 @@ else
   [[ $(__lmline_sandbox_hash <"$LMLINE_CONFIG_DIR/settings.bash") == "$sandbox_expected" ]]
   [[ $(__lmline_async_frontend_key generate) == "$frontend_expected" ]]
   [[ -n $(__lmline_async_settings_key) ]]
+  # Batch exactly two private streams once, preserving separate raw-byte and
+  # membership digests even for NUL bytes that shell variables cannot hold.
+  membership=$(printf 'printf\n' | "$real" "${args[@]}")
+  membership=${membership%% *}
+  previous=
+  for bytes in first second; do
+    printf 'printf\n# raw\0%s\n' "$bytes" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+    expected=$("$real" "${args[@]}" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+    : >"$HASH_TEST_DIR/calls"
+    key=$(__lmline_suggested_commands_key)
+    [[ $key == "${expected%% *}:$membership" && $key != "$previous" ]]
+    IFS= read -r call <"$HASH_TEST_DIR/calls"
+    [[ $call == "$3 "*'/dev/fd/'*' /dev/fd/'* && $(<"$HASH_TEST_DIR/calls") == "$call" ]]
+    previous=$key
+  done
+  # An stdin-based shell-function hasher retains the former two-call contract.
+  if [[ $3 == sha256sum ]]; then
+    ( PATH="$PATH:/bin:/usr/bin"; export PATH
+      sha256sum() { cat; }
+      __lmline_prepare_hash_environment || exit 1
+      set -o pipefail
+      file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
+      membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
+      [[ $(__lmline_suggested_commands_key) == "$file_digest:$membership_digest" ]]
+    ) || exit 1
+  fi
   # A shell-local tool override still wins; all changes remain private.
   cksum() { printf 'custom checksum\n'; }
   export -f cksum
@@ -125,6 +156,27 @@ for selected in cksum shasum sha256sum; do
     grep -q "^$selected " "$hash_tmp/calls" || fail "custom PATH not used ($selected)"
   done
 done
+# The output parser must not inherit descriptors carrying the private streams.
+rm "$hash_tmp/bin/awk"
+cat >"$hash_tmp/bin/awk" <<'AWK'
+#!/usr/bin/env bash
+case ${1-} in
+  'NR == 1 '*)
+    IFS=' ' read -r tool file_fd membership_fd <"$HASH_TEST_DIR/calls" || exit 1
+    if [[ $file_fd -ef $HASH_TEST_DIR/list || -p $membership_fd ]]; then
+      printf leaked >"$HASH_TEST_DIR/awk-leak"
+      exit 1
+    fi
+    ;;
+esac
+exec "$HASH_REAL_AWK" "$@"
+AWK
+chmod +x "$hash_tmp/bin/awk"
+rm -f "$hash_tmp/calls" "$hash_tmp/environment" "$hash_tmp/awk-leak"
+PATH="$hash_tmp/bin" bash --noprofile --norc -i \
+  "$hash_tmp/check.bash" "$repo_dir" clean sha256sum \
+  >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "hash stream descriptor isolation"
+[[ ! -e $hash_tmp/awk-leak ]] || fail "private file/membership descriptor reached awk"
 # Modules must also provide safe hashing when sourced without interactive init.
 PATH="$hash_tmp/bin" bash --noprofile --norc -ec '
   source "$1/lmline/sandbox.bash"

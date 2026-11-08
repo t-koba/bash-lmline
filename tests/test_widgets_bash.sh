@@ -27,7 +27,7 @@ chmod +x "$widget_tmp/fail-sort-bin/sort"
 mkdir -p "$widget_tmp/function-names/privacy-bin"
 cat >"$widget_tmp/function-names/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if (($#)) || env | grep -q '^BASH_FUNC_'; then
+if [[ $# != 0 && ( $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ) ]] || env | grep -q '^BASH_FUNC_'; then
   printf leaked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
 fi
 if [[ ${LMLINE_TEST_EXPECT_POSIX+x} &&
@@ -35,7 +35,7 @@ if [[ ${LMLINE_TEST_EXPECT_POSIX+x} &&
   printf changed >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/checked"
-exec cksum
+exec cksum "$@"
 EOF
 chmod +x "$widget_tmp/function-names/privacy-bin/sha256sum"
 cat >"$widget_tmp/function-names/protected-name-check.bash" <<'EOF'
@@ -156,11 +156,16 @@ import sys
 from pathlib import Path
 
 root = Path(os.environ["LMLINE_TEST_REQUEST_KEY_DIR"])
-if len(sys.argv) != 1 or any(key.startswith("BASH_FUNC_") for key in os.environ):
+args = sys.argv[1:]
+if (args and (len(args) != 2 or not all(arg.startswith("/dev/fd/") for arg in args))) or any(key.startswith("BASH_FUNC_") for key in os.environ):
     (root / "leak").touch()
 with (root / "checked").open("a") as checked:
     checked.write("1")
-print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())
+if args:
+    for arg in args:
+        print(hashlib.sha256(Path(arg).read_bytes()).hexdigest())
+else:
+    print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())
 EOF
 chmod +x "$widget_tmp/request-key/privacy-bin/sha256sum"
 LMLINE_CONFIG_DIR="$widget_tmp/request-key/config" \
@@ -1193,11 +1198,11 @@ mkdir "$widget_tmp/suggested"
 mkdir "$widget_tmp/suggested/privacy-bin"
 cat >"$widget_tmp/suggested/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if (($#)) || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
+if [[ $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ]] || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
   printf leaked >"$LMLINE_TEST_SUGGESTED_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_SUGGESTED_DIR/checked"
-exec cksum
+exec cksum "$@"
 EOF
 chmod +x "$widget_tmp/suggested/privacy-bin/sha256sum"
 mkfifo "$widget_tmp/suggested/printf.gate" "$widget_tmp/suggested/sleep.gate"
@@ -1283,7 +1288,7 @@ LMLINE_TEST_SUGGESTED_DIR="$widget_tmp/suggested" LMLINE_CONFIG_DIR="$widget_tmp
   __lmline_generate_widget >/dev/null 2>&1
   [[ "$__LMLINE_ASYNC_PID" != "$third_pid" && "$READLINE_LINE" == "# list" ]]
   LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/list
-  ( __lmline_hash_stdin() { return 1; }; ! __lmline_suggested_commands_key >/dev/null )
+  ( sha256sum() { printf "file-digest\nmembership-digest\n"; return 1; }; ! __lmline_suggested_commands_key >/dev/null )
   LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
   LMLINE_INCLUDE_SUGGESTED_COMMANDS=0
   [[ "$(__lmline_suggested_commands_key)" == disabled ]]
@@ -1334,14 +1339,12 @@ LMLINE_TEST_AVAILABILITY_DIR="$widget_tmp/availability" LMLINE_CONFIG_DIR="$widg
   ( __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE=$LMLINE_SUGGESTED_COMMANDS_FILE
     __LMLINE_SUGGESTED_COMMANDS_CACHE=lmline-availability-external
     [[ "$key" == "$(__lmline_suggested_commands_key)" ]] )
-  ( __lmline_collect_suggested_commands() { return 1; }; ! __lmline_suggested_commands_key >/dev/null )
-  ( __lmline_hash_stdin() { return 0; }; ! __lmline_suggested_commands_key >/dev/null )
+  ( __lmline_collect_suggested_commands() { printf partial; return 1; }; ! __lmline_suggested_commands_key >/dev/null )
+  ( sha256sum() { return 0; }; ! __lmline_suggested_commands_key >/dev/null )
   # The file digest can succeed while the membership digest is empty.
-  ( __lmline_hash_stdin() {
-      local first second
-      IFS= read -r first || :
-      if IFS= read -r second; then printf file-digest; fi
-    }; ! __lmline_suggested_commands_key >/dev/null )
+  ( sha256sum() { IFS= read -r line || return 1; printf 'file-digest\n'; }
+    __lmline_collect_suggested_commands() { :; }
+    ! __lmline_suggested_commands_key >/dev/null )
   READLINE_LINE="# availability"; READLINE_POINT=${#READLINE_LINE}
   __lmline_generate_widget >/dev/null 2>&1
   first=$__LMLINE_ASYNC_PID; first_key=$__LMLINE_ASYNC_KEY

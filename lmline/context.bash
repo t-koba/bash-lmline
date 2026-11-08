@@ -75,11 +75,12 @@ __lmline_suggested_commands_file() {
 }
 
 # Fingerprint file bytes and freshly collected command membership, not metadata.
-# Stream private inputs on stdin, keep paths out of hashing arguments/output,
-# and exclude function bodies.
+# Stream private inputs through descriptors, keep paths out of hashing
+# arguments/output, and exclude function bodies.
 __lmline_suggested_commands_key() (
   set -o pipefail
-  local file digest membership_digest name
+  local file digest membership_digest name file_fd membership_fd producer status=0
+  local -a hash_command
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || { printf disabled; return 0; }
   file=$(__lmline_suggested_commands_file 2>/dev/null) || return 1
   # Widget identity is computed synchronously; never open a FIFO/device here.
@@ -113,16 +114,46 @@ __lmline_suggested_commands_key() (
   else
     POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
   fi
-  digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
-  [[ -n "$digest" ]] || return 1
   # The async background worker does not expand caller aliases. Match that
   # visibility only in this private key-helper subshell; preserve rendering.
   shopt -u expand_aliases || return 1
   # The renderer's path-only cache cannot establish availability freshness.
   unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE || return 1
-  membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
-  [[ -n "$membership_digest" ]] || return 1
-  printf '%s:%s' "$digest" "$membership_digest"
+  __lmline_check_no_function_transport 2>/dev/null || return 1
+  if command -v sha256sum >/dev/null 2>&1; then
+    hash_command=(sha256sum)
+  elif command -v shasum >/dev/null 2>&1; then
+    hash_command=(shasum -a 256)
+  else
+    hash_command=(cksum)
+  fi
+  # Preserve stdin-based overrides supplied as shell functions; only external
+  # hash tools support the multi-file descriptor interface below.
+  if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1; then
+    digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
+    [[ -n "$digest" ]] || return 1
+    membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+    [[ -n "$membership_digest" ]] || return 1
+    printf '%s:%s' "$digest" "$membership_digest"
+    return 0
+  fi
+  exec {membership_fd}< <(__lmline_collect_suggested_commands 2>/dev/null) || return 1
+  producer=$!
+  { exec {file_fd}<"$file"; } 2>/dev/null || {
+    exec {membership_fd}<&- 2>/dev/null || :
+    wait "$producer" 2>/dev/null || :
+    return 1
+  }
+  # Hash exact file bytes and fresh membership in one tool invocation. Only
+  # descriptor names reach argv; discard them and require both output rows.
+  digest=$("${hash_command[@]}" /dev/fd/"$file_fd" /dev/fd/"$membership_fd" 2>/dev/null |
+    awk 'NR == 1 { first=$1 } NR == 2 { second=$1 }
+      END { if (NR != 2 || first == "" || second == "") exit 1
+        printf "%s:%s", first, second }' 2>/dev/null {file_fd}<&- {membership_fd}<&-) || status=1
+  exec {file_fd}<&- {membership_fd}<&- || status=1
+  wait "$producer" || status=1
+  (( status == 0 )) && [[ -n "$digest" ]] || return 1
+  printf '%s' "$digest"
 )
 
 # Fingerprint exactly the Git fields rendered by the initial context. A missing
