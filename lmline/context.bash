@@ -156,7 +156,7 @@ __lmline_git_context_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}
@@ -893,7 +893,7 @@ __lmline_project_markers_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}
@@ -1465,7 +1465,7 @@ __lmline_context_settings_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}
@@ -1535,7 +1535,7 @@ __lmline_path_key() (
   __lmline_unexport_function() { \export -nf -- "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}
@@ -1563,30 +1563,30 @@ __lmline_path_key() (
 
 __lmline_request_key() (
   set -o pipefail
-  local request_mode=$1 line=$2 physical_cwd_key= uname_key= shell_functions=
-  # Keep bodies out of hash subprocesses without changing caller definitions
-  # or lookup semantics. Use the hardened names-only collector, which never
-  # dispatches caller read/compgen/command/builtin/type/declare. An exported
-  # caller type() can spoof a builtin probe and an exported declare() then
-  # suppresses enumeration, so never trust type/declare here.
+  local request_mode=$1 line=$2 physical_cwd_key= uname_key= exported_functions=
+  # Keep exported bodies out of hash subprocesses without changing caller
+  # definitions or lookup semantics; unexported functions cannot reach them.
+  # Use the hardened exported-names collector, which never dispatches caller
+  # read/compgen/command/builtin/type/declare. An exported caller type() can
+  # spoof a builtin probe and an exported declare() then suppress enumeration.
   # The Zsh bridge loads context alone; load the collector before taking
   # the snapshot so policy helpers are included too.
   __lmline_require_policy_support || return 1
-  shell_functions=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  exported_functions=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   # Sanitize only the hash side of each pipeline: input producers may need
   # exported helpers in child shells. Keep their lookup and environment intact.
   __lmline_request_hash_stdin() (
-    local shell_functions=$shell_functions name record
+    local exported_functions=$exported_functions name record
     # POSIX mode makes the special builtin take precedence over caller
     # export/builtin/command functions. Do not assign an already-readonly
     # POSIXLY_CORRECT or change the environment seen by the hash implementation.
     __lmline_request_unexport_functions() {
-      while [[ -n $shell_functions ]]; do
-        record=${shell_functions%%$'\n'*}
-        if [[ $shell_functions == *$'\n'* ]]; then
-          shell_functions=${shell_functions#*$'\n'}
+      while [[ -n $exported_functions ]]; do
+        record=${exported_functions%%$'\n'*}
+        if [[ $exported_functions == *$'\n'* ]]; then
+          exported_functions=${exported_functions#*$'\n'}
         else
-          shell_functions=
+          exported_functions=
         fi
         [[ -n $record ]] || continue
         name=$record

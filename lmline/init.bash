@@ -409,14 +409,14 @@ __lmline_async_function_names_key() (
 # Hash the environment as inherited by a fresh engine process. NUL framing
 # preserves empty values and newlines without exposing settings in arguments.
 __lmline_async_settings_key() (
-  # Do not carry exported function bodies into the fingerprint subprocess.
+  # Only exported functions can reach the fingerprint subprocess.
   local name
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}
@@ -459,13 +459,13 @@ __lmline_async_settings_key() (
 __lmline_async_frontend_key() (
   set -o pipefail
   local backend digest name
-  # Hashing subprocesses must not inherit exported function bodies.
+  # Only exported functions can reach hashing subprocesses.
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
   __lmline_unexport_function() { \export -nf -- "$@"; }
   local functions_remaining
-  functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}

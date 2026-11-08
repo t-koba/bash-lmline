@@ -283,7 +283,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
   helpers=(__lmline_async_function_names_key __lmline_async_settings_key
     __lmline_async_frontend_key __lmline_context_settings_key
     __lmline_suggested_commands_key __lmline_project_markers_key
-    __lmline_git_context_key __lmline_path_key)
+    __lmline_git_context_key __lmline_path_key __lmline_request_key)
   for shadow in read compgen; do
     case $shadow in
       read)
@@ -327,20 +327,22 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
       # A failed names-only snapshot must not hash or establish an identity.
       rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
       (
-        if [[ ${helpers[i]} == __lmline_suggested_commands_key ]]; then
-          __lmline_collect_exported_functions() { return 1; }
-        else
+        # Only the function-name identity key needs the full function list;
+        # other helpers use exported names solely to scrub child environments.
+        if [[ ${helpers[i]} == __lmline_async_function_names_key ]]; then
           __lmline_collect_shell_functions() { return 1; }
+        else
+          __lmline_collect_exported_functions() { return 1; }
         fi
         failed=$("${helpers[i]}" generate) && exit 1
         [[ -z "$failed" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
         # A collected name that cannot be unexported must also stop hashing.
-        if [[ ${helpers[i]} == __lmline_suggested_commands_key ]]; then
-          __lmline_collect_exported_functions() { printf "%s\n" __lmline_missing_scrub_function; }
-        else
+        if [[ ${helpers[i]} == __lmline_async_function_names_key ]]; then
           __lmline_collect_shell_functions() { printf "%s\n" __lmline_missing_scrub_function; }
+        else
+          __lmline_collect_exported_functions() { printf "%s\n" __lmline_missing_scrub_function; }
         fi
         failed=$("${helpers[i]}" generate) && exit 1
         [[ -z "$failed" ]]
