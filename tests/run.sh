@@ -42,7 +42,7 @@ for test_file in "${test_files[@]}"; do
   # The builtin writes immediately, even when CI captures stdout.
   printf 'start - %s\n' "$name"
   if ((skip_shellcheck)) && [[ "$name" == "test_shellcheck.sh" ]]; then
-    printf 'skip - %s: full ShellCheck lint runs once on Ubuntu; run bounded monitor regression\n' "$name"
+    printf 'skip - %s: full ShellCheck lint runs once on macOS; run bounded monitor regression\n' "$name"
     if ! bash "$test_file" --monitor-self-test; then
       printf 'not ok - %s (monitor regression)\n' "$name" >&2
       failed+=("$name")
