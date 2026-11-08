@@ -66,8 +66,15 @@ case "\${2-}" in
   *BASH_VERSINFO*) exec "$sysopen_real_bash" "\$@" ;;
 esac
 [ ! -e "\$LMLINE_TEST_EXPORT_PATH" ] && [ ! -L "\$LMLINE_TEST_EXPORT_PATH" ] || { printf 'zsh sysopen test: export path was not unlinked\n' >&2; exit 95; }
-mode=\$(stat -L -c '%a' /dev/fd/1 2>/dev/null) || mode=\$(stat -L -f '%Lp' /dev/fd/1 2>/dev/null) || { printf 'zsh sysopen test: cannot stat output descriptor\n' >&2; exit 96; }
-[ "\$mode" = 600 ] || { printf 'zsh sysopen test: unexpected output mode (%s)\n' "\$mode" >&2; exit 97; }
+mode=\$(stat -L -c '%a' /dev/fd/1 2>/dev/null) || mode=
+if [ "\$mode" != 600 ]; then
+  exec 3>&1
+  mode=\$(perl -e 'open my \$fh, ">&=3" or exit 1; my \$m=(stat \$fh)[2]; defined(\$m) or exit 1; printf "%o\\n", \$m & 0777' 2>/dev/null)
+  fstat_status=\$?
+  exec 3>&-
+  [ "\$fstat_status" -eq 0 ] || { printf 'zsh sysopen test: cannot fstat output descriptor\n' >&2; exit 96; }
+fi
+[ "\$mode" = 600 ] || { printf 'zsh sysopen test: unexpected inode mode (%s)\n' "\$mode" >&2; exit 97; }
 ln -s "\$LMLINE_TEST_VICTIM" "\$LMLINE_TEST_EXPORT_PATH" || { printf 'zsh sysopen test: cannot create replacement path\n' >&2; exit 98; }
 [ "\${LMLINE_TEST_EXPORT_FAIL:-0}" = 0 ] || exit 79
 exec "$sysopen_real_bash" "\$@"
