@@ -28,7 +28,7 @@ source "$__LMLINE_DIR/config.bash"
 # Prime before loading; the post-load check still catches startup changes.
 __LMLINE_SETTINGS_CKSUM=
 if [[ -f "$__LMLINE_CONFIG_DIR/settings.bash" ]]; then
-  __LMLINE_SETTINGS_CKSUM=$(cksum <"$__LMLINE_CONFIG_DIR/settings.bash" 2>/dev/null) || __LMLINE_SETTINGS_CKSUM=
+  __LMLINE_SETTINGS_CKSUM=$(__lmline_settings_cksum <"$__LMLINE_CONFIG_DIR/settings.bash" 2>/dev/null) || __LMLINE_SETTINGS_CKSUM=
 else
   __LMLINE_SETTINGS_CKSUM=no-settings-file
 fi
@@ -424,31 +424,7 @@ __lmline_async_function_names_key() (
 # Hash the environment as inherited by a fresh engine process. NUL framing
 # preserves empty values and newlines without exposing settings in arguments.
 __lmline_async_settings_key() (
-  # Only exported functions can reach the fingerprint subprocess.
-  local name
-  # Private to this key helper's subshell. POSIX mode makes the special
-  # builtin take precedence over caller function overrides. An already-POSIX
-  # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() { \export -nf -- "$@"; }
-  local functions_remaining
-  functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
-  __lmline_unexport_functions() {
-    while [[ -n $functions_remaining ]]; do
-      name=${functions_remaining%%$'\n'*}
-      if [[ $functions_remaining == *$'\n'* ]]; then
-        functions_remaining=${functions_remaining#*$'\n'}
-      else
-        functions_remaining=
-      fi
-      [[ -n $name ]] || continue
-      __lmline_unexport_function "$name" 2>/dev/null || return 1
-    done
-  }
-  if [[ -o posix ]]; then
-    __lmline_unexport_functions || return 1
-  else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
-  fi
+  __lmline_prepare_hash_environment || return 1
   bash -p -c '
     set -o pipefail
     if command -v sha256sum >/dev/null 2>&1; then hash=sha256sum

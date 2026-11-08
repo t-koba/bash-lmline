@@ -2,6 +2,11 @@
 
 # Execution backends and microsandbox CLI integration.
 
+if ! declare -F __lmline_prepare_hash_environment >/dev/null 2>&1; then
+  # shellcheck source=lmline/config.bash
+  source "${BASH_SOURCE[0]%/*}/config.bash"
+fi
+
 : "${LMLINE_EXEC_BACKEND:=auto}"
 : "${LMLINE_MICROSANDBOX_COMMAND:=msb}"
 : "${LMLINE_MICROSANDBOX_IMAGE:=debian}"
@@ -183,7 +188,8 @@ __lmline_microsandbox_check() {
   fi
 }
 
-__lmline_sandbox_hash() {
+__lmline_sandbox_hash() (
+  __lmline_prepare_hash_environment || return 1
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum | awk '{print substr($1, 1, 16)}'
   elif command -v shasum >/dev/null 2>&1; then
@@ -191,7 +197,7 @@ __lmline_sandbox_hash() {
   else
     cksum | awk '{print $1}'
   fi
-}
+)
 
 __lmline_default_sandbox_name() {
   local root=${1:-$PWD} hash

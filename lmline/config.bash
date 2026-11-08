@@ -2,6 +2,90 @@
 
 # Minimal config loading helpers for lmline. This file is meant to be sourced.
 
+# Body-free residual-transport guard for hash boundaries. Fails closed when
+# modern BASH_FUNC_*%% or exact legacy "() {" records remain in the environment
+# inherited by the next hash child, including malformed names and protected
+# same-name collisions. Reads values only into non-exported scratch, never
+# evaluates or emits them. TEXT=()example remains ordinary data. Callers that
+# already unexported live functions call only this cheap check; direct
+# unsanitized sites call __lmline_prepare_hash_environment instead.
+__lmline_check_no_function_transport() (
+  [[ -o posix ]] || POSIXLY_CORRECT=1 || exit 1
+  set +x
+  unset -f command || exit 1
+  command builtin local entry name_part value fd producer found
+  command builtin export -n entry name_part value fd producer found || exit 1
+  found=0
+  command builtin exec {fd}< <(command /usr/bin/env -0) || exit 1
+  producer=$!
+  while IFS= command builtin read -r -d '' entry <&"$fd"; do
+    case "$entry" in
+      BASH_FUNC_*%%=*) found=1 ;;
+      *=*)
+        name_part=${entry%%=*}
+        value=${entry#*=}
+        case "$value" in '() {'*) found=1 ;; esac
+        ;;
+    esac
+  done
+  command builtin exec {fd}<&- || exit 1
+  command builtin wait "$producer" || exit 1
+  (( found == 0 ))
+)
+
+# Direct unsanitized hash sites call this only inside a private subshell.
+# Unexport live functions without changing caller state or command resolution,
+# then reject residual modern/legacy transport (including malformed names).
+# Protected Bash never imports inherited bodies; even a live same-name function
+# cannot erase its raw record. Ordinary Bash can also retain malformed or
+# legacy records. Common hash consumers keep their one-time caller scrub and
+# call only __lmline_check_no_function_transport via __lmline_hash_stdin.
+__lmline_prepare_hash_environment() {
+  local name functions_remaining boundary_dir
+  # Startup and standalone config/sandbox hashes run before policy is loaded.
+  # Load names-only collectors privately too; context-only callers must not
+  # gain policy functions as a side effect of computing an identity.
+  if ! (
+    [[ -o posix ]] || POSIXLY_CORRECT=1 || exit 1
+    unset -f command || exit 1
+    command builtin declare -F __lmline_collect_exported_functions
+  ) >/dev/null 2>&1; then
+    boundary_dir=${BASH_SOURCE[0]%/*}
+    [[ $boundary_dir != "${BASH_SOURCE[0]}" ]] || boundary_dir=.
+    # shellcheck source=lmline/validation-boundary.bash
+    source "$boundary_dir/validation-boundary.bash" || return 1
+  fi
+  if [[ -o privileged ]]; then
+    functions_remaining=$(__lmline_collect_shell_functions 2>/dev/null) || return 1
+  else
+    functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
+  fi
+  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_functions() {
+    while [[ -n $functions_remaining ]]; do
+      name=${functions_remaining%%$'\n'*}
+      if [[ $functions_remaining == *$'\n'* ]]; then
+        functions_remaining=${functions_remaining#*$'\n'}
+      else
+        functions_remaining=
+      fi
+      [[ -n $name ]] || continue
+      __lmline_unexport_function "$name" 2>/dev/null || return 1
+    done
+  }
+  if [[ -o posix ]]; then
+    __lmline_unexport_functions || return 1
+  else
+    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+  fi
+  __lmline_check_no_function_transport || return 1
+}
+
+__lmline_settings_cksum() (
+  __lmline_prepare_hash_environment || return 1
+  cksum
+)
+
 __lmline_quote_single() {
   local value=$1
   printf "'%s'" "${value//\'/\'\\\'\'}"
@@ -230,7 +314,7 @@ __lmline_reload_settings_if_changed() {
   local config_dir=${1:-${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}} file sum
   file=$config_dir/settings.bash
   if [[ -f "$file" ]]; then
-    sum=$(cksum <"$file" 2>/dev/null) || sum=
+    sum=$(__lmline_settings_cksum <"$file" 2>/dev/null) || sum=
     [[ -n "$sum" ]] || return 0
   else
     # A deleted file is also a change: reload so file-owned values are dropped.
