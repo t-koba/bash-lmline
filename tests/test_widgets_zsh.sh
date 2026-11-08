@@ -65,10 +65,10 @@ EOF
 case "\${2-}" in
   *BASH_VERSINFO*) exec "$sysopen_real_bash" "\$@" ;;
 esac
-[ ! -e "\$LMLINE_TEST_EXPORT_PATH" ] && [ ! -L "\$LMLINE_TEST_EXPORT_PATH" ] || exit 95
-mode=\$(stat -L -c '%a' /dev/fd/1 2>/dev/null) || mode=\$(stat -L -f '%Lp' /dev/fd/1 2>/dev/null) || exit 96
-[ "\$mode" = 600 ] || exit 97
-ln -s "\$LMLINE_TEST_VICTIM" "\$LMLINE_TEST_EXPORT_PATH" || exit 98
+[ ! -e "\$LMLINE_TEST_EXPORT_PATH" ] && [ ! -L "\$LMLINE_TEST_EXPORT_PATH" ] || { printf 'zsh sysopen test: export path was not unlinked\n' >&2; exit 95; }
+mode=\$(stat -L -c '%a' /dev/fd/1 2>/dev/null) || mode=\$(stat -L -f '%Lp' /dev/fd/1 2>/dev/null) || { printf 'zsh sysopen test: cannot stat output descriptor\n' >&2; exit 96; }
+[ "\$mode" = 600 ] || { printf 'zsh sysopen test: unexpected output mode (%s)\n' "\$mode" >&2; exit 97; }
+ln -s "\$LMLINE_TEST_VICTIM" "\$LMLINE_TEST_EXPORT_PATH" || { printf 'zsh sysopen test: cannot create replacement path\n' >&2; exit 98; }
 [ "\${LMLINE_TEST_EXPORT_FAIL:-0}" = 0 ] || exit 79
 exec "$sysopen_real_bash" "\$@"
 EOF
@@ -89,11 +89,11 @@ EOF
         first=$RANDOM expected_next=$RANDOM
         RANDOM=21971
         first=$RANDOM
-        source "$1/lmline/init.zsh" || exit 92
-        [[ "$LMLINE_TEST_PATH_REPLACEMENT" == imported ]] || exit 93
+        source "$1/lmline/init.zsh" || { print -u2 -- "sysopen bridge source failed ($2)"; exit 92; }
+        [[ "$LMLINE_TEST_PATH_REPLACEMENT" == imported ]] || { print -u2 -- "sysopen config import failed ($2)"; exit 93; }
         after_features=$(builtin zmodload -L -F zsh/system 2>/dev/null) || after_features=
-        [[ "$after_features" == "$before_features" ]] || exit 94
-        [[ $RANDOM == "$expected_next" ]] || exit 98
+        [[ "$after_features" == "$before_features" ]] || { print -u2 -- "sysopen feature state changed ($2)"; exit 94; }
+        [[ $RANDOM == "$expected_next" ]] || { print -u2 -- "sysopen RANDOM state changed ($2)"; exit 98; }
       ' _ "$repo_dir" "$system_state" || fail "zsh sysopen imports through a private unlinked descriptor and preserves $system_state system features"
       [[ $(<"$zsh_tmp/sysopen-victim") == 'sentinel victim' ]] || fail "zsh sysopen pathname replacement cannot overwrite victim"
       [[ -z "$(find "$zsh_tmp/tmp sysopen" -maxdepth 1 -name 'lmline-zsh-config.*' -print -quit)" ]] || fail "zsh sysopen replacement path is cleaned after bridge load"
@@ -152,12 +152,15 @@ EOF
         module_path=()
       fi
       before_features=$(builtin zmodload -L -F zsh/system 2>/dev/null) || before_features=
-      export LMLINE_TEST_PIPE_ENV=$'line one\nline two\n'
+      expected_pipe_env="line one
+line two
+"
+      export LMLINE_TEST_PIPE_ENV="$expected_pipe_env"
       export LMLINE_TEST_PIPE_EMPTY=
       coproc { IFS= read -r request; print -r -- "reply:$request"; }
       source "$1/lmline/init.zsh" || exit 91
       [[ "$LMLINE_TEST_PIPE_VALUE" == "pipe imported" &&
-         "$LMLINE_TEST_PIPE_ENV" == $'line one\nline two\n' &&
+         "$LMLINE_TEST_PIPE_ENV" == "$expected_pipe_env" &&
          -v LMLINE_TEST_PIPE_EMPTY && -z "$LMLINE_TEST_PIPE_EMPTY" ]] || exit 92
       print -rp -- preserved
       IFS= read -rp reply
