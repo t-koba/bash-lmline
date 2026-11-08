@@ -382,7 +382,14 @@ __lmline_async_function_names_key() (
   # Avoid assigning POSIXLY_CORRECT when POSIX mode is already enabled: the
   # caller may have made it readonly.
   __lmline_unexport_function() { \export -nf -- "$@"; }
-  functions_remaining=$shell_functions
+  # In protected shells the exported-name collector reports inherited
+  # records that were never imported as functions; only live shell functions
+  # can be safely unexported there.
+  if [[ -o privileged ]]; then
+    functions_remaining=$shell_functions
+  else
+    functions_remaining=$exported_functions
+  fi
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}

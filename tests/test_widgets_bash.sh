@@ -338,12 +338,22 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
         [[ -z "$failed" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
-        # A collected name that cannot be unexported must also stop hashing.
-        if [[ ${helpers[i]} == __lmline_async_function_names_key ]]; then
-          __lmline_collect_shell_functions() { printf "%s\n" __lmline_missing_scrub_function; }
-        else
-          __lmline_collect_exported_functions() { printf "%s\n" __lmline_missing_scrub_function; }
-        fi
+      )
+      if [[ ${helpers[i]} == __lmline_async_function_names_key ]]; then
+        # Both function-name snapshots are identity inputs and must fail closed.
+        rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+        (
+          __lmline_collect_exported_functions() { return 1; }
+          failed=$(__lmline_async_function_names_key generate) && exit 1
+          [[ -z "$failed" ]]
+          [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
+          [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+        )
+      fi
+      # A collected name that cannot be unexported must also stop hashing.
+      rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" "$LMLINE_TEST_REQUEST_KEY_DIR/checked"
+      (
+        __lmline_collect_exported_functions() { printf "%s\n" __lmline_missing_scrub_function; }
         failed=$("${helpers[i]}" generate) && exit 1
         [[ -z "$failed" ]]
         [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/checked" ]]
@@ -436,6 +446,14 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     after=$(declare -p POSIXLY_CORRECT; set +o)
     [[ "$before" == "$after" ]]
     [[ "$state_exported_functions" == "$(__lmline_collect_exported_functions)" ]]
+    if [[ $state == readonly-privileged ]]; then
+      # Protected Bash may report inherited names that were never imported;
+      # they are identity inputs, not live functions safe for `export -nf`.
+      (
+        __lmline_collect_exported_functions() { printf "%s\n" __lmline_unimported_probe; }
+        [[ -n "$(__lmline_async_function_names_key generate)" ]]
+      )
+    fi
     [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
     [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
   ); done
