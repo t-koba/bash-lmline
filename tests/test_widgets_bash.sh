@@ -1385,7 +1385,7 @@ LMLINE_TEST_AVAILABILITY_DIR="$widget_tmp/availability" LMLINE_CONFIG_DIR="$widg
   ( __lmline_collect_suggested_commands() { printf partial; return 1; }; ! __lmline_suggested_commands_key >/dev/null )
   ( sha256sum() { return 0; }; ! __lmline_suggested_commands_key >/dev/null )
   # The file digest can succeed while the membership digest is empty.
-  ( sha256sum() { IFS= read -r line || return 1; printf 'file-digest\n'; }
+  ( sha256sum() { IFS= read -r line || return 1; printf "file-digest\n"; }
     __lmline_collect_suggested_commands() { :; }
     ! __lmline_suggested_commands_key >/dev/null )
   READLINE_LINE="# availability"; READLINE_POINT=${#READLINE_LINE}

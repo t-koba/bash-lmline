@@ -24,7 +24,8 @@ TOOL
 chmod +x "$hash_tmp/record-hash"
 export HASH_REAL_CKSUM
 HASH_REAL_CKSUM=$(command -v cksum)
-export HASH_REAL_AWK=$(command -v awk)
+HASH_REAL_AWK=$(command -v awk)
+export HASH_REAL_AWK
 # Keep only selected hash tools on PATH to exercise both SHA variants/fallback.
 for tool in bash awk sort cut; do ln -s "$(command -v "$tool")" "$hash_tmp/bin/$tool"; done
 ln -s "$hash_tmp/record-hash" "$hash_tmp/bin/cksum"
