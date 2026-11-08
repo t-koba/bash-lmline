@@ -114,8 +114,14 @@ for selected in cksum shasum sha256sum; do
     if grep -aEq 'HASH_BODY_MARKER|BASH_FUNC_' "$hash_tmp/environment"; then
       fail "$mode hash child received function transport ($selected)"
     fi
-    tr '\0' '\n' <"$hash_tmp/environment" | grep -Fxq 'TEXT=()example' \
-      || fail "$mode hash child lost ordinary TEXT data ($selected)"
+    text_seen=0
+    while IFS= read -r -d '' env_entry; do
+      if [[ $env_entry == 'TEXT=()example' ]]; then
+        text_seen=1
+        break
+      fi
+    done <"$hash_tmp/environment"
+    [[ $text_seen == 1 ]] || fail "$mode hash child lost ordinary TEXT data ($selected)"
     grep -q "^$selected " "$hash_tmp/calls" || fail "custom PATH not used ($selected)"
   done
 done
