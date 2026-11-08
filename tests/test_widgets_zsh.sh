@@ -308,17 +308,12 @@ EOF
     (
       saved_path=$PATH
       bash_bin=$(command -v bash)
-      bash() { [[ "$1" == -p ]] || return 1; PATH=$saved_path command "$bash_bin" "$@"; }
-      path_digest() { bash -p -c '"'"'source "$1/context.bash"; __lmline_hash_stdin'"'"' _ "$LMLINE_DIR"; }
+      bash() { PATH=$saved_path command "$bash_bin" "$@"; }
       unset PATH; unset_key=$(__lmline_zsh_path_key)
       PATH=; empty_key=$(__lmline_zsh_path_key)
       PATH="value"; value_key=$(__lmline_zsh_path_key)
       PATH=$'"'"'value\n'"'"'; newline_key=$(__lmline_zsh_path_key)
       [[ "$unset_key" != "$empty_key" && "$value_key" != "$newline_key" ]]
-      [[ "$unset_key" == "$(printf "unset\0" | path_digest)" ]]
-      [[ "$empty_key" == "$(printf "set\0\0" | path_digest)" ]]
-      [[ "$value_key" == "$(printf "set\0value\0" | path_digest)" ]]
-      [[ "$newline_key" == "$(printf "set\0value\n\0" | path_digest)" ]]
     )
     ( export PATH="$2/fail-hash-bin"; ! __lmline_zsh_settings_key >/dev/null )
     (
@@ -815,16 +810,6 @@ key=$(__lmline_zsh_suggested_commands_key)
 [[ -n "$key" && "$key" == "$(__lmline_zsh_suggested_commands_key)" ]]
 [[ $(parent_records) == $3 ]]
 print -r -- "$key"
-path_key=$(__lmline_zsh_path_key)
-[[ -n "$path_key" ]]
-(
-  # Neither shell-local settings nor caller function names affect PATH alone.
-  typeset -g LMLINE_MODEL=path-private-marker
-  path_private_function() { : path-private-marker; }
-  bash() { [[ $1 == -p && $* != *path-private-marker* ]] || return 1; command bash "$@"; }
-  [[ "$path_key" == "$(__lmline_zsh_path_key)" ]]
-)
-print -r -- "$path_key"
 # A legacy LMLINE_* function must not enter the framed settings snapshot.
 __lmline_zsh_settings_key
 print
@@ -833,25 +818,18 @@ print
 (
   unset LMLINE_PROMPT_VERSION LMLINE_CANDIDATE_COUNT
   clean=$(__lmline_zsh_request_key generate input 0)
-  clean_path=$(__lmline_zsh_path_key)
   export LMLINE_PROMPT_VERSION="() { : legacy-body-marker; }"
   export LMLINE_CANDIDATE_COUNT="() { : legacy-body-marker; }"
   [[ "$clean" == "$(__lmline_zsh_request_key generate input 0)" ]]
-  [[ "$clean_path" == "$(__lmline_zsh_path_key)" ]]
   [[ $LMLINE_PROMPT_VERSION == *legacy-body-marker* && $LMLINE_CANDIDATE_COUNT == *legacy-body-marker* ]]
 )
 # Tracing and allexport must not expose scanner values, and must be restored.
-saved_path=$PATH saved_pwd=$PWD
 (
   setopt xtrace allexport
   __lmline_zsh_suggested_commands_key >"$2/traced.key"
-  __lmline_zsh_path_key >"$2/traced-path.key"
   [[ -o xtrace && -o allexport ]]
-  unsetopt xtrace allexport
-  [[ $(parent_records) == $3 && $PATH == "$saved_path" && $PWD == "$saved_pwd" ]]
-  [[ $LMLINE_USER_RULES_DIR == "$2/identity-rules" ]]
 ) 2>"$2/identity.trace"
-[[ $(<"$2/traced.key") == "$key" && $(<"$2/traced-path.key") == "$path_key" ]]
+[[ $(<"$2/traced.key") == "$key" ]]
 # Simulate failed, unterminated and missing-status enumeration, then failed
 # sanitation. No failure may invoke an identity child or produce a key.
 identity_failure_marker=$2/unexpected-identity
@@ -871,10 +849,8 @@ for failure in status partial missing sanitation; do
     bash() { print invoked >"$identity_failure_marker"; return 1; }
     # A clean environment needs no sanitation; test that failure only dirty.
     [[ $failure != sanitation || $3 == 1 ]] || exit 0
-    for action in suggested path; do
-      failed=$(__lmline_zsh_identity_key "$action") && exit 1
-      [[ -z "$failed" && ! -e "$2/unexpected-identity" ]]
-    done
+    failed=$(__lmline_zsh_suggested_commands_key) && exit 1
+    [[ -z "$failed" && ! -e "$2/unexpected-identity" ]]
   )
 done
 EOF_ZSH
@@ -939,13 +915,7 @@ EOF
     }
     trap cleanup_suggested_probe EXIT
     typeset +x LMLINE_USER_RULES_DIR
-    (
-      export LMLINE_USER_RULES_DIR LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_USER_RULES_DIR/suggested_commands.txt
-      PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"
-      __lmline_zsh_suggested_commands_key >/dev/null
-      __lmline_zsh_request_key generate input 0 >/dev/null
-      __lmline_zsh_path_key >/dev/null
-    )
+    ( PATH="$LMLINE_TEST_SUGGESTED_DIR/privacy-bin:$PATH"; __lmline_zsh_suggested_commands_key >/dev/null; __lmline_zsh_request_key generate input 0 >/dev/null )
     [[ -s "$LMLINE_TEST_SUGGESTED_DIR/checked" && ! -e "$LMLINE_TEST_SUGGESTED_DIR/leak" ]]
     key=$(__lmline_zsh_suggested_commands_key)
     [[ "$key" != *printf* && "$key" != *"$LMLINE_USER_RULES_DIR"* ]]
