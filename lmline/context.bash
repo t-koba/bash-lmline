@@ -128,11 +128,12 @@ __lmline_suggested_commands_key() (
     hash_command=(cksum)
   fi
   # Keep stdin-only shell functions and custom PATH executables on the
-  # established interface. Batch only when PATH selects the same executable
-  # as Bash's default system-tool search; wrappers may ignore filename args and
-  # read caller stdin instead.
-  hash_path=$(builtin type -P "${hash_command[0]}" 2>/dev/null) || hash_path=
-  system_hash_path=$(builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
+  # established interface. Batch only when command resolution selects the same
+  # executable as an independent default system-tool search; wrappers may ignore filename
+  # args and read caller stdin instead. Clear cached overrides only for that
+  # lookup, not for the command we will actually invoke.
+  hash_path=$(builtin command -v "${hash_command[0]}" 2>/dev/null) || hash_path=
+  system_hash_path=$(builtin hash -r && builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
   if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
       [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
     digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1

@@ -96,6 +96,30 @@ else
     [[ $calls_for_key == 2 ]]
     previous=$key
   done
+  # A cached wrapper wins even when PATH names the real system executable.
+  # Neither lookup nor hashing may alter the caller's exact command cache.
+  (
+    PATH=$HASH_TEST_DIR/cached-bin
+    export PATH
+    hash -p "$HASH_TEST_DIR/bin/$3" "$3"
+    hash -p "$real" unrelated_cached_command
+    cache_before=$(builtin hash -l)
+    : >"$HASH_TEST_DIR/calls"
+    __lmline_suggested_commands_key >"$HASH_TEST_DIR/cached-key" || exit 1
+    key=$(<"$HASH_TEST_DIR/cached-key")
+    [[ $key == "${expected%% *}:$membership" ]] || exit 1
+    [[ $(builtin hash -l) == "$cache_before" ]] || exit 1
+    calls_for_key=0
+    while IFS= read -r call; do
+      if [[ $3 == shasum ]]; then
+        [[ $call == 'shasum -a 256' ]] || exit 1
+      else
+        [[ $call == "$3 " ]] || exit 1
+      fi
+      calls_for_key=$((calls_for_key + 1))
+    done <"$HASH_TEST_DIR/calls"
+    [[ $calls_for_key == 2 ]]
+  ) || exit 1
   # An stdin-based shell-function hasher retains the former two-call contract.
   if [[ $3 == sha256sum ]]; then
     ( PATH="$PATH:/bin:/usr/bin"; export PATH
@@ -142,6 +166,12 @@ for selected in cksum shasum sha256sum; do
     esac
     ln -s "$hash_tmp/record-hash" "$hash_tmp/bin/$selected"
   fi
+  rm -rf "$hash_tmp/cached-bin"
+  mkdir "$hash_tmp/cached-bin"
+  for tool in awk sort cut; do
+    ln -s "$(command -v "$tool")" "$hash_tmp/cached-bin/$tool"
+  done
+  ln -s "$(command -v "$selected")" "$hash_tmp/cached-bin/$selected"
   for mode in clean ordinary protected; do
     rm -f "$hash_tmp/calls" "$hash_tmp/environment"
     options=()
