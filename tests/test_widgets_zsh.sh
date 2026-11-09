@@ -373,7 +373,7 @@ EOF
   mkdir "$zsh_tmp/fail-publish-bin"
   cat >"$zsh_tmp/fail-publish-bin/mv" <<'EOF'
 #!/usr/bin/env bash
-[[ "$1" != */lmline-zsh-async.*.tmp.* ]] || exit 1
+[[ "$1" == *.key.tmp.* || "$1" != */lmline-zsh-async.*.tmp.* ]] || exit 1
 exec "$LMLINE_TEST_REAL_MV" "$@"
 EOF
   chmod +x "$zsh_tmp/fail-publish-bin/mv"
@@ -588,6 +588,8 @@ EOF
   printf 'one\tone.marker\n' >"$zsh_tmp/markers/list"
   printf 'two\ttwo.marker\n' >"$zsh_tmp/markers/rules/project_markers.tsv"
   printf 'default\tone.marker\n' >"$zsh_tmp/markers/defaults/project_markers.tsv"
+  printf 'printf\n' >"$zsh_tmp/markers/rules/suggested_commands.txt"
+  printf 'printf\n' >"$zsh_tmp/markers/defaults/suggested_commands.txt"
   printf '#!/bin/sh\nexit 1\n' >"$zsh_tmp/markers/fail-bin/sha256sum"
   chmod +x "$zsh_tmp/markers/fail-bin/sha256sum"
   mkfifo "$zsh_tmp/markers/one.gate" "$zsh_tmp/markers/two.gate" "$zsh_tmp/markers/absent.gate"
@@ -611,8 +613,12 @@ EOF
       __lmline_zsh_async_cleanup
     }
     trap cleanup_markers_probe EXIT
-    typeset -g LMLINE_USER_RULES_DIR=$PWD/rules LMLINE_DEFAULTS_DIR=$PWD/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list
-    typeset +x LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE
+    typeset -g LMLINE_USER_RULES_DIR=$PWD/rules LMLINE_DEFAULTS_DIR=$PWD/defaults LMLINE_PROJECT_MARKERS_FILE=$PWD/list LMLINE_SUGGESTED_COMMANDS_FILE=$PWD/rules/suggested_commands.txt
+    typeset +x LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE LMLINE_SUGGESTED_COMMANDS_FILE
+    # Explicit suggested dependency: marker assertions must reflect marker
+    # bytes, not an unavailable suggested key.
+    suggested_marker_key=$(__lmline_zsh_suggested_commands_key)
+    [[ -n "$suggested_marker_key" && "$suggested_marker_key" != *printf* ]]
     ( PATH="$PWD/privacy-bin:$PATH"; __lmline_zsh_project_markers_key >/dev/null; LMLINE_INCLUDE_SUGGESTED_COMMANDS=0; __lmline_zsh_request_key generate input 0 >/dev/null )
     [[ -s checked && ! -e leak ]]
     key=$(__lmline_zsh_project_markers_key)
@@ -676,10 +682,28 @@ EOF
     LMLINE_DIR=$LMLINE_TEST_MARKERS_DIR/../fail-components
     export LMLINE_TEST_IDENTITY_FAILURE=project
     BUFFER="# markers"; CURSOR=${#BUFFER}
+    rm -f one.ready one.stopped
     lmline-zsh-generate-widget >/dev/null 2>&1
     first=$__LMLINE_ZSH_ASYNC_PID
+    first_file=$__LMLINE_ZSH_ASYNC_FILE
+    [[ -n "$first" && "$first" != 0 ]]
+    for i in {1..200}; do [[ -e "$first_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$first_file.key.failed" && ! -e "$first_file.key" ]]
+    ! __lmline_zsh_async_read_key
+    [[ -z "$__LMLINE_ZSH_ASYNC_KEY" ]]
+    for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done
+    [[ -s one.ready ]]
+    # Engine still runs, but the missing key never inserts or reuses.
     lmline-zsh-generate-widget >/dev/null 2>&1
-    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
+    second=$__LMLINE_ZSH_ASYNC_PID
+    second_file=$__LMLINE_ZSH_ASYNC_FILE
+    [[ "$second" != "$first" && "$BUFFER" == "# markers" ]]
+    for i in {1..200}; do [[ -e "$second_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$second_file.key.failed" && ! -e "$second_file.key" ]]
+    printf "release\n" >one.gate
+    wait "$second"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "# markers" ]]
   ' _ "$repo_dir" || fail "zsh project-marker content identity"
   # Git root and branch, but not working-tree status, determine pending identity.
   mkdir "$zsh_tmp/git-probe" "$zsh_tmp/git-probe/repo" "$zsh_tmp/git-probe/combined-repo"
@@ -759,10 +783,28 @@ EOF
     LMLINE_DIR=$LMLINE_TEST_GIT_DIR/../fail-components
     export LMLINE_TEST_IDENTITY_FAILURE=git
     BUFFER="# git"; CURSOR=${#BUFFER}
+    rm -f "$LMLINE_TEST_GIT_DIR/two.ready" "$LMLINE_TEST_GIT_DIR/two.stopped"
     lmline-zsh-generate-widget >/dev/null 2>&1
     first=$__LMLINE_ZSH_ASYNC_PID
+    first_file=$__LMLINE_ZSH_ASYNC_FILE
+    [[ -n "$first" && "$first" != 0 ]]
+    for i in {1..200}; do [[ -e "$first_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$first_file.key.failed" && ! -e "$first_file.key" ]]
+    ! __lmline_zsh_async_read_key
+    [[ -z "$__LMLINE_ZSH_ASYNC_KEY" ]]
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_GIT_DIR/two.ready" ]] && break; sleep 0.05; done
+    [[ -s "$LMLINE_TEST_GIT_DIR/two.ready" ]]
+    # Engine still runs, but the missing key never inserts or reuses.
     lmline-zsh-generate-widget >/dev/null 2>&1
-    [[ "$__LMLINE_ZSH_ASYNC_PID" != "$first" ]]
+    second=$__LMLINE_ZSH_ASYNC_PID
+    second_file=$__LMLINE_ZSH_ASYNC_FILE
+    [[ "$second" != "$first" && "$BUFFER" == "# git" ]]
+    for i in {1..200}; do [[ -e "$second_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$second_file.key.failed" && ! -e "$second_file.key" ]]
+    printf "release\n" >"$LMLINE_TEST_GIT_DIR/two.gate"
+    wait "$second"
+    lmline-zsh-generate-widget >/dev/null 2>&1
+    [[ "$BUFFER" == "# git" ]]
   ' _ "$repo_dir" || fail "zsh git context identity"
 
   # A real Bash parent exports a harmless body. Zsh retains its transport, so
@@ -955,11 +997,21 @@ EOF
     printf "printf\n" >"$LMLINE_USER_RULES_DIR/suggested_commands.txt"
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$second_pid" && "$BUFFER" == "# list" ]]
+    # Wait for the pending printf key so the missing-file restart is decided
+    # by exact live revalidation, not by a still-preparing supervisor.
+    printf_wait=$__LMLINE_ZSH_ASYNC_FILE
+    for i in {1..200}; do [[ -s "$printf_wait.key" ]] && break; sleep 0.05; done
+    [[ -s "$printf_wait.key" ]]
     typeset -g LMLINE_SUGGESTED_COMMANDS_FILE=$LMLINE_TEST_SUGGESTED_DIR/missing
     ! __lmline_zsh_suggested_commands_key >/dev/null
     third_pid=$__LMLINE_ZSH_ASYNC_PID
     lmline-zsh-generate-widget >/dev/null 2>&1
+    third_file=$__LMLINE_ZSH_ASYNC_FILE
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$third_pid" && "$BUFFER" == "# list" ]]
+    for i in {1..200}; do [[ -e "$third_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$third_file.key.failed" && ! -e "$third_file.key" ]]
+    ! __lmline_zsh_async_read_key
+    [[ -z "$__LMLINE_ZSH_ASYNC_KEY" ]]
     unset LMLINE_SUGGESTED_COMMANDS_FILE
     ( PATH="$LMLINE_TEST_SUGGESTED_DIR/fail-bin:$PATH"; ! __lmline_zsh_suggested_commands_key >/dev/null )
     ( PATH="$LMLINE_TEST_SUGGESTED_DIR/fail-bin:$PATH"; ! __lmline_zsh_path_key >/dev/null )
@@ -968,16 +1020,28 @@ EOF
     [[ "$(__lmline_zsh_suggested_commands_key)" == disabled ]]
     # Failure or empty output from the PATH digest must never reuse pending work.
     lmline-zsh-generate-widget >/dev/null 2>&1
-    [[ -n "$__LMLINE_ZSH_ASYNC_KEY" && "$__LMLINE_ZSH_ASYNC_KEY" != function-context-unavailable ]]
+    for i in {1..200}; do [[ -s "$__LMLINE_ZSH_ASYNC_FILE.key" ]] && break; sleep 0.05; done
+    __lmline_zsh_async_read_key
+    [[ -n "$__LMLINE_ZSH_ASYNC_KEY" ]]
     LMLINE_DIR=$LMLINE_TEST_SUGGESTED_DIR/../fail-components
     export LMLINE_TEST_IDENTITY_FAILURE=path-fail
     failed_pid=$__LMLINE_ZSH_ASYNC_PID
     lmline-zsh-generate-widget >/dev/null 2>&1
+    failed_file=$__LMLINE_ZSH_ASYNC_FILE
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
+    for i in {1..200}; do [[ -e "$failed_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$failed_file.key.failed" && ! -e "$failed_file.key" ]]
+    ! __lmline_zsh_async_read_key
+    [[ -z "$__LMLINE_ZSH_ASYNC_KEY" ]]
     export LMLINE_TEST_IDENTITY_FAILURE=path-empty
     failed_pid=$__LMLINE_ZSH_ASYNC_PID
     lmline-zsh-generate-widget >/dev/null 2>&1
+    failed_file=$__LMLINE_ZSH_ASYNC_FILE
     [[ "$__LMLINE_ZSH_ASYNC_PID" != "$failed_pid" && "$BUFFER" == "# list" ]]
+    for i in {1..200}; do [[ -e "$failed_file.key.failed" ]] && break; sleep 0.05; done
+    [[ -e "$failed_file.key.failed" && ! -e "$failed_file.key" ]]
+    ! __lmline_zsh_async_read_key
+    [[ -z "$__LMLINE_ZSH_ASYNC_KEY" ]]
   ' _ "$repo_dir" || fail "zsh suggested-command content identity"
   # Availability changes inside an existing PATH directory invalidate pending work.
   mkdir "$zsh_tmp/availability" "$zsh_tmp/availability/bin"
@@ -1012,9 +1076,10 @@ EOF
     [[ -n "$key" && "$key" != *lmline-availability* && "$key" != *"$LMLINE_SUGGESTED_COMMANDS_FILE"* ]]
     BUFFER="# availability"; CURSOR=${#BUFFER}
     lmline-zsh-generate-widget >/dev/null 2>&1
-    first=$__LMLINE_ZSH_ASYNC_PID; first_key=$__LMLINE_ZSH_ASYNC_KEY
+    first=$__LMLINE_ZSH_ASYNC_PID
     for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.ready" ]] && break; sleep 0.05; done
     [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.ready" && ! -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.members" ]]
+    __lmline_zsh_async_read_key; first_key=$__LMLINE_ZSH_ASYNC_KEY
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$__LMLINE_ZSH_ASYNC_PID" == "$first" ]]
     printf "#!/bin/sh\nexit 0\n" >"$LMLINE_TEST_AVAILABILITY_DIR/bin/lmline-availability-external"
@@ -1023,9 +1088,11 @@ EOF
     [[ "$key" != "$(__lmline_zsh_suggested_commands_key)" ]]
     lmline-zsh-generate-widget >/dev/null 2>&1
     second=$__LMLINE_ZSH_ASYNC_PID
-    [[ "$second" != "$first" && "$__LMLINE_ZSH_ASYNC_KEY" != "$first_key" && "$BUFFER" == "# availability" && -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.stopped" ]]
+    [[ "$second" != "$first" && "$BUFFER" == "# availability" && -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.stopped" ]]
     for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]] && break; sleep 0.05; done
     [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]]
+    __lmline_zsh_async_read_key
+    [[ "$__LMLINE_ZSH_ASYNC_KEY" != "$first_key" ]]
     [[ "$(cat "$LMLINE_TEST_AVAILABILITY_DIR/external.members")" == lmline-availability-external ]]
     printf "release\n" >"$LMLINE_TEST_AVAILABILITY_DIR/external.gate"
     wait "$second"

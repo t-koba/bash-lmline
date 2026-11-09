@@ -283,11 +283,13 @@ typeset -g __LMLINE_ZSH_STATUS_LINE=
 
 __lmline_zsh_async_cleanup() {
   [[ -n "${__LMLINE_ZSH_ASYNC_FILE:-}" ]] || return 0
-  if (( __LMLINE_ZSH_ASYNC_PID > 0 )) && kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
-    kill -TERM "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
+  if (( __LMLINE_ZSH_ASYNC_PID > 0 )); then
+    if kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
+      kill -TERM "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
+    fi
     wait "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
   fi
-  rm -f "$__LMLINE_ZSH_ASYNC_FILE" "$__LMLINE_ZSH_ASYNC_FILE.status" "$__LMLINE_ZSH_ASYNC_FILE.status.err" "$__LMLINE_ZSH_ASYNC_FILE.tmp."*(N)
+  rm -f "$__LMLINE_ZSH_ASYNC_FILE" "$__LMLINE_ZSH_ASYNC_FILE.status" "$__LMLINE_ZSH_ASYNC_FILE.status.err" "$__LMLINE_ZSH_ASYNC_FILE.tmp."*(N) "$__LMLINE_ZSH_ASYNC_FILE.frame."*(N) "$__LMLINE_ZSH_ASYNC_FILE.key"*(N)
   __LMLINE_ZSH_ASYNC_FILE=
   __LMLINE_ZSH_ASYNC_PID=0
   __LMLINE_ZSH_ASYNC_KEY=
@@ -484,7 +486,12 @@ __lmline_zsh_run_bridge() {
     had_monitor=1
     unsetopt monitor
   fi
+  # Precompute the supervisor scrub list here: NUL-delimited reads suspend a
+  # background job when MONITOR is enabled, so the background subshell only
+  # splits the precomputed names.
+  __lmline_zsh_precompute_bridge_scrub || { (( had_monitor == 1 )) && setopt monitor; rm -rf "$tmp"; return 1; }
   { __lmline_zsh_bridge "$action" "$mode" "$line" "$point" >"$output_file" 2>&1 & pid=$!; } 2>/dev/null
+  unset __LMLINE_ZSH_BRIDGE_SCRUB_NAMES 2>/dev/null || true
   __LMLINE_ZSH_BRIDGE_STATUS=0
   __lmline_zsh_wait_with_spinner "$pid" "$label" "$output_file" || __LMLINE_ZSH_BRIDGE_STATUS=$?
   __lmline_zsh_clear_hint
@@ -494,13 +501,40 @@ __lmline_zsh_run_bridge() {
   return "$__LMLINE_ZSH_BRIDGE_STATUS"
 }
 
+unset __LMLINE_ZSH_BRIDGE_SCRUB_NAMES 2>/dev/null || true
+__lmline_zsh_precompute_bridge_scrub() {
+  setopt localoptions pipefail noxtrace noallexport
+  local +x __lmline_pre_record __lmline_pre_name __lmline_pre_status
+  local -a __lmline_pre_names=()
+  while builtin true; do
+    IFS= builtin read -r -d '' __lmline_pre_record || return 1
+    if [[ -z "$__lmline_pre_record" ]]; then
+      IFS= builtin read -r -d '' __lmline_pre_status && [[ "$__lmline_pre_status" == 0 ]] || return 1
+      break
+    fi
+    [[ "$__lmline_pre_record" == *=* ]] || return 1
+    __lmline_pre_name=${__lmline_pre_record%%=*}
+    [[ -n "$__lmline_pre_name" ]] || return 1
+    if [[ "$__lmline_pre_name" == BASH_FUNC_*%% || "${__lmline_pre_record#*=}" == '() {'* ]]; then
+      __lmline_pre_names+=("$__lmline_pre_name")
+    fi
+  done < <(/usr/bin/env -0; builtin printf '\0%s\0' "$?")
+  typeset -ga __LMLINE_ZSH_BRIDGE_SCRUB_NAMES
+  __LMLINE_ZSH_BRIDGE_SCRUB_NAMES=("${__lmline_pre_names[@]}")
+}
 __lmline_zsh_bridge() {
+  setopt localoptions noxtrace noallexport
   local action=$1 mode=${2-} line=${3-} point=${4-0} async_file=${5-} key declaration caller_functions
-  local -a bridge_command
+  local identity_frame=${6-}
+  local -a bridge_command identity_command
+  identity_command=("${@:7}")
   # Only the background async invocation may replace its Zsh subshell.
   bridge_command=(command)
   [[ -z "$async_file" ]] || bridge_command=(exec)
   local -a bridge_env bridge_env_unset bridge_env_set
+  local +x __lmline_bridge_record __lmline_bridge_name __lmline_bridge_status
+  local -a __lmline_bridge_scrub=()
+  local __lmline_bridge_pre
   # The bridge runs in Bash, but zsh session settings are often globals that
   # were never exported. Pass those values for this invocation without
   # exporting them permanently or carrying function-local bookkeeping into
@@ -513,6 +547,35 @@ __lmline_zsh_bridge() {
     [[ "$declaration" == "typeset -g "* || "$declaration" == "export "* ]] || continue
     bridge_env_set+=("$key=${(P)key}")
   done
+  # Bash function transport survives `bash -p` as plain BASH_FUNC_* records
+  # for later children (mktemp, engine). Strip those names here so the
+  # supervisor and its descendants never see a body. Only names enter env's
+  # argv; raw records stay in unexported locals with tracing disabled. The
+  # empty record and status trailer distinguish success from a partial read.
+  # Background launches precompute this list in the parent (see async_start
+  # and run_bridge): NUL-delimited reads suspend a background job when parent
+  # MONITOR is enabled, so the background subshell only iterates the
+  # precomputed array without touching NULs or the terminal.
+  if (( ${+__LMLINE_ZSH_BRIDGE_SCRUB_NAMES} )); then
+    for __lmline_bridge_pre in "${__LMLINE_ZSH_BRIDGE_SCRUB_NAMES[@]}"; do
+      [[ -n "$__lmline_bridge_pre" ]] || continue
+      __lmline_bridge_scrub+=(-u "$__lmline_bridge_pre")
+    done
+  else
+    while builtin true; do
+      IFS= builtin read -r -d '' __lmline_bridge_record || return 1
+      if [[ -z "$__lmline_bridge_record" ]]; then
+        IFS= builtin read -r -d '' __lmline_bridge_status && [[ "$__lmline_bridge_status" == 0 ]] || return 1
+        break
+      fi
+      [[ "$__lmline_bridge_record" == *=* ]] || return 1
+      __lmline_bridge_name=${__lmline_bridge_record%%=*}
+      [[ -n "$__lmline_bridge_name" ]] || return 1
+      if [[ "$__lmline_bridge_name" == BASH_FUNC_*%% || "${__lmline_bridge_record#*=}" == '() {'* ]]; then
+        __lmline_bridge_scrub+=(-u "$__lmline_bridge_name")
+      fi
+    done < <(/usr/bin/env -0; builtin printf '\0%s\0' "$?")
+  fi
   # The parent zsh has already loaded the current config hierarchy. Seed the
   # child's reload identity so it does not re-apply settings files over a
   # session value that the user changed after that load.
@@ -524,7 +587,7 @@ __lmline_zsh_bridge() {
   # Copilot validation still sees the non-exported snapshot.
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   bridge_env+=("LMLINE_SHELL_FUNCTIONS=${caller_functions}")
-  "${bridge_command[@]}" env "${bridge_env[@]}" bash -p -c '
+  "${bridge_command[@]}" env "${__lmline_bridge_scrub[@]}" "${bridge_env[@]}" bash -p -c '
     __lmline_bridge_main() {
       set -u
       set -o pipefail
@@ -581,7 +644,11 @@ __lmline_zsh_bridge() {
     if [[ -n "$5" ]]; then
       async_file=$5
       tmp_out=$async_file.tmp.$$
-      set -m 2>/dev/null
+      frame=$6
+      __lmline_async_key_cleanup() { rm -f "$frame" "$async_file.key.tmp."*; }
+      trap __lmline_async_key_cleanup EXIT
+      umask 077
+      set -m 2>/dev/null || { printf "failed\n" >"$async_file.status"; exit 1; }
       worker=0 cancelled=0
       __lmline_cancel_worker() {
         cancelled=1
@@ -592,7 +659,21 @@ __lmline_zsh_bridge() {
         fi
       }
       trap __lmline_cancel_worker TERM
-      ( set +m; __lmline_bridge_main "$@" ) >"$tmp_out" 2>"$async_file.status.err" &
+      (
+        set +m
+        tmp_key=$(mktemp "$async_file.key.tmp.XXXXXX") || exit 1
+        # The captured frame contains values, the command contains only the
+        # shared identity implementation and request arguments. No eval.
+        # A failed key never publishes: mark unavailable explicitly, then
+        # still run the provider so engine behavior is preserved.
+        if key=$("${@:7}" <"$6") && [[ -n "$key" ]]; then
+          printf "%s\0" "$key" >"$tmp_key" && mv "$tmp_key" "$async_file.key" || exit 1
+        else
+          rm -f "$tmp_key"
+          printf "failed\n" >"$async_file.key.failed" || exit 1
+        fi
+        __lmline_bridge_main "$@"
+      ) >"$tmp_out" 2>"$async_file.status.err" &
       worker=$!
       (( cancelled == 0 )) || __lmline_cancel_worker
       if wait "$worker" && [[ -s "$tmp_out" ]]; then
@@ -610,7 +691,7 @@ __lmline_zsh_bridge() {
       exit
     fi
     __lmline_bridge_main "$@"
-  ' _ "$action" "$mode" "$line" "$point" "$async_file"
+  ' _ "$action" "$mode" "$line" "$point" "$async_file" "$identity_frame" "${identity_command[@]}"
 }
 
 # One hardened Bash pass for the request identity. Private values and caller
@@ -618,7 +699,8 @@ __lmline_zsh_bridge() {
 # Component entry points below share this path for focused identity checks.
 __lmline_zsh_identity_key() {
   setopt localoptions pipefail noxtrace noallexport
-  local action=$1 mode=${2-} line=${3-} point=${4-} key caller_functions
+  local action=$1 mode=${2-} line=${3-} point=${4-} async_file=${5-} frame= caller_functions
+  local -a key_command
   local +x __lmline_env_record __lmline_env_name __lmline_env_status
   local -a __lmline_env_unset=()
   # Zsh retains Bash function transport even though bash -p ignores it. Strip
@@ -649,19 +731,11 @@ __lmline_zsh_identity_key() {
   # Avoid changing shell command resolution when there is nothing to remove.
   (( ${#__lmline_env_unset} == 0 )) || __lmline_env_unset=(/usr/bin/env "${__lmline_env_unset[@]}")
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
-  {
-    # Preserve logical PWD even if Bash resets it after a directory rename.
-    printf '%s\0' "$PWD" "${+PATH}" "${PATH-}" "$caller_functions" "${LMLINE_PROMPT_VERSION:-3}"
-    # The parameter type includes "local" for dynamically scoped locals, so
-    # these exact types select global scalars without a child per declaration.
-    for key in ${(ok)parameters}; do
-      [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
-      [[ "$key" == LMLINE_SHELL_FUNCTIONS || "$key" == LMLINE_EXPORTED_FUNCTIONS ]] && continue
-      [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
-      printf '%s\0%s\0' "$key" "${(P)key}"
-    done
-    printf '\0'
-  } | "${__lmline_env_unset[@]}" bash -p -c '
+  if [[ -n "$async_file" ]]; then
+    frame=$("${__lmline_env_unset[@]}" mktemp "$async_file.frame.XXXXXX") || return 1
+    __lmline_zsh_identity_frame >"$frame" || { rm -f "$frame"; return 1; }
+  fi
+  key_command=("${__lmline_env_unset[@]}" bash -p -c '
     set -o pipefail
     IFS= read -r -d "" logical_pwd &&
       IFS= read -r -d "" path_set && IFS= read -r -d "" caller_path &&
@@ -725,7 +799,31 @@ __lmline_zsh_identity_key() {
     [[ -n "$request_key" && -n "$function_key" ]] || exit 1
     printf "%s:%s:%s:%s:%s:%s:%s:%s:%s:%s\n" "$request_key" "$function_key" "$5" "$6" "$7" \
       "$settings_key" "$suggested_key" "$project_key" "$git_key" "$path_key"
-  ' _ "$LMLINE_DIR" "$action" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "${LMLINE_CANDIDATE_COUNT-}"
+  ' _ "$LMLINE_DIR" "$action" "$mode" "$line" "$point" "$__LMLINE_ZSH_SETTINGS_CKSUM" "${LMLINE_CANDIDATE_COUNT-}")
+  if [[ -n "$async_file" ]]; then
+    # Prepared in the caller, consumed by the existing isolated bridge worker.
+    __lmline_zsh_identity_command=("${key_command[@]}")
+    __lmline_zsh_identity_frame_file=$frame
+  else
+    __lmline_zsh_identity_frame | "${key_command[@]}"
+  fi
+}
+
+# Dynamically scoped snapshot inputs belong to identity_key above. Keeping
+# capture in the caller preserves Zsh global-scalar parameter-type semantics.
+__lmline_zsh_identity_frame() {
+  local key
+  # Preserve logical PWD even if Bash resets it after a directory rename.
+  printf '%s\0' "$PWD" "${+PATH}" "${PATH-}" "$caller_functions" "${LMLINE_PROMPT_VERSION:-3}"
+  # The parameter type includes "local" for dynamically scoped locals, so
+  # these exact types select global scalars without a child per declaration.
+  for key in ${(ok)parameters}; do
+    [[ "$key" =~ "^LMLINE_[A-Z0-9_]+$" ]] || continue
+    [[ "$key" == LMLINE_SHELL_FUNCTIONS || "$key" == LMLINE_EXPORTED_FUNCTIONS ]] && continue
+    [[ "${parameters[$key]}" == scalar || "${parameters[$key]}" == scalar-export ]] || continue
+    printf '%s\0%s\0' "$key" "${(P)key}"
+  done
+  printf '\0'
 }
 
 __lmline_zsh_settings_key() { __lmline_zsh_identity_key settings; }
@@ -742,21 +840,41 @@ __lmline_zsh_load_candidates_from_file() {
 }
 
 __lmline_zsh_async_start() {
-  local mode=$1 line=$2 point=$3 async_file=$4 key=${5-}
+  local mode=$1 line=$2 point=$3 async_file=$4 __lmline_zsh_identity_frame_file
+  local -a __lmline_zsh_identity_command
   __lmline_zsh_async_cleanup
   rm -f "$async_file.status" "$async_file.status.err" "$async_file"
-  __lmline_zsh_bridge generate "$mode" "$line" "$point" "$async_file" &
-  __LMLINE_ZSH_ASYNC_PID=$!
-  # Keep this child waitable: cleanup must reap its supervisor before removing
-  # request files. A numeric argument to disown is a job number, not this PID.
-  if [[ -n "$key" ]]; then
-    __LMLINE_ZSH_ASYNC_KEY=$key
-  else
-    __LMLINE_ZSH_ASYNC_KEY="request-key-unavailable:$__LMLINE_ZSH_ASYNC_PID"
-  fi
   __LMLINE_ZSH_ASYNC_FILE=$async_file
+  __lmline_zsh_identity_key request "$mode" "$line" "$point" "$async_file" || {
+    __lmline_zsh_async_cleanup
+    return 1
+  }
+  # Precompute here in the foreground for the same MONITOR reason as run_bridge.
+  __lmline_zsh_precompute_bridge_scrub || {
+    __lmline_zsh_async_cleanup
+    return 1
+  }
+  __lmline_zsh_bridge generate "$mode" "$line" "$point" "$async_file" "$__lmline_zsh_identity_frame_file" "${__lmline_zsh_identity_command[@]}" &
+  __LMLINE_ZSH_ASYNC_PID=$!
+  unset __LMLINE_ZSH_BRIDGE_SCRUB_NAMES 2>/dev/null || true
+  # Keep the supervisor waitable: cleanup reaps it before removing files.
   __LMLINE_ZSH_ASYNC_STARTED=$(date +%s)
   __LMLINE_ZSH_ASYNC_NOTIFIED=0
+}
+
+# A missing, truncated or trailing-data result is not an identity. Only a
+# complete frame can be compared with the independently recomputed live key.
+__lmline_zsh_async_read_key() {
+  local key extra
+  __LMLINE_ZSH_ASYNC_KEY=
+  [[ -n "$__LMLINE_ZSH_ASYNC_FILE" ]] || return 1
+  [[ -f "$__LMLINE_ZSH_ASYNC_FILE.key" ]] || return 1
+  {
+    IFS= read -r -d "" key && [[ -n "$key" ]] || return 1
+    IFS= read -r -d "" extra && return 1
+    [[ -z "$extra" ]] || return 1
+  } 2>/dev/null <"$__LMLINE_ZSH_ASYNC_FILE.key" || return 1
+  __LMLINE_ZSH_ASYNC_KEY=$key
 }
 
 # Opt-in precmd hook (LMLINE_ASYNC_NOTIFY=1): announces once, at the next
@@ -775,13 +893,44 @@ __lmline_zsh_async_prompt_check() {
 }
 
 __lmline_zsh_generate_async() {
-  local original=$1 mode=$2 point=$3 async_file current_key async_status_file err_msg
-  current_key=$(__lmline_zsh_request_key "$mode" "$original" "$point") || current_key=
+  local original=$1 mode=$2 point=$3 async_file current_key async_status_file err_msg async_elapsed
+  local -i async_key_ready=0
+  if (( __LMLINE_ZSH_ASYNC_PID > 0 )); then
+    # Check publication before any live-key work: a live supervisor without
+    # a published key is still preparing. Never restart or reuse yet, and
+    # avoid extra identity work while the first hash is still blocked.
+    if __lmline_zsh_async_read_key; then
+      async_key_ready=1
+      current_key=$(__lmline_zsh_request_key "$mode" "$original" "$point") || current_key=
+    elif [[ -n "${__LMLINE_ZSH_ASYNC_FILE:-}" && -e "$__LMLINE_ZSH_ASYNC_FILE.key.failed" ]]; then
+      # Explicit unavailable state: the worker could not compute a key but
+      # still runs the provider. Fall through to restart without reuse; the
+      # failed marker prevents mistaking this for a pending key.
+      current_key=
+    elif [[ -n "${__LMLINE_ZSH_ASYNC_FILE:-}" ]] && kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
+      # Key not yet published and no failure: retain the live supervisor.
+      # The key is published before provider invocation and live-key equality
+      # is still required before reuse/insertion, so waiting is safe even if
+      # inputs changed; exact revalidation after publication will reject.
+      async_elapsed=$(( $(date +%s) - __LMLINE_ZSH_ASYNC_STARTED ))
+      if (( __LMLINE_ZSH_ASYNC_STARTED > 0 && async_elapsed > ${LMLINE_ENGINE_TIMEOUT:-60} + 5 )); then
+        __lmline_zsh_hint "${LMLINE_PS0}[$mode] async generation timed out (${async_elapsed}s)"
+        __lmline_zsh_async_cleanup
+        zle redisplay 2>/dev/null || true
+        return 0
+      fi
+      __lmline_zsh_hint "${LMLINE_PS0}[$mode] still preparing (${async_elapsed}s)..."
+      zle redisplay 2>/dev/null || true
+      return 0
+    else
+      current_key=
+    fi
+  fi
 
-  if [[ -n "$current_key" && "$__LMLINE_ZSH_ASYNC_KEY" == "$current_key" && $__LMLINE_ZSH_ASYNC_PID -gt 0 ]]; then
+  if (( async_key_ready )) && [[ -n "$current_key" && "$__LMLINE_ZSH_ASYNC_KEY" == "$current_key" && $__LMLINE_ZSH_ASYNC_PID -gt 0 ]]; then
     async_file=$__LMLINE_ZSH_ASYNC_FILE
     if kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
-      local async_elapsed=$(( $(date +%s) - __LMLINE_ZSH_ASYNC_STARTED ))
+      async_elapsed=$(( $(date +%s) - __LMLINE_ZSH_ASYNC_STARTED ))
       if (( __LMLINE_ZSH_ASYNC_STARTED > 0 && async_elapsed > ${LMLINE_ENGINE_TIMEOUT:-60} + 5 )); then
         __lmline_zsh_hint "${LMLINE_PS0}[$mode] async generation timed out (${async_elapsed}s)"
         __lmline_zsh_async_cleanup
@@ -817,7 +966,10 @@ __lmline_zsh_generate_async() {
     zle redisplay 2>/dev/null || true
     return 0
   }
-  __lmline_zsh_async_start "$mode" "$original" "$point" "$async_file" "$current_key"
+  __lmline_zsh_async_start "$mode" "$original" "$point" "$async_file" "$current_key" || {
+    __lmline_zsh_hint "${LMLINE_PS0}async identity capture failed"
+    return 0
+  }
   __lmline_zsh_hint "${LMLINE_PS0}[$mode] generating in background; press the same key to insert when ready"
   zle redisplay 2>/dev/null || true
 }
