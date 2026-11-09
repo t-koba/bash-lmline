@@ -10,6 +10,13 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-key.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 lmline_async_transport() { : never-serialize-this-function-body; }
 export -f lmline_async_transport
+# Bash transports exported functions using either modern BASH_FUNC_* names or
+# the legacy valid-name serialization; require the caller fixture, not a
+# platform-specific representation, before launching Zsh.
+if ! env | grep -Eq '^(BASH_FUNC_lmline_async_transport%%=|lmline_async_transport=\(\) \{)'; then
+  printf 'missing exported-function transport fixture\n' >&2
+  exit 1
+fi
 mkdir "$work/bin" "$work/repo"
 export ASYNC_KEY_WORK=$work ASYNC_KEY_REAL_GIT ASYNC_KEY_REAL_MKTEMP ASYNC_KEY_REAL_MV
 ASYNC_KEY_REAL_GIT=$(command -v git)
@@ -28,7 +35,7 @@ cat >"$work/bin/sha256sum" <<'HASH'
 #!/usr/bin/env bash
 [[ ${ASYNC_KEY_PHASE-} != fail ]] || exit 1
 if [[ ${ASYNC_KEY_PHASE-} == hash ]]; then
-  if env | grep -q '^BASH_FUNC_' || declare -F lmline_async_transport >/dev/null; then exit 97; fi
+  if env | grep -q '^BASH_FUNC_' || env | grep -q '^lmline_async_transport=() {' || declare -F lmline_async_transport >/dev/null; then exit 97; fi
   source "$ASYNC_KEY_WORK/bin/gate"
 fi
 exec "$ASYNC_KEY_REAL_HASH" "$@"
@@ -38,7 +45,7 @@ cat >"$work/bin/mktemp" <<'TEMP'
 # Both frame-temp and key-temp mktemp invocations must be body-free; the
 # caller frame is sanitized with the collected scrub names.
 if [[ $1 == *.key.tmp.* || $1 == *.frame.* ]]; then
-  if env | grep -q '^BASH_FUNC_' || declare -F lmline_async_transport >/dev/null 2>&1; then exit 96; fi
+  if env | grep -q '^BASH_FUNC_' || env | grep -q '^lmline_async_transport=() {' || declare -F lmline_async_transport >/dev/null 2>&1; then exit 96; fi
   if [[ ${ASYNC_KEY_PHASE-} == startup && $1 == *.key.tmp.* ]]; then source "$ASYNC_KEY_WORK/bin/gate"; fi
 fi
 exec "$ASYNC_KEY_REAL_MKTEMP" "$@"
@@ -55,7 +62,7 @@ exec "$ASYNC_KEY_REAL_GIT" "$@"
 GIT
 cat >"$work/engine" <<'ENGINE'
 #!/usr/bin/env bash
-if env | grep -q '^BASH_FUNC_' || declare -F lmline_async_transport >/dev/null 2>&1; then exit 96; fi
+if env | grep -q '^BASH_FUNC_' || env | grep -q '^lmline_async_transport=() {' || declare -F lmline_async_transport >/dev/null 2>&1; then exit 96; fi
 printf used >"$ASYNC_KEY_WORK/engine-used"
 printf 'lmline-candidate: low\t-\t-\techo async-key\n'
 ENGINE
@@ -118,10 +125,8 @@ parity() {
   assert_removed "$old"
 }
 parity "$1" "$2"
-# Parent->supervisor scrub preserves caller env while hiding bodies downstream.
-env | grep -q '^BASH_FUNC_'
-# Parity above already required the scrubbed mktemp wrapper and engine to see
-# neither the record nor an imported function (they exit 96 on leak).
+# The platform may consume or discard the transport when starting Zsh. The
+# scrubbed mktemp wrapper and engine fail if any function record/body survives.
 parity "$1" "$2"
 # All malformed/missing frames and a once-valid but stale key fail closed.
 for corruption in missing empty truncated trailing extra stale; do
