@@ -897,12 +897,8 @@ __lmline_collect_files() {
   while IFS= read -r exclude; do
     find_args+=(-not -path "./$exclude" -not -path "./$exclude/*")
   done < <(__lmline_read_list_file "$excludes_file")
-  # Cap the raw listing well above LMLINE_TOOL_FILES_LIMIT so a query filter in
-  # __lmline_tool_files still sees the whole tree, while keeping a hard bound
-  # for directories with a huge number of entries.
   find "${find_args[@]}" -print 2>/dev/null |
-    sed 's|^\./||' |
-    sed -n '1,10000p' || true
+    sed 's|^\./||' || true
 }
 
 __lmline_project_markers_file() {

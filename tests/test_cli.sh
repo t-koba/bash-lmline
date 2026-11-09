@@ -1092,6 +1092,19 @@ files_out=$(cd "$files_tmp" && LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'sour
 grep -q '^src/kept.sh$' <<<"$files_out" || fail "collect files kept source file"
 ! grep -q 'node_modules' <<<"$files_out" || fail "collect files excluded node_modules"
 
+late_find_tmp="$cfg_tmp/late-find"
+mkdir -p "$late_find_tmp/bin" "$late_find_tmp/repo"
+cat >"$late_find_tmp/bin/find" <<'EOF'
+#!/usr/bin/env bash
+for ((i=1; i<=10000; i++)); do
+  printf './ordinary-%05d.txt\n' "$i"
+done
+printf './late-needle-match.txt\n'
+EOF
+chmod +x "$late_find_tmp/bin/find"
+late_files_out=$(cd "$late_find_tmp/repo" && PATH="$late_find_tmp/bin:$PATH" LMLINE_TOOL_FILES_LIMIT=80 LMLINE_CONFIG_DIR="$cfg_tmp/config" bash -c 'source "$1/lmline/config.bash"; __lmline_init_dirs "$1/lmline"; source "$1/lmline/context.bash"; __lmline_tool_files late-needle' _ "$repo_dir")
+grep -Fq '| late-needle-match.txt' <<<"$late_files_out" || fail "file query finds a match beyond the former raw-list prefix"
+
 excerpt_tmp="$cfg_tmp/file-excerpt"
 mkdir -p "$excerpt_tmp"
 printf 'alpha\nbeta needle\ngamma\n' >"$excerpt_tmp/notes.txt"
