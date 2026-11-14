@@ -108,7 +108,7 @@ script_dir=$(cd -- "$script_dir" && pwd -P)
 
 # shellcheck source=lmline/config.bash
 source "$script_dir/config.bash"
-# Static help/defaults and completion catalogs need no configuration. Other
+# Static help/defaults and fixed completion catalogs need no configuration. Other
 # basic config operations skip route setup only; profile and full routes load
 # configuration before sourcing their setup modules.
 case "${1-}:${2-}:${3-}" in
@@ -121,9 +121,12 @@ case "${1-}:${2-}:${3-}" in
   debug:trace:-h|debug:trace:--help|\
   payload:generate:-h|payload:generate:--help) : ;;
   config:defaults:*|complete:commands:*|complete:subcommands:*|complete:settings:*) : ;;
+  complete:setting-values:*)
+    if [[ ${3-} == LMLINE_CLIPBOARD_PROVIDER ]]; then __lmline_load_all_config; fi
+    ;;
   config:get:*|config:set:*|config:unset:*|\
   config:project-get:*|config:project-set:*|config:project-unset:*|\
-  complete:setting-values:*|complete:clipboard-providers:*) __lmline_load_all_config ;;
+  complete:clipboard-providers:*) __lmline_load_all_config ;;
   endpoint:*:*|model:add:*|model:list:*|model:remove:*|use:*:*|current:*:*|complete:endpoints:*|complete:models:*)
     __lmline_load_all_config
     # shellcheck source=lmline/profiles.bash
