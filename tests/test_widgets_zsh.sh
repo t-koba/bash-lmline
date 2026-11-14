@@ -7,6 +7,61 @@ if command -v zsh >/dev/null 2>&1; then
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")
   printf '#!/usr/bin/env bash\nsleep 0.2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"\n' >"$zsh_tmp/engine"
   chmod +x "$zsh_tmp/engine"
+  # The version probe remains, but an empty config needs no Bash export bridge.
+  bridge_probe_dir="$zsh_tmp/bridge-probe-bin"
+  mkdir -p "$bridge_probe_dir" "$zsh_tmp/config-fast-empty" "$zsh_tmp/config-fast-settings"
+  real_bash=$(command -v bash)
+  cat >"$bridge_probe_dir/bash" <<EOF
+#!/bin/sh
+case "\${2-}" in
+  *BASH_VERSINFO*) exec "$real_bash" "\$@" ;;
+  *) : >"\$LM_TEST_BRIDGE_MARKER"; exec "$real_bash" "\$@" ;;
+esac
+EOF
+  chmod +x "$bridge_probe_dir/bash"
+  printf 'export LMLINE_MODEL=profile-from-settings\n' >"$zsh_tmp/config-fast-settings/settings.bash"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-fast-empty" LMLINE_PROJECT_CONFIG=0 LMLINE_MODEL=profile-from-env \
+    LM_TEST_BRIDGE_MARKER="$zsh_tmp/bridge-no-settings" PATH="$bridge_probe_dir:$PATH" \
+    zsh -efic '
+      source "$1/lmline/init.zsh"
+      [[ "$LMLINE_MODEL" == profile-from-env ]]
+      [[ "${__LMLINE_ZSHBASE_LMLINE_MODEL-}" == profile-from-env ]]
+      [[ "$__LMLINE_ZSH_SETTINGS_CKSUM" == no-settings-file ]]
+    ' _ "$repo_dir" || fail "zsh no-settings fast path preserves the environment baseline"
+  [[ ! -e "$zsh_tmp/bridge-no-settings" ]] || fail "zsh no-settings fast path spawned the config bridge"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-fast-settings" LMLINE_PROJECT_CONFIG=0 LMLINE_MODEL=profile-from-env \
+    LM_TEST_BRIDGE_MARKER="$zsh_tmp/bridge-with-settings" PATH="$bridge_probe_dir:$PATH" \
+    zsh -efic '
+      source "$1/lmline/init.zsh"
+      [[ "$LMLINE_MODEL" == profile-from-settings ]]
+      [[ "${__LMLINE_ZSHBASE_LMLINE_MODEL-}" == profile-from-env ]]
+    ' _ "$repo_dir" || fail "zsh settings still load through the config bridge"
+  [[ -e "$zsh_tmp/bridge-with-settings" ]] || fail "zsh settings skipped the config bridge"
+  mkdir -p "$zsh_tmp/config-fast-project" "$zsh_tmp/project-fast"
+  git -C "$zsh_tmp/project-fast" init -q
+  printf 'export LMLINE_MODEL=profile-from-project\n' >"$zsh_tmp/project-fast/.lmline.bash"
+  (
+    cd "$zsh_tmp/project-fast"
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-fast-project" LMLINE_PROJECT_CONFIG=1 LMLINE_MODEL=profile-from-env \
+      LM_TEST_BRIDGE_MARKER="$zsh_tmp/bridge-with-project" PATH="$bridge_probe_dir:$PATH" \
+      zsh -efic '
+        source "$1/lmline/init.zsh"
+        [[ "$LMLINE_MODEL" == profile-from-project ]]
+        [[ "${__LMLINE_ZSHBASE_LMLINE_MODEL-}" == profile-from-env ]]
+      ' _ "$repo_dir"
+  ) || fail "zsh project settings still load through the config bridge"
+  [[ -e "$zsh_tmp/bridge-with-project" ]] || fail "zsh project settings skipped the config bridge"
+  mkdir -p "$zsh_tmp/config-fast-delete"
+  printf 'export LMLINE_MODEL=profile-from-settings\n' >"$zsh_tmp/config-fast-delete/settings.bash"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-fast-delete" LMLINE_PROJECT_CONFIG=0 LMLINE_MODEL=profile-from-env \
+    zsh -efic '
+      source "$1/lmline/init.zsh"
+      [[ "$LMLINE_MODEL" == profile-from-settings ]]
+      command rm "$LMLINE_CONFIG_DIR/settings.bash"
+      __lmline_zsh_reload_settings_if_changed
+      [[ "$LMLINE_MODEL" == profile-from-env ]]
+    ' _ "$repo_dir" || fail "zsh settings deletion restores the environment baseline"
+  ok "zsh config bridge skips only an empty initial configuration"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-baseline" LMLINE_BASELINE_PROBE=baseline-value LMLINE_bad=ignored LMLINE_=ignored \
     zsh -efic '
       source "$1/lmline/init.zsh"

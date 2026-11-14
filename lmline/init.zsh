@@ -75,6 +75,13 @@ __lmline_zsh_load_all_config() {
   local system_was_loaded=0 sysopen_available=1 anonymous_export=0
   local project_config_baseline_set=0 project_config_baseline_value=
   __lmline_zsh_capture_env_baseline
+  # Avoid starting Bash when no config can add or remove values. Keep the
+  # caller's post-load check so a setting created during startup is reloaded.
+  if [[ "${__LMLINE_ZSH_SETTINGS_CKSUM:-}" == no-settings-file &&
+        "${LMLINE_PROJECT_CONFIG:-0}" != 1 &&
+        -z "${__LMLINE_ZSH_BRIDGE_KEYS-}" ]]; then
+    return 0
+  fi
   old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
   if __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_PROJECT_CONFIG; then
     base=__LMLINE_ZSHBASE_LMLINE_PROJECT_CONFIG
