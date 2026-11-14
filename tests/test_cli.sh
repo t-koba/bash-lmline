@@ -419,7 +419,7 @@ send -- "\r"
 expect -re {READY> $}
 send -- {lmline clip --provider c}
 send -- "\t"
-after 500
+expect -re {custom\\ provider}
 send -- "\024"
 after 50
 send -- "exit\r"
@@ -430,8 +430,10 @@ EXPECT
       fail "zsh interactive clipboard completion"
     fi
     zsh_provider_buffer=$(cat "$cfg_tmp/zsh-pty-buffer")
-    [[ "$zsh_provider_buffer" == 'lmline clip --provider custom\ provider ' ]] ||
+    if [[ "$zsh_provider_buffer" != 'lmline clip --provider custom\ provider ' ]]; then
+      printf 'unexpected captured Zsh buffer: %q\n' "$zsh_provider_buffer" >&2
       fail "zsh interactive clipboard completion keeps one shell word"
+    fi
   else
     printf 'skip - zsh interactive clipboard completion (expect not found)\n'
   fi
