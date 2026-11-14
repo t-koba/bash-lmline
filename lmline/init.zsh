@@ -1195,6 +1195,16 @@ zle -N lmline-zsh-explain-widget
 zle -N lmline-zsh-clip-widget
 zle -N lmline-zsh-fix-widget
 
+# If the integration is sourced before compinit, let a later compinit discover
+# the completion; otherwise register it directly without changing fpath.
+__lmline_zsh_add_completion_path() {
+  emulate -L zsh
+  local completion_dir=$1
+  (( ${fpath[(Ie)$completion_dir]} )) || fpath=("$completion_dir" "${(@)fpath}")
+}
+if (( ! ${+functions[compdef]} )); then
+  __lmline_zsh_add_completion_path "$LMLINE_DIR/completions"
+fi
 # shellcheck disable=SC1091
 source "$LMLINE_DIR/completions/_lmline"
 compdef _lmline lmline 2>/dev/null || true

@@ -82,6 +82,39 @@ EOF
       [[ "$LMLINE_MODEL" == profile-from-env ]]
     ' _ "$repo_dir" || fail "zsh settings deletion restores the environment baseline"
   ok "zsh config bridge skips only an empty initial configuration"
+  mkdir -p "$zsh_tmp/home-completion-before" "$zsh_tmp/home-completion-after" "$zsh_tmp/config-completion-before" "$zsh_tmp/config-completion-after"
+  HOME="$zsh_tmp/home-completion-before" ZDOTDIR="$zsh_tmp/home-completion-before" LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-before" \
+    zsh -efic '
+      completion_dir="$1/lmline/completions"
+      setopt KSH_ARRAYS
+      before_count=${#fpath[@]}
+      before_first=${fpath[0]}
+      before_last=${fpath[$((before_count - 1))]}
+      source "$1/lmline/init.zsh"
+      [[ -o KSH_ARRAYS ]]
+      (( ${#fpath[@]} == before_count + 1 ))
+      [[ ${fpath[0]} == "$completion_dir" && ${fpath[1]} == "$before_first" ]]
+      [[ ${fpath[$before_count]} == "$before_last" ]]
+      source "$1/lmline/init.zsh"
+      [[ -o KSH_ARRAYS ]]
+      (( ${#fpath[@]} == before_count + 1 ))
+      unsetopt KSH_ARRAYS
+      [[ ${fpath[(Ie)$completion_dir]} == 1 ]]
+      autoload -Uz compinit
+      compinit -C
+      [[ "${_comps[lmline]-}" == _lmline ]]
+    ' _ "$repo_dir" || fail "zsh completion registers when init precedes compinit"
+  HOME="$zsh_tmp/home-completion-after" ZDOTDIR="$zsh_tmp/home-completion-after" LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-after" \
+    zsh -efic '
+      completion_dir="$1/lmline/completions"
+      autoload -Uz compinit
+      compinit -C
+      [[ ${fpath[(Ie)$completion_dir]} == 0 ]]
+      source "$1/lmline/init.zsh"
+      [[ "${_comps[lmline]-}" == _lmline ]]
+      [[ ${fpath[(Ie)$completion_dir]} == 0 ]]
+    ' _ "$repo_dir" || fail "zsh completion registration preserves the initialized path"
+  ok "zsh CLI completion registers before or after compinit"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-baseline" LMLINE_BASELINE_PROBE=baseline-value LMLINE_bad=ignored LMLINE_=ignored \
     zsh -efic '
       source "$1/lmline/init.zsh"
