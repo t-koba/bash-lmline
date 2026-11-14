@@ -314,7 +314,8 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
   printf "%s\n" "${COMPREPLY[@]}" | grep -q "^readonly$" || exit 1
 ' _ "$repo_dir" || fail "bash profile completion"
 if command -v zsh >/dev/null 2>&1; then
-  PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" zsh -fic '
+  PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
+    LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" zsh -fic '
     source "$1/lmline/init.zsh"
     compadd() { local arg; for arg in "${@:2}"; do [[ "$arg" == -- ]] && continue; print -r -- "$arg" >>"$OUT"; done; }
     OUT=/tmp/lmline-zsh-complete-endpoints.out
@@ -329,6 +330,12 @@ if command -v zsh >/dev/null 2>&1; then
     CURRENT=4
     _lmline
     grep -q "^openai/gpt-test$" /tmp/lmline-zsh-complete-models.out || exit 1
+    OUT=/tmp/lmline-zsh-complete-clipboard-providers.out
+    : >"$OUT"
+    words=(lmline clip --provider "")
+    CURRENT=4
+    _lmline
+    grep -Fqx "custom provider" "$OUT" || exit 1
     OUT=/tmp/lmline-zsh-complete-config-settings.out
     : >"$OUT"
     words=(lmline config set LMLINE_MIC "")
