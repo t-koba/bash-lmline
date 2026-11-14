@@ -405,6 +405,11 @@ if command -v zsh >/dev/null 2>&1; then
   ' _ "$repo_dir" /tmp/lmline-zsh-complete.out || fail "zsh profile completion"
   if command -v expect >/dev/null 2>&1; then
     printf 'custom provider\tno-such-lmline-provider-command\n' >"$cfg_tmp/zsh-pty-providers.tsv"
+    # compinit rejects writable completion directories; isolate the tested
+    # function from checkout permissions, which can vary across CI runners.
+    mkdir -m 700 "$cfg_tmp/zsh-completions"
+    cp "$repo_dir/lmline/completions/_lmline" "$cfg_tmp/zsh-completions/_lmline"
+    chmod 600 "$cfg_tmp/zsh-completions/_lmline"
     cat >"$cfg_tmp/zsh-pty-completion.exp" <<'EXPECT'
 set timeout 15
 set repo [lindex $argv 0]
@@ -432,7 +437,7 @@ expect {
   timeout { error "initial Zsh line-editor activation timed out" }
   eof { error "Zsh exited before initial line-editor activation" }
 }
-send -- {autoload -Uz compinit; fpath=("$REPO/lmline/completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
+send -- {autoload -Uz compinit; fpath=("$work/zsh-completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
 send -- "\r"
 expect {
   -re {READY> .*2004h} {}
