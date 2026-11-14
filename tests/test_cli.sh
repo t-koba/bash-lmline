@@ -409,28 +409,67 @@ if command -v zsh >/dev/null 2>&1; then
 set timeout 15
 set repo [lindex $argv 0]
 set work [lindex $argv 1]
+proc wait_for_file {path label} {
+  set deadline [expr {[clock milliseconds] + 8000}]
+  while {![file exists $path]} {
+    if {[clock milliseconds] >= $deadline} { error "timed out waiting for $label" }
+    after 10
+  }
+}
+proc read_file {path} {
+  set channel [open $path r]
+  set value [read $channel]
+  close $channel
+  return [string trimright $value "\r\n"]
+}
 spawn env TERM=xterm "REPO=$repo" "OUT=$work/zsh-pty-buffer" \
+  "PROBE=$work/zsh-pty-probe" \
   "LMLINE_CONFIG_DIR=$work/config" \
   "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/zsh-pty-providers.tsv" \
   "PATH=$repo/lmline:$env(PATH)" zsh -f
-expect -re {% ?$}
-send -- {autoload -Uz compinit; fpath=("$REPO/lmline/completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_capture_buffer { print -r -- "$BUFFER" >"$OUT"; BUFFER=''; }; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_capture_buffer}
+expect {
+  -re {2004h} {}
+  timeout { error "initial Zsh line-editor activation timed out" }
+  eof { error "Zsh exited before initial line-editor activation" }
+}
+send -- {autoload -Uz compinit; fpath=("$REPO/lmline/completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
 send -- "\r"
-expect -re {READY> .*2004h}
-send -- {lmline clip --provider c}
-expect -re {lmline clip --provider c}
-send -- "\t"
-expect -re {custom\\ provider}
+expect {
+  -re {READY> .*2004h} {}
+  timeout { error "READY Zsh line-editor activation timed out" }
+  eof { error "Zsh exited before the READY prompt" }
+}
+file delete -force "$work/zsh-pty-probe" "$work/zsh-pty-probe.data"
 send -- "\024"
-after 50
+wait_for_file "$work/zsh-pty-probe" "empty-prompt ZLE probe"
+set initial_buffer [read_file "$work/zsh-pty-probe.data"]
+if {$initial_buffer ne ""} { error "unexpected initial ZLE BUFFER: <$initial_buffer>" }
+file delete -force "$work/zsh-pty-probe" "$work/zsh-pty-probe.data"
+send -- {lmline clip --provider c}
+send -- "\024"
+wait_for_file "$work/zsh-pty-probe" "pre-Tab ZLE buffer probe"
+set typed_buffer [read_file "$work/zsh-pty-probe.data"]
+if {$typed_buffer ne "lmline clip --provider c"} { error "unexpected pre-Tab ZLE BUFFER: <$typed_buffer>" }
+file delete -force "$work/zsh-pty-probe" "$work/zsh-pty-probe.data"
+send -- "\t"
+expect {
+  -re {custom\\ provider} {}
+  timeout { error "Zsh did not render the clipboard provider completion" }
+  eof { error "Zsh exited before clipboard provider completion" }
+}
+send -- "\007"
+wait_for_file "$work/zsh-pty-buffer" "post-Tab ZLE buffer capture"
 send -- "exit\r"
-expect eof
+expect {
+  eof {}
+  timeout { error "Zsh did not exit after the buffer capture" }
+}
 EXPECT
     if ! expect "$cfg_tmp/zsh-pty-completion.exp" "$repo_dir" "$cfg_tmp" >"$cfg_tmp/zsh-pty-completion.log" 2>&1; then
       cat "$cfg_tmp/zsh-pty-completion.log" >&2
       fail "zsh interactive clipboard completion"
     fi
-    zsh_provider_buffer=$(cat "$cfg_tmp/zsh-pty-buffer")
+    zsh_provider_buffer=$(cat "$cfg_tmp/zsh-pty-buffer.data")
     if [[ "$zsh_provider_buffer" != 'lmline clip --provider custom\ provider ' ]]; then
       printf 'unexpected captured Zsh buffer: %q\n' "$zsh_provider_buffer" >&2
       fail "zsh interactive clipboard completion keeps one shell word"
