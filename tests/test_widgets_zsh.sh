@@ -115,17 +115,18 @@ EOF
       [[ ${fpath[(Ie)$completion_dir]} == 0 ]]
     ' _ "$repo_dir" || fail "zsh completion registration preserves the initialized path"
   # A cached -C dump deliberately skips new fpath entries; a normal compinit
-  # pass is the documented one-time refresh when init is sourced first.
+  # pass is the documented one-time refresh when init is sourced first. Use -i
+  # so insecure system fpath entries cannot prompt in this noninteractive test.
   mkdir -p "$zsh_tmp/home-completion-cache" "$zsh_tmp/config-completion-cache"
   HOME="$zsh_tmp/home-completion-cache" ZDOTDIR="$zsh_tmp/home-completion-cache" \
     LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-cache" \
-    zsh -efic 'autoload -Uz compinit; compinit -d "$ZDOTDIR/.zcompdump"' _ "$repo_dir" || fail "zsh creates a pre-init completion cache"
+    zsh -efic 'autoload -Uz compinit; compinit -i -d "$ZDOTDIR/.zcompdump"' _ "$repo_dir" || fail "zsh creates a pre-init completion cache"
   HOME="$zsh_tmp/home-completion-cache" ZDOTDIR="$zsh_tmp/home-completion-cache" \
     LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-cache" \
     zsh -efic '
       source "$1/lmline/init.zsh"
       autoload -Uz compinit
-      compinit -d "$ZDOTDIR/.zcompdump"
+      compinit -i -d "$ZDOTDIR/.zcompdump"
       [[ "${_comps[lmline]-}" == _lmline ]]
     ' _ "$repo_dir" || fail "zsh refreshes a stale completion cache after init"
   # Replace one cached completion with lmline, keeping the file count equal;
@@ -137,7 +138,7 @@ EOF
     zsh -efic '
       fpath=( "$2" $fpath )
       autoload -Uz compinit
-      compinit -d "$ZDOTDIR/.zcompdump"
+      compinit -i -d "$ZDOTDIR/.zcompdump"
       [[ "${_comps[alpha]-}" == _alpha ]]
     ' _ "$repo_dir" "$zsh_tmp/completion-cache-functions" || fail "zsh seeds an equal-count completion dump"
   command rm "$zsh_tmp/completion-cache-functions/_alpha"
@@ -148,7 +149,7 @@ EOF
       source "$1/lmline/init.zsh"
       command rm "$ZDOTDIR/.zcompdump"
       autoload -Uz compinit
-      compinit -d "$ZDOTDIR/.zcompdump"
+      compinit -i -d "$ZDOTDIR/.zcompdump"
       [[ "${_comps[lmline]-}" == _lmline ]]
       [[ "${_comps[alpha]-}" != _alpha ]]
     ' _ "$repo_dir" "$zsh_tmp/completion-cache-functions" || fail "zsh refreshes an equal-count completion cache after dump removal"
