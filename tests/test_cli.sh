@@ -403,6 +403,38 @@ if command -v zsh >/dev/null 2>&1; then
     _lmline
     grep -q "^readonly$" "$OUT" || exit 1
   ' _ "$repo_dir" /tmp/lmline-zsh-complete.out || fail "zsh profile completion"
+  if command -v expect >/dev/null 2>&1; then
+    printf 'custom provider\tno-such-lmline-provider-command\n' >"$cfg_tmp/zsh-pty-providers.tsv"
+    cat >"$cfg_tmp/zsh-pty-completion.exp" <<'EXPECT'
+set timeout 15
+set repo [lindex $argv 0]
+set work [lindex $argv 1]
+spawn env TERM=xterm "REPO=$repo" "OUT=$work/zsh-pty-buffer" \
+  "LMLINE_CONFIG_DIR=$work/config" \
+  "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/zsh-pty-providers.tsv" \
+  "PATH=$repo/lmline:$env(PATH)" zsh -f
+expect -re {% ?$}
+send -- {autoload -Uz compinit; fpath=("$REPO/lmline/completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_capture_buffer { print -r -- "$BUFFER" >"$OUT"; BUFFER=''; }; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_capture_buffer}
+send -- "\r"
+expect -re {READY> $}
+send -- {lmline clip --provider c}
+send -- "\t"
+after 500
+send -- "\024"
+after 50
+send -- "exit\r"
+expect eof
+EXPECT
+    if ! expect "$cfg_tmp/zsh-pty-completion.exp" "$repo_dir" "$cfg_tmp" >"$cfg_tmp/zsh-pty-completion.log" 2>&1; then
+      cat "$cfg_tmp/zsh-pty-completion.log" >&2
+      fail "zsh interactive clipboard completion"
+    fi
+    zsh_provider_buffer=$(cat "$cfg_tmp/zsh-pty-buffer")
+    [[ "$zsh_provider_buffer" == 'lmline clip --provider custom\ provider ' ]] ||
+      fail "zsh interactive clipboard completion keeps one shell word"
+  else
+    printf 'skip - zsh interactive clipboard completion (expect not found)\n'
+  fi
 fi
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use local local-test-model
 profile_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
