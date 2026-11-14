@@ -416,8 +416,9 @@ spawn env TERM=xterm "REPO=$repo" "OUT=$work/zsh-pty-buffer" \
 expect -re {% ?$}
 send -- {autoload -Uz compinit; fpath=("$REPO/lmline/completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_capture_buffer { print -r -- "$BUFFER" >"$OUT"; BUFFER=''; }; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_capture_buffer}
 send -- "\r"
-expect -re {READY> $}
+expect -re {READY> .*2004h}
 send -- {lmline clip --provider c}
+expect -re {lmline clip --provider c}
 send -- "\t"
 expect -re {custom\\ provider}
 send -- "\024"
