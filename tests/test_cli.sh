@@ -431,13 +431,14 @@ spawn env TERM=xterm "REPO=$repo" "OUT=$work/zsh-pty-buffer" \
   "PROBE=$work/zsh-pty-probe" \
   "LMLINE_CONFIG_DIR=$work/config" \
   "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/zsh-pty-providers.tsv" \
+  "ZSH_COMPLETION_DIR=$work/zsh-completions" \
   "PATH=$repo/lmline:$env(PATH)" zsh -f
 expect {
   -re {2004h} {}
   timeout { error "initial Zsh line-editor activation timed out" }
   eof { error "Zsh exited before initial line-editor activation" }
 }
-send -- {autoload -Uz compinit; fpath=("$work/zsh-completions" $fpath); compinit -D; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
+send -- {autoload -Uz compinit; fpath=("$ZSH_COMPLETION_DIR" $fpath); compinit -D; [[ ${_comps[lmline]-} == _lmline ]] || { print -u2 -- "compinit did not discover the private _lmline fixture"; exit 1; }; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
 send -- "\r"
 expect {
   -re {READY> .*2004h} {}
