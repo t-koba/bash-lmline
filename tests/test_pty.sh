@@ -235,7 +235,8 @@ case " $* " in
   # real fallback label before emitting progress/completing, so the
   # transient frame cannot be skipped by parent scheduling delays.
   release="${LMLINE_CONFIG_DIR:-}/spinner-release"
-  for ((i = 0; i < 100; i++)); do
+  gate_seconds=${LMLINE_TEST_PTY_SPINNER_GATE_SECONDS:-10}
+  for ((i = 0; i < gate_seconds * 20; i++)); do
     [[ -e "$release" ]] && break
     sleep 0.05
   done
@@ -256,10 +257,23 @@ esac
 ENGINE
   chmod +x "$pty_tmp/engine-slow"
   mkdir -p "$pty_tmp/bash-spinner-config"
-  expect <<EOF >"$pty_tmp/bash-spinner.out" 2>&1 || fail "bash pty spinner"
-# The spinner redraws while the model answer arrives; the interaction needs
-# more patience than the single-message blocks above.
-set timeout 15
+  spinner_gate_seconds=${LMLINE_TEST_PTY_SPINNER_GATE_SECONDS:-10}
+  [[ "$spinner_gate_seconds" =~ ^[1-9][0-9]*$ ]] || fail "invalid LMLINE_TEST_PTY_SPINNER_GATE_SECONDS"
+  (( spinner_gate_seconds <= 60 )) || fail "LMLINE_TEST_PTY_SPINNER_GATE_SECONDS exceeds 60"
+  bash_spinner_fail() {
+    printf 'bash spinner PTY diagnostics (%s):\n' "$1" >&2
+    [[ -f "$pty_tmp/bash-spinner.out" ]] && cat "$pty_tmp/bash-spinner.out" >&2
+    if [[ -f "$pty_tmp/bash-spinner-config/spinner-release.seen" ]]; then
+      cat "$pty_tmp/bash-spinner-config/spinner-release.seen" >&2
+    else
+      printf 'gate observation file is missing\n' >&2
+    fi
+    fail "bash pty spinner: $1"
+  }
+  LMLINE_TEST_PTY_SPINNER_GATE_SECONDS=$spinner_gate_seconds expect <<EOF >"$pty_tmp/bash-spinner.out" 2>&1 || bash_spinner_fail "interaction failed"
+# The spinner redraws while the model answer arrives; the gate and Expect
+# deadlines have the same small scheduling margin on slower supported hosts.
+set timeout $((spinner_gate_seconds + 5))
 source "$repo_dir/tests/pty-expect-helpers.exp"
 log_user 1
 spawn bash --norc -i
@@ -279,11 +293,11 @@ expect_required_spinner_and_explanation "$pty_tmp/bash-spinner-config/spinner-re
 send "\025exit\r"
 expect eof
 EOF
-  grep -q "gated=1" "$pty_tmp/bash-spinner-config/spinner-release.seen" || fail "bash pty spinner gate was not released by Expect"
-  ! grep -E '\[[0-9]+\]|終了|Done|__lmline_call_engine_raw' "$pty_tmp/bash-spinner.out" >/dev/null || fail "bash pty spinner job noise"
+  grep -q "gated=1" "$pty_tmp/bash-spinner-config/spinner-release.seen" || bash_spinner_fail "fake engine gate expired before spinner observation"
+  ! grep -E '\[[0-9]+\]|終了|Done|__lmline_call_engine_raw' "$pty_tmp/bash-spinner.out" >/dev/null || bash_spinner_fail "job-control noise"
   bash_spinner_norm=$(tr '\r' '\n' <"$pty_tmp/bash-spinner.out" | sed $'s/\033\\[[0-9;]*[A-Za-z]//g')
-  ! grep -E '\[rewrite\].*(bash.*\$|echo pty-slow)' <<<"$bash_spinner_norm" >/dev/null || fail "bash pty spinner left rewrite text on prompt line"
-  ! grep -E 'explaining.*(bash.*\$|explained pty)' <<<"$bash_spinner_norm" >/dev/null || fail "bash pty spinner left explain text on output line"
+  ! grep -E '\[rewrite\].*(bash.*\$|echo pty-slow)' <<<"$bash_spinner_norm" >/dev/null || bash_spinner_fail "rewrite text remained on the prompt line"
+  ! grep -E 'explaining.*(bash.*\$|explained pty)' <<<"$bash_spinner_norm" >/dev/null || bash_spinner_fail "explanation text remained on the output line"
   if command -v zsh >/dev/null 2>&1; then
     zsh_async_marker=$pty_tmp/zsh-async-executed
     LMLINE_CONFIG_DIR=$pty_tmp/zsh-async-config "$repo_dir/lmline/lmline" config set LMLINE_ASYNC 1 >/dev/null
