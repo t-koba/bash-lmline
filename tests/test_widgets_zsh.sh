@@ -128,6 +128,30 @@ EOF
       compinit -d "$ZDOTDIR/.zcompdump"
       [[ "${_comps[lmline]-}" == _lmline ]]
     ' _ "$repo_dir" || fail "zsh refreshes a stale completion cache after init"
+  # Replace one cached completion with lmline, keeping the file count equal;
+  # removing the exact dump is the deterministic refresh even in this case.
+  mkdir -p "$zsh_tmp/home-completion-equal-count" "$zsh_tmp/config-completion-equal-count" "$zsh_tmp/completion-cache-functions"
+  printf '#compdef alpha\n_alpha() { return 0; }\n' >"$zsh_tmp/completion-cache-functions/_alpha"
+  HOME="$zsh_tmp/home-completion-equal-count" ZDOTDIR="$zsh_tmp/home-completion-equal-count" \
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-equal-count" \
+    zsh -efic '
+      fpath=( "$2" $fpath )
+      autoload -Uz compinit
+      compinit -d "$ZDOTDIR/.zcompdump"
+      [[ "${_comps[alpha]-}" == _alpha ]]
+    ' _ "$repo_dir" "$zsh_tmp/completion-cache-functions" || fail "zsh seeds an equal-count completion dump"
+  command rm "$zsh_tmp/completion-cache-functions/_alpha"
+  HOME="$zsh_tmp/home-completion-equal-count" ZDOTDIR="$zsh_tmp/home-completion-equal-count" \
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-equal-count" \
+    zsh -efic '
+      fpath=( "$2" $fpath )
+      source "$1/lmline/init.zsh"
+      command rm "$ZDOTDIR/.zcompdump"
+      autoload -Uz compinit
+      compinit -d "$ZDOTDIR/.zcompdump"
+      [[ "${_comps[lmline]-}" == _lmline ]]
+      [[ "${_comps[alpha]-}" != _alpha ]]
+    ' _ "$repo_dir" "$zsh_tmp/completion-cache-functions" || fail "zsh refreshes an equal-count completion cache after dump removal"
   ok "zsh CLI completion registers before or after compinit and refreshes stale caches"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-baseline" LMLINE_BASELINE_PROBE=baseline-value LMLINE_bad=ignored LMLINE_=ignored \
     zsh -efic '
