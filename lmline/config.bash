@@ -404,7 +404,7 @@ __lmline_clipboard_provider_names() {
       i++
       while (i <= NF && $i == "") i++
       if (i <= NF) print name
-    }' "$file"
+    }' <"$file"
 }
 
 __lmline_read_list_file() {

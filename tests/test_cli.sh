@@ -254,6 +254,14 @@ clipboard_edge_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
   "$repo_dir/lmline/lmline" complete clipboard-providers)
 expected_clipboard_edge_candidates=$(printf 'auto\ntrimmed first\nname with spaces\nempty second\n leading and trailing \nduplicate\nduplicate\nunterminated final')
 [[ "$clipboard_edge_candidates" == "$expected_clipboard_edge_candidates" ]] || fail "clipboard provider TSV parsing semantics"
+relative_provider_dir="$cfg_tmp/relative-provider-path"
+mkdir -p "$relative_provider_dir"
+printf 'relative provider\tno-such-provider-command\n' >"$relative_provider_dir/providers=custom"
+relative_provider_candidates=$(printf 'stdin marker\tno-such-provider-command\n' | \
+  (cd "$relative_provider_dir" && LMLINE_CONFIG_DIR="$profiles_dir" \
+    LMLINE_CLIPBOARD_PROVIDERS_FILE='providers=custom' \
+    "$repo_dir/lmline/lmline" complete clipboard-providers))
+[[ "$relative_provider_candidates" == "$(printf 'auto\nrelative provider')" ]] || fail "clipboard provider assignment-shaped relative path"
 clipboard_setting_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
   LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" \
   "$repo_dir/lmline/lmline" complete setting-values LMLINE_CLIPBOARD_PROVIDER)
