@@ -383,6 +383,25 @@ __lmline_resolve_data_file() {
   return 1
 }
 
+__lmline_clipboard_provider_file() {
+  __lmline_resolve_data_file clipboard_providers \
+    "${LMLINE_CLIPBOARD_PROVIDERS_FILE:-}" \
+    "$LMLINE_USER_RULES_DIR/clipboard_providers.tsv" \
+    "$LMLINE_DEFAULTS_DIR/clipboard_providers.tsv"
+}
+
+__lmline_clipboard_provider_names() {
+  local file line
+  local -a fields
+  file=$(__lmline_clipboard_provider_file) || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    IFS=$'\t' read -r -a fields <<<"$line"
+    ((${#fields[@]} >= 2)) || continue
+    printf '%s\n' "${fields[0]}"
+  done <"$file"
+}
+
 __lmline_read_list_file() {
   local file=${1-} line
   [[ -n "$file" && -r "$file" ]] || return 0

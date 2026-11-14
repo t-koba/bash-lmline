@@ -241,6 +241,16 @@ grep -q '^local$' <<<"$complete_endpoints" || fail "complete endpoints"
 complete_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" complete models cloud)
 grep -q '^openai/gpt-test$' <<<"$complete_models" || fail "complete models"
 printf 'custom provider\tprintf\n' >"$cfg_tmp/clipboard-providers.tsv"
+clipboard_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
+  LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" \
+  "$repo_dir/lmline/lmline" complete clipboard-providers)
+grep -Fqx 'auto' <<<"$clipboard_candidates" || fail "complete clipboard providers auto"
+grep -Fqx 'custom provider' <<<"$clipboard_candidates" || fail "complete clipboard providers custom name"
+clipboard_setting_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
+  LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" \
+  "$repo_dir/lmline/lmline" complete setting-values LMLINE_CLIPBOARD_PROVIDER)
+grep -Fqx 'auto' <<<"$clipboard_setting_candidates" || fail "clipboard setting candidates auto"
+grep -Fqx 'custom provider' <<<"$clipboard_setting_candidates" || fail "clipboard setting candidates custom name"
 PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
   LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" bash --norc -i -c '
   source "$1/lmline/init.bash"
