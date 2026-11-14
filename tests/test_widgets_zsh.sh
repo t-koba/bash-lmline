@@ -29,6 +29,26 @@ EOF
       [[ "$__LMLINE_ZSH_SETTINGS_CKSUM" == no-settings-file ]]
     ' _ "$repo_dir" || fail "zsh no-settings fast path preserves the environment baseline"
   [[ ! -e "$zsh_tmp/bridge-no-settings" ]] || fail "zsh no-settings fast path spawned the config bridge"
+  # Create a settings file after the no-file seed and before the loader call.
+  mkdir -p "$zsh_tmp/config-fast-startup-race"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-fast-startup-race" LMLINE_PROJECT_CONFIG=0 LMLINE_MODEL=profile-from-env \
+    zsh -efic '
+      setopt DEBUG_BEFORE_CMD
+      LM_TEST_RACE_WRITTEN=0
+      TRAPDEBUG() {
+        if [[ "$ZSH_DEBUG_CMD" == __lmline_zsh_load_all_config &&
+              "$__LMLINE_ZSH_SETTINGS_CKSUM" == no-settings-file &&
+              "$LM_TEST_RACE_WRITTEN" == 0 &&
+              ! -e "$LMLINE_CONFIG_DIR/settings.bash" ]]; then
+          LM_TEST_RACE_WRITTEN=1
+          print -r -- "export LMLINE_MODEL=profile-from-race" >"$LMLINE_CONFIG_DIR/settings.bash"
+        fi
+      }
+      source "$1/lmline/init.zsh"
+      [[ "$LM_TEST_RACE_WRITTEN" == 1 ]]
+      [[ "$LMLINE_MODEL" == profile-from-race ]]
+      [[ "${__LMLINE_ZSHBASE_LMLINE_MODEL-}" == profile-from-env ]]
+    ' _ "$repo_dir" || fail "zsh post-load check catches settings created during startup"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-fast-settings" LMLINE_PROJECT_CONFIG=0 LMLINE_MODEL=profile-from-env \
     LM_TEST_BRIDGE_MARKER="$zsh_tmp/bridge-with-settings" PATH="$bridge_probe_dir:$PATH" \
     zsh -efic '
