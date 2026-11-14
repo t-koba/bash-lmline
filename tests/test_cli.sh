@@ -240,7 +240,9 @@ complete_endpoints=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline"
 grep -q '^local$' <<<"$complete_endpoints" || fail "complete endpoints"
 complete_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" complete models cloud)
 grep -q '^openai/gpt-test$' <<<"$complete_models" || fail "complete models"
-PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" bash --norc -i -c '
+printf 'custom provider\tprintf\n' >"$cfg_tmp/clipboard-providers.tsv"
+PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
+  LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" bash --norc -i -c '
   source "$1/lmline/init.bash"
   COMP_WORDS=(lmline use "")
   COMP_CWORD=2
@@ -250,6 +252,12 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" bash --norc -i -
   COMP_CWORD=3
   __lmline_cli_complete
   printf "%s\n" "${COMPREPLY[@]}" | grep -q "^openai/gpt-test$" || exit 1
+  COMP_WORDS=(lmline clip --provider custom)
+  COMP_CWORD=3
+  COMP_LINE="lmline clip --provider custom"
+  COMP_POINT=${#COMP_LINE}
+  __lmline_cli_complete
+  [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == "custom\ provider" ]] || exit 1
   COMP_WORDS=(lmline config set LMLINE_MIC "")
   COMP_CWORD=3
   __lmline_cli_complete

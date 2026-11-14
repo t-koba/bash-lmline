@@ -3,16 +3,17 @@
 # usable on its own from ~/.bashrc without loading the shell widgets.
 # Dynamic values come from "lmline complete ..." at completion time.
 
-# Insert reversible shell words for endpoint and model names in supported
-# unquoted contexts. In quoted or escaped words, omit candidates that need
-# encoding rather than leaking controls or corrupting existing quoting.
-__lmline_complete_profile_names_bash() {
+# Insert reversible shell words for endpoint, model, and provider names. In
+# quoted or escaped words, omit candidates that need encoding rather than
+# corrupting existing quoting.
+__lmline_complete_names_bash() {
   local kind=$1 endpoint=$2 cur=$3 id suffix encoded_prefix encoded_suffix line point raw_word
   local quoted_context=0
   local -a candidates=() completion_args=()
   case "$kind" in
     endpoints) completion_args=(complete endpoints --raw) ;;
     models) completion_args=(complete models --raw "$endpoint") ;;
+    clipboard-providers) completion_args=(complete clipboard-providers) ;;
     *) COMPREPLY=(); return 0 ;;
   esac
   point=${COMP_POINT:-${#COMP_LINE}}
@@ -49,9 +50,9 @@ __lmline_cli_complete() {
   if (( COMP_CWORD == 1 )); then
     COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
   elif [[ $command == use && $COMP_CWORD == 2 ]]; then
-    __lmline_complete_profile_names_bash endpoints "" "$cur"
+    __lmline_complete_names_bash endpoints "" "$cur"
   elif [[ $command == use && $COMP_CWORD == 3 ]]; then
-    __lmline_complete_profile_names_bash models "${COMP_WORDS[2]}" "$cur"
+    __lmline_complete_names_bash models "${COMP_WORDS[2]}" "$cur"
   elif [[ $command == payload && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "generate rewrite explain fix clip" -- "$cur") )
   elif [[ $command == help && $COMP_CWORD == 2 ]]; then
@@ -73,11 +74,11 @@ __lmline_cli_complete() {
   elif [[ $command == clip && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "--status --providers --use --provider" -- "$cur") )
   elif [[ $command == clip && $COMP_CWORD == 3 && ${prev} =~ ^(--use|--provider)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete clipboard-providers 2>/dev/null)" -- "$cur") )
+    __lmline_complete_names_bash clipboard-providers "" "$cur"
   elif [[ $command == endpoint && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "add list set-secret remove" -- "$cur") )
   elif [[ $command == endpoint && $COMP_CWORD == 3 && ${sub} =~ ^(set-secret|remove)$ ]]; then
-    __lmline_complete_profile_names_bash endpoints "" "$cur"
+    __lmline_complete_names_bash endpoints "" "$cur"
   elif [[ $command == endpoint && $sub == add && $COMP_CWORD -ge 5 ]]; then
     if [[ $prev == --tool-mode ]]; then
       COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
@@ -91,9 +92,9 @@ __lmline_cli_complete() {
   elif [[ $command == model && $COMP_CWORD == 2 ]]; then
     COMPREPLY=( $(compgen -W "add list refresh remove" -- "$cur") )
   elif [[ $command == model && $COMP_CWORD == 3 && ${sub} =~ ^(add|list|refresh|remove)$ ]]; then
-    __lmline_complete_profile_names_bash endpoints "" "$cur"
+    __lmline_complete_names_bash endpoints "" "$cur"
   elif [[ $command == model && $COMP_CWORD == 4 && ${sub} == remove ]]; then
-    __lmline_complete_profile_names_bash models "${COMP_WORDS[3]}" "$cur"
+    __lmline_complete_names_bash models "${COMP_WORDS[3]}" "$cur"
   elif [[ $command == model && $sub == add && $COMP_CWORD -ge 5 ]]; then
     if [[ $prev == --tool-mode ]]; then
       COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
