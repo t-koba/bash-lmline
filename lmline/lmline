@@ -108,7 +108,11 @@ script_dir=$(cd -- "$script_dir" && pwd -P)
 
 # shellcheck source=lmline/config.bash
 source "$script_dir/config.bash"
-__lmline_load_all_config
+# These completion catalogs are static and do not need configuration values.
+case "${1-}:${2-}" in
+  complete:commands|complete:subcommands|complete:settings) : ;;
+  *) __lmline_load_all_config ;;
+esac
 # Static help, completion queries and basic config operations avoid route setup;
 # profile operations still load profiles, and route-derived views stay full.
 case "${1-}:${2-}:${3-}" in

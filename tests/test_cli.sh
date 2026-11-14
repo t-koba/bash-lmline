@@ -144,6 +144,32 @@ grep -q '^LMLINE_MICROSANDBOX_COMMAND$' <<<"$complete_settings" || fail "complet
 grep -q '^LMLINE_API_FORMAT$' <<<"$complete_settings" || fail "complete settings api format"
 grep -q '^LMLINE_MODELS_INCLUDE$' <<<"$complete_settings" || fail "complete settings models include"
 grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
+# Static completion catalogs must not load settings or opt-in project config;
+# dynamic provider completion must continue to load configuration.
+static_config_dir="$cfg_tmp/static-config"
+static_project_dir="$cfg_tmp/static-project"
+static_fake_bin="$cfg_tmp/static-fake-bin"
+mkdir -p "$static_config_dir" "$static_project_dir" "$static_fake_bin"
+printf "export LMLINE_PROJECT_CONFIG='1'\n" >"$static_config_dir/settings.bash"
+static_git_marker="$cfg_tmp/static-git-called"
+printf '#!/bin/sh\nprintf "called\\n" >> "%s"\nexit 1\n' "$static_git_marker" >"$static_fake_bin/git"
+chmod +x "$static_fake_bin/git"
+printf 'static provider\ttrue\n' >"$cfg_tmp/static-providers.tsv"
+__lmline_test_static_completion() (
+  cd "$static_project_dir" && \
+    PATH="$static_fake_bin:$PATH" \
+    LMLINE_CONFIG_DIR="$static_config_dir" \
+    LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/static-providers.tsv" \
+    "$repo_dir/lmline/lmline" complete "$@"
+)
+__lmline_test_static_completion commands >/dev/null
+[[ ! -e "$static_git_marker" ]] || fail "command completion loaded project config"
+__lmline_test_static_completion subcommands config >/dev/null
+[[ ! -e "$static_git_marker" ]] || fail "subcommand completion loaded project config"
+__lmline_test_static_completion settings >/dev/null
+[[ ! -e "$static_git_marker" ]] || fail "setting-name completion loaded project config"
+__lmline_test_static_completion clipboard-providers >/dev/null
+[[ -e "$static_git_marker" ]] || fail "dynamic provider completion skipped project config"
 grep -q '^LMLINE_RISK_HISTORY_EXPANSION_LEVEL$' <<<"$complete_settings" || fail "history risk setting completion"
 grep -q '^LMLINE_CHATGPT_AUTH_URL$' <<<"$complete_settings" || fail "chatgpt auth url setting completion"
 grep -q '^LMLINE_CHATGPT_CREDENTIALS_FILE$' <<<"$complete_settings" || fail "chatgpt credentials setting completion"
