@@ -55,6 +55,13 @@ Permanent zsh setup:
 source "$HOME/.config/lmline/init.zsh"
 ```
 
+For CLI completion, source `init.zsh` after `compinit` when practical. If it
+runs first, the integration adds its completion directory to `fpath` so a
+later `compinit` scan can find it. An existing `compinit -C` dump skips that
+scan; rebuild the dump once (for example, run `compinit` without `-C` after
+sourcing `init.zsh`, or remove the dump) or source `init.zsh` after
+`compinit`.
+
 Standalone CLI completions (optional; the init scripts already load them, so
 this only matters for shells that do not source the full integration):
 

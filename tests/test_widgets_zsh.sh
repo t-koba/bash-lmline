@@ -114,7 +114,21 @@ EOF
       [[ "${_comps[lmline]-}" == _lmline ]]
       [[ ${fpath[(Ie)$completion_dir]} == 0 ]]
     ' _ "$repo_dir" || fail "zsh completion registration preserves the initialized path"
-  ok "zsh CLI completion registers before or after compinit"
+  # A cached -C dump deliberately skips new fpath entries; a normal compinit
+  # pass is the documented one-time refresh when init is sourced first.
+  mkdir -p "$zsh_tmp/home-completion-cache" "$zsh_tmp/config-completion-cache"
+  HOME="$zsh_tmp/home-completion-cache" ZDOTDIR="$zsh_tmp/home-completion-cache" \
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-cache" \
+    zsh -efic 'autoload -Uz compinit; compinit -d "$ZDOTDIR/.zcompdump"' _ "$repo_dir" || fail "zsh creates a pre-init completion cache"
+  HOME="$zsh_tmp/home-completion-cache" ZDOTDIR="$zsh_tmp/home-completion-cache" \
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-completion-cache" \
+    zsh -efic '
+      source "$1/lmline/init.zsh"
+      autoload -Uz compinit
+      compinit -d "$ZDOTDIR/.zcompdump"
+      [[ "${_comps[lmline]-}" == _lmline ]]
+    ' _ "$repo_dir" || fail "zsh refreshes a stale completion cache after init"
+  ok "zsh CLI completion registers before or after compinit and refreshes stale caches"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-baseline" LMLINE_BASELINE_PROBE=baseline-value LMLINE_bad=ignored LMLINE_=ignored \
     zsh -efic '
       source "$1/lmline/init.zsh"
