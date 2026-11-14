@@ -4,6 +4,11 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: interactive Zsh widgets preserve ZLE integration, async behavior, risk review, and candidate cycling.
 
 if command -v zsh >/dev/null 2>&1; then
+  # Async readiness depends on runner load; keep a bounded, operator-adjustable wait.
+  cursor_wait_seconds=${LMLINE_TEST_CURSOR_WAIT_SECONDS:-20}
+  [[ $cursor_wait_seconds =~ ^[0-9]+$ ]] || fail "invalid LMLINE_TEST_CURSOR_WAIT_SECONDS"
+  cursor_wait_seconds=$((10#$cursor_wait_seconds))
+  (( cursor_wait_seconds > 0 )) || fail "invalid LMLINE_TEST_CURSOR_WAIT_SECONDS"
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")
   printf '#!/usr/bin/env bash\nsleep 0.2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"\n' >"$zsh_tmp/engine"
   chmod +x "$zsh_tmp/engine"
@@ -676,12 +681,13 @@ stop_file=$LMLINE_TEST_CURSOR_DIR/point-$point.stopped
 trap 'printf stopped >"$stop_file"; exit 143' TERM
 printf ready >"$LMLINE_TEST_CURSOR_DIR/point-$point.ready"
 exec 3<>"$LMLINE_TEST_CURSOR_DIR/point-$point.gate"
-IFS= read -r -t 20 -u 3 release
+IFS= read -r -t "$((LMLINE_TEST_CURSOR_WAIT_SECONDS * 2))" -u 3 release
 printf finished >"$LMLINE_TEST_CURSOR_DIR/point-$point.finished"
 printf 'lmline-candidate: low\tno matching risk rule\t-\techo point-%s\n' "$point"
 EOF
   chmod +x "$zsh_tmp/engine-cursor"
-  LMLINE_TEST_CURSOR_DIR="$zsh_tmp/cursor" LMLINE_CONFIG_DIR="$zsh_tmp/config-cursor" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-cursor" zsh -efic '
+  LMLINE_TEST_CURSOR_DIR="$zsh_tmp/cursor" LMLINE_TEST_CURSOR_WAIT_SECONDS="$cursor_wait_seconds" \
+    LMLINE_CONFIG_DIR="$zsh_tmp/config-cursor" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine-cursor" zsh -efic '
     source "$1/lmline/init.zsh"
     cleanup_cursor_probe() {
       for point in 0 3; do
@@ -690,12 +696,22 @@ EOF
       __lmline_zsh_async_cleanup
     }
     trap cleanup_cursor_probe EXIT
+    cursor_wait_failed() {
+      print -ru2 -- "zsh async cursor: $1"
+      trap - EXIT
+      cleanup_cursor_probe
+      exit 1
+    }
     BUFFER="echo cursor"
     CURSOR=0
     lmline-zsh-generate-widget >/dev/null 2>&1
     first_pid=$__LMLINE_ZSH_ASYNC_PID
-    for i in {1..200}; do [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.ready" ]] && break; sleep 0.05; done
-    [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.ready" && "$first_pid" != 0 ]]
+    for ((i=0; i<LMLINE_TEST_CURSOR_WAIT_SECONDS * 20; i++)); do
+      [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.ready" ]] && break
+      sleep 0.05
+    done
+    [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.ready" ]] || cursor_wait_failed "point-0 engine did not start within ${LMLINE_TEST_CURSOR_WAIT_SECONDS}s"
+    [[ "$first_pid" != 0 ]] || cursor_wait_failed "point-0 supervisor was not started"
     kill -0 "$first_pid" 2>/dev/null
     [[ ! -e "$LMLINE_TEST_CURSOR_DIR/point-0.finished" ]]
     lmline-zsh-generate-widget >/dev/null 2>&1
@@ -707,14 +723,18 @@ EOF
     [[ "$second_pid" != 0 && "$second_pid" != "$first_pid" && "$BUFFER" == "echo cursor" ]]
     [[ -s "$LMLINE_TEST_CURSOR_DIR/point-0.stopped" && ! -e "$LMLINE_TEST_CURSOR_DIR/point-0.finished" ]]
     ! kill -0 "$first_pid" 2>/dev/null
-    for i in {1..200}; do [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.ready" ]] && break; sleep 0.05; done
-    [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.ready" ]]
+    for ((i=0; i<LMLINE_TEST_CURSOR_WAIT_SECONDS * 20; i++)); do
+      [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.ready" ]] && break
+      sleep 0.05
+    done
+    [[ -s "$LMLINE_TEST_CURSOR_DIR/point-3.ready" ]] || cursor_wait_failed "point-3 engine did not start within ${LMLINE_TEST_CURSOR_WAIT_SECONDS}s"
     ( exec 3<>"$LMLINE_TEST_CURSOR_DIR/point-3.gate"; printf "release\n" >&3 )
-    for i in {1..150}; do
+    for ((i=0; i<LMLINE_TEST_CURSOR_WAIT_SECONDS * 10; i++)); do
       if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$second_pid" 2>/dev/null; then break; fi
       sleep 0.1
     done
-    [[ -s "$__LMLINE_ZSH_ASYNC_FILE" && -s "$LMLINE_TEST_CURSOR_DIR/point-3.finished" ]]
+    [[ -s "$__LMLINE_ZSH_ASYNC_FILE" && -s "$LMLINE_TEST_CURSOR_DIR/point-3.finished" ]] || \
+      cursor_wait_failed "point-3 engine did not finish within ${LMLINE_TEST_CURSOR_WAIT_SECONDS}s after release"
     ! kill -0 "$second_pid" 2>/dev/null
     lmline-zsh-generate-widget >/dev/null 2>&1
     [[ "$BUFFER" == "echo point-3" ]]
