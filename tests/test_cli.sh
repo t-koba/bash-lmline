@@ -246,6 +246,14 @@ clipboard_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
   "$repo_dir/lmline/lmline" complete clipboard-providers)
 grep -Fqx 'auto' <<<"$clipboard_candidates" || fail "complete clipboard providers auto"
 grep -Fqx 'custom provider' <<<"$clipboard_candidates" || fail "complete clipboard providers custom name"
+clipboard_edge_file="$cfg_tmp/clipboard-provider-edge.tsv"
+printf '# comment\n\ttrimmed first\tcmd\nname with spaces\tcmd\nempty second\t\tcommand\ninvalid trailing\t\n\t\t\n leading and trailing \t command \tignored\nduplicate\tcmd\nduplicate\tcmd\nno tab\n' >"$clipboard_edge_file"
+printf 'unterminated final\tno-such-command' >>"$clipboard_edge_file"
+clipboard_edge_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
+  LMLINE_CLIPBOARD_PROVIDERS_FILE="$clipboard_edge_file" \
+  "$repo_dir/lmline/lmline" complete clipboard-providers)
+expected_clipboard_edge_candidates=$(printf 'auto\ntrimmed first\nname with spaces\nempty second\n leading and trailing \nduplicate\nduplicate\nunterminated final')
+[[ "$clipboard_edge_candidates" == "$expected_clipboard_edge_candidates" ]] || fail "clipboard provider TSV parsing semantics"
 clipboard_setting_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
   LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" \
   "$repo_dir/lmline/lmline" complete setting-values LMLINE_CLIPBOARD_PROVIDER)

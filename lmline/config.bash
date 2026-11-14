@@ -391,15 +391,20 @@ __lmline_clipboard_provider_file() {
 }
 
 __lmline_clipboard_provider_names() {
-  local file line
-  local -a fields
+  local file
   file=$(__lmline_clipboard_provider_file) || return 1
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    IFS=$'\t' read -r -a fields <<<"$line"
-    ((${#fields[@]} >= 2)) || continue
-    printf '%s\n' "${fields[0]}"
-  done <"$file"
+  # Match Bash's IFS-tab splitting: ignore empty columns but retain spaces.
+  awk 'BEGIN { FS = sprintf("%c", 9) }
+    $0 == "" || /^#/ { next }
+    {
+      i = 1
+      while (i <= NF && $i == "") i++
+      if (i > NF) next
+      name = $i
+      i++
+      while (i <= NF && $i == "") i++
+      if (i <= NF) print name
+    }' "$file"
 }
 
 __lmline_read_list_file() {
