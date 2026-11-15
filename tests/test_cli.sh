@@ -633,7 +633,6 @@ expect {
 send -- {lmline clip --provider customXsuffix}
 for {set i 0} {$i < 7} {incr i} { send -- "\033\[D" }
 send -- "\t"
-after 200
 send -- "\024"
 wait_for_file "$work/buffer" "post-Tab Readline buffer capture"
 set buffer [read_file "$work/buffer"]
@@ -653,7 +652,6 @@ if {$utf8_locale ne ""} {
   send -- "\005"
   for {set i 0} {$i < 6} {incr i} { send -- "\033\[D" }
   send -- "\t"
-  after 200
   send -- "\024"
   wait_for_file "$work/buffer" "UTF-8 mid-word Readline buffer capture"
   set channel [open "$work/buffer" rb]
