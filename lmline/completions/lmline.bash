@@ -3,11 +3,28 @@
 # usable on its own from ~/.bashrc without loading the shell widgets.
 # Dynamic values come from "lmline complete ..." at completion time.
 
+# Bash 4.2 exposes COMP_POINT as a byte offset; Bash 4.3+ reports
+# characters. Convert the older offset to the character index used by Bash's
+# multibyte substring expansion without changing the caller's locale.
+__lmline_comp_point_char_offset() {
+  local target=$1 line=${COMP_LINE-} point prefix saved_lc_all
+  point=${COMP_POINT:-${#line}}
+  if (( BASH_VERSINFO[0] < 4 ||
+        (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
+    saved_lc_all=${LC_ALL-}
+    local LC_ALL=C
+    prefix=${line:0:point}
+    LC_ALL=$saved_lc_all
+    point=${#prefix}
+  fi
+  printf -v "$target" '%s' "$point"
+}
+
 # Insert reversible shell words for endpoint, model, and provider names. In
 # quoted or escaped words, omit candidates that need encoding rather than
 # corrupting existing quoting.
 __lmline_complete_names_bash() {
-  local kind=$1 endpoint=$2 cur=$3 id suffix encoded_prefix encoded_suffix line point raw_word
+  local kind=$1 endpoint=$2 cur=$3 id suffix encoded_prefix encoded_suffix line point point_out raw_word
   local quoted_context=0
   local -a candidates=() completion_args=()
   case "$kind" in
@@ -16,7 +33,8 @@ __lmline_complete_names_bash() {
     clipboard-providers) completion_args=(complete clipboard-providers) ;;
     *) COMPREPLY=(); return 0 ;;
   esac
-  point=${COMP_POINT:-${#COMP_LINE}}
+  __lmline_comp_point_char_offset point_out
+  point=$point_out
   line=${COMP_LINE:0:point}
   raw_word=${line##*[[:space:]]}
   if [[ $raw_word == *\"* || $raw_word == *\'* || $raw_word == *\\* ]]; then
@@ -44,8 +62,9 @@ __lmline_complete_names_bash() {
 __lmline_cli_complete() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   local prev=${COMP_WORDS[COMP_CWORD-1]}
-  local line point raw_word
-  point=${COMP_POINT:-${#COMP_LINE}}
+  local line point point_out raw_word
+  __lmline_comp_point_char_offset point_out
+  point=$point_out
   if (( point < ${#COMP_LINE} )); then
     line=${COMP_LINE:0:point}
     raw_word=${line##*[[:space:]]}
