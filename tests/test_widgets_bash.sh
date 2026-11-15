@@ -103,7 +103,7 @@ if ! actual=$(__lmline_suggested_commands_key </dev/null); then
     __lmline_suggested_commands_key </dev/null >/dev/null
   ) 2>/dev/null || :
   printf 'stdin-hash-check: suggested-key trace (function:line)\n' >&2
-  /usr/bin/sed -En 's/^\+([^:]+):([0-9]+):.*/\1:\2/p' "$trace" |
+  /usr/bin/sed -En 's/^\+([^:]+):([0-9]+): status=([0-9]+) .*/\1:\2 status=\3/p' "$trace" |
     /usr/bin/tail -n 80 >&2
   exit 1
 fi
