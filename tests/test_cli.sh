@@ -310,6 +310,18 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
   COMP_POINT=${#COMP_LINE}
   __lmline_cli_complete
   [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == "custom\ provider" ]] || exit 1
+  COMP_WORDS=(lmline conXsuffix)
+  COMP_CWORD=1
+  COMP_LINE="lmline conXsuffix"
+  COMP_POINT=$((${#COMP_LINE}-7))
+  __lmline_cli_complete
+  printf "%s\n" "${COMPREPLY[@]}" | grep -qx "config" || exit 1
+  COMP_WORDS=(lmline clip --provider customXsuffix)
+  COMP_CWORD=3
+  COMP_LINE="lmline clip --provider customXsuffix"
+  COMP_POINT=$((${#COMP_LINE}-7))
+  __lmline_cli_complete
+  [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == "custom\\ provider" ]] || exit 1
   COMP_WORDS=(lmline config set LMLINE_MIC "")
   COMP_CWORD=3
   __lmline_cli_complete
@@ -525,6 +537,75 @@ EXPECT
   else
     printf 'skip - zsh interactive clipboard completion (expect not found)\n'
   fi
+fi
+if command -v expect >/dev/null 2>&1; then
+  bash_pty_dir="$cfg_tmp/bash-pty"
+  mkdir -m 700 -p "$bash_pty_dir/config"
+  printf 'custom provider\tno-such-lmline-provider-command\n' >"$bash_pty_dir/providers.tsv"
+  cat >"$cfg_tmp/bash-pty-completion.exp" <<'EXPECT'
+set timeout 15
+set repo [lindex $argv 0]
+set work [lindex $argv 1]
+proc wait_for_file {path label} {
+  set deadline [expr {[clock milliseconds] + 8000}]
+  while {![file exists $path]} {
+    if {[clock milliseconds] >= $deadline} { error "timed out waiting for $label" }
+    after 10
+  }
+}
+proc read_file {path} {
+  set channel [open $path r]
+  set value [read $channel]
+  close $channel
+  return $value
+}
+spawn env TERM=xterm "PS1=READY> " "REPO=$repo" "OUT=$work/buffer" \
+  "LMLINE_CONFIG_DIR=$work/config" \
+  "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/providers.tsv" \
+  "PATH=$repo/lmline:$env(PATH)" bash --noprofile --norc -i
+expect {
+  -exact {READY> } {}
+  timeout { error "Bash did not start the interactive completion test" }
+  eof { error "Bash exited before the completion test" }
+}
+send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; }; bind -x '"\C-t":__lmline_capture'}
+send -- "\r"
+expect {
+  -exact {READY> } {}
+  timeout { error "Bash did not return to its prompt after setup" }
+  eof { error "Bash exited after completion setup" }
+}
+send -- {lmline clip --provider customXsuffix}
+for {set i 0} {$i < 7} {incr i} { send -- "\033\[D" }
+send -- "\t"
+after 200
+send -- "\024"
+wait_for_file "$work/buffer" "post-Tab Readline buffer capture"
+set buffer [read_file "$work/buffer"]
+if {$buffer ne {lmline clip --provider custom\ providerXsuffix}} {
+  error "unexpected mid-word completion buffer: <$buffer>"
+}
+send -- "\003"
+expect {
+  -exact {READY> } {}
+  timeout { error "Bash did not recover after cancelling the completion line" }
+  eof { error "Bash exited after cancelling the completion line" }
+}
+send -- "exit\r"
+expect {
+  eof {}
+  timeout { error "Bash did not exit after the completion test" }
+}
+EXPECT
+  if ! expect "$cfg_tmp/bash-pty-completion.exp" "$repo_dir" "$bash_pty_dir" >"$cfg_tmp/bash-pty-completion.log" 2>&1; then
+    cat "$cfg_tmp/bash-pty-completion.log" >&2
+    fail "bash interactive mid-word clipboard completion"
+  fi
+  bash_provider_buffer=$(cat "$bash_pty_dir/buffer")
+  [[ "$bash_provider_buffer" == 'lmline clip --provider custom\ providerXsuffix' ]] || \
+    fail "bash mid-word completion preserves a spaced candidate and suffix"
+else
+  printf 'skip - bash interactive mid-word completion (expect not found)\n'
 fi
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use local local-test-model
 profile_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)

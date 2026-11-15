@@ -44,6 +44,20 @@ __lmline_complete_names_bash() {
 __lmline_cli_complete() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   local prev=${COMP_WORDS[COMP_CWORD-1]}
+  local line point raw_word
+  point=${COMP_POINT:-${#COMP_LINE}}
+  if (( point < ${#COMP_LINE} )); then
+    line=${COMP_LINE:0:point}
+    raw_word=${line##*[[:space:]]}
+    if [[ $raw_word != *\"* &&
+          $raw_word != *\'* &&
+          $raw_word != *\\* &&
+          $cur == "$raw_word"* ]]; then
+      # COMP_WORDS retains the whole token when the cursor is before its suffix.
+      # Use only a plain, unquoted prefix so every catalog follows Readline's cursor.
+      cur=$raw_word
+    fi
+  fi
   local subcommands="doctor context command-exists command-info commands payload sandbox clip config endpoint model copilot chatgpt use current complete history risk help debug keys explain enable disable"
   local command=${COMP_WORDS[1]-}
   local sub=${COMP_WORDS[2]-}
