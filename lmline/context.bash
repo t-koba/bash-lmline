@@ -1090,7 +1090,7 @@ __lmline_display_answer() {
   # without starting a process per line, including lines without a final LF.
   while IFS= read -r line || [[ -n "$line" ]]; do
     printf '%s\n' "$line" || return
-  done | LC_ALL=C awk "${awk_options[@]}" '
+  done | LC_ALL=C awk "${awk_options[@]+"${awk_options[@]}"}" '
   BEGIN {
     for (i = 0; i < 256; i++) byte[sprintf("%c", i)] = i
   }
