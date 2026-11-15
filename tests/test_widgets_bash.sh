@@ -59,6 +59,19 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
   # The key helper must honor PATH without changing this caller-owned cache.
   builtin hash -p "$TEST_LMLINE_REAL_HASH" "$3"
   cached_hash=$(builtin hash -t "$3")
+  __lmline_test_resolved_hash_path() {
+    local hash_path system_hash_path hash_function
+    __lmline_resolve_hash_tool "$1"
+    printf '%s' "$hash_path"
+  }
+  resolved_hash=$(__lmline_test_resolved_hash_path "$3")
+  expected_hash="$2/stdin-hash-bin/$3"
+  [[ $resolved_hash == "$expected_hash" ]] || {
+    printf "stdin-wrapper path resolution: expected <%s>, got <%s>\\n" \
+      "$expected_hash" "$resolved_hash" >&2
+    exit 1
+  }
+  [[ $(builtin hash -t "$3") == "$cached_hash" ]]
   export LMLINE_INCLUDE_SUGGESTED_COMMANDS=1
   export LMLINE_SUGGESTED_COMMANDS_FILE="$2/suggested-stdin.txt"
   printf "echo from custom stdin hasher\n" >"$LMLINE_SUGGESTED_COMMANDS_FILE"

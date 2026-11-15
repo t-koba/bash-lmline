@@ -77,11 +77,32 @@ __lmline_suggested_commands_file() {
 # Select the current PATH tool unless an explicit cached wrapper is the
 # effective choice. Caller locals receive the selected paths and function flag.
 __lmline_resolve_hash_tool() {
-  local tool=$1 path_list path_hash_path cached_hash_path
-  # Clear inherited command-cache entries in this child lookup only.
-  path_list=$(builtin hash -r && builtin type -ap "$tool" 2>/dev/null) || path_list=
-  path_hash_path=${path_list%%$'\n'*}
+  local tool=$1 path_hash_path= cached_hash_path path_entry remaining candidate more
   cached_hash_path=$(builtin hash -t "$tool" 2>/dev/null) || cached_hash_path=
+  # Search PATH directly instead of trusting Bash's command cache or type output;
+  # empty entries retain their standard current-directory meaning.
+  if [[ ${PATH+x} ]]; then
+    remaining=${PATH-}
+    while :; do
+      if [[ $remaining == *:* ]]; then
+        path_entry=${remaining%%:*}
+        remaining=${remaining#*:}
+        more=1
+      else
+        path_entry=$remaining
+        more=0
+      fi
+      [[ -n $path_entry ]] || path_entry=.
+      candidate=$path_entry/$tool
+      if [[ -f $candidate && -x $candidate ]]; then
+        path_hash_path=$candidate
+        break
+      fi
+      [[ $more == 1 ]] || break
+    done
+  else
+    path_hash_path=$(builtin command -p -v "$tool" 2>/dev/null) || path_hash_path=
+  fi
   system_hash_path=$(builtin hash -r && builtin command -p -v "$tool" 2>/dev/null) || system_hash_path=
   if [[ -n $path_hash_path && -f $path_hash_path && -x $path_hash_path ]]; then
     hash_path=$path_hash_path
