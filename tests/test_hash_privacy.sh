@@ -102,7 +102,8 @@ else
   # On a cached-wrapper failure, classify the helper's private resolver choice
   # without exposing any filesystem paths.
   __lmline_test_hash_selection() {
-    local context=${1-unknown} tool hash_path system_hash_path hash_function cached_hash_path cached_visible selected route
+    local context=${1-unknown} tool hash_path system_hash_path hash_function cached_hash_path
+    local cached_visible selected route system_visible selected_system cached_system
     if command -v sha256sum >/dev/null 2>&1; then tool=sha256sum
     elif command -v shasum >/dev/null 2>&1; then tool=shasum
     else tool=cksum; fi
@@ -120,13 +121,25 @@ else
     else
       selected=missing
     fi
-    if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+    [[ -n $system_hash_path ]] && system_visible=1 || system_visible=0
+    if [[ -n $hash_path && -n $system_hash_path && $hash_path -ef $system_hash_path ]]; then
+      selected_system=1
+    else
+      selected_system=0
+    fi
+    if [[ -n $cached_hash_path && -n $system_hash_path && $cached_hash_path -ef $system_hash_path ]]; then
+      cached_system=1
+    else
+      cached_system=0
+    fi
+    if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || $selected_system == 0 ]]; then
       route=stdin
     else
       route=batch
     fi
-    printf 'hash-privacy-check: helper-selection context=%s tool=%s cached=%s selected=%s route=%s\n' \
-      "$context" "$tool" "$cached_visible" "$selected" "$route"
+    printf 'hash-privacy-check: helper-selection context=%s tool=%s cached=%s selected=%s route=%s system=%s selected-system=%s cached-system=%s\n' \
+      "$context" "$tool" "$cached_visible" "$selected" "$route" \
+      "$system_visible" "$selected_system" "$cached_system"
   }
   for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
     membership=$(printf 'printf\n' | "$real" "${args[@]}")
