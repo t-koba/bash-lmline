@@ -14,8 +14,12 @@ ln -s "$repo_dir" "$install_tmp/work/project dir"
     bash "project dir/install.sh" >"$install_tmp/install.out"
 )
 
-expected_target=$install_tmp/work/config/lmline
-[[ $(readlink "$install_tmp/work/bin/lmline") == "$expected_target" ]] || fail "relative install link target"
+actual_target=$(readlink "$install_tmp/work/bin/lmline")
+[[ "$actual_target" == /* ]] || fail "relative install link is not absolute"
+expected_config_dir=$(CDPATH= cd -- "$install_tmp/work/config" && pwd -P)
+actual_config_dir=$(CDPATH= cd -- "${actual_target%/*}" && pwd -P)
+[[ "${actual_target##*/}" == lmline && "$actual_config_dir" == "$expected_config_dir" ]] ||
+  fail "relative install link does not resolve to the configured CLI"
 [[ -x "$install_tmp/work/bin/lmline" ]] || fail "relative install link is executable"
 
 if ! (
