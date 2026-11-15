@@ -175,7 +175,11 @@ else
     done
     # A cached wrapper wins when PATH names the command -p system executable.
     # Neither lookup nor hashing may alter the caller's exact command cache.
-    if [[ -n $system_tool ]]; then
+    case ${4-0} in
+      0|1) ;;
+      *) hash_privacy_abort system-tool-availability ;;
+    esac
+    if [[ ${4-0} == 1 ]]; then
       (
         PATH=$HASH_TEST_DIR/cached-bin
         export PATH
@@ -268,10 +272,12 @@ for selected in cksum shasum sha256sum; do
     ln -s "$(command -v "$tool")" "$hash_tmp/cached-bin/$tool"
   done
   if [[ -n $system_tool ]]; then
+    system_tool_available=1
     # Use the command -p executable so PATH-local alternatives such as
     # Homebrew shasum do not turn this into a different resolver case.
     ln -s "$system_tool" "$hash_tmp/cached-bin/$selected"
   else
+    system_tool_available=0
     ln -s "$(command -v "$selected")" "$hash_tmp/cached-bin/$selected"
   fi
   for mode in clean ordinary protected; do
@@ -279,7 +285,7 @@ for selected in cksum shasum sha256sum; do
     options=()
     [[ $mode != protected ]] || options=(-p)
     if ! PATH="$hash_tmp/bin" bash --noprofile --norc "${options[@]}" -i \
-        "$hash_tmp/check.bash" "$repo_dir" "$mode" "$selected" \
+        "$hash_tmp/check.bash" "$repo_dir" "$mode" "$selected" "$system_tool_available" \
         >"$hash_tmp/stdout" 2>"$hash_tmp/stderr"; then
       while IFS= read -r diagnostic; do
         diagnostic=${diagnostic//"$repo_dir"/<repo>}
