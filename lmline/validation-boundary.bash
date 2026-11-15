@@ -30,19 +30,20 @@ __lmline_collect_shell_functions() (
 # bodies to validator input, argv, metadata, logs, provider payload, or
 # exported scratch data. Export attributes on scratch are cleared before
 # assignment (a plain `local` retains an inherited export attribute and would
-# leak an assigned sentinel to children), the env producer's completion is
-# checked explicitly, and descriptors/children are cleaned up.
+# leak an assigned sentinel to children), pipefail checks the env producer,
+# and the pipeline closes its descriptors and waits for its children.
 __lmline_collect_inherited_exported_functions() (
   # Already-POSIX callers may have made POSIXLY_CORRECT readonly.
   [[ -o posix ]] || POSIXLY_CORRECT=1
   unset -f command || exit 1
-  command builtin local entry name_part name producer
+  command builtin local entry name_part name
   command builtin export -n entry || exit 1
   command builtin export -n name_part || exit 1
   command builtin export -n name || exit 1
-  command builtin export -n producer || exit 1
-  # Use the simple loop redirection supported by Bash 4.2, not variable FDs.
-  while IFS= command builtin read -r -d '' entry; do
+  # The pinned Bash 4.2 protected shell treats process substitution as a path
+  # here, so read from a pipe and use pipefail to check the env producer.
+  command builtin set -o pipefail || exit 1
+  command /usr/bin/env -0 | while IFS= command builtin read -r -d '' entry; do
     case "$entry" in
       *=*) ;;
       *) continue ;;
@@ -68,10 +69,7 @@ __lmline_collect_inherited_exported_functions() (
     # newline-delimited transport unambiguous for inherited environment data.
     [[ -n $name && $name != *[[:space:][:cntrl:]]* ]] || continue
     command builtin printf '%s\n' "$name"
-  done < <(command /usr/bin/env -0)
-  # The loop starts no asynchronous commands, so $! remains the producer PID.
-  producer=$!
-  command builtin wait "$producer" || exit 1
+  done || exit 1
   :
 )
 

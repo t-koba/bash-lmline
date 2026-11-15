@@ -96,22 +96,17 @@ ok "inherited collector is names-only without import or leak"
 )
 ok "exported scratch variables do not leak or alter names"
 
-# 5. Producer completion is checked explicitly: a successful/empty read does
-# not prove the env producer succeeded (evidence: exit 7 with one NUL record).
+# 5. pipefail propagates producer failure even after the reader got a full
+# NUL-delimited record; the protected collector relies on this pipeline status.
 (
-  exec {iso_fd}< <(printf 'record\0'; exit 7)
-  iso_producer=$!
-  iso_records=0
-  while IFS= read -r -d '' iso_record <&"$iso_fd"; do
-    iso_records=$((iso_records + 1))
-  done
-  exec {iso_fd}<&-
-  if wait "$iso_producer"; then
-    fail "producer failure was ignored"
-  fi
-  [[ "$iso_records" == 1 ]] || fail "expected one record, got $iso_records"
+  producer_status=0
+  iso_records=$(set -o pipefail; { printf 'record\0'; exit 7; } |
+    while IFS= read -r -d '' iso_record; do printf '%s\n' "$iso_record"; done) \
+    || producer_status=$?
+  [[ "$iso_records" == record ]] || fail "expected one record, got: $iso_records"
+  [[ "$producer_status" == 7 ]] || fail "producer status not propagated: $producer_status"
 )
-ok "env producer completion is checked explicitly"
+ok "pipefail detects producer failure after a complete record"
 
 # 6. Punctuation names survive the protected path; ordinary PATH is preserved.
 (
