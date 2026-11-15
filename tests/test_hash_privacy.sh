@@ -173,36 +173,38 @@ else
       fi
       previous=$key
     done
-    # A cached wrapper wins even when PATH names the real system executable.
+    # A cached wrapper wins when PATH names the command -p system executable.
     # Neither lookup nor hashing may alter the caller's exact command cache.
-    (
-      PATH=$HASH_TEST_DIR/cached-bin
-      export PATH
-      hash -p "$HASH_TEST_DIR/bin/$3" "$3"
-      hash -p "$real" unrelated_cached_command
-      cache_before=$(builtin hash -l)
-      : >"$HASH_TEST_DIR/calls"
-      "$helper" >"$HASH_TEST_DIR/cached-key" || hash_privacy_abort cached-helper-status
-      key=$(<"$HASH_TEST_DIR/cached-key")
-      [[ $key == "${expected%% *}:$membership" ]] || hash_privacy_abort cached-key-digest
-      [[ $(builtin hash -l) == "$cache_before" ]] || hash_privacy_abort cached-command-cache
-      calls_for_key=0
-      while IFS= read -r call; do
-        if [[ $3 == shasum ]]; then
-          [[ $call == 'shasum -a 256' ]] || hash_privacy_abort shasum-call-contract
-        else
-          [[ $call == "$3 " ]] || hash_privacy_abort hash-tool-call-contract
+    if [[ -n $system_tool ]]; then
+      (
+        PATH=$HASH_TEST_DIR/cached-bin
+        export PATH
+        hash -p "$HASH_TEST_DIR/bin/$3" "$3"
+        hash -p "$real" unrelated_cached_command
+        cache_before=$(builtin hash -l)
+        : >"$HASH_TEST_DIR/calls"
+        "$helper" >"$HASH_TEST_DIR/cached-key" || hash_privacy_abort cached-helper-status
+        key=$(<"$HASH_TEST_DIR/cached-key")
+        [[ $key == "${expected%% *}:$membership" ]] || hash_privacy_abort cached-key-digest
+        [[ $(builtin hash -l) == "$cache_before" ]] || hash_privacy_abort cached-command-cache
+        calls_for_key=0
+        while IFS= read -r call; do
+          if [[ $3 == shasum ]]; then
+            [[ $call == 'shasum -a 256' ]] || hash_privacy_abort shasum-call-contract
+          else
+            [[ $call == "$3 " ]] || hash_privacy_abort hash-tool-call-contract
+          fi
+          calls_for_key=$((calls_for_key + 1))
+        done <"$HASH_TEST_DIR/calls"
+        if [[ $calls_for_key != 2 ]]; then
+          printf 'hash-privacy-check: hash-calls tool=%s helper=%s mode=cached count=%s\n' \
+            "$3" "$helper" "$calls_for_key" >&2
+          __lmline_test_hash_selection caller >&2 || printf 'hash-privacy-check: caller helper-selection unavailable\n' >&2
+          ( __lmline_test_hash_selection subshell ) >&2 || printf 'hash-privacy-check: subshell helper-selection unavailable\n' >&2
+          hash_privacy_abort hash-call-count
         fi
-        calls_for_key=$((calls_for_key + 1))
-      done <"$HASH_TEST_DIR/calls"
-      if [[ $calls_for_key != 2 ]]; then
-        printf 'hash-privacy-check: hash-calls tool=%s helper=%s mode=cached count=%s\n' \
-          "$3" "$helper" "$calls_for_key" >&2
-        __lmline_test_hash_selection caller >&2 || printf 'hash-privacy-check: caller helper-selection unavailable\n' >&2
-        ( __lmline_test_hash_selection subshell ) >&2 || printf 'hash-privacy-check: subshell helper-selection unavailable\n' >&2
-        hash_privacy_abort hash-call-count
-      fi
-    ) || hash_privacy_abort cached-helper-contract
+      ) || hash_privacy_abort cached-helper-contract
+    fi
     # An stdin-based shell-function hasher retains the former two-call contract.
     if [[ $3 == sha256sum ]]; then
       ( PATH="$PATH:/bin:/usr/bin"; export PATH
@@ -249,6 +251,9 @@ done
 ok "startup, reload and direct Bash hash paths reject residual function records"
 
 for selected in cksum shasum sha256sum; do
+  system_tool=$(
+    builtin hash -r && builtin command -p -v "$selected" 2>/dev/null
+  ) || system_tool=
   if [[ $selected != cksum ]]; then
     real_tool=$(command -v "$selected") || continue
     case $selected in
@@ -262,7 +267,13 @@ for selected in cksum shasum sha256sum; do
   for tool in awk sort cut; do
     ln -s "$(command -v "$tool")" "$hash_tmp/cached-bin/$tool"
   done
-  ln -s "$(command -v "$selected")" "$hash_tmp/cached-bin/$selected"
+  if [[ -n $system_tool ]]; then
+    # Use the command -p executable so PATH-local alternatives such as
+    # Homebrew shasum do not turn this into a different resolver case.
+    ln -s "$system_tool" "$hash_tmp/cached-bin/$selected"
+  else
+    ln -s "$(command -v "$selected")" "$hash_tmp/cached-bin/$selected"
+  fi
   for mode in clean ordinary protected; do
     rm -f "$hash_tmp/calls" "$hash_tmp/environment"
     options=()
