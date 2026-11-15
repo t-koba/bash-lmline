@@ -54,15 +54,32 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
   bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   export PATH="$2/stdin-hash-bin:$PATH"
+  [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
+  # Reproduce Bash versions that retain a cached executable after PATH changes.
+  # The key helper must honor PATH without changing this caller-owned cache.
+  builtin hash -p "$TEST_LMLINE_REAL_HASH" "$3"
+  cached_hash=$(builtin hash -t "$3")
   export LMLINE_INCLUDE_SUGGESTED_COMMANDS=1
   export LMLINE_SUGGESTED_COMMANDS_FILE="$2/suggested-stdin.txt"
   printf "echo from custom stdin hasher\n" >"$LMLINE_SUGGESTED_COMMANDS_FILE"
-  [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
   file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
   membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
   expected=$file_digest:$membership_digest
   actual=$(__lmline_suggested_commands_key </dev/null)
   [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
+  [[ $(builtin hash -t "$3") == "$cached_hash" ]]
+  [[ -s "$TEST_LMLINE_HASH_ARG_LOG" ]]
+  while IFS= read -r arg_count; do [[ $arg_count == 0 ]]; done <"$TEST_LMLINE_HASH_ARG_LOG"
+  export LMLINE_INCLUDE_PROJECT_CONTEXT=1
+  export LMLINE_PROJECT_MARKERS_FILE="$2/project-markers.tsv"
+  printf 'kind\t%s\n' "$2" >"$LMLINE_PROJECT_MARKERS_FILE"
+  file_digest=$(__lmline_hash_stdin <"$LMLINE_PROJECT_MARKERS_FILE")
+  presence_digest=$(__lmline_project_markers_scan "$LMLINE_PROJECT_MARKERS_FILE" presence | __lmline_hash_stdin)
+  expected=$file_digest:$presence_digest
+  : >"$TEST_LMLINE_HASH_ARG_LOG"
+  actual=$(__lmline_project_markers_key)
+  [[ -n "$file_digest" && -n "$presence_digest" && "$actual" == "$expected" ]]
+  [[ $(builtin hash -t "$3") == "$cached_hash" ]]
   [[ -s "$TEST_LMLINE_HASH_ARG_LOG" ]]
   while IFS= read -r arg_count; do [[ $arg_count == 0 ]]; done <"$TEST_LMLINE_HASH_ARG_LOG"
 ' _ "$repo_dir" "$widget_tmp" "$test_hash_name" || fail "stdin-only custom hash executable compatibility"

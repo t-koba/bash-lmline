@@ -74,12 +74,39 @@ __lmline_suggested_commands_file() {
     "$LMLINE_DEFAULTS_DIR/suggested_commands.txt"
 }
 
+# Select the current PATH tool unless an explicit cached wrapper is the
+# effective choice. Caller locals receive the selected paths and function flag.
+__lmline_resolve_hash_tool() {
+  local tool=$1 path_list path_hash_path cached_hash_path
+  path_list=$(builtin type -ap "$tool" 2>/dev/null) || path_list=
+  path_hash_path=${path_list%%$'\n'*}
+  cached_hash_path=$(builtin hash -t "$tool" 2>/dev/null) || cached_hash_path=
+  system_hash_path=$(builtin hash -r && builtin command -p -v "$tool" 2>/dev/null) || system_hash_path=
+  if [[ -n $path_hash_path && -f $path_hash_path && -x $path_hash_path ]]; then
+    hash_path=$path_hash_path
+    if [[ -n $cached_hash_path && -f $cached_hash_path && -x $cached_hash_path &&
+          -n $system_hash_path && $path_hash_path -ef $system_hash_path &&
+          ! $cached_hash_path -ef $system_hash_path ]]; then
+      hash_path=$cached_hash_path
+    fi
+  elif [[ -n $cached_hash_path && -f $cached_hash_path && -x $cached_hash_path ]]; then
+    hash_path=$cached_hash_path
+  else
+    hash_path=
+  fi
+  if builtin declare -F "$tool" >/dev/null 2>&1; then
+    hash_function=1
+  else
+    hash_function=0
+  fi
+}
+
 # Fingerprint file bytes and freshly collected command membership, not metadata.
 # Stream private inputs through descriptors, keep paths out of hashing
 # arguments/output, and exclude function bodies.
 __lmline_suggested_commands_key() (
   set -o pipefail
-  local file digest membership_digest name file_fd membership_fd producer status=0 hash_path system_hash_path
+  local file digest membership_digest name file_fd membership_fd producer status=0 hash_path system_hash_path hash_function
   local -a hash_command
   __lmline_context_enabled LMLINE_INCLUDE_SUGGESTED_COMMANDS || { printf disabled; return 0; }
   file=$(__lmline_suggested_commands_file 2>/dev/null) || return 1
@@ -128,19 +155,15 @@ __lmline_suggested_commands_key() (
     hash_command=(cksum)
   fi
   # Keep stdin-only shell functions and custom PATH executables on the
-  # established interface. Batch only when command resolution selects the same
-  # executable as an independent default system-tool search; wrappers may ignore filename
-  # args and read caller stdin instead. Clear cached overrides only for that
-  # lookup, not for the command we will actually invoke.
-  # Resolve from PATH rather than Bash's command hash table: custom PATH entries
-  # must not be mistaken for the system hasher on older supported Bash versions.
-  hash_path=$(builtin type -P "${hash_command[0]}" 2>/dev/null) || hash_path=
-  system_hash_path=$(builtin hash -r && builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
-  if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
-      [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
-    digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
+  # established interface; wrappers may ignore filename args and read stdin.
+  __lmline_resolve_hash_tool "${hash_command[0]}"
+  if (( ! hash_function )) && [[ -n $hash_path ]]; then
+    hash_command[0]=$hash_path
+  fi
+  if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+    digest=$(__lmline_hash_stdin "${hash_command[@]}" 2>/dev/null <"$file") || return 1
     [[ -n "$digest" ]] || return 1
-    membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+    membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin "${hash_command[@]}" 2>/dev/null) || return 1
     [[ -n "$membership_digest" ]] || return 1
     printf '%s:%s' "$digest" "$membership_digest"
     return 0
@@ -913,7 +936,7 @@ __lmline_project_markers_file() {
 # Hash the selected file and the presence of its parsed markers privately.
 __lmline_project_markers_key() (
   set -o pipefail
-  local file digest presence name file_fd presence_fd producer status=0 hash_path system_hash_path
+  local file digest presence name file_fd presence_fd producer status=0 hash_path system_hash_path hash_function
   local -a hash_command
   __lmline_context_enabled LMLINE_INCLUDE_PROJECT_CONTEXT || { printf disabled; return 0; }
   file=$(__lmline_project_markers_file 2>/dev/null) || return 1
@@ -955,16 +978,15 @@ __lmline_project_markers_key() (
     hash_command=(cksum)
   fi
   # As with suggested commands, only a verified system tool accepts descriptor
-  # arguments. Custom executables/functions keep the two stdin-only hashes.
-  # Resolve from PATH rather than Bash's command hash table: custom PATH entries
-  # must not be mistaken for the system hasher on older supported Bash versions.
-  hash_path=$(builtin type -P "${hash_command[0]}" 2>/dev/null) || hash_path=
-  system_hash_path=$(builtin hash -r && builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
-  if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
-      [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
-    digest=$(__lmline_hash_stdin 2>/dev/null <"$file") || return 1
+  # arguments. Custom tools and functions use the stdin-only interface.
+  __lmline_resolve_hash_tool "${hash_command[0]}"
+  if (( ! hash_function )) && [[ -n $hash_path ]]; then
+    hash_command[0]=$hash_path
+  fi
+  if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+    digest=$(__lmline_hash_stdin "${hash_command[@]}" 2>/dev/null <"$file") || return 1
     [[ -n "$digest" ]] || return 1
-    presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin 2>/dev/null) || return 1
+    presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin "${hash_command[@]}" 2>/dev/null) || return 1
     [[ -n "$presence" ]] || return 1
     printf '%s:%s' "$digest" "$presence"
     return 0
@@ -1591,7 +1613,9 @@ __lmline_hash_stdin() (
   # __lmline_prepare_hash_environment before reaching a hash child.
   # The async settings subprocess hashes in inner Bash, not here.
   __lmline_check_no_function_transport || return 1
-  if command -v sha256sum >/dev/null 2>&1; then
+  if (( $# )); then
+    "$@" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
     sha256sum | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then
     shasum -a 256 | awk '{print $1}'
