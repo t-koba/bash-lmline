@@ -113,6 +113,33 @@ else
     printf 'stdin-hash-check: file hash status=%s digest-present=%s\n' \
       "$file_status" "$file_digest_present" >&2
   )
+  # Inspect the resolver's effective inputs without exposing any paths.
+  (
+    set +e
+    diagnostic_cached_path=$(builtin hash -t "$3" 2>/dev/null) || diagnostic_cached_path=
+    hash_path=
+    system_hash_path=
+    hash_function=
+    __lmline_resolve_hash_tool "$3"
+    resolver_status=$?
+    [[ -n $diagnostic_cached_path ]] && cached_present=1 || cached_present=0
+    [[ -n $hash_path ]] && path_present=1 || path_present=0
+    [[ -n $system_hash_path ]] && system_present=1 || system_present=0
+    if [[ -n $hash_path && -n $system_hash_path ]]; then
+      if [[ $hash_path -ef $system_hash_path ]]; then path_system_same=1; else path_system_same=$?; fi
+    else
+      path_system_same=2
+    fi
+    if [[ -n $diagnostic_cached_path && -n $system_hash_path ]]; then
+      if [[ $diagnostic_cached_path -ef $system_hash_path ]]; then cached_system_same=1; else cached_system_same=$?; fi
+    else
+      cached_system_same=2
+    fi
+    [[ $hash_function == 1 ]] && function_present=1 || function_present=0
+    printf 'stdin-hash-check: resolver status=%s cached=%s path=%s system=%s function=%s path-system-ef=%s cached-system-ef=%s\n' \
+      "$resolver_status" "$cached_present" "$path_present" "$system_present" \
+      "$function_present" "$path_system_same" "$cached_system_same" >&2
+  )
   # Separate a list-producer failure from a hash-consumer failure using the
   # same stdin-only custom tool; expose numeric statuses only.
   (
