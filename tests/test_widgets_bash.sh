@@ -104,7 +104,7 @@ if ! actual=$(__lmline_suggested_commands_key </dev/null); then
     pipeline_status=("${PIPESTATUS[@]}")
     printf 'stdin-hash-check: membership pipeline status producer=%s hasher=%s\n' \
       "${pipeline_status[0]:-unknown}" "${pipeline_status[1]:-unknown}" >&2
-  ) 2>/dev/null
+  )
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
   # only fixed function/line labels and numeric prior-command statuses; never
   # print expanded command arguments or values.
