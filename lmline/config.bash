@@ -13,23 +13,25 @@ __lmline_check_no_function_transport() (
   [[ -o posix ]] || POSIXLY_CORRECT=1 || exit 1
   set +x
   unset -f command || exit 1
-  command builtin local entry name_part value fd producer found
-  command builtin export -n entry name_part value fd producer found || exit 1
+  command builtin local entry name_part value producer found
+  command builtin export -n entry name_part value producer found || exit 1
   found=0
-  command builtin exec {fd}< <(command /usr/bin/env -0) || exit 1
-  producer=$!
-  while IFS= command builtin read -r -d '' entry <&"$fd"; do
-    case "$entry" in
-      BASH_FUNC_*%%=*) found=1 ;;
-      *=*)
-        name_part=${entry%%=*}
-        value=${entry#*=}
-        case "$value" in '() {'*) found=1 ;; esac
-        ;;
-    esac
-  done
-  command builtin exec {fd}<&- || exit 1
-  command builtin wait "$producer" || exit 1
+  # Block-scoped stdin avoids relying on named-FD persistence through
+  # command/builtin exec on Bash 4.2 and leaves the caller's input untouched.
+  {
+    producer=$!
+    while IFS= command builtin read -r -d '' entry; do
+      case "$entry" in
+        BASH_FUNC_*%%=*) found=1 ;;
+        *=*)
+          name_part=${entry%%=*}
+          value=${entry#*=}
+          case "$value" in '() {'*) found=1 ;; esac
+          ;;
+      esac
+    done
+    command builtin wait "$producer" || exit 1
+  } < <(command /usr/bin/env -0) || exit 1
   (( found == 0 ))
 )
 
