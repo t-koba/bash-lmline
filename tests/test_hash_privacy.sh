@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+# Keep assertion identity visible in bounded CI check annotations, without
+# exposing test paths or raw environment records.
+fail() {
+  local message=$* public_message
+  public_message=${message//[^[:alnum:] _-]/?}
+  if [[ ${GITHUB_ACTIONS:-} == true ]]; then
+    printf '::error title=hash-privacy::%s\n' "$public_message" >&2
+  fi
+  printf 'not ok - %s\n' "$message" >&2
+  exit 1
+}
 # Risk: direct startup/reload and helper hash children inherit raw Bash bodies.
 hash_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-hash-privacy.XXXXXX")
 trap 'rm -rf "$hash_tmp"' EXIT
@@ -212,7 +223,16 @@ for selected in cksum shasum sha256sum; do
         diagnostic=${diagnostic//"$hash_tmp"/<tmp>}
         printf '%s\n' "$diagnostic" >&2
       done <"$hash_tmp/stderr"
-      fail "$mode hash output parity ($selected)"
+      failure_detail=$(sed -En \
+        's/^hash-privacy-check: assertion ([a-z0-9-]+)$/assertion=\1/p' \
+        "$hash_tmp/stderr" | tail -n 1)
+      if [[ -z $failure_detail ]]; then
+        failure_detail=$(sed -En \
+          's/^hash-privacy-check: line ([0-9]+) status ([0-9]+)$/line=\1 status=\2/p' \
+          "$hash_tmp/stderr" | tail -n 1)
+      fi
+      [[ -n $failure_detail ]] || failure_detail=unclassified
+      fail "$mode hash output parity ($selected; $failure_detail)"
     fi
     [[ -s $hash_tmp/calls ]] || fail "$mode hash tool was not exercised ($selected)"
     if grep -aEq 'HASH_BODY_MARKER|BASH_FUNC_' "$hash_tmp/environment"; then
