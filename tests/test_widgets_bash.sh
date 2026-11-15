@@ -42,9 +42,13 @@ cat >"$widget_tmp/stdin-hash-bin/$test_hash_name" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$#" >>"$TEST_LMLINE_HASH_ARG_LOG"
 if [ "$TEST_LMLINE_HASH_MODE" = shasum ]; then
-  exec "$TEST_LMLINE_REAL_HASH" -a 256
+  "$TEST_LMLINE_REAL_HASH" -a 256
+else
+  "$TEST_LMLINE_REAL_HASH"
 fi
-exec "$TEST_LMLINE_REAL_HASH"
+status=$?
+printf '%s\n' "$status" >>"$TEST_LMLINE_HASH_STATUS_LOG"
+exit "$status"
 EOF
 chmod +x "$widget_tmp/stdin-hash-bin/$test_hash_name"
 cat >"$widget_tmp/stdin-hash-check.bash" <<'CHECK'
@@ -76,7 +80,17 @@ printf 'echo from custom stdin hasher\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
 file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
 membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
 expected=$file_digest:$membership_digest
+: >"$TEST_LMLINE_HASH_ARG_LOG"
+: >"$TEST_LMLINE_HASH_STATUS_LOG"
 if ! actual=$(__lmline_suggested_commands_key </dev/null); then
+  if [[ -s $TEST_LMLINE_HASH_ARG_LOG ]]; then
+    while IFS= read -r arg_count; do printf 'hash wrapper argv-count=%s\n' "$arg_count" >&2; done <"$TEST_LMLINE_HASH_ARG_LOG"
+  else
+    printf 'hash wrapper was not invoked\n' >&2
+  fi
+  if [[ -s $TEST_LMLINE_HASH_STATUS_LOG ]]; then
+    while IFS= read -r hash_status; do printf 'hash wrapper status=%s\n' "$hash_status" >&2; done <"$TEST_LMLINE_HASH_STATUS_LOG"
+  fi
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
   # only fixed function/line labels; never print expanded command arguments.
   trace=$2/hash-key-trace
@@ -96,6 +110,8 @@ fi
 [[ $(builtin hash -t "$3") == "$cached_hash" ]]
 [[ -s "$TEST_LMLINE_HASH_ARG_LOG" ]]
 while IFS= read -r arg_count; do [[ $arg_count == 0 ]]; done <"$TEST_LMLINE_HASH_ARG_LOG"
+[[ -s "$TEST_LMLINE_HASH_STATUS_LOG" ]]
+while IFS= read -r hash_status; do [[ $hash_status == 0 ]]; done <"$TEST_LMLINE_HASH_STATUS_LOG"
 export LMLINE_INCLUDE_PROJECT_CONTEXT=1
 export LMLINE_PROJECT_MARKERS_FILE="$2/project-markers.tsv"
 printf 'kind\t%s\n' "$2" >"$LMLINE_PROJECT_MARKERS_FILE"
@@ -112,6 +128,7 @@ CHECK
 TEST_LMLINE_REAL_HASH="$test_hash_real" \
 TEST_LMLINE_HASH_MODE="$test_hash_mode" \
 TEST_LMLINE_HASH_ARG_LOG="$widget_tmp/hash-arg-counts" \
+TEST_LMLINE_HASH_STATUS_LOG="$widget_tmp/hash-statuses" \
 LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
   bash --norc -e -i "$widget_tmp/stdin-hash-check.bash" \
     "$repo_dir" "$widget_tmp" "$test_hash_name" || \
