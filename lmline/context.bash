@@ -78,7 +78,8 @@ __lmline_suggested_commands_file() {
 # effective choice. Caller locals receive the selected paths and function flag.
 __lmline_resolve_hash_tool() {
   local tool=$1 path_list path_hash_path cached_hash_path
-  path_list=$(builtin type -ap "$tool" 2>/dev/null) || path_list=
+  # Clear inherited command-cache entries in this child lookup only.
+  path_list=$(builtin hash -r && builtin type -ap "$tool" 2>/dev/null) || path_list=
   path_hash_path=${path_list%%$'\n'*}
   cached_hash_path=$(builtin hash -t "$tool" 2>/dev/null) || cached_hash_path=
   system_hash_path=$(builtin hash -r && builtin command -p -v "$tool" 2>/dev/null) || system_hash_path=
