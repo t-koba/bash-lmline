@@ -99,11 +99,11 @@ jobs:
           BASH42_SHA256: 4ad124cc7b8949731061598d05cf8eaae1766e65c0f2e7d9406fb410a01a04ae
         run: |
           set -euo pipefail
-          archive="$RUNNER_TEMP/bash-4.2.tar.gz"
+          archive="$RUNNER_TEMP/bash_4.2.orig.tar.gz"
           prefix="$RUNNER_TEMP/bash-4.2-install"
           repo="$GITHUB_WORKSPACE"
           curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-            https://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz --output "$archive"
+            https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/bash/4.2-2ubuntu2.9/bash_4.2.orig.tar.gz --output "$archive"
           printf '%s  %s\n' "$BASH42_SHA256" "$archive" | sha256sum --check
           tar -xzf "$archive" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/bash-4.2"
