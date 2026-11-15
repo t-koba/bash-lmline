@@ -36,42 +36,43 @@ __lmline_collect_inherited_exported_functions() (
   # Already-POSIX callers may have made POSIXLY_CORRECT readonly.
   [[ -o posix ]] || POSIXLY_CORRECT=1
   unset -f command || exit 1
-  command builtin local entry name_part name fd producer
+  command builtin local entry name_part name producer
   command builtin export -n entry || exit 1
   command builtin export -n name_part || exit 1
   command builtin export -n name || exit 1
-  command builtin export -n fd || exit 1
   command builtin export -n producer || exit 1
-  command builtin exec {fd}< <(command /usr/bin/env -0) || exit 1
-  producer=$!
-  while IFS= command builtin read -r -d '' entry <&"$fd"; do
-    case "$entry" in
-      *=*) ;;
-      *) continue ;;
-    esac
-    name_part=${entry%%=*}
-    case "$name_part" in
-      BASH_FUNC_*%%)
-        name=${name_part#BASH_FUNC_}
-        name=${name%\%\%}
-        ;;
-      *)
-        # Legacy bash (4.2-4.3) exports functions as NAME=() { ... }.
-        # The exact serialization header is reserved transport; unrelated
-        # values beginning with (), such as ()example, are ordinary data.
-        # Opaque prefix check only; the body is never evaluated.
-        case "$entry" in
-          "$name_part="'() {'* ) name=$name_part ;;
-          *) continue ;;
-        esac
-        ;;
-    esac
-    # Preserve Bash's punctuation-bearing function names, but keep the
-    # newline-delimited transport unambiguous for inherited environment data.
-    [[ -n $name && $name != *[[:space:][:cntrl:]]* ]] || continue
-    command builtin printf '%s\n' "$name"
-  done
-  command builtin exec {fd}<&- || exit 1
+  # Bash 4.2 predates variable-FD redirections. Redirect the reader block
+  # and capture its producer before any loop command can replace $!.
+  {
+    producer=$!
+    while IFS= command builtin read -r -d '' entry; do
+      case "$entry" in
+        *=*) ;;
+        *) continue ;;
+      esac
+      name_part=${entry%%=*}
+      case "$name_part" in
+        BASH_FUNC_*%%)
+          name=${name_part#BASH_FUNC_}
+          name=${name%\%\%}
+          ;;
+        *)
+          # Legacy bash (4.2-4.3) exports functions as NAME=() { ... }.
+          # The exact serialization header is reserved transport; unrelated
+          # values beginning with (), such as ()example, are ordinary data.
+          # Opaque prefix check only; the body is never evaluated.
+          case "$entry" in
+            "$name_part="'() {'* ) name=$name_part ;;
+            *) continue ;;
+          esac
+          ;;
+      esac
+      # Preserve Bash's punctuation-bearing function names, but keep the
+      # newline-delimited transport unambiguous for inherited environment data.
+      [[ -n $name && $name != *[[:space:][:cntrl:]]* ]] || continue
+      command builtin printf '%s\n' "$name"
+    done
+  } < <(command /usr/bin/env -0)
   command builtin wait "$producer" || exit 1
   :
 )
