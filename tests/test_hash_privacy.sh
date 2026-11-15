@@ -198,9 +198,16 @@ for selected in cksum shasum sha256sum; do
     rm -f "$hash_tmp/calls" "$hash_tmp/environment"
     options=()
     [[ $mode != protected ]] || options=(-p)
-    PATH="$hash_tmp/bin" bash --noprofile --norc "${options[@]}" -i \
-      "$hash_tmp/check.bash" "$repo_dir" "$mode" "$selected" \
-      >"$hash_tmp/stdout" 2>"$hash_tmp/stderr" || fail "$mode hash output parity ($selected)"
+    if ! PATH="$hash_tmp/bin" bash --noprofile --norc "${options[@]}" -i \
+        "$hash_tmp/check.bash" "$repo_dir" "$mode" "$selected" \
+        >"$hash_tmp/stdout" 2>"$hash_tmp/stderr"; then
+      while IFS= read -r diagnostic; do
+        diagnostic=${diagnostic//"$repo_dir"/<repo>}
+        diagnostic=${diagnostic//"$hash_tmp"/<tmp>}
+        printf '%s\n' "$diagnostic" >&2
+      done <"$hash_tmp/stderr"
+      fail "$mode hash output parity ($selected)"
+    fi
     [[ -s $hash_tmp/calls ]] || fail "$mode hash tool was not exercised ($selected)"
     if grep -aEq 'HASH_BODY_MARKER|BASH_FUNC_' "$hash_tmp/environment"; then
       fail "$mode hash child received function transport ($selected)"
