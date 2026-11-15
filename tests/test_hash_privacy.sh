@@ -101,9 +101,8 @@ else
   # hash raw bytes and freshly collected membership separately, preserving NULs.
   # On a cached-wrapper failure, classify the helper's private resolver choice
   # without exposing any filesystem paths.
-  __lmline_test_hash_selection() (
-    local tool hash_path system_hash_path hash_function cached_hash_path cached_visible selected route
-    shopt -u expand_aliases || return 1
+  __lmline_test_hash_selection() {
+    local context=${1-unknown} tool hash_path system_hash_path hash_function cached_hash_path cached_visible selected route
     if command -v sha256sum >/dev/null 2>&1; then tool=sha256sum
     elif command -v shasum >/dev/null 2>&1; then tool=shasum
     else tool=cksum; fi
@@ -126,9 +125,9 @@ else
     else
       route=batch
     fi
-    printf 'hash-privacy-check: helper-selection tool=%s cached=%s selected=%s route=%s\n' \
-      "$tool" "$cached_visible" "$selected" "$route"
-  )
+    printf 'hash-privacy-check: helper-selection context=%s tool=%s cached=%s selected=%s route=%s\n' \
+      "$context" "$tool" "$cached_visible" "$selected" "$route"
+  }
   for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
     membership=$(printf 'printf\n' | "$real" "${args[@]}")
     if [[ $helper == __lmline_project_markers_key ]]; then
@@ -186,7 +185,8 @@ else
       if [[ $calls_for_key != 2 ]]; then
         printf 'hash-privacy-check: hash-calls tool=%s helper=%s mode=cached count=%s\n' \
           "$3" "$helper" "$calls_for_key" >&2
-        __lmline_test_hash_selection >&2 || printf 'hash-privacy-check: helper-selection unavailable\n' >&2
+        __lmline_test_hash_selection caller >&2 || printf 'hash-privacy-check: caller helper-selection unavailable\n' >&2
+        ( __lmline_test_hash_selection subshell ) >&2 || printf 'hash-privacy-check: subshell helper-selection unavailable\n' >&2
         hash_privacy_abort hash-call-count
       fi
     ) || hash_privacy_abort cached-helper-contract
