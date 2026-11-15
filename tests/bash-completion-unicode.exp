@@ -1,0 +1,38 @@
+# Exercise Readline itself: type UTF-8 bytes, complete before a suffix, then
+# execute only a local capture function (never the configured provider).
+set timeout 15
+lassign $argv repo work test_locale
+source "$repo/tests/pty-expect-helpers.exp"
+file delete -force "$work/argv"
+spawn env TERM=xterm "LC_ALL=$test_locale" "INPUTRC=/dev/null" "PS1=READY> " \
+  "REPO=$repo" "OUT=$work/argv" "LMLINE_CONFIG_DIR=$work/config" \
+  "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/providers.tsv" \
+  bash --noprofile --norc -i
+# Send explicit bytes even when Expect's own locale is C.
+fconfigure $spawn_id -translation binary -encoding binary
+expect_required -exact {READY> }
+send -- {source "$REPO/lmline/completions/lmline.bash"; lmline() { if [[ $1 == complete ]]; then "$REPO/lmline/lmline" "$@"; else printf '%s\0' "$@" >"$OUT"; printf '\nCAPTURED\n'; fi; }; bind 'set editing-mode emacs'; bind 'set input-meta on'; bind 'set output-meta on'; bind 'set convert-meta off'; bind 'set enable-bracketed-paste off'}
+send -- "\r"
+expect_required -exact {READY> }
+send -- [encoding convertto utf-8 "lmline clip --provider caf\u00e9Xsuffix"]
+# Only the ASCII suffix is traversed, so byte/character movement agrees in
+# both locales. Tab must use the multibyte prefix, not the whole token.
+for {set i 0} {$i < 7} {incr i} { send -- "\033\[D" }
+send -- "\t\005\r"
+expect_required -exact "\r\nCAPTURED\r\n"
+expect_required -exact {READY> }
+send -- "exit\r"
+expect {
+  eof {}
+  timeout { error "Bash did not exit after the Unicode completion test" }
+}
+set channel [open "$work/argv" rb]
+set actual [read $channel]
+close $channel
+set expected [encoding convertto utf-8 "clip\0--provider\0caf\u00e9-providerXsuffix\0"]
+if {$actual ne $expected} {
+  binary scan $actual H* actual_hex
+  binary scan $expected H* expected_hex
+  error "Bash completion ($test_locale): expected argument bytes <$expected_hex>, got <$actual_hex>"
+}
+puts "ok - Bash Unicode provider prefix and preserved suffix ($test_locale)"

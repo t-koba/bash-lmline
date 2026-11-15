@@ -20,11 +20,20 @@ __lmline_comp_point_char_offset() {
   printf -v "$target" '%s' "$point"
 }
 
+# Validate ASCII shell syntax without making valid UTF-8 bytes locale-dependent.
+__lmline_bash_prefix_is_shell_safe() {
+  local LC_ALL=C ascii_prefix encoded_prefix
+  ascii_prefix=${1//[$'\200'-$'\377']/}
+  [[ -z $ascii_prefix ]] && return 0
+  printf -v encoded_prefix '%q' "$ascii_prefix"
+  [[ $encoded_prefix == "$ascii_prefix" ]]
+}
+
 # Insert reversible shell words for endpoint, model, and provider names. In
 # quoted or escaped words, omit candidates that need encoding rather than
 # corrupting existing quoting.
 __lmline_complete_names_bash() {
-  local kind=$1 endpoint=$2 cur=$3 id suffix encoded_prefix encoded_suffix line point point_out raw_word
+  local kind=$1 endpoint=$2 cur=$3 id suffix encoded_suffix line point point_out raw_word
   local quoted_context=0
   local -a candidates=() completion_args=()
   case "$kind" in
@@ -40,9 +49,9 @@ __lmline_complete_names_bash() {
   if [[ $raw_word == *\"* || $raw_word == *\'* || $raw_word == *\\* ]]; then
     quoted_context=1
   fi
-  if [[ -n "$cur" ]]; then
-    printf -v encoded_prefix '%q' "$cur"
-    [[ "$encoded_prefix" == "$cur" ]] || { COMPREPLY=(); return 0; }
+  if [[ -n "$cur" ]] && ! __lmline_bash_prefix_is_shell_safe "$cur"; then
+    COMPREPLY=()
+    return 0
   fi
   while IFS= read -r id; do
     [[ "$id" == "$cur"* ]] || continue

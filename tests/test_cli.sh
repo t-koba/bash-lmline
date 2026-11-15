@@ -296,6 +296,14 @@ grep -Fqx 'custom provider' <<<"$clipboard_setting_candidates" || fail "clipboar
 PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
   LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" bash --norc -i -c '
   source "$1/lmline/init.bash"
+  (
+    LC_ALL=C
+    unicode_prefix=$'caf\303\251'
+    __lmline_bash_prefix_is_shell_safe "$unicode_prefix" || exit 1
+    __lmline_bash_prefix_is_shell_safe $'\303\251' || exit 1
+    [[ $LC_ALL == C ]] || exit 1
+    ! __lmline_bash_prefix_is_shell_safe 'custom$' || exit 1
+  )
   COMP_WORDS=(lmline use "")
   COMP_CWORD=2
   __lmline_cli_complete
@@ -685,6 +693,20 @@ EXPECT
     cat "$cfg_tmp/bash-pty-completion-c.log" >&2
     fail "bash C-locale UTF-8 mid-word completion"
   fi
+  # Each locale gets fresh capture/config files; a previous run cannot pass
+  # this assertion. The provider is a synthetic catalog entry, never invoked.
+  bash_unicode_failed=0
+  for bash_completion_locale in C ${bash_utf8_locale:+"$bash_utf8_locale"}; do
+    bash_unicode_dir=$(mktemp -d "$cfg_tmp/bash-unicode.XXXXXX")
+    mkdir -m 700 "$bash_unicode_dir/config"
+    printf 'caf\303\251-provider\tno-such-lmline-provider-command\n' >"$bash_unicode_dir/providers.tsv"
+    if ! expect "$repo_dir/tests/bash-completion-unicode.exp" "$repo_dir" "$bash_unicode_dir" "$bash_completion_locale" >"$bash_unicode_dir/test.log" 2>&1; then
+      cat "$bash_unicode_dir/test.log" >&2
+      bash_unicode_failed=1
+    fi
+  done
+  [[ -n $bash_utf8_locale ]] || printf 'skip - Bash Unicode provider prefix (no UTF-8 locale installed)\n'
+  (( bash_unicode_failed == 0 )) || fail "bash Unicode provider prefix preserves completed candidate and suffix"
 else
   printf 'skip - bash interactive mid-word completion (expect not found)\n'
 fi
