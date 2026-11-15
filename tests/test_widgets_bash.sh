@@ -79,7 +79,7 @@ expected=$file_digest:$membership_digest
 if ! actual=$(__lmline_suggested_commands_key </dev/null); then
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
   # only fixed function/line labels; never print expanded command arguments.
-  trace=$HASH_TEST_DIR/hash-key-trace
+  trace=$2/hash-key-trace
   (
     exec 9>"$trace"
     BASH_XTRACEFD=9
