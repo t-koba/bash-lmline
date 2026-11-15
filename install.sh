@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-src_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+src_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 bin_dir=${LMLINE_BIN_DIR:-$HOME/.local/bin}
 
