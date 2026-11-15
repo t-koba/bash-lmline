@@ -592,7 +592,8 @@ EXPECT
 fi
 if command -v expect >/dev/null 2>&1; then
   bash_pty_dir="$cfg_tmp/bash-pty"
-  mkdir -m 700 -p "$bash_pty_dir/config"
+  mkdir -m 700 "$bash_pty_dir"
+  mkdir -m 700 "$bash_pty_dir/config"
   printf 'custom provider\tno-such-lmline-provider-command\n' >"$bash_pty_dir/providers.tsv"
   bash_utf8_locale=$(locale -a 2>/dev/null | grep -iE '(^|[._-])utf-?8$' | head -n 1 || true)
   cat >"$cfg_tmp/bash-pty-completion.exp" <<'EXPECT'
