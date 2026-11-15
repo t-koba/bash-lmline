@@ -82,6 +82,43 @@ jobs:
           done
           exit "$status"
 
+  bash_4_2:
+    name: Bash 4.2 minimum
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode == 'full' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Install build and test dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential curl gcc-13 jq libncurses-dev texinfo
+      - name: Build pinned Bash 4.2 and run integration tests
+        # SHA-256 for the upstream bash_4.2.orig.tar.gz published by Ubuntu
+        # Launchpad: https://launchpad.net/ubuntu/+source/bash/4.2-2ubuntu2.9
+        env:
+          BASH42_SHA256: 4ad124cc7b8949731061598d05cf8eaae1766e65c0f2e7d9406fb410a01a04ae
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/bash-4.2.tar.gz"
+          prefix="$RUNNER_TEMP/bash-4.2-install"
+          repo="$GITHUB_WORKSPACE"
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            https://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz --output "$archive"
+          printf '%s  %s\n' "$BASH42_SHA256" "$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/bash-4.2"
+          CC=gcc-13 ./configure --prefix="$prefix" --without-bash-malloc
+          make -j2
+          make install
+          bash42="$prefix/bin/bash"
+          version=$("$bash42" -c 'printf %s "${BASH_VERSION%%(*}"')
+          [[ "$version" == 4.2.0 ]]
+          cd "$repo"
+          export PATH="$prefix/bin:$PATH"
+          [[ $(command -v bash) == "$bash42" ]]
+          "$bash42" tests/test_cli_static.sh
+          "$bash42" tests/test_widgets_bash.sh
+
   shellcheck_api_diagnostic:
     name: ShellCheck API diagnostic
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'shellcheck-api-diagnostic' }}
