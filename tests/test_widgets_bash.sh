@@ -89,7 +89,7 @@ if ! actual=$(__lmline_suggested_commands_key </dev/null); then
   ) 2>/dev/null || :
   printf 'stdin-hash-check: suggested-key trace (function:line)\n' >&2
   /usr/bin/sed -En 's/^\+([^:]+):([0-9]+):.*/\1:\2/p' "$trace" |
-    /usr/bin/tail -n 25 >&2
+    /usr/bin/tail -n 80 >&2
   exit 1
 fi
 [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
