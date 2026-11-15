@@ -21,14 +21,13 @@ __lmline_check_no_function_transport() (
   found=$(command /usr/bin/env -0 | {
     found=0
     while IFS= command builtin read -r -d '' entry; do
-      case "$entry" in
-        BASH_FUNC_*%%=*) found=1 ;;
-        *=*)
-          name_part=${entry%%=*}
-          value=${entry#*=}
-          case "$value" in '() {'*) found=1 ;; esac
-          ;;
-      esac
+      if [[ $entry == *=* ]]; then
+        name_part=${entry%%=*}
+        value=${entry#*=}
+        if [[ $name_part == BASH_FUNC_*%% || ${value:0:4} == '() {' ]]; then
+          found=1
+        fi
+      fi
     done
     command builtin printf '%s' "$found"
   }) || exit 1
