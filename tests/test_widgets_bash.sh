@@ -27,6 +27,15 @@ chmod +x "$widget_tmp/fail-sort-bin/sort"
 # Model a valid custom hash executable that ignores filename arguments and
 # hashes only stdin, as the pre-batching interface allowed.
 mkdir "$widget_tmp/stdin-hash-bin"
+test_awk_real=$(builtin command -p -v awk 2>/dev/null) || fail "system awk for hash diagnostics"
+cat >"$widget_tmp/stdin-hash-bin/awk" <<'EOF'
+#!/bin/sh
+"$TEST_LMLINE_REAL_AWK" "$@"
+status=$?
+printf '%s\n' "$status" >>"$TEST_LMLINE_AWK_STATUS_LOG"
+exit "$status"
+EOF
+chmod +x "$widget_tmp/stdin-hash-bin/awk"
 if test_hash_real=$(builtin command -p -v sha256sum 2>/dev/null); then
   test_hash_name=sha256sum
   test_hash_mode=sha256sum
@@ -82,6 +91,7 @@ membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
 expected=$file_digest:$membership_digest
 : >"$TEST_LMLINE_HASH_ARG_LOG"
 : >"$TEST_LMLINE_HASH_STATUS_LOG"
+: >"$TEST_LMLINE_AWK_STATUS_LOG"
 if actual=$(__lmline_suggested_commands_key </dev/null); then
   :
 else
@@ -96,6 +106,11 @@ else
   fi
   if [[ -s $TEST_LMLINE_HASH_STATUS_LOG ]]; then
     while IFS= read -r hash_status; do printf 'hash wrapper status=%s\n' "$hash_status" >&2; done <"$TEST_LMLINE_HASH_STATUS_LOG"
+  fi
+  if [[ -s $TEST_LMLINE_AWK_STATUS_LOG ]]; then
+    while IFS= read -r awk_status; do printf 'awk status=%s\n' "$awk_status" >&2; done <"$TEST_LMLINE_AWK_STATUS_LOG"
+  else
+    printf 'awk wrapper was not invoked\n' >&2
   fi
   # Compare a direct hash of the synthetic file with the helper result;
   # expose only numeric status and whether output exists.
@@ -210,6 +225,8 @@ while IFS= read -r arg_count; do [[ $arg_count == 0 ]]; done <"$TEST_LMLINE_HASH
 CHECK
 TEST_LMLINE_REAL_HASH="$test_hash_real" \
 TEST_LMLINE_HASH_MODE="$test_hash_mode" \
+TEST_LMLINE_REAL_AWK="$test_awk_real" \
+TEST_LMLINE_AWK_STATUS_LOG="$widget_tmp/awk-statuses" \
 TEST_LMLINE_HASH_ARG_LOG="$widget_tmp/hash-arg-counts" \
 TEST_LMLINE_HASH_STATUS_LOG="$widget_tmp/hash-statuses" \
 LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
