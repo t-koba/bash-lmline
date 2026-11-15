@@ -64,6 +64,29 @@ cat >"$widget_tmp/stdin-hash-check.bash" <<'CHECK'
 set -e
 trap 'printf "stdin-hash-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
 source "$1/lmline/init.bash"
+# On the pinned Bash 4.2 job, record only each shell-stage's numeric status
+# around the real functions; this distinguishes producer and hash-pipeline
+# failures without logging command names, paths, or input.
+for helper in __lmline_collect_suggested_commands __lmline_hash_stdin; do
+  definition=$(declare -f "$helper") || exit 1
+  [[ -n $definition ]] || exit 1
+  definition=${definition/$helper/${helper}_original}
+  eval "$definition"
+done
+__lmline_collect_suggested_commands() {
+  local diagnostic_status
+  __lmline_collect_suggested_commands_original "$@"
+  diagnostic_status=$?
+  builtin printf '%s\n' "$diagnostic_status" >>"$TEST_LMLINE_COLLECT_STATUS_LOG"
+  return "$diagnostic_status"
+}
+__lmline_hash_stdin() {
+  local diagnostic_status
+  __lmline_hash_stdin_original "$@"
+  diagnostic_status=$?
+  builtin printf '%s\n' "$diagnostic_status" >>"$TEST_LMLINE_HASH_HELPER_STATUS_LOG"
+  return "$diagnostic_status"
+}
 export PATH="$2/stdin-hash-bin:$PATH"
 [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
 # Reproduce Bash versions that retain a cached executable after PATH changes.
@@ -92,6 +115,8 @@ expected=$file_digest:$membership_digest
 : >"$TEST_LMLINE_HASH_ARG_LOG"
 : >"$TEST_LMLINE_HASH_STATUS_LOG"
 : >"$TEST_LMLINE_AWK_STATUS_LOG"
+: >"$TEST_LMLINE_COLLECT_STATUS_LOG"
+: >"$TEST_LMLINE_HASH_HELPER_STATUS_LOG"
 if actual=$(__lmline_suggested_commands_key </dev/null); then
   :
 else
@@ -112,6 +137,8 @@ else
   else
     printf 'awk wrapper was not invoked\n' >&2
   fi
+  while IFS= read -r stage_status; do printf 'collector status=%s\n' "$stage_status" >&2; done <"$TEST_LMLINE_COLLECT_STATUS_LOG"
+  while IFS= read -r stage_status; do printf 'hash helper status=%s\n' "$stage_status" >&2; done <"$TEST_LMLINE_HASH_HELPER_STATUS_LOG"
   # Compare a direct hash of the synthetic file with the helper result;
   # expose only numeric status and whether output exists.
   (
@@ -229,6 +256,8 @@ TEST_LMLINE_REAL_AWK="$test_awk_real" \
 TEST_LMLINE_AWK_STATUS_LOG="$widget_tmp/awk-statuses" \
 TEST_LMLINE_HASH_ARG_LOG="$widget_tmp/hash-arg-counts" \
 TEST_LMLINE_HASH_STATUS_LOG="$widget_tmp/hash-statuses" \
+TEST_LMLINE_COLLECT_STATUS_LOG="$widget_tmp/collect-statuses" \
+TEST_LMLINE_HASH_HELPER_STATUS_LOG="$widget_tmp/hash-helper-statuses" \
 LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
   bash --norc -e -i "$widget_tmp/stdin-hash-check.bash" \
     "$repo_dir" "$widget_tmp" "$test_hash_name" || \
