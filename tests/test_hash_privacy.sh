@@ -124,7 +124,11 @@ else
         fi
         calls_for_key=$((calls_for_key + 1))
       done <"$HASH_TEST_DIR/calls"
-      [[ $calls_for_key == 2 ]] || hash_privacy_abort hash-call-count
+      if [[ $calls_for_key != 2 ]]; then
+        printf 'hash-privacy-check: hash-calls tool=%s helper=%s mode=path count=%s\n' \
+          "$3" "$helper" "$calls_for_key" >&2
+        hash_privacy_abort hash-call-count
+      fi
       previous=$key
     done
     # A cached wrapper wins even when PATH names the real system executable.
@@ -149,7 +153,11 @@ else
         fi
         calls_for_key=$((calls_for_key + 1))
       done <"$HASH_TEST_DIR/calls"
-      [[ $calls_for_key == 2 ]] || hash_privacy_abort hash-call-count
+      if [[ $calls_for_key != 2 ]]; then
+        printf 'hash-privacy-check: hash-calls tool=%s helper=%s mode=cached count=%s\n' \
+          "$3" "$helper" "$calls_for_key" >&2
+        hash_privacy_abort hash-call-count
+      fi
     ) || hash_privacy_abort cached-helper-contract
     # An stdin-based shell-function hasher retains the former two-call contract.
     if [[ $3 == sha256sum ]]; then

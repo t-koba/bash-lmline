@@ -92,12 +92,13 @@ if ! actual=$(__lmline_suggested_commands_key </dev/null); then
     while IFS= read -r hash_status; do printf 'hash wrapper status=%s\n' "$hash_status" >&2; done <"$TEST_LMLINE_HASH_STATUS_LOG"
   fi
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
-  # only fixed function/line labels; never print expanded command arguments.
+  # only fixed function/line labels and numeric prior-command statuses; never
+  # print expanded command arguments or values.
   trace=$2/hash-key-trace
   (
     exec 9>"$trace"
     BASH_XTRACEFD=9
-    PS4='+${FUNCNAME[0]:-main}:${LINENO}: '
+    PS4='+${FUNCNAME[0]:-main}:${LINENO}: status=$? '
     set -x
     __lmline_suggested_commands_key </dev/null >/dev/null
   ) 2>/dev/null || :
