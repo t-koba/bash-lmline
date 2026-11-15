@@ -617,6 +617,7 @@ proc read_file {path} {
 spawn env TERM=xterm "LC_ALL=$utf8_locale" "PS1=READY> " "REPO=$repo" "OUT=$work/buffer" \
   "LMLINE_CONFIG_DIR=$work/config" \
   "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/providers.tsv" \
+  "INSERTED_OUT=$work/utf8-inserted" \
   "PATH=$repo/lmline:$env(PATH)" bash --noprofile --norc -i
 expect {
   -exact {READY> } {}
@@ -624,7 +625,7 @@ expect {
   eof { error "Bash exited before the completion test" }
 }
 # Reset bind -x Readline state after capture so later prompts do not inherit test input.
-send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; READLINE_LINE=; READLINE_POINT=0; }; bind -x '"\C-t":__lmline_capture'; __lmline_insert_utf8() { READLINE_LINE=$'lmline sandbox setup --name \xC3\xA9 --workspace wriXtable'; }; bind -x '"\C-y":__lmline_insert_utf8'}
+send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; READLINE_LINE=; READLINE_POINT=0; }; bind -x '"\C-t":__lmline_capture'; __lmline_insert_utf8() { READLINE_LINE=$'lmline sandbox setup --name \xC3\xA9 --workspace wriXtable'; : >"$INSERTED_OUT"; }; bind -x '"\C-y":__lmline_insert_utf8'}
 send -- "\r"
 expect {
   -exact {READY> } {}
@@ -641,15 +642,15 @@ if {$buffer ne {lmline clip --provider custom\ providerXsuffix}} {
   error "unexpected mid-word completion buffer: <$buffer>"
 }
 file copy -force "$work/buffer" "$work/first-buffer"
-send -- "\003"
 expect {
   -exact {READY> } {}
-  timeout { error "Bash did not recover after cancelling the completion line" }
-  eof { error "Bash exited after cancelling the completion line" }
+  timeout { error "Bash did not redraw an empty prompt after completion capture" }
+  eof { error "Bash exited after completion capture" }
 }
 if {$utf8_locale ne ""} {
-  file delete -force "$work/buffer"
+  file delete -force "$work/buffer" "$work/utf8-inserted"
   send -- "\031"
+  wait_for_file "$work/utf8-inserted" "UTF-8 Readline line insertion"
   send -- "\005"
   for {set i 0} {$i < 6} {incr i} { send -- "\033\[D" }
   send -- "\t"
@@ -663,19 +664,13 @@ if {$utf8_locale ne ""} {
   if {$unicode_hex ne "6c6d6c696e652073616e64626f78207365747570202d2d6e616d6520c3a9202d2d776f726b7370616365207772697461626c65587461626c65"} {
     error "unexpected UTF-8 mid-word completion bytes: <$unicode_hex>"
   }
-  send -- "\003"
-  expect {
-    -exact {READY> } {}
-    timeout { error "Bash did not recover after the UTF-8 completion line" }
-    eof { error "Bash exited after the UTF-8 completion line" }
-  }
 } else {
   puts "skip - Bash UTF-8 mid-word completion (no UTF-8 locale installed)"
 }
-send -- "exit\r"
+send -- "\004"
 expect {
   eof {}
-  timeout { error "Bash did not exit after the completion test" }
+  timeout { error "Bash did not exit from the empty completion prompt" }
 }
 EXPECT
   if ! expect "$cfg_tmp/bash-pty-completion.exp" "$repo_dir" "$bash_pty_dir" "$bash_utf8_locale" >"$cfg_tmp/bash-pty-completion.log" 2>&1; then

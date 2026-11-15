@@ -91,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - name: Install build and test dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential curl gcc-13 jq libncurses-dev texinfo
+        run: sudo apt-get update && sudo apt-get install -y build-essential curl expect gcc-13 jq libncurses-dev texinfo
       - name: Build pinned Bash 4.2 and run integration tests
         # SHA-256 for the upstream bash_4.2.orig.tar.gz published by Ubuntu
         # Launchpad: https://launchpad.net/ubuntu/+source/bash/4.2-2ubuntu2.9
@@ -117,6 +117,7 @@ jobs:
           export PATH="$prefix/bin:$PATH"
           [[ $(command -v bash) == "$bash42" ]]
           "$bash42" tests/test_cli_static.sh
+          "$bash42" tests/test_cli.sh
           "$bash42" tests/test_widgets_bash.sh
 
   shellcheck_api_diagnostic:
