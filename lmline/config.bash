@@ -13,13 +13,13 @@ __lmline_check_no_function_transport() (
   [[ -o posix ]] || POSIXLY_CORRECT=1 || exit 1
   set +x
   unset -f command || exit 1
-  command builtin local entry name_part value producer found
-  command builtin export -n entry name_part value producer found || exit 1
-  found=0
-  # Block-scoped stdin avoids relying on named-FD persistence through
-  # command/builtin exec on Bash 4.2 and leaves the caller's input untouched.
-  {
-    producer=$!
+  command builtin local entry name_part value found
+  command builtin export -n entry name_part value found || exit 1
+  # Scan a pipe-owned NUL stream without changing caller stdin or using
+  # descriptor redirections across the Bash 4.2+ range.
+  set -o pipefail
+  found=$(command /usr/bin/env -0 | {
+    found=0
     while IFS= command builtin read -r -d '' entry; do
       case "$entry" in
         BASH_FUNC_*%%=*) found=1 ;;
@@ -30,9 +30,9 @@ __lmline_check_no_function_transport() (
           ;;
       esac
     done
-    command builtin wait "$producer" || exit 1
-  } < <(command /usr/bin/env -0) || exit 1
-  (( found == 0 ))
+    printf '%s' "$found"
+  }) || exit 1
+  [[ $found == 0 ]]
 )
 
 # Direct unsanitized hash sites call this only inside a private subshell.
