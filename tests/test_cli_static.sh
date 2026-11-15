@@ -27,7 +27,14 @@ export LMLINE_PROJECT_CONFIG=0
 
 while IFS= read -r route; do
   read -r -a args <<<"$route"
-  LMLINE_CONFIG_DIR="$tmp/empty" "$repo_dir/lmline/lmline" "${args[@]}" >"$tmp/expected" 2>"$tmp/expected.err" || fail "static baseline: $route"
+  if ! LMLINE_CONFIG_DIR="$tmp/empty" "$repo_dir/lmline/lmline" "${args[@]}" >"$tmp/expected" 2>"$tmp/expected.err"; then
+    printf 'static baseline stdout (%s):\n' "$route" >&2
+    head -c 4096 "$tmp/expected" >&2 || true
+    printf '\nstatic baseline stderr (%s):\n' "$route" >&2
+    head -c 4096 "$tmp/expected.err" >&2 || true
+    printf '\n' >&2
+    fail "static baseline: $route"
+  fi
   for state in valid invalid missing; do
     LMLINE_CONFIG_DIR="$tmp/$state" "$repo_dir/lmline/lmline" "${args[@]}" >"$tmp/actual" 2>"$tmp/actual.err" || fail "static $state: $route"
     cmp -s "$tmp/expected" "$tmp/actual" || fail "static stdout changed ($state): $route"
