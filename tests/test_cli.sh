@@ -568,10 +568,12 @@ if command -v expect >/dev/null 2>&1; then
   bash_pty_dir="$cfg_tmp/bash-pty"
   mkdir -m 700 -p "$bash_pty_dir/config"
   printf 'custom provider\tno-such-lmline-provider-command\n' >"$bash_pty_dir/providers.tsv"
+  bash_utf8_locale=$(locale -a 2>/dev/null | grep -iE '(^|[._-])utf-?8$' | head -n 1 || true)
   cat >"$cfg_tmp/bash-pty-completion.exp" <<'EXPECT'
 set timeout 15
 set repo [lindex $argv 0]
 set work [lindex $argv 1]
+set utf8_locale [lindex $argv 2]
 proc wait_for_file {path label} {
   set deadline [expr {[clock milliseconds] + 8000}]
   while {![file exists $path]} {
@@ -585,7 +587,7 @@ proc read_file {path} {
   close $channel
   return $value
 }
-spawn env TERM=xterm "PS1=READY> " "REPO=$repo" "OUT=$work/buffer" \
+spawn env TERM=xterm "LC_ALL=$utf8_locale" "PS1=READY> " "REPO=$repo" "OUT=$work/buffer" \
   "LMLINE_CONFIG_DIR=$work/config" \
   "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/providers.tsv" \
   "PATH=$repo/lmline:$env(PATH)" bash --noprofile --norc -i
@@ -594,7 +596,7 @@ expect {
   timeout { error "Bash did not start the interactive completion test" }
   eof { error "Bash exited before the completion test" }
 }
-send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; }; bind -x '"\C-t":__lmline_capture'}
+send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; }; bind -x '"\C-t":__lmline_capture'; __lmline_insert_utf8() { READLINE_LINE=$'lmline sandbox setup --name \xC3\xA9 --workspace wriXtable'; }; bind -x '"\C-y":__lmline_insert_utf8'}
 send -- "\r"
 expect {
   -exact {READY> } {}
@@ -611,11 +613,38 @@ set buffer [read_file "$work/buffer"]
 if {$buffer ne {lmline clip --provider custom\ providerXsuffix}} {
   error "unexpected mid-word completion buffer: <$buffer>"
 }
+file copy -force "$work/buffer" "$work/first-buffer"
 send -- "\003"
 expect {
   -exact {READY> } {}
   timeout { error "Bash did not recover after cancelling the completion line" }
   eof { error "Bash exited after cancelling the completion line" }
+}
+if {$utf8_locale ne ""} {
+  file delete -force "$work/buffer"
+  send -- "\031"
+  send -- "\005"
+  for {set i 0} {$i < 6} {incr i} { send -- "\033\[D" }
+  send -- "\t"
+  after 200
+  send -- "\024"
+  wait_for_file "$work/buffer" "UTF-8 mid-word Readline buffer capture"
+  set channel [open "$work/buffer" rb]
+  fconfigure $channel -translation binary -encoding binary
+  set unicode_bytes [read $channel]
+  close $channel
+  binary scan $unicode_bytes H* unicode_hex
+  if {$unicode_hex ne "6c6d6c696e652073616e64626f78207365747570202d2d6e616d6520c3a9202d2d776f726b7370616365207772697461626c65587461626c65"} {
+    error "unexpected UTF-8 mid-word completion bytes: <$unicode_hex>"
+  }
+  send -- "\003"
+  expect {
+    -exact {READY> } {}
+    timeout { error "Bash did not recover after the UTF-8 completion line" }
+    eof { error "Bash exited after the UTF-8 completion line" }
+  }
+} else {
+  puts "skip - Bash UTF-8 mid-word completion (no UTF-8 locale installed)"
 }
 send -- "exit\r"
 expect {
@@ -623,11 +652,11 @@ expect {
   timeout { error "Bash did not exit after the completion test" }
 }
 EXPECT
-  if ! expect "$cfg_tmp/bash-pty-completion.exp" "$repo_dir" "$bash_pty_dir" >"$cfg_tmp/bash-pty-completion.log" 2>&1; then
+  if ! expect "$cfg_tmp/bash-pty-completion.exp" "$repo_dir" "$bash_pty_dir" "$bash_utf8_locale" >"$cfg_tmp/bash-pty-completion.log" 2>&1; then
     cat "$cfg_tmp/bash-pty-completion.log" >&2
     fail "bash interactive mid-word clipboard completion"
   fi
-  bash_provider_buffer=$(cat "$bash_pty_dir/buffer")
+  bash_provider_buffer=$(cat "$bash_pty_dir/first-buffer")
   [[ "$bash_provider_buffer" == 'lmline clip --provider custom\ providerXsuffix' ]] || \
     fail "bash mid-word completion preserves a spaced candidate and suffix"
 else
