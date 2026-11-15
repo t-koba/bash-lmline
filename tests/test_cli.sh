@@ -294,7 +294,7 @@ clipboard_setting_candidates=$(LMLINE_CONFIG_DIR="$profiles_dir" \
 grep -Fqx 'auto' <<<"$clipboard_setting_candidates" || fail "clipboard setting candidates auto"
 grep -Fqx 'custom provider' <<<"$clipboard_setting_candidates" || fail "clipboard setting candidates custom name"
 PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
-  LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" bash --norc -i -c '
+  LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" bash --norc -i -c "$(cat <<'BASH'
   source "$1/lmline/init.bash"
   (
     LC_ALL=C
@@ -374,7 +374,8 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
   COMP_CWORD=4
   __lmline_cli_complete
   printf "%s\n" "${COMPREPLY[@]}" | grep -q "^readonly$" || exit 1
-' _ "$repo_dir" || fail "bash profile completion"
+BASH
+)" _ "$repo_dir" || fail "bash profile completion"
 if command -v zsh >/dev/null 2>&1; then
   zsh_bash_bin="$cfg_tmp/zsh-bash-bin"
   zsh_bash_log="$cfg_tmp/zsh-bash.log"
