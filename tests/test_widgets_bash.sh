@@ -222,18 +222,18 @@ else
       "$substitution_status" "$digest_present" >&2
   )
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
-  # function names, source basenames, line numbers, numeric statuses, and only
-  # each command's first unexpanded token; never print arguments or values.
+  # only function names, source basenames, line numbers, and numeric prior
+  # command and pipeline statuses; never print expanded command arguments or values.
   trace=$2/hash-key-trace
   (
     exec 9>"$trace"
     BASH_XTRACEFD=9
-    PS4='+${FUNCNAME[0]:-main}:${BASH_SOURCE[0]##*/}:${LINENO}: status=$? pipestatus=${PIPESTATUS[*]} command=${BASH_COMMAND%%[[:space:]]*} '
+    PS4='+${FUNCNAME[0]:-main}:${BASH_SOURCE[0]##*/}:${LINENO}: status=$? pipestatus=${PIPESTATUS[*]} '
     set -x
     __lmline_suggested_commands_key </dev/null >/dev/null
   ) 2>/dev/null || :
   printf 'stdin-hash-check: suggested-key trace (function/source:line)\n' >&2
-  /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) pipestatus=([0-9]+( [0-9]+)*) command=([^[:space:]]*).*/\1\/\2:\3 status=\4 pipestatus=\5 command=\7/p' "$trace" |
+  /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) pipestatus=([0-9]+( [0-9]+)*) .*/\1\/\2:\3 status=\4 pipestatus=\5/p' "$trace" |
     /usr/bin/tail -n 120 >&2
   exit 1
 fi
