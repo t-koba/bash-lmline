@@ -64,6 +64,10 @@ remove the exact dump before the next `compinit` run (usually
 `$ZDOTDIR/.zcompdump`, or `$HOME/.zcompdump` when `ZDOTDIR` is unset; use the
 path passed with `-d` for a custom dump).
 
+Zsh completes from the end of a word by default. To complete at the cursor,
+set `COMPLETE_IN_WORD` in your zsh configuration (for example, run
+`setopt COMPLETE_IN_WORD`).
+
 Standalone CLI completions (optional; the init scripts already load them, so
 this only matters for shells that do not source the full integration):
 
