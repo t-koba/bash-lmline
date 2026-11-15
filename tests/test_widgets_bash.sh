@@ -126,17 +126,27 @@ else
     [[ -n $hash_path ]] && path_present=1 || path_present=0
     [[ -n $system_hash_path ]] && system_present=1 || system_present=0
     if [[ -n $hash_path && -n $system_hash_path ]]; then
-      if [[ $hash_path -ef $system_hash_path ]]; then path_system_same=1; else path_system_same=$?; fi
+      if [[ $hash_path -ef $system_hash_path ]]; then
+        path_system_same=1
+      else
+        comparison_status=$?
+        if (( comparison_status == 1 )); then path_system_same=0; else path_system_same=3; fi
+      fi
     else
       path_system_same=2
     fi
     if [[ -n $diagnostic_cached_path && -n $system_hash_path ]]; then
-      if [[ $diagnostic_cached_path -ef $system_hash_path ]]; then cached_system_same=1; else cached_system_same=$?; fi
+      if [[ $diagnostic_cached_path -ef $system_hash_path ]]; then
+        cached_system_same=1
+      else
+        comparison_status=$?
+        if (( comparison_status == 1 )); then cached_system_same=0; else cached_system_same=3; fi
+      fi
     else
       cached_system_same=2
     fi
     [[ $hash_function == 1 ]] && function_present=1 || function_present=0
-    printf 'stdin-hash-check: resolver status=%s cached=%s path=%s system=%s function=%s path-system-ef=%s cached-system-ef=%s\n' \
+    printf 'stdin-hash-check: resolver status=%s cached=%s path=%s system=%s function=%s path-system-same=%s cached-system-same=%s\n' \
       "$resolver_status" "$cached_present" "$path_present" "$system_present" \
       "$function_present" "$path_system_same" "$cached_system_same" >&2
   )
