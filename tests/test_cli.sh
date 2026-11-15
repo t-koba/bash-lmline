@@ -623,7 +623,8 @@ expect {
   timeout { error "Bash did not start the interactive completion test" }
   eof { error "Bash exited before the completion test" }
 }
-send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; }; bind -x '"\C-t":__lmline_capture'; __lmline_insert_utf8() { READLINE_LINE=$'lmline sandbox setup --name \xC3\xA9 --workspace wriXtable'; }; bind -x '"\C-y":__lmline_insert_utf8'}
+# Reset bind -x Readline state after capture so later prompts do not inherit test input.
+send -- {source "$REPO/lmline/completions/lmline.bash"; __lmline_capture() { printf '%s' "$READLINE_LINE" >"$OUT"; READLINE_LINE=; READLINE_POINT=0; }; bind -x '"\C-t":__lmline_capture'; __lmline_insert_utf8() { READLINE_LINE=$'lmline sandbox setup --name \xC3\xA9 --workspace wriXtable'; }; bind -x '"\C-y":__lmline_insert_utf8'}
 send -- "\r"
 expect {
   -exact {READY> } {}
