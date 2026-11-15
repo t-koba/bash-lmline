@@ -560,7 +560,6 @@ expect {
 send -- {lmline clip --provider customprovider}
 for {set i 0} {$i < 8} {incr i} { send -- "\033\[D" }
 send -- "\t"
-after 200
 send -- "\007"
 wait_for_file "$work/zsh-pty-buffer" "mid-word ZLE buffer capture"
 set midword_buffer [read_file "$work/zsh-pty-buffer.data"]
