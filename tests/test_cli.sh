@@ -686,6 +686,10 @@ EXPECT
   bash_provider_buffer=$(cat "$bash_pty_dir/first-buffer")
   [[ "$bash_provider_buffer" == 'lmline clip --provider custom\ providerXsuffix' ]] || \
     fail "bash mid-word completion preserves a spaced candidate and suffix"
+  if ! expect "$cfg_tmp/bash-pty-completion.exp" "$repo_dir" "$bash_pty_dir" C >"$cfg_tmp/bash-pty-completion-c.log" 2>&1; then
+    cat "$cfg_tmp/bash-pty-completion-c.log" >&2
+    fail "bash C-locale UTF-8 mid-word completion"
+  fi
 else
   printf 'skip - bash interactive mid-word completion (expect not found)\n'
 fi
