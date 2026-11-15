@@ -137,8 +137,8 @@ else
     else
       route=batch
     fi
-    printf 'hash-privacy-check: helper-selection context=%s tool=%s cached=%s selected=%s route=%s system=%s selected-system=%s cached-system=%s\n' \
-      "$context" "$tool" "$cached_visible" "$selected" "$route" \
+    printf 'hash-privacy-check: helper-selection context=%s tool=%s cached=%s selected=%s function=%s route=%s system=%s selected-system=%s cached-system=%s\n' \
+      "$context" "$tool" "$cached_visible" "$selected" "$hash_function" "$route" \
       "$system_visible" "$selected_system" "$cached_system"
   }
   for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do

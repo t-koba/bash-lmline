@@ -82,7 +82,13 @@ membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
 expected=$file_digest:$membership_digest
 : >"$TEST_LMLINE_HASH_ARG_LOG"
 : >"$TEST_LMLINE_HASH_STATUS_LOG"
-if ! actual=$(__lmline_suggested_commands_key </dev/null); then
+if actual=$(__lmline_suggested_commands_key </dev/null); then
+  :
+else
+  actual_status=$?
+  [[ -n $actual ]] && actual_present=1 || actual_present=0
+  printf 'stdin-hash-check: suggested-key status=%s digest-present=%s\n' \
+    "$actual_status" "$actual_present" >&2
   if [[ -s $TEST_LMLINE_HASH_ARG_LOG ]]; then
     while IFS= read -r arg_count; do printf 'hash wrapper argv-count=%s\n' "$arg_count" >&2; done <"$TEST_LMLINE_HASH_ARG_LOG"
   else
@@ -115,18 +121,18 @@ if ! actual=$(__lmline_suggested_commands_key </dev/null); then
       "$substitution_status" "$digest_present" >&2
   )
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
-  # only fixed function/line labels and numeric prior-command statuses; never
-  # print expanded command arguments or values.
+  # only function names, source basenames, line numbers and numeric prior
+  # command statuses; never print expanded command arguments or values.
   trace=$2/hash-key-trace
   (
     exec 9>"$trace"
     BASH_XTRACEFD=9
-    PS4='+${FUNCNAME[0]:-main}:${LINENO}: status=$? '
+    PS4='+${FUNCNAME[0]:-main}:${BASH_SOURCE[0]##*/}:${LINENO}: status=$? '
     set -x
     __lmline_suggested_commands_key </dev/null >/dev/null
   ) 2>/dev/null || :
-  printf 'stdin-hash-check: suggested-key trace (function:line)\n' >&2
-  /usr/bin/sed -En 's/^\+([^:]+):([0-9]+): status=([0-9]+) .*/\1:\2 status=\3/p' "$trace" |
+  printf 'stdin-hash-check: suggested-key trace (function/source:line)\n' >&2
+  /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) .*/\1\/\2:\3 status=\4/p' "$trace" |
     /usr/bin/tail -n 80 >&2
   exit 1
 fi
