@@ -47,6 +47,10 @@ source "$1/lmline/init.bash"
 LMLINE_SUGGESTED_COMMANDS_FILE=$HASH_TEST_DIR/list
 LMLINE_PROJECT_MARKERS_FILE=$HASH_TEST_DIR/list
 if [[ $2 == blocked ]]; then
+  # A caller printf must not hide residual function transport from the guard.
+  printf() { builtin printf 0; }
+  if __lmline_check_no_function_transport; then exit 1; fi
+  unset -f printf
   [[ -z $__LMLINE_SETTINGS_CKSUM && ! -e $HASH_TEST_DIR/calls ]]
   __LMLINE_SETTINGS_CKSUM=unchanged
   __lmline_reload_settings_if_changed "$LMLINE_CONFIG_DIR"

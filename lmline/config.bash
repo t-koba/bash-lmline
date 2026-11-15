@@ -30,7 +30,7 @@ __lmline_check_no_function_transport() (
           ;;
       esac
     done
-    printf '%s' "$found"
+    command builtin printf '%s' "$found"
   }) || exit 1
   [[ $found == 0 ]]
 )
