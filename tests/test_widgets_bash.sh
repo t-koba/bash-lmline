@@ -75,15 +75,21 @@ for helper in __lmline_collect_suggested_commands __lmline_hash_stdin; do
 done
 __lmline_collect_suggested_commands() {
   local diagnostic_status
-  __lmline_collect_suggested_commands_original "$@"
-  diagnostic_status=$?
+  if __lmline_collect_suggested_commands_original "$@"; then
+    diagnostic_status=0
+  else
+    diagnostic_status=$?
+  fi
   builtin printf '%s\n' "$diagnostic_status" >>"$TEST_LMLINE_COLLECT_STATUS_LOG"
   return "$diagnostic_status"
 }
 __lmline_hash_stdin() {
   local diagnostic_status
-  __lmline_hash_stdin_original "$@"
-  diagnostic_status=$?
+  if __lmline_hash_stdin_original "$@"; then
+    diagnostic_status=0
+  else
+    diagnostic_status=$?
+  fi
   builtin printf '%s\n' "$diagnostic_status" >>"$TEST_LMLINE_HASH_HELPER_STATUS_LOG"
   return "$diagnostic_status"
 }
@@ -228,7 +234,7 @@ else
   ) 2>/dev/null || :
   printf 'stdin-hash-check: suggested-key trace (function/source:line)\n' >&2
   /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) pipestatus=([0-9]+( [0-9]+)*) .*/\1\/\2:\3 status=\4 pipestatus=\5/p' "$trace" |
-    /usr/bin/tail -n 80 >&2
+    /usr/bin/tail -n 120 >&2
   exit 1
 fi
 [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
