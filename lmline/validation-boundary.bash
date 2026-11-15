@@ -80,26 +80,32 @@ __lmline_collect_exported_functions() (
     __lmline_collect_inherited_exported_functions || exit 1
     :
   else
+    # Use checked pipelines rather than process substitution: supported Bash
+    # 4.2 can treat the latter as a literal redirection operand in this
+    # POSIX-mode collector. The names-only output contains no function bodies.
+    set -o pipefail || exit 1
     (
       unset -f command || exit 1
-      while IFS= command builtin read -r declaration; do
-        name=${declaration##* }
-        [[ -n $name ]] || continue
-        # `declare -Fx` is Bash's trusted live-function inventory. Do not
-        # narrow it to identifier syntax: exported function names may contain
-        # punctuation such as `%` and `,`.
-        command builtin printf '%s\n' "$name"
-      done < <(command builtin declare -Fx)
+      command builtin declare -Fx |
+        while IFS= command builtin read -r declaration; do
+          name=${declaration##* }
+          [[ -n $name ]] || continue
+          # `declare -Fx` is Bash's trusted live-function inventory. Do not
+          # narrow it to identifier syntax: exported function names may contain
+          # punctuation such as `%` and `,`.
+          command builtin printf '%s\n' "$name"
+        done
     ) || exit 1
     (
       unset -f builtin || exit 1
       # Skip the second inventory when no live `command` function exists.
       # `-F` alone inspects names without changing the export attribute.
       if builtin declare -F command >/dev/null; then
-        while IFS= builtin read -r declaration; do
-          name=${declaration##* }
-          if [[ $name == command ]]; then builtin printf '%s\n' "$name"; fi
-        done < <(builtin declare -Fx)
+        builtin declare -Fx |
+          while IFS= builtin read -r declaration; do
+            name=${declaration##* }
+            if [[ $name == command ]]; then builtin printf '%s\n' "$name"; fi
+          done
       fi
     ) || exit 1
     :

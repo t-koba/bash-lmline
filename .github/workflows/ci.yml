@@ -116,6 +116,7 @@ jobs:
           export PATH="$prefix/bin:$PATH"
           [[ $(command -v bash) == "$bash42" ]]
           "$bash42" tests/test_cli_static.sh
+          "$bash42" tests/test_policy_boundary.sh
           "$bash42" tests/test_cli.sh
           "$bash42" tests/test_widgets_bash.sh
 
