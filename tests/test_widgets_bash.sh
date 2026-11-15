@@ -91,6 +91,20 @@ if ! actual=$(__lmline_suggested_commands_key </dev/null); then
   if [[ -s $TEST_LMLINE_HASH_STATUS_LOG ]]; then
     while IFS= read -r hash_status; do printf 'hash wrapper status=%s\n' "$hash_status" >&2; done <"$TEST_LMLINE_HASH_STATUS_LOG"
   fi
+  # Separate a list-producer failure from a hash-consumer failure using the
+  # same stdin-only custom tool; expose numeric statuses only.
+  (
+    set +e
+    set -o pipefail
+    unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE || :
+    diagnostic_hash=("$2/stdin-hash-bin/$3")
+    if [[ $TEST_LMLINE_HASH_MODE == shasum ]]; then diagnostic_hash+=(-a 256); fi
+    __lmline_collect_suggested_commands 2>/dev/null |
+      __lmline_hash_stdin "${diagnostic_hash[@]}" 2>/dev/null >/dev/null
+    pipeline_status=("${PIPESTATUS[@]}")
+    printf 'stdin-hash-check: membership pipeline status producer=%s hasher=%s\n' \
+      "${pipeline_status[0]:-unknown}" "${pipeline_status[1]:-unknown}" >&2
+  ) 2>/dev/null
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
   # only fixed function/line labels and numeric prior-command statuses; never
   # print expanded command arguments or values.
