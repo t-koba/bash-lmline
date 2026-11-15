@@ -99,6 +99,36 @@ else
   [[ -n $(__lmline_async_settings_key) ]]
   # Custom PATH executables retain the established stdin-only interface;
   # hash raw bytes and freshly collected membership separately, preserving NULs.
+  # On a cached-wrapper failure, classify the helper's private resolver choice
+  # without exposing any filesystem paths.
+  __lmline_test_hash_selection() (
+    local tool hash_path system_hash_path hash_function cached_hash_path cached_visible selected route
+    shopt -u expand_aliases || return 1
+    if command -v sha256sum >/dev/null 2>&1; then tool=sha256sum
+    elif command -v shasum >/dev/null 2>&1; then tool=shasum
+    else tool=cksum; fi
+    cached_hash_path=$(builtin hash -t "$tool" 2>/dev/null) || cached_hash_path=
+    __lmline_resolve_hash_tool "$tool"
+    [[ -n $cached_hash_path ]] && cached_visible=1 || cached_visible=0
+    if [[ -n $hash_path && -n $cached_hash_path && $hash_path -ef $cached_hash_path ]]; then
+      selected=cached
+    elif [[ -n $hash_path && -n $system_hash_path && $hash_path -ef $system_hash_path ]]; then
+      selected=system
+    elif [[ -n $hash_path ]]; then
+      selected=path
+    elif (( hash_function )); then
+      selected=function
+    else
+      selected=missing
+    fi
+    if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+      route=stdin
+    else
+      route=batch
+    fi
+    printf 'hash-privacy-check: helper-selection tool=%s cached=%s selected=%s route=%s\n' \
+      "$tool" "$cached_visible" "$selected" "$route"
+  )
   for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
     membership=$(printf 'printf\n' | "$real" "${args[@]}")
     if [[ $helper == __lmline_project_markers_key ]]; then
@@ -156,6 +186,7 @@ else
       if [[ $calls_for_key != 2 ]]; then
         printf 'hash-privacy-check: hash-calls tool=%s helper=%s mode=cached count=%s\n' \
           "$3" "$helper" "$calls_for_key" >&2
+        __lmline_test_hash_selection >&2 || printf 'hash-privacy-check: helper-selection unavailable\n' >&2
         hash_privacy_abort hash-call-count
       fi
     ) || hash_privacy_abort cached-helper-contract
