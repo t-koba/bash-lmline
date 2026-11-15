@@ -459,6 +459,7 @@ if command -v zsh >/dev/null 2>&1; then
   ' _ "$repo_dir" /tmp/lmline-zsh-complete.out || fail "zsh profile completion"
   if command -v expect >/dev/null 2>&1; then
     printf 'custom provider\tno-such-lmline-provider-command\n' >"$cfg_tmp/zsh-pty-providers.tsv"
+    printf 'custom-provider\tno-such-lmline-provider-command\n' >"$cfg_tmp/zsh-pty-midword-providers.tsv"
     # Keep the fixture private; compinit -i skips insecure runner/system
     # entries without trusting them.
     mkdir -m 700 "$cfg_tmp/zsh-completions"
@@ -483,6 +484,7 @@ proc read_file {path} {
 }
 spawn env TERM=xterm "REPO=$repo" "OUT=$work/zsh-pty-buffer" \
   "PROBE=$work/zsh-pty-probe" \
+  "MIDWORD_PROVIDER_FILE=$work/zsh-pty-midword-providers.tsv" \
   "LMLINE_CONFIG_DIR=$work/config" \
   "LMLINE_CLIPBOARD_PROVIDERS_FILE=$work/zsh-pty-providers.tsv" \
   "ZSH_COMPLETION_DIR=$work/zsh-completions" \
@@ -492,7 +494,7 @@ expect {
   timeout { error "initial Zsh line-editor activation timed out" }
   eof { error "Zsh exited before initial line-editor activation" }
 }
-send -- {autoload -Uz compinit; fpath=("$ZSH_COMPLETION_DIR" $fpath); compinit -i -D; [[ ${_comps[lmline]-} == _lmline ]] || { print -u2 -- "compinit did not discover the private _lmline fixture"; exit 1; }; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
+send -- {autoload -Uz compinit; fpath=("$ZSH_COMPLETION_DIR" $fpath); compinit -i -D; unsetopt COMPLETE_IN_WORD; [[ ${_comps[lmline]-} == _lmline ]] || { print -u2 -- "compinit did not discover the private _lmline fixture"; exit 1; }; PROMPT='READY> '; source "$REPO/lmline/init.zsh"; function __lmline_probe_buffer { print -r -- "$BUFFER" >"${PROBE}.data"; : >"$PROBE"; }; function __lmline_capture_buffer { print -r -- "$BUFFER" >"${OUT}.data"; : >"$OUT"; BUFFER=''; }; zle -N __lmline_probe_buffer; zle -N __lmline_capture_buffer; bindkey '^T' __lmline_probe_buffer; bindkey '^G' __lmline_capture_buffer}
 send -- "\r"
 expect {
   -re {READY> .*2004h} {}
@@ -519,6 +521,25 @@ expect {
 }
 send -- "\007"
 wait_for_file "$work/zsh-pty-buffer" "post-Tab ZLE buffer capture"
+file copy -force "$work/zsh-pty-buffer.data" "$work/zsh-pty-first-buffer.data"
+file delete -force "$work/zsh-pty-buffer" "$work/zsh-pty-buffer.data"
+send -- {setopt COMPLETE_IN_WORD; export LMLINE_CLIPBOARD_PROVIDERS_FILE="$MIDWORD_PROVIDER_FILE"}
+send -- "\r"
+expect {
+  -re {READY> .*2004h} {}
+  timeout { error "Zsh did not enable in-word completion" }
+  eof { error "Zsh exited before in-word completion" }
+}
+send -- {lmline clip --provider customprovider}
+for {set i 0} {$i < 8} {incr i} { send -- "\033\[D" }
+send -- "\t"
+after 200
+send -- "\007"
+wait_for_file "$work/zsh-pty-buffer" "mid-word ZLE buffer capture"
+set midword_buffer [read_file "$work/zsh-pty-buffer.data"]
+if {$midword_buffer ne "lmline clip --provider custom-provider "} {
+  error "unexpected Zsh mid-word completion buffer: <$midword_buffer>"
+}
 send -- "exit\r"
 expect {
   eof {}
@@ -529,10 +550,15 @@ EXPECT
       cat "$cfg_tmp/zsh-pty-completion.log" >&2
       fail "zsh interactive clipboard completion"
     fi
-    zsh_provider_buffer=$(cat "$cfg_tmp/zsh-pty-buffer.data")
+    zsh_provider_buffer=$(cat "$cfg_tmp/zsh-pty-first-buffer.data")
     if [[ "$zsh_provider_buffer" != 'lmline clip --provider custom\ provider ' ]]; then
       printf 'unexpected captured Zsh buffer: %q\n' "$zsh_provider_buffer" >&2
       fail "zsh interactive clipboard completion keeps one shell word"
+    fi
+    zsh_midword_provider_buffer=$(cat "$cfg_tmp/zsh-pty-buffer.data")
+    if [[ "$zsh_midword_provider_buffer" != 'lmline clip --provider custom-provider ' ]]; then
+      printf 'unexpected captured Zsh mid-word buffer: %q\n' "$zsh_midword_provider_buffer" >&2
+      fail "zsh COMPLETE_IN_WORD completion preserves the right suffix"
     fi
   else
     printf 'skip - zsh interactive clipboard completion (expect not found)\n'
