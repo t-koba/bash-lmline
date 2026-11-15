@@ -9,7 +9,7 @@ mkdir -p "$install_tmp/work" "$install_tmp/home"
 
 (
   cd "$install_tmp/work"
-  HOME="$install_tmp/home" LMLINE_CONFIG_DIR=config LMLINE_BIN_DIR=bin \
+  CDPATH=. HOME="$install_tmp/home" LMLINE_CONFIG_DIR=config LMLINE_BIN_DIR=bin \
     bash "$repo_dir/install.sh" >"$install_tmp/install.out"
 )
 
