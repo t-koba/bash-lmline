@@ -7,7 +7,7 @@ setopt interactivecomments
 typeset -g LMLINE_DIR=${0:A:h}
 typeset -g LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 
-if ! command -v bash >/dev/null 2>&1 || ! bash -c '(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 2) ))' 2>/dev/null; then
+if ! command -v bash >/dev/null 2>&1; then
   print -ru2 -- 'lmline: zsh integration requires bash 4.2 or newer for the bridge.'
   return 0
 fi
@@ -20,6 +20,7 @@ fi
 (( ${+__LMLINE_ZSH_BASELINE_SET} )) || typeset -g __LMLINE_ZSH_BASELINE_SET=0
 (( ${+__LMLINE_ZSH_BASELINE_KEYS} )) || typeset -g __LMLINE_ZSH_BASELINE_KEYS=
 (( ${+__LMLINE_ZSH_BRIDGE_KEYS} )) || typeset -g __LMLINE_ZSH_BRIDGE_KEYS=
+(( ${+__LMLINE_ZSH_BASH_BRIDGE_CHECKED} )) || typeset -g __LMLINE_ZSH_BASH_BRIDGE_CHECKED=0
 
 __lmline_zsh_key_in_list() {
   [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]
@@ -81,6 +82,15 @@ __lmline_zsh_load_all_config() {
         "${LMLINE_PROJECT_CONFIG:-0}" != 1 &&
         -z "${__LMLINE_ZSH_BRIDGE_KEYS-}" ]]; then
     return 0
+  fi
+  # Validate the bridge runtime only when config actually needs the Bash bridge.
+  if [[ "$__LMLINE_ZSH_BASH_BRIDGE_CHECKED" != 1 ]]; then
+    if ! command -v bash >/dev/null 2>&1 ||
+        ! bash -c '(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 2) ))' 2>/dev/null; then
+      print -ru2 -- 'lmline: zsh integration requires bash 4.2 or newer for the bridge.'
+      return 1
+    fi
+    __LMLINE_ZSH_BASH_BRIDGE_CHECKED=1
   fi
   old_keys=$__LMLINE_ZSH_BRIDGE_KEYS
   if __lmline_zsh_key_in_list "$__LMLINE_ZSH_BASELINE_KEYS" LMLINE_PROJECT_CONFIG; then

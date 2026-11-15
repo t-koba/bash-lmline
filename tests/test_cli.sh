@@ -368,6 +368,33 @@ PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
   printf "%s\n" "${COMPREPLY[@]}" | grep -q "^readonly$" || exit 1
 ' _ "$repo_dir" || fail "bash profile completion"
 if command -v zsh >/dev/null 2>&1; then
+  zsh_bash_bin="$cfg_tmp/zsh-bash-bin"
+  zsh_bash_log="$cfg_tmp/zsh-bash.log"
+  zsh_empty_config="$cfg_tmp/zsh-empty-config"
+  mkdir -p "$zsh_bash_bin" "$zsh_empty_config"
+  zsh_real_bash=$(command -v bash)
+  cat >"$zsh_bash_bin/bash" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$LMLINE_TEST_BASH_LOG"
+exec "$LMLINE_TEST_REAL_BASH" "$@"
+EOF
+  chmod +x "$zsh_bash_bin/bash"
+  PATH="$zsh_bash_bin:$PATH" LMLINE_CONFIG_DIR="$zsh_empty_config" \
+    LMLINE_PROJECT_CONFIG=0 LMLINE_TEST_BASH_LOG="$zsh_bash_log" \
+    LMLINE_TEST_REAL_BASH="$zsh_real_bash" zsh -fic '
+    source "$1/lmline/init.zsh"
+  ' _ "$repo_dir" || fail "zsh empty-config initialization"
+  [[ ! -s "$zsh_bash_log" ]] || fail "zsh empty-config initialization spawned Bash"
+  zsh_config_dir="$cfg_tmp/zsh-config"
+  zsh_config_bash_log="$cfg_tmp/zsh-config-bash.log"
+  mkdir -p "$zsh_config_dir"
+  : >"$zsh_config_dir/settings.bash"
+  PATH="$zsh_bash_bin:$PATH" LMLINE_CONFIG_DIR="$zsh_config_dir" \
+    LMLINE_PROJECT_CONFIG=0 LMLINE_TEST_BASH_LOG="$zsh_config_bash_log" \
+    LMLINE_TEST_REAL_BASH="$zsh_real_bash" zsh -fic '
+    source "$1/lmline/init.zsh"
+  ' _ "$repo_dir" || fail "zsh configured initialization"
+  grep -q 'BASH_VERSINFO' "$zsh_config_bash_log" || fail "zsh config bridge skipped Bash version check"
   PATH="$repo_dir/lmline:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" \
     LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" zsh -fic '
     source "$1/lmline/init.zsh"
