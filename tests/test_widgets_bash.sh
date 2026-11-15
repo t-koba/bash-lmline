@@ -49,6 +49,7 @@ EOF
 chmod +x "$widget_tmp/stdin-hash-bin/$test_hash_name"
 cat >"$widget_tmp/stdin-hash-check.bash" <<'CHECK'
 set -e
+trap 'printf "stdin-hash-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
 source "$1/lmline/init.bash"
 export PATH="$2/stdin-hash-bin:$PATH"
 [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
