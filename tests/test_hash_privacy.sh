@@ -37,6 +37,7 @@ ln -s "$hash_tmp/record-hash" "$hash_tmp/bin/cksum"
 cat >"$hash_tmp/check.bash" <<'CHECK'
 set -e
 trap 'printf "hash-privacy-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
+hash_privacy_abort() { printf 'hash-privacy-check: assertion %s\n' "$1" >&2; exit 1; }
 # A same-name live function must not disguise protected inherited transport.
 foo() { :; }
 if [[ $2 == ordinary ]]; then
@@ -50,7 +51,7 @@ LMLINE_PROJECT_MARKERS_FILE=$HASH_TEST_DIR/list
 if [[ $2 == blocked ]]; then
   # A caller printf must not hide residual function transport from the guard.
   printf() { builtin printf 0; }
-  if __lmline_check_no_function_transport; then exit 1; fi
+  if __lmline_check_no_function_transport; then hash_privacy_abort protected-transport-guard; fi
   unset -f printf
   [[ -z $__LMLINE_SETTINGS_CKSUM && ! -e $HASH_TEST_DIR/calls ]]
   __LMLINE_SETTINGS_CKSUM=unchanged
@@ -59,7 +60,7 @@ if [[ $2 == blocked ]]; then
   for helper in __lmline_settings_cksum __lmline_sandbox_hash \
       __lmline_async_settings_key __lmline_async_frontend_key __lmline_hash_stdin \
       __lmline_suggested_commands_key __lmline_project_markers_key; do
-    if "$helper" generate <"$LMLINE_CONFIG_DIR/settings.bash"; then exit 1; fi
+    if "$helper" generate <"$LMLINE_CONFIG_DIR/settings.bash"; then hash_privacy_abort blocked-helper-guard; fi
     [[ ! -e $HASH_TEST_DIR/calls ]]
   done
 else
@@ -102,17 +103,17 @@ else
       expected=$("$real" "${args[@]}" <"$LMLINE_SUGGESTED_COMMANDS_FILE")
       : >"$HASH_TEST_DIR/calls"
       key=$("$helper")
-      [[ $key == "${expected%% *}:$membership" && $key != "$previous" ]]
+      [[ $key == "${expected%% *}:$membership" && $key != "$previous" ]] || hash_privacy_abort helper-digest
       calls_for_key=0
       while IFS= read -r call; do
         if [[ $3 == shasum ]]; then
-          [[ $call == 'shasum -a 256' ]] || exit 1
+          [[ $call == 'shasum -a 256' ]] || hash_privacy_abort shasum-call-contract
         else
-          [[ $call == "$3 " ]] || exit 1
+          [[ $call == "$3 " ]] || hash_privacy_abort hash-tool-call-contract
         fi
         calls_for_key=$((calls_for_key + 1))
       done <"$HASH_TEST_DIR/calls"
-      [[ $calls_for_key == 2 ]]
+      [[ $calls_for_key == 2 ]] || hash_privacy_abort hash-call-count
       previous=$key
     done
     # A cached wrapper wins even when PATH names the real system executable.
@@ -124,21 +125,21 @@ else
       hash -p "$real" unrelated_cached_command
       cache_before=$(builtin hash -l)
       : >"$HASH_TEST_DIR/calls"
-      "$helper" >"$HASH_TEST_DIR/cached-key" || exit 1
+      "$helper" >"$HASH_TEST_DIR/cached-key" || hash_privacy_abort cached-helper-status
       key=$(<"$HASH_TEST_DIR/cached-key")
-      [[ $key == "${expected%% *}:$membership" ]] || exit 1
-      [[ $(builtin hash -l) == "$cache_before" ]] || exit 1
+      [[ $key == "${expected%% *}:$membership" ]] || hash_privacy_abort cached-key-digest
+      [[ $(builtin hash -l) == "$cache_before" ]] || hash_privacy_abort cached-command-cache
       calls_for_key=0
       while IFS= read -r call; do
         if [[ $3 == shasum ]]; then
-          [[ $call == 'shasum -a 256' ]] || exit 1
+          [[ $call == 'shasum -a 256' ]] || hash_privacy_abort shasum-call-contract
         else
-          [[ $call == "$3 " ]] || exit 1
+          [[ $call == "$3 " ]] || hash_privacy_abort hash-tool-call-contract
         fi
         calls_for_key=$((calls_for_key + 1))
       done <"$HASH_TEST_DIR/calls"
-      [[ $calls_for_key == 2 ]]
-    ) || exit 1
+      [[ $calls_for_key == 2 ]] || hash_privacy_abort hash-call-count
+    ) || hash_privacy_abort cached-helper-contract
     # An stdin-based shell-function hasher retains the former two-call contract.
     if [[ $3 == sha256sum ]]; then
       ( PATH="$PATH:/bin:/usr/bin"; export PATH
@@ -152,10 +153,10 @@ else
           membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
         fi
         [[ $("$helper") == "$file_digest:$membership_digest" ]]
-      ) || exit 1
+      ) || hash_privacy_abort stdin-function-hasher-contract
     fi
     for failure in fail empty partial; do
-      if HASH_TEST_FAILURE=$failure "$helper" >/dev/null 2>&1; then exit 1; fi
+      if HASH_TEST_FAILURE=$failure "$helper" >/dev/null 2>&1; then hash_privacy_abort failure-status-contract; fi
     done
   done
   # A shell-local tool override still wins; all changes remain private.

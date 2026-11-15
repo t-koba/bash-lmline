@@ -76,7 +76,22 @@ printf 'echo from custom stdin hasher\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
 file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
 membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
 expected=$file_digest:$membership_digest
-actual=$(__lmline_suggested_commands_key </dev/null)
+if ! actual=$(__lmline_suggested_commands_key </dev/null); then
+  # On the pinned Bash 4.2 job, keep a failing child trace local and expose
+  # only fixed function/line labels; never print expanded command arguments.
+  trace=$HASH_TEST_DIR/hash-key-trace
+  (
+    exec 9>"$trace"
+    BASH_XTRACEFD=9
+    PS4='+${FUNCNAME[0]:-main}:${LINENO}: '
+    set -x
+    __lmline_suggested_commands_key </dev/null >/dev/null
+  ) 2>/dev/null || :
+  printf 'stdin-hash-check: suggested-key trace (function:line)\n' >&2
+  /usr/bin/sed -En 's/^\+([^:]+):([0-9]+):.*/\1:\2/p' "$trace" |
+    /usr/bin/tail -n 25 >&2
+  exit 1
+fi
 [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
 [[ $(builtin hash -t "$3") == "$cached_hash" ]]
 [[ -s "$TEST_LMLINE_HASH_ARG_LOG" ]]
