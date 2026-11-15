@@ -132,7 +132,9 @@ __lmline_suggested_commands_key() (
   # executable as an independent default system-tool search; wrappers may ignore filename
   # args and read caller stdin instead. Clear cached overrides only for that
   # lookup, not for the command we will actually invoke.
-  hash_path=$(builtin command -v "${hash_command[0]}" 2>/dev/null) || hash_path=
+  # Resolve from PATH rather than Bash's command hash table: custom PATH entries
+  # must not be mistaken for the system hasher on older supported Bash versions.
+  hash_path=$(builtin type -P "${hash_command[0]}" 2>/dev/null) || hash_path=
   system_hash_path=$(builtin hash -r && builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
   if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
       [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
@@ -954,7 +956,9 @@ __lmline_project_markers_key() (
   fi
   # As with suggested commands, only a verified system tool accepts descriptor
   # arguments. Custom executables/functions keep the two stdin-only hashes.
-  hash_path=$(builtin command -v "${hash_command[0]}" 2>/dev/null) || hash_path=
+  # Resolve from PATH rather than Bash's command hash table: custom PATH entries
+  # must not be mistaken for the system hasher on older supported Bash versions.
+  hash_path=$(builtin type -P "${hash_command[0]}" 2>/dev/null) || hash_path=
   system_hash_path=$(builtin hash -r && builtin command -p -v "${hash_command[0]}" 2>/dev/null) || system_hash_path=
   if builtin declare -F "${hash_command[0]}" >/dev/null 2>&1 ||
       [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
