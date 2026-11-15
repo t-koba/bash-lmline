@@ -36,6 +36,7 @@ for tool in bash awk sort cut; do ln -s "$(command -v "$tool")" "$hash_tmp/bin/$
 ln -s "$hash_tmp/record-hash" "$hash_tmp/bin/cksum"
 cat >"$hash_tmp/check.bash" <<'CHECK'
 set -e
+trap 'printf "hash-privacy-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
 # A same-name live function must not disguise protected inherited transport.
 foo() { :; }
 if [[ $2 == ordinary ]]; then
