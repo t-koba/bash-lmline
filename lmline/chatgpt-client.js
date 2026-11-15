@@ -234,89 +234,81 @@ function saveCredentials(credential) {
   try { fs.chmodSync(credentialsFile, 0o600); } catch (_) {}
 }
 
-// The refresh token rotates: the provider invalidates it after the first
-// use. Two processes must not use the same one, so a refresh runs under a
-// lock and re-reads the credential inside it.
-const LOCK_STALE_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_STALE_MS, 60000);
-// The wait budget must outlive the stale threshold, otherwise a waiter gives
-// up before it can reclaim a lock that its holder left behind.
-const LOCK_WAIT_MS = Math.max(
-  positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000),
-  LOCK_STALE_MS + 30000
-);
-// The heartbeat keeps a live lock fresh; it must be well inside the stale
-// threshold, so a slow holder is never mistaken for a dead one.
-const LOCK_HEARTBEAT_MS = Math.min(30000, Math.max(50, Math.floor(LOCK_STALE_MS / 20)));
-
-function credentialLockPath() {
-  return path.join(path.dirname(credentialsFile), 'credentials.lock');
-}
+// Credential commands share a persistent file, never a pathname lease. Only
+// the kernel decides when a holder has gone away; the file is never unlinked.
+const LOCK_WAIT_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000);
+const LOCK_BUSY = 'another lmline ChatGPT credential command is in progress; try again in a moment';
+const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
 
 async function withCredentialLock(action) {
-  const file = credentialLockPath();
+  const file = path.join(path.dirname(credentialsFile), 'credentials.lock');
   ensureDirectory(path.dirname(file));
-  const deadline = Date.now() + LOCK_WAIT_MS;
-  let handle = null;
-  for (;;) {
-    try {
-      handle = fs.openSync(file, 'wx', 0o600);
-      break;
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      try {
-        const stat = fs.statSync(file);
-        // A lock left behind by a killed process must not block forever.
-        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) fs.unlinkSync(file);
-      } catch (_) { /* the lock is gone */ }
-      if (Date.now() > deadline) {
-        fail('another lmline ChatGPT token command is in progress; try again in a moment');
-      }
-      await sleep(100);
-    }
-  }
-  // A live holder keeps the lock fresh, so a slow refresh is never mistaken
-  // for a lock left behind by a killed process.
-  const heartbeat = setInterval(() => {
-    try { fs.utimesSync(file, new Date(), new Date()); } catch (_) {}
-  }, LOCK_HEARTBEAT_MS);
-  if (typeof heartbeat.unref === 'function') heartbeat.unref();
-  // A signal ends the process without running the exit handler, so the
-  // signals that end a command release the lock themselves.
-  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
-  // The conventional exit code of each signal, so a caller sees why the
-  // command ended.
-  const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
+  let fd;
+  let helper;
   const handlers = {};
-  let released = false;
   const release = () => {
-    if (released) return;
-    released = true;
-    clearInterval(heartbeat);
-    try { fs.closeSync(handle); } catch (_) {}
-    try { fs.unlinkSync(file); } catch (_) {}
-    for (const signal of signals) {
-      try { process.removeListener(signal, handlers[signal]); } catch (_) {}
-    }
-    try { process.removeListener('exit', release); } catch (_) {}
+    // A helper still waiting for acquisition must not outlive this command.
+    if (helper) helper.kill();
+    helper = undefined;
+    if (fd !== undefined) fs.closeSync(fd);
+    fd = undefined;
+    for (const signal of Object.keys(handlers)) process.removeListener(signal, handlers[signal]);
+    process.removeListener('exit', release);
   };
-  for (const signal of signals) {
-    handlers[signal] = () => {
-      release();
-      process.exit(signalExitCodes[signal] || 143);
-    };
+  for (const signal of Object.keys(signalExitCodes)) {
+    handlers[signal] = () => { release(); process.exit(signalExitCodes[signal]); };
     process.on(signal, handlers[signal]);
   }
-  // A process that exits inside the lock must not leave the lock behind.
   process.on('exit', release);
   try {
-    const result = await action();
-    process.removeListener('exit', release);
+    const { O_CREAT, O_RDWR, O_NONBLOCK } = fs.constants;
+    if (process.platform === 'linux') {
+      fd = fs.openSync(file, O_CREAT | O_RDWR, 0o600);
+      fs.fchmodSync(fd, 0o600);
+      // fd 3 shares the parent's open file description. Once flock exits,
+      // the parent's fd alone holds the lock until release closes it.
+      await new Promise((resolve, reject) => {
+        helper = spawn('flock', ['-x', '-w', String(LOCK_WAIT_MS / 1000), '-E', '75', '3'], {
+          stdio: ['ignore', 'ignore', 'ignore', fd]
+        });
+        helper.once('error', () => {
+          helper = undefined;
+          reject(new Error('credential locking requires util-linux flock'));
+        });
+        helper.once('exit', code => {
+          helper = undefined;
+          if (code === 0) resolve();
+          else reject(new Error(code === 75 ? LOCK_BUSY : 'cannot acquire the OS credential lock'));
+        });
+      });
+    } else {
+      // Node does not expose O_EXLOCK on every BSD build. This is the native
+      // open(2) ABI value on these systems, not a file-age or PID fallback.
+      const O_EXLOCK = fs.constants.O_EXLOCK ?? (
+        ['darwin', 'freebsd', 'openbsd', 'netbsd'].includes(process.platform) ? 0x20 : undefined
+      );
+      if (typeof O_EXLOCK !== 'number' || typeof O_NONBLOCK !== 'number') {
+        throw new Error('credential locking requires OS support for O_EXLOCK and O_NONBLOCK');
+      }
+      const deadline = Date.now() + LOCK_WAIT_MS;
+      for (;;) {
+        try {
+          fd = fs.openSync(file, O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK, 0o600);
+          break;
+        } catch (error) {
+          if (!['EWOULDBLOCK', 'EAGAIN'].includes(error.code)) {
+            throw new Error(`cannot acquire the OS credential lock: ${error.code || 'unavailable'}`);
+          }
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) throw new Error(LOCK_BUSY);
+          await sleep(Math.min(100, remaining));
+        }
+      }
+      fs.fchmodSync(fd, 0o600);
+    }
+    return await action();
+  } finally {
     release();
-    return result;
-  } catch (error) {
-    process.removeListener('exit', release);
-    release();
-    throw error;
   }
 }
 
@@ -605,11 +597,7 @@ async function cmdLogin(options) {
     plan_usage: scopes.includes(PLAN_SCOPE),
     account: String(claims.email || claims.sub || '')
   };
-  // The sign-in writes under the same lock as the refresh, so an overlapping
-  // refresh cannot overwrite a fresh sign-in.
-  await withCredentialLock(async () => {
-    saveCredentials(credential);
-  });
+  await withCredentialLock(async () => saveCredentials(credential));
   printCredentialState(credential, 'ok');
   out(`registration=${pendingClientId ? 'reused' : 'created'}`);
 }

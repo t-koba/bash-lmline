@@ -1304,6 +1304,21 @@ a stale `.lmline.lock` directory manually under the configured config directory.
 disables locking for filesystems where `mkdir` atomicity is unreliable
 (some NFS mounts).
 
+ChatGPT credential commands (`login`, `reauth`, `refresh`, `logout`, `token`)
+use an OS-held exclusive lock. Refresh, logout and token commands lock their
+credential reads, use and writes; login and reauthorization lock only the final
+credential save, not the browser callback. Status remains unlocked. Linux uses
+util-linux `flock` to acquire a lock on an inherited file descriptor that Node
+keeps open for the critical section; macOS/BSD uses `open(2)` with
+`O_EXLOCK | O_NONBLOCK`. If the required primitive is
+unavailable, the command fails rather than proceeding unlocked. The private
+`credentials.lock` file beside the credential file stays on disk with mode
+0600: its age never permits another command to enter. The kernel releases the
+lock when its holder exits, including after a crash or forced termination.
+Do not remove or replace this file while commands may be running.
+`LMLINE_CHATGPT_LOCK_WAIT_MS` bounds acquisition only, not command duration;
+there is no stale-lock threshold or heartbeat.
+
 ## Debugging
 
 ```bash
@@ -1368,8 +1383,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_ALLOW_INSECURE_HTTP` | `0` | allow API-key route requests (including prompt context and any credentials) over explicit `http://` only when exactly `1`; otherwise explicit `https://` is required; use only for trusted endpoints |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
 | `LMLINE_CHATGPT_CLIENT` | installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
-| `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | milliseconds a ChatGPT command waits for the credential lock; it is raised to the stale threshold plus 30 s when that is larger, so a waiter can always reclaim an abandoned lock |
-| `LMLINE_CHATGPT_LOCK_STALE_MS` | `60000` | milliseconds before an abandoned ChatGPT credential lock is reclaimed; the wait budget is raised to at least this value plus 30 s, so a waiter can always reclaim it |
+| `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | maximum milliseconds a ChatGPT command waits to acquire the OS-held credential lock |
 | `LMLINE_CHATGPT_CREDENTIALS_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/credentials.json` | credential file the ChatGPT client reads and writes |
 | `LMLINE_CHATGPT_HOST_ID_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/host-id` | host identifier file the ChatGPT client reads and writes |
 | `LMLINE_CHATGPT_AUTH_URL` | `https://auth.openai.com` | authorization endpoint of the ChatGPT sign-in |

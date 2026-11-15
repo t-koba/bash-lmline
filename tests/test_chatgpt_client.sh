@@ -6,12 +6,17 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 chatgpt_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-chatgpt-test.XXXXXX")
 chatgpt_mock_pid=""
+lock_holder_pid=""
 mock_base=""
 credentials_file="$chatgpt_tmp/credentials.json"
 host_id_file="$chatgpt_tmp/host-id"
 browser_script="$chatgpt_tmp/browser.sh"
 
 cleanup() {
+  if [[ -n "$lock_holder_pid" ]]; then
+    kill -KILL "$lock_holder_pid" 2>/dev/null || true
+    wait "$lock_holder_pid" 2>/dev/null || true
+  fi
   stop_mock
   rm -rf "$chatgpt_tmp"
 }
@@ -292,28 +297,26 @@ concurrent_token_2=$(sed -n '1p' "$chatgpt_tmp/concurrent-2.out")
 [[ "$concurrent_token_1" == "$concurrent_token_2" ]] || fail "the concurrent token commands disagree"
 ok "ChatGPT serializes concurrent token refreshes"
 
-# 15. A live lock is never treated as stale: the second token command waits
-# for the first one instead of refreshing the rotated token itself.
-credentials_file="$chatgpt_tmp/credentials-heartbeat.json"
-start_mock "rotate_refresh" "$chatgpt_tmp/mock-heartbeat.log" 2000
+# 15. A slow holder keeps the lock until the command ends: the second token
+# command reuses its stored token instead of refreshing the rotated token.
+credentials_file="$chatgpt_tmp/credentials-slow-lock.json"
+start_mock "rotate_refresh" "$chatgpt_tmp/mock-slow-lock.log" 2000
 client login >/dev/null 2>&1 || fail "ChatGPT login before the live lock test"
 expire_credential "$credentials_file"
-export LMLINE_CHATGPT_LOCK_STALE_MS=1000
-client token >"$chatgpt_tmp/heartbeat-1.out" 2>"$chatgpt_tmp/heartbeat-1.err" &
-heartbeat_pid_1=$!
-sleep 1.2
-client token >"$chatgpt_tmp/heartbeat-2.out" 2>"$chatgpt_tmp/heartbeat-2.err" &
-heartbeat_pid_2=$!
-heartbeat_rc_1=0
-heartbeat_rc_2=0
-wait "$heartbeat_pid_1" || heartbeat_rc_1=$?
-wait "$heartbeat_pid_2" || heartbeat_rc_2=$?
-unset LMLINE_CHATGPT_LOCK_STALE_MS
-[[ "$heartbeat_rc_1" == 0 ]] || fail "the first live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/heartbeat-1.err")"
-[[ "$heartbeat_rc_2" == 0 ]] || fail "the second live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/heartbeat-2.err")"
-[[ "$(sed -n '1p' "$chatgpt_tmp/heartbeat-1.out")" == "$(sed -n '1p' "$chatgpt_tmp/heartbeat-2.out")" ]] \
+client token >"$chatgpt_tmp/slow-lock-1.out" 2>"$chatgpt_tmp/slow-lock-1.err" &
+slow_lock_pid_1=$!
+wait_for_refresh_request "$chatgpt_tmp/mock-slow-lock.log"
+client token >"$chatgpt_tmp/slow-lock-2.out" 2>"$chatgpt_tmp/slow-lock-2.err" &
+slow_lock_pid_2=$!
+slow_lock_rc_1=0
+slow_lock_rc_2=0
+wait "$slow_lock_pid_1" || slow_lock_rc_1=$?
+wait "$slow_lock_pid_2" || slow_lock_rc_2=$?
+[[ "$slow_lock_rc_1" == 0 ]] || fail "the first live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/slow-lock-1.err")"
+[[ "$slow_lock_rc_2" == 0 ]] || fail "the second live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/slow-lock-2.err")"
+[[ "$(sed -n '1p' "$chatgpt_tmp/slow-lock-1.out")" == "$(sed -n '1p' "$chatgpt_tmp/slow-lock-2.out")" ]] \
   || fail "the live-lock token commands disagree"
-ok "ChatGPT keeps a live lock fresh"
+ok "ChatGPT holds the credential lock throughout a slow refresh"
 
 # 16. A logout that overlaps a refresh leaves the session signed out.
 credentials_file="$chatgpt_tmp/credentials-logout-race.json"
@@ -354,7 +357,7 @@ start_mock "rotate_refresh" "$chatgpt_tmp/mock-signalled.log" 3000
 client login >/dev/null 2>&1 || fail "ChatGPT login before the signalled lock test"
 expire_credential "$credentials_file"
 lock_file="$chatgpt_tmp/credentials.lock"
-for signal_case in "INT 130" "HUP 129"; do
+for signal_case in "INT 130" "HUP 129" "TERM 143"; do
   signal_name=${signal_case%% *}
   expected_status=${signal_case##* }
   refreshes_before=$(grep -c '^token_grant_type=refresh_token$' "$chatgpt_tmp/mock-signalled.log" || true)
@@ -384,27 +387,100 @@ for signal_case in "INT 130" "HUP 129"; do
   wait "$signalled_pid" 2>/dev/null || signalled_status=$?
   [[ "$signalled_status" == "$expected_status" ]] \
     || fail "a $signal_name signalled command reports the wrong exit status: $signalled_status"
-  [[ ! -e "$lock_file" ]] || fail "a signalled command left the credential lock behind"
+  [[ -f "$lock_file" && "$(file_mode "$lock_file")" == 600 ]] \
+    || fail "a signalled command removed or exposed the persistent lock file"
+  LMLINE_CHATGPT_LOCK_WAIT_MS=500 client token \
+    >"$chatgpt_tmp/signalled-2.out" 2>"$chatgpt_tmp/signalled-2.err" \
+    || fail "the command after $signal_name cannot acquire the lock: $(sed -n '1p' "$chatgpt_tmp/signalled-2.err")"
+  expire_credential "$credentials_file"
 done
-client token >"$chatgpt_tmp/signalled-2.out" 2>"$chatgpt_tmp/signalled-2.err" \
-  || fail "the command after a signalled one fails: $(sed -n '1p' "$chatgpt_tmp/signalled-2.err")"
 ok "ChatGPT releases the credential lock when the command is signalled"
 
-# 19. A lock that a dead holder left behind is reclaimed: the wait budget
-# outlives the stale threshold, so the waiter can remove it itself.
-credentials_file="$chatgpt_tmp/credentials-reclaim.json"
-start_mock "" "$chatgpt_tmp/mock-reclaim.log"
-client login >/dev/null 2>&1 || fail "ChatGPT login before the reclaim test"
+# 19. A kernel lock cannot be stolen by aging its file. This synthetic holder
+# needs no auth server; killing it releases the lock without deleting the file.
+stop_mock
+credentials_file="$chatgpt_tmp/credentials-kernel-lock.json"
+node - "$credentials_file" <<'CREDENTIAL'
+const fs = require('fs');
+fs.writeFileSync(process.argv[2], JSON.stringify({
+  access_token: 'synthetic-kernel-lock-token',
+  expires_at: Math.floor(Date.now() / 1000) + 3600,
+  scopes: ['chatgpt.tokens.use.direct']
+}), { mode: 0o600 });
+CREDENTIAL
 lock_file="$chatgpt_tmp/credentials.lock"
-: >"$lock_file"
+cat >"$chatgpt_tmp/lock-holder.js" <<'HOLDER'
+const fs = require('fs');
+const [file, ready] = process.argv.slice(2);
+if (process.platform !== 'linux') {
+  const { O_CREAT, O_RDWR, O_NONBLOCK } = fs.constants;
+  const O_EXLOCK = fs.constants.O_EXLOCK ?? 0x20; // BSD open(2) ABI
+  const fd = fs.openSync(file, O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK, 0o600);
+  fs.fchmodSync(fd, 0o600);
+}
+// Readiness is published only after the kernel has granted the lock.
+fs.writeFileSync(ready, String(fs.statSync(file).ino));
+setInterval(() => {}, 1000);
+HOLDER
+if [[ "$(node -p 'process.platform')" == linux ]]; then
+  flock -F "$lock_file" node "$chatgpt_tmp/lock-holder.js" "$lock_file" "$chatgpt_tmp/lock.ready" &
+else
+  node "$chatgpt_tmp/lock-holder.js" "$lock_file" "$chatgpt_tmp/lock.ready" &
+fi
+lock_holder_pid=$!
+for ((attempt = 0; attempt < 200; attempt++)); do
+  [[ -s "$chatgpt_tmp/lock.ready" ]] && break
+  kill -0 "$lock_holder_pid" 2>/dev/null || fail "the synthetic lock holder exited early"
+  sleep 0.05
+done
+[[ -s "$chatgpt_tmp/lock.ready" ]] || fail "the synthetic holder did not acquire the lock"
 touch -t 200001010000 "$lock_file"
-export LMLINE_CHATGPT_LOCK_STALE_MS=1000
-export LMLINE_CHATGPT_LOCK_WAIT_MS=500
-client token >"$chatgpt_tmp/reclaim.out" 2>"$chatgpt_tmp/reclaim.err" \
-  || fail "the command does not reclaim an abandoned lock: $(sed -n '1p' "$chatgpt_tmp/reclaim.err")"
-unset LMLINE_CHATGPT_LOCK_STALE_MS LMLINE_CHATGPT_LOCK_WAIT_MS
-[[ ! -e "$lock_file" ]] || fail "the reclaimed lock is still on disk"
-ok "ChatGPT reclaims an abandoned credential lock"
+LMLINE_CHATGPT_LOCK_WAIT_MS=750 client token \
+  >"$chatgpt_tmp/kernel-blocked-1.out" 2>"$chatgpt_tmp/kernel-blocked-1.err" &
+kernel_waiter_1=$!
+LMLINE_CHATGPT_LOCK_WAIT_MS=750 client token \
+  >"$chatgpt_tmp/kernel-blocked-2.out" 2>"$chatgpt_tmp/kernel-blocked-2.err" &
+kernel_waiter_2=$!
+kernel_waiter_status_1=0
+kernel_waiter_status_2=0
+wait "$kernel_waiter_1" || kernel_waiter_status_1=$?
+wait "$kernel_waiter_2" || kernel_waiter_status_2=$?
+[[ "$kernel_waiter_status_1" == 1 && "$kernel_waiter_status_2" == 1 ]] \
+  || fail "competing waiters must both time out, got $kernel_waiter_status_1 and $kernel_waiter_status_2"
+for waiter in 1 2; do
+  grep -q 'another lmline ChatGPT credential command is in progress' "$chatgpt_tmp/kernel-blocked-$waiter.err" \
+    || fail "competing waiter $waiter did not report contention"
+  [[ ! -s "$chatgpt_tmp/kernel-blocked-$waiter.out" ]] \
+    || fail "competing waiter $waiter printed a token"
+done
+kill -0 "$lock_holder_pid" 2>/dev/null || fail "the lock holder died before the contention check"
+kill -KILL "$lock_holder_pid"
+wait "$lock_holder_pid" 2>/dev/null || true
+lock_holder_pid=""
+LMLINE_CHATGPT_LOCK_WAIT_MS=250 client token \
+  >"$chatgpt_tmp/kernel-released.out" 2>"$chatgpt_tmp/kernel-released.err" \
+  || fail "the command cannot immediately acquire an abandoned kernel lock"
+[[ "$(cat "$chatgpt_tmp/kernel-released.out")" == synthetic-kernel-lock-token ]] \
+  || fail "the command after a killed holder did not run exactly once"
+[[ "$(node -e 'console.log(require("fs").statSync(process.argv[1]).ino)' "$lock_file")" == "$(cat "$chatgpt_tmp/lock.ready")" ]] \
+  || fail "a waiter replaced the persistent lock file"
+[[ "$(file_mode "$lock_file")" == 600 ]] || fail "the persistent lock file is not private"
+ok "ChatGPT respects an ancient kernel lock and acquires it as soon as its holder dies"
+
+# An unavailable primitive must never silently run the token command unlocked.
+if [[ "$(node -p 'process.platform')" == linux ]]; then
+  node_executable=$(command -v node)
+  mkdir "$chatgpt_tmp/no-flock"
+  if env PATH="$chatgpt_tmp/no-flock" LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
+    "$node_executable" "$repo_dir/lmline/chatgpt-client.js" token \
+    >"$chatgpt_tmp/no-flock.out" 2>"$chatgpt_tmp/no-flock.err"; then
+    fail "the token command ran without flock"
+  fi
+  grep -q 'credential locking requires util-linux flock' "$chatgpt_tmp/no-flock.err" \
+    || fail "an unavailable flock has no actionable diagnostic"
+  [[ ! -s "$chatgpt_tmp/no-flock.out" ]] || fail "a command without flock printed a token"
+  ok "ChatGPT fails closed when flock is unavailable"
+fi
 
 # 20. A sign-in that overlaps a refresh is not overwritten by it.
 credentials_file="$chatgpt_tmp/credentials-signin-race.json"
