@@ -65,23 +65,23 @@ set -e
 trap 'printf "stdin-hash-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
 source "$1/lmline/init.bash"
 __lmline_test_trace_helper_call() {
-  local helper_class=$1 helper_name=$2 helper_status=0
+  local helper_class=$1 helper_name=$2 helper_status=0 trace_file=$__lmline_test_trace_file
   shift 2
   "$helper_name" "$@" || helper_status=$?
-  printf 'helper-call class=%s status=%s\n' "$helper_class" "$helper_status" >&2
+  printf 'helper-call class=%s status=%s\n' "$helper_class" "$helper_status" >>"$trace_file"
   return "$helper_status"
 }
 __lmline_test_trace_producer_failure() { return 2; }
 __lmline_test_trace_hasher_failure() { return 3; }
-: >"$2/helper-status-probe"
-if __lmline_test_trace_helper_call producer __lmline_test_trace_producer_failure \
-    2>>"$2/helper-status-probe"; then
+trace_file=$2/helper-status-probe
+: >"$trace_file"
+__lmline_test_trace_file=$trace_file
+if __lmline_test_trace_helper_call producer __lmline_test_trace_producer_failure 2>/dev/null; then
   trace_producer_status=0
 else
   trace_producer_status=$?
 fi
-if __lmline_test_trace_helper_call hasher __lmline_test_trace_hasher_failure \
-    2>>"$2/helper-status-probe"; then
+if __lmline_test_trace_helper_call hasher __lmline_test_trace_hasher_failure 2>/dev/null; then
   trace_hasher_status=0
 else
   trace_hasher_status=$?
@@ -90,7 +90,8 @@ fi
 {
   IFS= read -r trace_producer_record
   IFS= read -r trace_hasher_record
-} <"$2/helper-status-probe"
+} <"$trace_file"
+unset __lmline_test_trace_file
 [[ $trace_producer_record == 'helper-call class=producer status=2' ]]
 [[ $trace_hasher_record == 'helper-call class=hasher status=3' ]]
 export PATH="$2/stdin-hash-bin:$PATH"
@@ -245,8 +246,11 @@ else
   /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) pipestatus=([0-9]+( [0-9]+)*) .*/\1\/\2:\3 status=\4 pipestatus=\5/p' "$trace" |
     /usr/bin/tail -n 120 >&2
   return_trace=$2/hash-key-return-trace
+  helper_trace=$2/hash-key-helper-trace
+  : >"$helper_trace"
   (
     set +e
+    __lmline_test_trace_file=$helper_trace
     __lmline_trace_previous_command=
     __lmline_trace_last_status2_class=none
     __lmline_trace_last_status2_followed_by=none
@@ -316,7 +320,7 @@ else
     -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=(none|[0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
     -e 's/^helper-call class=(producer|hasher) status=([0-9]+)$/stdin-hash-check: helper call class=\1 status=\2/p' \
-    "$return_trace" | /usr/bin/tail -n 40 >&2
+    < <(/usr/bin/cat "$return_trace" "$helper_trace") | /usr/bin/tail -n 40 >&2
   exit 1
 fi
 [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
