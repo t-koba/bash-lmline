@@ -46,10 +46,58 @@ for i in $(seq 1 "$n"); do
     printf 'lock warning: writer=%s recorded-holder=%s release-phase=%s\n' "$i" "$relation" "$phase" >&2
   fi
 done
+first_missing_setting=0
 for i in $(seq 1 "$n"); do
-  grep -qxF "export ${names[$((i - 1))]}='value$i'" "$cfg/settings.bash" \
-    || fail "parallel config set lost ${names[$((i - 1))]}"
+  if ! grep -qxF "export ${names[$((i - 1))]}='value$i'" "$cfg/settings.bash"; then
+    first_missing_setting=$i
+    break
+  fi
 done
+if ((parallel_lock_warning || first_missing_setting)); then
+  # Re-run only a failed batch under fixed-label command wrappers. The passing
+  # path above stays uninstrumented so diagnostics cannot mask its interleaving.
+  diag_cfg=$cfg_tmp/diagnostic-config
+  trace_bin=$cfg_tmp/trace-bin
+  trace_file=$cfg_tmp/lock-events
+  mkdir "$trace_bin"
+  : >"$trace_file"
+  for utility in mkdir rm cat; do
+    cat >"$trace_bin/$utility" <<'EOF'
+#!/usr/bin/env bash
+tool=${0##*/}
+target=
+for arg in "$@"; do target=$arg; done
+operation=
+if [[ $tool == mkdir && $# == 1 && ${1-} == "${LMLINE_TEST_LOCK_PATH-}" ]]; then
+  operation=acquire
+elif [[ $tool == rm && $target == "${LMLINE_TEST_LOCK_PATH-}" ]]; then
+  operation=remove
+elif [[ $tool == cat && $# == 1 && ${1-} == "${LMLINE_TEST_LOCK_PATH-}/pid" ]]; then
+  operation=owner-read
+fi
+command -p "$tool" "$@"
+status=$?
+if [[ -n $operation && -n ${LMLINE_TEST_LOCK_TRACE-} ]]; then
+  printf '%s %s %s\n' "${LMLINE_TEST_LOCK_WRITER:-0}" "$operation" "$status" >>"$LMLINE_TEST_LOCK_TRACE"
+fi
+exit "$status"
+EOF
+    chmod +x "$trace_bin/$utility"
+  done
+  diag_pids=()
+  for i in $(seq 1 "$n"); do
+    PATH="$trace_bin:$PATH" LMLINE_TEST_LOCK_TRACE="$trace_file" LMLINE_TEST_LOCK_PATH="$diag_cfg/.lmline.lock" \
+      LMLINE_TEST_LOCK_WRITER="$i" LMLINE_CONFIG_DIR="$diag_cfg" "$repo_dir/lmline/lmline" \
+      config set "${names[$((i - 1))]}" "value$i" 2>"$cfg_tmp/diagnostic-$i.err" &
+    diag_pids+=($!)
+  done
+  for pid in "${diag_pids[@]}"; do wait "$pid" || true; done
+  while read -r writer operation status; do
+    [[ -n $writer ]] || continue
+    printf 'lock trace: writer=%s operation=%s status=%s\n' "$writer" "$operation" "$status" >&2
+  done <"$trace_file"
+fi
+((first_missing_setting == 0)) || fail "parallel config set lost ${names[$((first_missing_setting - 1))]}"
 ((parallel_lock_warning == 0)) || fail "parallel config writer released a foreign lock"
 
 # Concurrent model adds must not lose rows in models.tsv.
