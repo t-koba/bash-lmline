@@ -381,26 +381,7 @@ __lmline_async_function_names_key() (
   # to preserve the exact name inputs; POSIX mode selects the special builtin.
   # Avoid assigning POSIXLY_CORRECT when POSIX mode is already enabled: the
   # caller may have made it readonly.
-  __lmline_unexport_function() {
-    local name=$1
-    # A caller can shadow the special builtins used for unexporting. These
-    # shadows are not needed in the private hash scope; removing them lets the
-    # real builtin clear the record while keeping the live function defined.
-    unset -f command builtin export 2>/dev/null || :
-    # Removing those shadows also removes their own export records; no
-    # further unexport is needed for them.
-    case $name in
-      command|builtin|export) return 0 ;;
-    esac
-    command builtin export -nf -- "$name" 2>/dev/null && return 0
-    # Bash 4.2 can still retain legacy records for exported functions named
-    # after special builtins. A plain identifier that is a live function may
-    # be removed in this private scope; malformed inherited names still fail
-    # closed.
-    [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-    \declare -F -- "$name" >/dev/null 2>&1 || return 1
-    unset -f -- "$name" 2>/dev/null
-  }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   # In protected shells the exported-name collector reports inherited
   # records that were never imported as functions; only live shell functions
   # can be safely unexported there.
@@ -473,26 +454,7 @@ __lmline_async_frontend_key() (
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() {
-    local name=$1
-    # A caller can shadow the special builtins used for unexporting. These
-    # shadows are not needed in the private hash scope; removing them lets the
-    # real builtin clear the record while keeping the live function defined.
-    unset -f command builtin export 2>/dev/null || :
-    # Removing those shadows also removes their own export records; no
-    # further unexport is needed for them.
-    case $name in
-      command|builtin|export) return 0 ;;
-    esac
-    command builtin export -nf -- "$name" 2>/dev/null && return 0
-    # Bash 4.2 can still retain legacy records for exported functions named
-    # after special builtins. A plain identifier that is a live function may
-    # be removed in this private scope; malformed inherited names still fail
-    # closed.
-    [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-    \declare -F -- "$name" >/dev/null 2>&1 || return 1
-    unset -f -- "$name" 2>/dev/null
-  }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   local functions_remaining
   functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   __lmline_unexport_functions() {

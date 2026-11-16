@@ -148,7 +148,7 @@ __lmline_suggested_commands_key() (
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
@@ -244,7 +244,7 @@ __lmline_git_context_key() (
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
@@ -983,7 +983,7 @@ __lmline_project_markers_key() (
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
@@ -1589,7 +1589,7 @@ __lmline_context_settings_key() (
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
@@ -1666,7 +1666,7 @@ __lmline_path_key() (
   # Private to this key helper's subshell. POSIX mode makes the special
   # builtin take precedence over caller function overrides. An already-POSIX
   # shell needs no assignment to its possibly readonly POSIXLY_CORRECT.
-  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_function() { __lmline_unexport_function_impl "$@"; }
   __lmline_require_policy_support || return 1
   local functions_remaining
   functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
@@ -1724,7 +1724,7 @@ __lmline_request_key() (
         fi
         [[ -n $record ]] || continue
         name=$record
-        \export -nf -- "$name" 2>/dev/null || return 1
+        __lmline_unexport_function_impl "$name" 2>/dev/null || return 1
       done
     }
     if [[ -o posix ]]; then
