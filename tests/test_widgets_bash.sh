@@ -202,8 +202,8 @@ else
       "$substitution_status" "$digest_present" >&2
   )
   # On the pinned Bash 4.2 job, keep a failing child trace local and expose
-  # only function names, source basenames, line numbers, and numeric prior
-  # command and pipeline statuses; never print expanded command arguments or values.
+  # only function names, source basenames, line/status numbers, and fixed
+  # command classes; never print commands, expanded arguments, values, or paths.
   trace=$2/hash-key-trace
   (
     exec 9>"$trace"
@@ -218,19 +218,35 @@ else
   return_trace=$2/hash-key-return-trace
   (
     set +e
+    __lmline_trace_previous_command=
     __lmline_trace_key_return() {
-      if [[ $BASH_COMMAND == 'return 1' ]]; then
-        printf 'key return function=%s source=%s line=%s\n' "$3" "$2" "$1" >&2
+      local prior_status=$? prior_command=$__lmline_trace_previous_command
+      local function=main command_class=other
+      if [[ $prior_status == 2 && ( ${FUNCNAME[0]:-} == __lmline_suggested_commands_key ||
+          ${FUNCNAME[1]:-} == __lmline_suggested_commands_key ) ]]; then
+        function=__lmline_suggested_commands_key
+        case $prior_command in
+          digest=*) command_class=digest-assignment ;;
+          membership_digest=*) command_class=membership-digest-assignment ;;
+          'exec {membership_fd}'*) command_class=membership-fd-open ;;
+          '{ exec {file_fd}'*) command_class=file-fd-open ;;
+          'wait "$producer"'*) command_class=producer-wait ;;
+          'exec {file_fd}'*) command_class=file-fd-close ;;
+          *) command_class=other ;;
+        esac
+        printf 'key failed status=%s function=%s command-class=%s\n' \
+          "$prior_status" "$function" "$command_class" >&2
       fi
+      __lmline_trace_previous_command=$BASH_COMMAND
     }
     set -T
-    trap '__lmline_trace_key_return "$LINENO" "${BASH_SOURCE[0]##*/}" "${FUNCNAME[0]:-main}"' DEBUG
+    trap __lmline_trace_key_return DEBUG
     __lmline_suggested_commands_key </dev/null >/dev/null
     status=$?
     printf 'key replay status=%s\n' "$status" >&2
   ) 2>"$return_trace" || :
   /usr/bin/sed -En \
-    -e 's/^key return function=([^ ]*) source=([^ ]*) line=([^ ]*)$/stdin-hash-check: return function=\1 source=\2 line=\3/p' \
+    -e 's/^key failed status=([0-9]+) function=([^ ]*) command-class=([^ ]*)$/stdin-hash-check: key failed status=\1 function=\2 command-class=\3/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
     "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
