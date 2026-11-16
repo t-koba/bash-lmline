@@ -98,6 +98,15 @@ __lmline_mktemp() {
   printf -v "$__var" '%s' "$path"
 }
 
+__lmline_forget_tmp() {
+  local path=$1 i
+  for i in "${!__lmline_tmp_paths[@]}"; do
+    if [[ ${__lmline_tmp_paths[i]} == "$path" ]]; then
+      unset '__lmline_tmp_paths[i]'
+    fi
+  done
+}
+
 __lmline_mktemp_dir() {
   local __var=$1 path
   path=$(mktemp -d "$2") || exit 1
@@ -972,6 +981,7 @@ __lmline_config_file_op() {
         exit 1
       }
       mv "$tmp" "$file"
+      __lmline_forget_tmp "$tmp"
       chmod 600 "$file" 2>/dev/null || true
       ;;
     unset)
@@ -983,6 +993,7 @@ __lmline_config_file_op() {
         exit 1
       }
       mv "$tmp" "$file"
+      __lmline_forget_tmp "$tmp"
       chmod 600 "$file" 2>/dev/null || true
       ;;
     *) return 2 ;;
