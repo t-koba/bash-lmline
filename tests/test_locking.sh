@@ -68,6 +68,7 @@ tool=${0##*/}
 target=
 for arg in "$@"; do target=$arg; done
 operation=
+owner_pid=
 if [[ $tool == mkdir && $# == 1 && ${1-} == "${LMLINE_TEST_LOCK_PATH-}" ]]; then
   operation=acquire
 elif [[ $tool == rm && $target == "${LMLINE_TEST_LOCK_PATH-}" ]]; then
@@ -75,10 +76,15 @@ elif [[ $tool == rm && $target == "${LMLINE_TEST_LOCK_PATH-}" ]]; then
 elif [[ $tool == cat && $# == 1 && ${1-} == "${LMLINE_TEST_LOCK_PATH-}/pid" ]]; then
   operation=owner-read
 fi
+# Keep raw process IDs only in this temporary trace; the parent maps them to
+# fixed writer labels before printing any diagnostic output.
+if [[ $operation == owner-read || $operation == remove ]]; then
+  owner_pid=$(command -p cat "${LMLINE_TEST_LOCK_PATH-}/pid" 2>/dev/null) || owner_pid=
+fi
 command -p "$tool" "$@"
 status=$?
 if [[ -n $operation && -n ${LMLINE_TEST_LOCK_TRACE-} ]]; then
-  printf '%s %s %s\n' "${LMLINE_TEST_LOCK_WRITER:-0}" "$operation" "$status" >>"$LMLINE_TEST_LOCK_TRACE"
+  printf '%s %s %s %s %s\n' "${LMLINE_TEST_LOCK_WRITER:-0}" "$operation" "$status" "$PPID" "$owner_pid" >>"$LMLINE_TEST_LOCK_TRACE"
 fi
 exit "$status"
 EOF
@@ -92,9 +98,26 @@ EOF
     diag_pids+=($!)
   done
   for pid in "${diag_pids[@]}"; do wait "$pid" || true; done
-  while read -r writer operation status; do
+  lock_writer_label() {
+    local target=$1 index
+    for index in "${!diag_pids[@]}"; do
+      if [[ $target == "${diag_pids[$index]}" ]]; then
+        printf 'writer-%s' "$((index + 1))"
+        return 0
+      fi
+    done
+    printf outside-batch
+  }
+  while read -r writer operation status caller_pid owner_pid; do
     [[ -n $writer ]] || continue
-    printf 'lock trace: writer=%s operation=%s status=%s\n' "$writer" "$operation" "$status" >&2
+    caller_label=$(lock_writer_label "$caller_pid")
+    if [[ $owner_pid =~ ^[0-9]+$ ]]; then
+      owner_label=$(lock_writer_label "$owner_pid")
+    else
+      owner_label=none
+    fi
+    printf 'lock trace: writer=%s operation=%s status=%s caller=%s holder=%s\n' \
+      "$writer" "$operation" "$status" "$caller_label" "$owner_label" >&2
   done <"$trace_file"
 fi
 ((first_missing_setting == 0)) || fail "parallel config set lost ${names[$((first_missing_setting - 1))]}"
