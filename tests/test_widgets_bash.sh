@@ -402,10 +402,11 @@ REPLAY
 }
 
 ok "stdin-only custom hash executable compatibility"
+# Bash 4.2 before patch 50 exports functions under their own names with a "() {" body.
 mkdir -p "$widget_tmp/function-names/privacy-bin"
 cat >"$widget_tmp/function-names/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if [[ $# != 0 && ( $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ) ]] || env | grep -q '^BASH_FUNC_'; then
+if [[ $# != 0 && ( $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ) ]] || env | grep -Eq '^BASH_FUNC_|=\(\) \{'; then
   printf leaked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
 fi
 if [[ ${LMLINE_TEST_EXPECT_POSIX+x} &&
@@ -525,6 +526,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config" \
 ' _ "$repo_dir" || fail "async function identity hides bodies from hash subprocesses"
 # Use a non-shell hasher so inherited function entries reach the environment
 # check unchanged. Only boolean markers leave the process, never input data.
+# Bash 4.2 before patch 50 uses a legacy "() {" environment encoding.
 mkdir -p "$widget_tmp/request-key/privacy-bin"
 cat >"$widget_tmp/request-key/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env python3
@@ -535,7 +537,7 @@ from pathlib import Path
 
 root = Path(os.environ["LMLINE_TEST_REQUEST_KEY_DIR"])
 args = sys.argv[1:]
-if (args and (len(args) != 2 or not all(arg.startswith("/dev/fd/") for arg in args))) or any(key.startswith("BASH_FUNC_") for key in os.environ):
+if (args and (len(args) != 2 or not all(arg.startswith("/dev/fd/") for arg in args))) or any(key.startswith("BASH_FUNC_") or value.startswith("() {") for key, value in os.environ.items()):
     (root / "leak").touch()
 with (root / "checked").open("a") as checked:
     checked.write("1")
@@ -551,7 +553,6 @@ LMLINE_CONFIG_DIR="$widget_tmp/request-key/config" \
   PATH="$widget_tmp/request-key/privacy-bin:$PATH" \
   bash --norc -e -i -c '
   source "$1/lmline/init.bash"
-  trap "printf \"request-key privacy line=%s\\n\" \"\$LINENO\" >&2" ERR
   lmline_request_hash_privacy_probe() { :; }
   export -f lmline_request_hash_privacy_probe
   # Positive control: the fake hasher must really see inherited entries.
@@ -1349,7 +1350,7 @@ mkdir "$widget_tmp/markers" "$widget_tmp/markers/rules" "$widget_tmp/markers/def
 mkdir "$widget_tmp/markers/privacy-bin"
 cat >"$widget_tmp/markers/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if (($#)) || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_PROJECT_MARKERS_FILE|BASH_FUNC_lmline_marker_privacy%%)='; then
+if (($#)) || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_PROJECT_MARKERS_FILE|BASH_FUNC_lmline_marker_privacy%%)=|=\(\) \{'; then
   printf leaked >"$LMLINE_TEST_MARKERS_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_MARKERS_DIR/checked"
@@ -1457,7 +1458,7 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
 mkdir "$widget_tmp/git-probe" "$widget_tmp/git-probe/repo" "$widget_tmp/git-probe/privacy-bin"
 cat >"$widget_tmp/git-probe/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if (($#)) || env | grep -Eq '^(__lmline_git_root|__lmline_git_branch|BASH_FUNC_lmline_git_privacy%%)='; then
+if (($#)) || env | grep -Eq '^(__lmline_git_root|__lmline_git_branch|BASH_FUNC_lmline_git_privacy%%)=|=\(\) \{'; then
   printf leaked >"$LMLINE_TEST_GIT_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_GIT_DIR/checked"
@@ -1577,7 +1578,7 @@ mkdir "$widget_tmp/suggested"
 mkdir "$widget_tmp/suggested/privacy-bin"
 cat >"$widget_tmp/suggested/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if [[ $# != 0 ]] || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)='; then
+if [[ $# != 0 ]] || env | grep -Eq '^(LMLINE_CONFIG_DIR|LMLINE_USER_RULES_DIR|LMLINE_DEFAULTS_DIR|LMLINE_SUGGESTED_COMMANDS_FILE|BASH_FUNC_lmline_privacy_probe%%)=|=\(\) \{'; then
   printf leaked >"$LMLINE_TEST_SUGGESTED_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_SUGGESTED_DIR/checked"
