@@ -182,7 +182,9 @@ __lmline_suggested_commands_key() (
   if (( ! hash_function )) && [[ -n $hash_path ]]; then
     hash_command[0]=$hash_path
   fi
-  if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+  # Bash 4.2 and older cannot reliably close dynamically allocated descriptors.
+  if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] <= 2) || hash_function )) ||
+      [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
     digest=$(__lmline_hash_stdin "${hash_command[@]}" 2>/dev/null <"$file") || return 1
     [[ -n "$digest" ]] || return 1
     membership_digest=$(__lmline_collect_suggested_commands 2>/dev/null | __lmline_hash_stdin "${hash_command[@]}" 2>/dev/null) || return 1
