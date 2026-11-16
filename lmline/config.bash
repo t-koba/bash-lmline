@@ -61,7 +61,17 @@ __lmline_prepare_hash_environment() {
   else
     functions_remaining=$(__lmline_collect_exported_functions 2>/dev/null) || return 1
   fi
-  __lmline_unexport_function() { \export -nf -- "$@"; }
+  __lmline_unexport_function() {
+    local name=$1
+    \export -nf -- "$name" 2>/dev/null && return 0
+    # Bash 4.2 cannot reliably clear legacy records for exported functions
+    # named after special builtins. A plain identifier that is a live function
+    # can be removed in this private scope; punctuation-bearing inherited
+    # names must still fail closed.
+    [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    \declare -F -- "$name" >/dev/null 2>&1 || return 1
+    unset -f -- "$name" 2>/dev/null
+  }
   __lmline_unexport_functions() {
     while [[ -n $functions_remaining ]]; do
       name=${functions_remaining%%$'\n'*}
