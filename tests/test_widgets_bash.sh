@@ -220,9 +220,11 @@ else
     set +e
     __lmline_trace_previous_command=
     __lmline_trace_last_status2_class=none
+    __lmline_trace_last_status2_followed_by=none
+    __lmline_trace_last_status2_pipestatus=none
     __lmline_trace_key_return() {
-      local prior_status=$? prior_command=$__lmline_trace_previous_command
-      local command_class=other
+      local prior_status=$? prior_pipestatus=${PIPESTATUS[*]} prior_command=$__lmline_trace_previous_command
+      local current_command=$BASH_COMMAND command_class=other next_class=other
       case $prior_command in
         digest=*) command_class=digest-assignment ;;
         membership_digest=*) command_class=membership-digest-assignment ;;
@@ -236,16 +238,24 @@ else
         '[[ -n "$digest" ]]'*) command_class=digest-presence-condition ;;
         '[[ -n "$membership_digest" ]]'*) command_class=membership-presence-condition ;;
       esac
+      case $current_command in
+        '[[ -n "$digest" ]]'*) next_class=after-file-digest-assignment ;;
+        '[[ -n "$membership_digest" ]]'*) next_class=after-membership-digest-assignment ;;
+        'return 1'*) next_class=return-after-status-2 ;;
+      esac
       if (( prior_status == 2 )); then
         __lmline_trace_last_status2_class=$command_class
+        __lmline_trace_last_status2_followed_by=$next_class
+        __lmline_trace_last_status2_pipestatus=$prior_pipestatus
       fi
-      if [[ $BASH_COMMAND == 'return 1' &&
+      if [[ $current_command == 'return 1' &&
           ( ${FUNCNAME[0]:-} == __lmline_suggested_commands_key ||
             ${FUNCNAME[1]:-} == __lmline_suggested_commands_key ) ]]; then
-        printf 'key return prior-status=%s prior-class=%s last-status2-class=%s\n' \
-          "$prior_status" "$command_class" "$__lmline_trace_last_status2_class" >&2
+        printf 'key return prior-status=%s prior-class=%s last-status2-class=%s last-status2-followed-by=%s last-status2-pipestatus=%s\n' \
+          "$prior_status" "$command_class" "$__lmline_trace_last_status2_class" \
+          "$__lmline_trace_last_status2_followed_by" "$__lmline_trace_last_status2_pipestatus" >&2
       fi
-      __lmline_trace_previous_command=$BASH_COMMAND
+      __lmline_trace_previous_command=$current_command
     }
     set -T
     trap __lmline_trace_key_return DEBUG
@@ -254,7 +264,7 @@ else
     printf 'key replay status=%s\n' "$status" >&2
   ) 2>"$return_trace" || :
   /usr/bin/sed -En \
-    -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3/p' \
+    -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=([0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
     "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
