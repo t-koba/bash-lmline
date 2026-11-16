@@ -551,6 +551,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/request-key/config" \
   PATH="$widget_tmp/request-key/privacy-bin:$PATH" \
   bash --norc -e -i -c '
   source "$1/lmline/init.bash"
+  trap "printf \"request-key privacy line=%s\\n\" \"\$LINENO\" >&2" ERR
   lmline_request_hash_privacy_probe() { :; }
   export -f lmline_request_hash_privacy_probe
   # Positive control: the fake hasher must really see inherited entries.
