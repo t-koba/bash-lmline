@@ -293,6 +293,10 @@ trap 'replay_exit=$?; printf "stdin-hash-replay: exit status=%s\n" "$replay_exit
 # declare -f normalizes redirection spacing. Fail closed if its source shape
 # changes: do not silently instrument a different pipeline or multiple sites.
 replay_function=$(builtin declare -f __lmline_suggested_commands_key)
+# Bash 4.2's `declare -f` preserves `2>/dev/null`, while newer shells print
+# `2> /dev/null`. Normalize only that spacing in the captured function text
+# before matching; the replacement and sourced replay use the same text.
+replay_function=${replay_function//2>\/dev\/null/2> \/dev\/null}
 replay_needle='membership_digest=$(__lmline_collect_suggested_commands 2> /dev/null | __lmline_hash_stdin "${hash_command[@]}" 2> /dev/null)'
 replay_matches=0
 replay_tail=$replay_function
