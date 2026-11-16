@@ -19,29 +19,36 @@ chmod +x "$widget_tmp/engine-function"
 # reader's final filter status must not fail the checked collection pipeline.
 mkdir "$widget_tmp/list-rules"
 printf '# commands\nprintf\nls\n# end of list\n' >"$widget_tmp/list-rules/suggested_commands.txt"
-(
-  export LMLINE_INCLUDE_SUGGESTED_COMMANDS=1
-  export LMLINE_SUGGESTED_COMMANDS_FILE="$widget_tmp/list-rules/suggested_commands.txt"
-  source "$repo_dir/lmline/context.bash" >/dev/null 2>&1
-  actual=$(__lmline_collect_suggested_commands) || fail "comment-terminated suggested list failed"
-  [[ $actual == $'ls\nprintf' ]] || fail "comment-terminated suggested list lost commands"
-  printf '# commands\nprintf\nls\n\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
-  unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE
-  actual=$(__lmline_collect_suggested_commands) || fail "blank-terminated suggested list failed"
-  [[ $actual == $'ls\nprintf' ]] || fail "blank-terminated suggested list lost commands"
-)
+cat >"$widget_tmp/list-scan-check.bash" <<'LISTCHECK'
+#!/usr/bin/env bash
+set -euo pipefail
+source "$1/lmline/context.bash" >/dev/null 2>&1
+actual=$(__lmline_collect_suggested_commands)
+[[ $actual == $'ls\nprintf' ]] || exit 1
+printf '# commands\nprintf\nls\n\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE
+actual=$(__lmline_collect_suggested_commands)
+[[ $actual == $'ls\nprintf' ]] || exit 1
+LISTCHECK
+LMLINE_INCLUDE_SUGGESTED_COMMANDS=1 \
+  LMLINE_SUGGESTED_COMMANDS_FILE="$widget_tmp/list-rules/suggested_commands.txt" \
+  bash "$widget_tmp/list-scan-check.bash" "$repo_dir" ||
+  fail "suggested-command lists ending in comments or blank lines lost commands"
 ok - suggested-command lists ending in comments or blank lines remain available
-(
-  source "$repo_dir/lmline/context.bash" >/dev/null 2>&1 || fail "source context for descriptor guard"
-  ! __lmline_hash_fd_supported 4 2 || fail "Bash 4.2 descriptor guard accepted dynamic descriptors"
-  ! __lmline_hash_fd_supported 3 2 || fail "old Bash descriptor guard accepted dynamic descriptors"
-  __lmline_hash_fd_supported 4 3 || fail "Bash 4.3 descriptor guard rejected dynamic descriptors"
-  __lmline_hash_fd_supported 5 0 || fail "Bash 5 descriptor guard rejected dynamic descriptors"
-  for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
-    declare -f "$helper" | grep -Fq '__lmline_hash_fd_supported' ||
-      fail "$helper does not consult the descriptor guard"
-  done
-)
+cat >"$widget_tmp/descriptor-guard-check.bash" <<'GUARDCHECK'
+#!/usr/bin/env bash
+set -euo pipefail
+source "$1/lmline/context.bash" >/dev/null 2>&1
+! __lmline_hash_fd_supported 4 2 || exit 1
+! __lmline_hash_fd_supported 3 2 || exit 1
+__lmline_hash_fd_supported 4 3 || exit 1
+__lmline_hash_fd_supported 5 0 || exit 1
+for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
+  declare -f "$helper" | grep -Fq '__lmline_hash_fd_supported' || exit 1
+done
+GUARDCHECK
+bash "$widget_tmp/descriptor-guard-check.bash" "$repo_dir" ||
+  fail "minimum-version descriptor guard is missing or incorrect"
 ok - minimum-version descriptor guard covers both key helpers
 # Exercise the portable digest and ensure failed identities never match a job.
 mkdir "$widget_tmp/hash-bin"
