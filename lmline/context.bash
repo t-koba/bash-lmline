@@ -271,10 +271,15 @@ __lmline_collect_suggested_commands() {
     printf '%s\n' "$__LMLINE_SUGGESTED_COMMANDS_CACHE"
     return 0
   fi
+  # Supported Bash 4.2 can treat process substitution as a literal operand
+  # inside a POSIX-mode collector. A checked pipeline keeps read failures
+  # visible without changing the collected membership.
   commands=$(
-    while IFS= read -r c; do
-      if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; fi
-    done < <(__lmline_read_list_file "$file") | sort -u
+    set -o pipefail
+    __lmline_read_list_file "$file" |
+      while IFS= read -r c; do
+        if command -v "$c" >/dev/null 2>&1; then printf '%s\n' "$c"; fi
+      done | sort -u
   ) || collect_status=$?
   (( collect_status == 0 )) || return 1
   __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE=$file
