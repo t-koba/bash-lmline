@@ -215,6 +215,22 @@ else
   printf 'stdin-hash-check: suggested-key trace (function/source:line)\n' >&2
   /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) pipestatus=([0-9]+( [0-9]+)*) .*/\1\/\2:\3 status=\4 pipestatus=\5/p' "$trace" |
     /usr/bin/tail -n 120 >&2
+  return_trace=$2/hash-key-return-trace
+  (
+    set +e
+    __lmline_trace_key_return() {
+      if [[ $BASH_COMMAND == 'return 1' ]]; then
+        printf 'key return function=%s source=%s line=%s\n' \
+          "${FUNCNAME[1]:-main}" "${BASH_SOURCE[1]##*/}" "${BASH_LINENO[0]:-unknown}" >&2
+      fi
+    }
+    set -T
+    trap '__lmline_trace_key_return' DEBUG
+    __lmline_suggested_commands_key </dev/null >/dev/null
+  ) 2>"$return_trace" || :
+  /usr/bin/sed -En \
+    's/^key return function=([^ ]+) source=([^ ]+) line=([0-9]+)$/stdin-hash-check: return function=\1 source=\2 line=\3/p' \
+    "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
 fi
 [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
