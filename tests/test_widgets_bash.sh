@@ -419,8 +419,6 @@ EOF
 chmod +x "$widget_tmp/function-names/privacy-bin/sha256sum"
 cat >"$widget_tmp/function-names/protected-name-check.bash" <<'EOF'
 set -e
-set -E
-trap 'printf "collision-step:%s\n" "$LINENO" >&2' ERR
 source "$1/lmline/init.bash"
 inherited_names=$(__lmline_collect_exported_functions)
 [[ $'\n'$inherited_names$'\n' == *$'\n'foo%bar$'\n'* ]]
@@ -432,8 +430,6 @@ fi
 EOF
 cat >"$widget_tmp/function-names/protected-name-collision-check.bash" <<'EOF'
 set -e
-set -E
-trap 'printf "collision-step:%s\n" "$LINENO" >&2' ERR
 source "$1/lmline/init.bash"
 foo%bar() { :; }
 for helper in __lmline_async_function_names_key __lmline_path_key; do
@@ -445,8 +441,6 @@ done
 EOF
 cat >"$widget_tmp/function-names/protected-malformed-name-check.bash" <<'EOF'
 set -e
-set -E
-trap 'printf "collision-step:%s\n" "$LINENO" >&2' ERR
 source "$1/lmline/init.bash"
 if __lmline_path_key >/dev/null 2>&1; then exit 1; fi
 [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
@@ -817,8 +811,6 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   LMLINE_TEST_ASYNC_TRACE="$widget_tmp/async-collision.trace" \
   PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
   bash --norc -e -i -c '
-  set -E
-  trap '"'"'printf "collision-step:%s\n" "$LINENO" >&2'"'"' ERR
   if [[ -n ${LMLINE_TEST_ASYNC_TRACE-} ]]; then
     exec 9>"$LMLINE_TEST_ASYNC_TRACE"
     BASH_XTRACEFD=9
@@ -836,32 +828,13 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   declare -fx export builtin command
   shell_functions=$(__lmline_collect_shell_functions)
   exported_functions=$(__lmline_collect_exported_functions)
-  # Independent reference for the exact lists and framing.
-  if expected=$(
-    POSIXLY_CORRECT=1
-    \export -nf lmline_function_hash_privacy_probe export builtin command || {
-      reference_status=$?
-      printf "reference-unexport-status:%s\\n" "$reference_status" >&2
-      exit "$reference_status"
-    }
-    if printf "shell-functions\\n%s\\nexported-functions\\n%s\\n" \
-      "$shell_functions" "$exported_functions" | cksum; then
-      reference_status=("${PIPESTATUS[@]}")
-    else
-      reference_status=("${PIPESTATUS[@]}")
-    fi
-    if (( reference_status[0] != 0 || reference_status[1] != 0 )); then
-      IFS=,
-      printf "reference-cksum-status:%s\\n" "${reference_status[*]}" >&2
-      exit 1
-    fi
-    printf "reference-reached-end\\n" >&2
-  ); then
-    reference_assignment_status=0
-  else
-    reference_assignment_status=$?
-    printf "reference-assignment-status:%s\\n" "$reference_assignment_status" >&2
-  fi
+  # Independent reference for the exact lists and framing. The captured names
+  # are already fixed; the checksum needs no exported-function or POSIX-mode
+  # manipulation in this subshell.
+  expected=$(
+    printf "shell-functions\\n%s\\nexported-functions\\n%s\\n" \
+      "$shell_functions" "$exported_functions" | cksum
+  )
   expected=${expected%% *}
   for state in unset value exported posix; do (
     unset POSIXLY_CORRECT
