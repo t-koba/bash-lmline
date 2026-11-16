@@ -788,9 +788,23 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
     export -nf lmline_sibling_hash_privacy_probe foo%bar
   done
 ' _ "$repo_dir" "$widget_tmp" || fail "sibling identities resist read/compgen collisions"
+# Inject function transport in the format the running Bash actually uses.
+# Bash before patch 50 exports NAME=() { ... } instead of BASH_FUNC_NAME%%=...
+# so an injected patched-format record cannot be removed by export -nf there.
+lmline_export_format_probe() { :; }
+export -f lmline_export_format_probe
+if env | grep -q '^BASH_FUNC_lmline_export_format_probe%%='; then
+  lmline_function_record() { printf 'BASH_FUNC_%s%%%%=() { %s; }' "$1" "$2"; }
+else
+  lmline_function_record() { printf '%s=() { %s; }' "$1" "$2"; }
+fi
+unset -f lmline_export_format_probe
+export -n lmline_export_format_probe
+
 # Special-builtin lookup must not depend on caller export/builtin/command
 # functions. Keep every assertion boolean-only, including the fake hasher.
-malformed_function_record=$'BASH_FUNC_bad\nname%%=() { printf malformed-protected-body; }'
+malformed_function_record=$(lmline_function_record $'bad\nname' 'printf malformed-protected-body')
+inherited_record=$(lmline_function_record 'foo%bar' 'printf protected-percent-body')
 LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   LMLINE_TEST_FUNCTION_NAMES_DIR="$widget_tmp/function-names" \
   PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
@@ -911,7 +925,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   # A raw inherited punctuation name is visible in protected mode but was
   # never imported; identity hashing must fail closed before its hasher runs.
   rm -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
-  inherited_record="BASH_FUNC_foo%bar%%=() { printf protected-percent-body; }"
+  inherited_record=$3
   /usr/bin/env "$inherited_record" \
     "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-name-check.bash" "$1" \
     || exit 1
@@ -923,7 +937,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   /usr/bin/env "$2" \
     "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-malformed-name-check.bash" "$1" \
     || exit 1
-' _ "$repo_dir" "$malformed_function_record" || fail "async identity sanitization resists builtin name collisions"
+' _ "$repo_dir" "$malformed_function_record" "$inherited_record" || fail "async identity sanitization resists builtin name collisions"
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"
