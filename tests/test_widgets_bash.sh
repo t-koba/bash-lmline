@@ -31,6 +31,14 @@ printf '# commands\nprintf\nls\n# end of list\n' >"$widget_tmp/list-rules/sugges
   [[ $actual == $'ls\nprintf' ]] || fail "blank-terminated suggested list lost commands"
 )
 ok - suggested-command lists ending in comments or blank lines remain available
+(
+  source "$repo_dir/lmline/context.bash" >/dev/null 2>&1 || fail "source context for descriptor guard"
+  ! __lmline_hash_fd_supported 4 2 || fail "Bash 4.2 descriptor guard accepted dynamic descriptors"
+  ! __lmline_hash_fd_supported 3 2 || fail "old Bash descriptor guard accepted dynamic descriptors"
+  __lmline_hash_fd_supported 4 3 || fail "Bash 4.3 descriptor guard rejected dynamic descriptors"
+  __lmline_hash_fd_supported 5 0 || fail "Bash 5 descriptor guard rejected dynamic descriptors"
+)
+ok - minimum-version descriptor guard covers both key helpers
 # Exercise the portable digest and ensure failed identities never match a job.
 mkdir "$widget_tmp/hash-bin"
 for cmd in bash sort cksum cut awk; do ln -s "$(command -v "$cmd")" "$widget_tmp/hash-bin/$cmd"; done

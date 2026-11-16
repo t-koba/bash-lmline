@@ -123,6 +123,12 @@ __lmline_resolve_hash_tool() {
   fi
 }
 
+# Dynamically allocated descriptors are unreliable on Bash 4.2 and older.
+__lmline_hash_fd_supported() {
+  local major=${1:-${BASH_VERSINFO[0]}} minor=${2:-${BASH_VERSINFO[1]}}
+  (( major > 4 || (major == 4 && minor > 2) ))
+}
+
 # Fingerprint file bytes and freshly collected command membership, not metadata.
 # Stream private inputs through descriptors, keep paths out of hashing
 # arguments/output, and exclude function bodies.
@@ -182,8 +188,7 @@ __lmline_suggested_commands_key() (
   if (( ! hash_function )) && [[ -n $hash_path ]]; then
     hash_command[0]=$hash_path
   fi
-  # Bash 4.2 and older cannot reliably close dynamically allocated descriptors.
-  if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] <= 2) || hash_function )) ||
+  if ! __lmline_hash_fd_supported || (( hash_function )) ||
       [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
     digest=$(__lmline_hash_stdin "${hash_command[@]}" 2>/dev/null <"$file") || return 1
     [[ -n "$digest" ]] || return 1
@@ -1012,7 +1017,8 @@ __lmline_project_markers_key() (
   if (( ! hash_function )) && [[ -n $hash_path ]]; then
     hash_command[0]=$hash_path
   fi
-  if (( hash_function )) || [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
+  if ! __lmline_hash_fd_supported || (( hash_function )) ||
+      [[ -z $hash_path || -z $system_hash_path || ! $hash_path -ef $system_hash_path ]]; then
     digest=$(__lmline_hash_stdin "${hash_command[@]}" 2>/dev/null <"$file") || return 1
     [[ -n "$digest" ]] || return 1
     presence=$(__lmline_project_markers_scan "$file" presence 2>/dev/null | __lmline_hash_stdin "${hash_command[@]}" 2>/dev/null) || return 1
