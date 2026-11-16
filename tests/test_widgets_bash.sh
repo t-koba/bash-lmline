@@ -227,9 +227,12 @@ else
     set -T
     trap '__lmline_trace_key_return' DEBUG
     __lmline_suggested_commands_key </dev/null >/dev/null
+    status=$?
+    printf 'key replay status=%s\n' "$status" >&2
   ) 2>"$return_trace" || :
   /usr/bin/sed -En \
-    's/^key return function=([^ ]+) source=([^ ]+) line=([0-9]+)$/stdin-hash-check: return function=\1 source=\2 line=\3/p' \
+    -e 's/^key return function=([^ ]*) source=([^ ]*) line=([^ ]*)$/stdin-hash-check: return function=\1 source=\2 line=\3/p' \
+    -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
     "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
 fi
