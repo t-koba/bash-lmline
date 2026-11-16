@@ -95,6 +95,61 @@ function cleaned(expectStopped = true) {
     assert(!fs.existsSync(process.env.LMLINE_TEST_LSP_STOPPED), 'unresponsive LSP exited gracefully instead of being force-stopped');
   }
 }
+async function directSignalShutdown(withChild) {
+  const directRuntime = path.join(path.dirname(runtime), withChild ? 'sigterm-child' : 'sigterm-empty');
+  fs.rmSync(directRuntime, { recursive: true, force: true });
+  fs.mkdirSync(directRuntime, { recursive: true });
+  const env = { ...process.env, LMLINE_COPILOT_RUNTIME_DIR: directRuntime };
+  const stopped = process.env.LMLINE_TEST_LSP_STOPPED;
+  if (withChild) {
+    try { fs.unlinkSync(stopped); } catch (_) {}
+  }
+  const daemon = spawn(process.execPath, [process.argv[2], 'daemon'], {
+    env,
+    stdio: ['ignore', 'ignore', 'pipe']
+  });
+  let stderr = '';
+  daemon.stderr.setEncoding('utf8');
+  daemon.stderr.on('data', chunk => {
+    if (stderr.length < 4096) stderr += chunk.slice(0, 4096 - stderr.length);
+  });
+  const recordAt = name => path.join(directRuntime, `daemon.${name}`);
+  async function waitFor(predicate, label) {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      if (daemon.exitCode !== null || daemon.signalCode !== null) throw new Error(`daemon exited before ${label}`);
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    throw new Error(`timed out waiting for ${label}`);
+  }
+  try {
+    await waitFor(() => fs.existsSync(recordAt('sock')), 'daemon socket');
+    if (withChild) {
+      await exec(process.execPath, [process.argv[2], 'status'], { env, timeout: 10000 });
+      await waitFor(() => fs.existsSync(process.env.LMLINE_FAKE_COPILOT_LOG)
+        && fs.readFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, 'utf8').includes('initialize'), 'LSP initialization');
+    }
+    const exited = once(daemon, 'exit');
+    assert.strictEqual(daemon.kill('SIGTERM'), true, 'could not signal owned daemon process');
+    const [code, signal] = await exited;
+    assert.strictEqual(code, 0, `SIGTERM shutdown exited ${code}: ${stderr}`);
+    assert.strictEqual(signal, null, 'daemon terminated by signal instead of its handler');
+    assert(['sock', 'pid', 'lock'].every(name => !fs.existsSync(recordAt(name))), 'SIGTERM left runtime records');
+    if (withChild) assert(fs.existsSync(stopped), 'SIGTERM did not stop the owned LSP child');
+  } finally {
+    if (daemon.exitCode === null && daemon.signalCode === null) {
+      const exited = once(daemon, 'exit');
+      daemon.kill('SIGTERM');
+      await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 1500))]);
+      if (daemon.exitCode === null && daemon.signalCode === null) {
+        const killed = once(daemon, 'exit');
+        daemon.kill('SIGKILL');
+        await killed;
+      }
+    }
+  }
+}
 (async () => {
   try {
     await once(child, 'message');
@@ -139,6 +194,9 @@ function cleaned(expectStopped = true) {
     await cli('restart');
     cleaned();
     await alive();
+
+    await directSignalShutdown(false); // No LSP child: the signal handler must exit normally.
+    await directSignalShutdown(true); // An owned child must also drain before normal exit.
   } finally {
     await cli('restart').catch(() => {});
     if (child.exitCode === null && child.signalCode === null) {

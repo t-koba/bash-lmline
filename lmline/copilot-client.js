@@ -511,7 +511,7 @@ async function runDaemon() {
     } else process.exit(code);
   }
   process.on('exit', cleanup);
-  process.on('SIGTERM', stop);
+  process.on('SIGTERM', () => stop());
   server.on('error', error => { fs.appendFileSync(logPath, `daemon socket error: ${error.message}\n`, { mode: 0o600 }); stop(1); });
   fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
   // Retain the directory as a runtime marker, never as evidence of liveness.
