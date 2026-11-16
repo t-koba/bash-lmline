@@ -71,34 +71,62 @@ function connect(payload, timeout = timeoutMs) {
   });
 }
 
+// Only the private socket establishes liveness. A recorded PID may have been
+// reused by an unrelated process and must never be used to probe or stop it.
 function daemonAlive() {
-  try { process.kill(Number(fs.readFileSync(pidPath, 'utf8')), 0); return true; }
-  catch (_) { return false; }
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(socketPath);
+    socket.once('connect', () => { socket.destroy(); resolve(true); });
+    socket.once('error', error => {
+      if (['ENOENT', 'ECONNREFUSED'].includes(error.code)) resolve(false);
+      else reject(error);
+    });
+  });
 }
 
 async function startDaemon() {
   ensureRuntime();
-  if (daemonAlive()) {
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline && daemonAlive()) {
-      if (fs.existsSync(socketPath)) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    if (daemonAlive()) throw new Error(`daemon is running without a socket; run: lmline copilot restart`);
-  }
-  try { fs.unlinkSync(socketPath); } catch (_) {}
+  if (await daemonAlive()) return;
   const log = fs.openSync(logPath, 'a', 0o600);
   const child = spawn(process.execPath, [__filename, 'daemon'], {
     detached: true, stdio: ['ignore', log, log], env: process.env
   });
+  fs.closeSync(log);
   child.unref();
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 50));
-    if (fs.existsSync(socketPath)) return;
-    if (!daemonAlive() && child.exitCode !== null) break;
+    if (await daemonAlive()) return;
+    if (child.exitCode !== null && child.exitCode !== 0) break;
   }
   throw new Error(`daemon did not start; see ${logPath}`);
+}
+
+function socketIdentity() {
+  try { const stat = fs.lstatSync(socketPath); return `${stat.dev}:${stat.ino}:${stat.ctimeMs}`; }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+
+async function listen(server) {
+  // Binding the socket, not the PID or the old lock directory, arbitrates
+  // startup. Recheck a refused socket's identity before removing it: a
+  // concurrent starter may have replaced the stale record during the probe.
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const error = await new Promise(resolve => {
+      const onError = error => { server.removeListener('listening', onListen); resolve(error); };
+      const onListen = () => { server.removeListener('error', onError); resolve(null); };
+      server.once('error', onError);
+      server.once('listening', onListen);
+      server.listen(socketPath);
+    });
+    if (!error) return true;
+    if (error.code !== 'EADDRINUSE') throw error;
+    const identity = socketIdentity();
+    if (await daemonAlive()) return false;
+    if (identity && identity === socketIdentity()) fs.unlinkSync(socketPath);
+  }
+  throw new Error('daemon socket did not become available');
 }
 
 async function call(payload, timeout = timeoutMs) {
@@ -350,25 +378,13 @@ class Lsp {
 
 async function runDaemon() {
   ensureRuntime();
-  let ownsLock = false;
-  try { fs.mkdirSync(lockPath, { mode: 0o700 }); ownsLock = true; }
-  catch (_) {
-    const deadline = Date.now() + 2000;
-    while (Date.now() < deadline && !daemonAlive() && !fs.existsSync(socketPath)) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    if (daemonAlive() || fs.existsSync(socketPath)) process.exit(0);
-    try { fs.rmSync(lockPath, { recursive: true, force: true }); fs.mkdirSync(lockPath, { mode: 0o700 }); ownsLock = true; }
-    catch (error) { throw new Error(`cannot acquire daemon lock: ${error.message}`); }
-  }
-  try { fs.unlinkSync(socketPath); } catch (_) {}
-  fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
   const lsp = new Lsp();
   const accepted = new Map();
   let queue = Promise.resolve();
 
   async function handle(request) {
-    if (request.op === 'restart') { if (lsp.child) lsp.child.kill(); return { ok: true }; }
+    if (stopping) throw new Error('daemon is stopping');
+    if (request.op === 'restart') return { ok: true };
     await lsp.start();
     if (request.op === 'status') {
       let result;
@@ -462,28 +478,61 @@ async function runDaemon() {
       let request;
       try { request = JSON.parse(input.slice(0, newline)); } catch (error) { socket.end(`${JSON.stringify({ ok: false, error: error.message })}\n`); return; }
       queue = queue.then(() => handle(request)).then(
-        response => socket.end(`${JSON.stringify(response)}\n`),
+        response => socket.end(`${JSON.stringify(response)}\n`, () => {
+          if (request.op === 'restart') stop();
+        }),
         error => socket.end(`${JSON.stringify({ ok: false, error: error.message })}\n`)
       );
     });
   });
-  server.on('error', error => { fs.appendFileSync(logPath, `daemon socket error: ${error.message}\n`, { mode: 0o600 }); process.exit(1); });
-  server.listen(socketPath, () => { try { fs.chmodSync(socketPath, 0o600); } catch (_) {} });
+  if (!await listen(server)) return;
+  fs.chmodSync(socketPath, 0o600);
+  const identity = socketIdentity();
   const cleanup = () => {
-    if (!ownsLock) return;
+    if (socketIdentity() !== identity) return;
     try { fs.unlinkSync(socketPath); } catch (_) {}
     try { fs.unlinkSync(pidPath); } catch (_) {}
     try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch (_) {}
   };
-  process.on('exit', cleanup); process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+  let stopping = false;
+  function stop(code = 0) {
+    if (stopping) return;
+    stopping = true;
+    const child = lsp.child;
+    if (child && child.exitCode === null && child.signalCode === null) {
+      const forceTimer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      }, 1000);
+      child.once('exit', () => {
+        clearTimeout(forceTimer);
+        process.exit(code);
+      });
+      child.kill('SIGTERM');
+    } else process.exit(code);
+  }
+  process.on('exit', cleanup);
+  process.on('SIGTERM', stop);
+  server.on('error', error => { fs.appendFileSync(logPath, `daemon socket error: ${error.message}\n`, { mode: 0o600 }); stop(1); });
+  fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
+  // Retain the directory as a runtime marker, never as evidence of liveness.
+  fs.mkdirSync(lockPath, { recursive: true, mode: 0o700 });
 }
 
 async function main() {
   const command = process.argv[2];
   if (command === 'daemon') return runDaemon();
   if (command === 'restart') {
-    try { const response = await connect({ op: 'restart' }); if (!response.ok) throw new Error(response.error); } catch (_) {}
-    try { process.kill(Number(fs.readFileSync(pidPath, 'utf8')), 'SIGTERM'); } catch (_) {}
+    try {
+      const response = await connect({ op: 'restart' });
+      if (!response.ok) throw new Error(response.error);
+      const deadline = Date.now() + 5000;
+      while (await daemonAlive()) {
+        if (Date.now() >= deadline) throw new Error('daemon did not stop');
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    } catch (error) {
+      if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error;
+    }
     process.stdout.write('copilot daemon stopped\n'); return;
   }
   let payload;

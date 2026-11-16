@@ -35,6 +35,122 @@ copilot_env=(
   LMLINE_COPILOT_TIMEOUT=3000
 )
 
+# Lifecycle safety uses an owned, harmless IPC child to model PID reuse. Never
+# signal a PID read from disk, even to check whether the process still exists.
+(
+  lifecycle_env=(
+    "${copilot_env[@]}"
+    LMLINE_COPILOT_RUNTIME_DIR="$copilot_run_root/life"
+    LMLINE_FAKE_COPILOT_LOG="$copilot_tmp/lifecycle-lsp.log"
+    LMLINE_COPILOT_COMMAND="$copilot_tmp/lifecycle-lsp.js"
+    LMLINE_TEST_FAKE_LSP="$repo_dir/tests/fake_copilot_ls.js"
+    LMLINE_TEST_LSP_STOPPED="$copilot_tmp/lifecycle-stopped"
+  )
+  # Observe the fake LSP's exit without probing or signaling its recorded PID.
+  cat >"$copilot_tmp/lifecycle-lsp.js" <<'JS'
+if (process.env.LMLINE_TEST_LSP_IGNORE_TERM === '1') {
+  process.on('SIGTERM', () => {});
+  setTimeout(() => process.exit(0), 6000);
+} else process.on('SIGTERM', () => process.exit(0));
+process.on('exit', () => require('fs').writeFileSync(process.env.LMLINE_TEST_LSP_STOPPED, 'stopped'));
+require(process.env.LMLINE_TEST_FAKE_LSP);
+JS
+  env "${lifecycle_env[@]}" node - "$repo_dir/lmline/copilot-client.js" <<'JS'
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { spawn, execFile } = require('child_process');
+const { once } = require('events');
+const exec = require('util').promisify(execFile);
+const runtime = process.env.LMLINE_COPILOT_RUNTIME_DIR;
+const record = name => path.join(runtime, `daemon.${name}`);
+const cli = command => exec(process.execPath, [process.argv[2], command], { timeout: 10000 });
+const child = spawn(process.execPath, ['-e', `
+  process.on('message', () => process.send('alive'));
+  process.send('ready');
+`], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+async function alive() {
+  assert.strictEqual(child.exitCode, null, 'unrelated child exited');
+  assert.strictEqual(child.signalCode, null, 'unrelated child was signaled');
+  const reply = once(child, 'message');
+  child.send('ping');
+  let timer;
+  try {
+    await Promise.race([reply, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('unrelated child did not reply')), 1000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+function staleRecords() {
+  fs.writeFileSync(record('pid'), `${child.pid}\n`);
+  fs.mkdirSync(record('lock'), { recursive: true });
+}
+function cleaned(expectStopped = true) {
+  for (const name of ['sock', 'pid', 'lock']) {
+    assert(!fs.existsSync(record(name)), `restart left daemon.${name}`);
+  }
+  if (expectStopped) {
+    assert(fs.existsSync(process.env.LMLINE_TEST_LSP_STOPPED), 'restart did not stop its LSP child');
+  } else {
+    assert(!fs.existsSync(process.env.LMLINE_TEST_LSP_STOPPED), 'unresponsive LSP exited gracefully instead of being force-stopped');
+  }
+}
+(async () => {
+  try {
+    await once(child, 'message');
+    fs.mkdirSync(runtime, { recursive: true });
+    staleRecords();
+    await cli('restart'); // No socket: the persisted live PID is not authority.
+    await alive();
+    assert(!fs.existsSync(record('sock')), 'inactive restart started a daemon');
+
+    await cli('status'); // A reused PID and abandoned lock must not block start.
+    assert.notStrictEqual(fs.readFileSync(record('pid'), 'utf8').trim(), String(child.pid));
+    await alive();
+    staleRecords(); // An active daemon must also ignore a corrupted PID record.
+    await cli('status');
+    await cli('restart');
+    cleaned();
+
+    fs.unlinkSync(process.env.LMLINE_TEST_LSP_STOPPED);
+    process.env.LMLINE_TEST_LSP_IGNORE_TERM = '1';
+    await cli('status');
+    await cli('restart'); // The daemon escalates only against its owned child.
+    delete process.env.LMLINE_TEST_LSP_IGNORE_TERM;
+    cleaned(false);
+
+    await cli('status'); // Immediate normal start after an active restart.
+    await cli('restart');
+    cleaned();
+
+    // A listener that exits without closing leaves a genuinely stale socket.
+    await exec(process.execPath, ['-e', `
+      require('net').createServer().listen(process.argv[1], () => process.exit(0));
+    `, record('sock')]);
+    assert(fs.existsSync(record('sock')), 'stale socket fixture missing');
+    staleRecords();
+    fs.unlinkSync(process.env.LMLINE_TEST_LSP_STOPPED);
+    const countInitializations = () => fs.readFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, 'utf8')
+      .split('\n').filter(line => line === 'initialize').length;
+    const startsBeforeRecovery = countInitializations();
+    await Promise.all([cli('status'), cli('status'), cli('status')]);
+    assert.strictEqual(countInitializations() - startsBeforeRecovery, 1,
+      'concurrent stale recovery started duplicate LSPs');
+    await cli('restart');
+    cleaned();
+    await alive();
+  } finally {
+    await cli('restart').catch(() => {});
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, 'exit');
+      child.kill(); // The owned ChildProcess, never the PID record.
+      await exited;
+    }
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS
+) || fail "Copilot isolated restart and stale-record recovery"
+
 edit_out=$(env "${copilot_env[@]}" node "$repo_dir/lmline/copilot-client.js" edit 'echo 😀 old' 10 "$repo_dir") || {
   sed -n '1,80p' "$copilot_runtime/daemon.log" >&2 || true
   fail "Copilot inline edit"
