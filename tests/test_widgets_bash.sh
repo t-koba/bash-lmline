@@ -257,8 +257,18 @@ else
       fi
       __lmline_trace_previous_command=$current_command
     }
+    __lmline_trace_helper_return() {
+      local return_status=$? returned_function=${FUNCNAME[1]:-}
+      case $returned_function in
+        __lmline_collect_suggested_commands)
+          printf 'helper-return class=producer status=%s\n' "$return_status" >&2 ;;
+        __lmline_hash_stdin)
+          printf 'helper-return class=hasher status=%s\n' "$return_status" >&2 ;;
+      esac
+    }
     set -T
     trap __lmline_trace_key_return DEBUG
+    trap __lmline_trace_helper_return RETURN
     __lmline_suggested_commands_key </dev/null >/dev/null
     status=$?
     printf 'key replay status=%s\n' "$status" >&2
@@ -266,6 +276,7 @@ else
   /usr/bin/sed -En \
     -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=(none|[0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
+    -e 's/^helper-return class=(producer|hasher) status=([0-9]+)$/stdin-hash-check: helper return class=\1 status=\2/p' \
     "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
 fi
