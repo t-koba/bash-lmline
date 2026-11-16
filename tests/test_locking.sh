@@ -73,13 +73,23 @@ source "$repo_dir/lmline/config.bash"
 steal_lock="$cfg_tmp/steal.lock"
 rm -rf "$steal_lock"
 __lmline_lock_acquire "$steal_lock" 5 || fail "lock acquisition failed"
-[[ "$(cat "$steal_lock/pid")" == "$$" ]] || fail "thief pid was not recorded"
+[[ "$(cat "$steal_lock/pid")" == "$BASHPID" ]] || fail "thief pid was not recorded"
 bash -c 'source "$1/lmline/config.bash"; __lmline_lock_release "$2"' _ "$repo_dir" "$steal_lock" \
   2>"$cfg_tmp/steal.err" || fail "stale release exited non-zero"
 [[ -d "$steal_lock" ]] || fail "stale release deleted the thief's lock"
 grep -q 'not owned' "$cfg_tmp/steal.err" || fail "stale release did not warn"
 __lmline_lock_release "$steal_lock" || fail "owned release failed"
 [[ ! -e "$steal_lock" ]] || fail "owned release did not remove the lock"
+
+# A subshell shares $$ with its parent; it must not release the parent's lock.
+subshell_lock="$cfg_tmp/subshell.lock"
+__lmline_lock_acquire "$subshell_lock" 5 || fail "subshell lock acquisition failed"
+[[ "$(cat "$subshell_lock/pid")" == "$BASHPID" ]] || fail "lock did not record the current shell process"
+(__lmline_lock_release "$subshell_lock") 2>"$cfg_tmp/subshell.err" || fail "subshell release exited non-zero"
+[[ -d "$subshell_lock" ]] || fail "subshell release deleted the parent's lock"
+grep -q 'not owned' "$cfg_tmp/subshell.err" || fail "subshell release did not warn"
+__lmline_lock_release "$subshell_lock" || fail "parent release failed"
+[[ ! -e "$subshell_lock" ]] || fail "parent release did not remove the lock"
 
 # LMLINE_NO_LOCK=1 must bypass locking entirely.
 mkdir -p "$cfg/.lmline.lock"

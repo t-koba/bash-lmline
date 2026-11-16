@@ -238,7 +238,8 @@ __lmline_reconcile_config_load() {
 # Portable mutual exclusion for config-dir writes. mkdir is atomic on POSIX
 # filesystems and macOS has no flock(1), so a lock directory is used instead.
 # Stale locks require manual removal with all writers stopped: checking a PID
-# then deleting can erase a successor. LMLINE_NO_LOCK=1 disables locking entirely
+# then deleting can erase a successor. BASHPID distinguishes subshells because
+# $$ remains the parent shell PID there. LMLINE_NO_LOCK=1 disables locking entirely
 # (for filesystems where mkdir atomicity is unreliable, e.g. some NFS mounts).
 __lmline_lock_acquire() {
   local lockdir=$1 timeout=${2:-5} tries i=0
@@ -252,7 +253,7 @@ __lmline_lock_acquire() {
     fi
     sleep 0.1
   done
-  printf '%s\n' "$$" >"$lockdir/pid"
+  printf '%s\n' "$BASHPID" >"$lockdir/pid"
   return 0
 }
 
@@ -264,7 +265,7 @@ __lmline_lock_release() {
   [[ -n "$lockdir" ]] || return 0
   [[ -d "$lockdir" ]] || return 0
   cur=$(cat "$lockdir/pid" 2>/dev/null) || cur=
-  if [[ "$cur" != "$$" ]]; then
+  if [[ "$cur" != "$BASHPID" ]]; then
     printf 'lmline: lock %s is not owned by this process (holder %s); leaving it intact\n' "$lockdir" "${cur:-unknown}" >&2
     return 0
   fi
