@@ -816,8 +816,13 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     BASH_XTRACEFD=9
     PS4='+${LINENO}:'
     set -x
+    stage() { printf 'stage=%d\n' "$1" >&9; }
+  else
+    stage() { :; }
   fi
+  stage 1
   source "$1/lmline/init.bash"
+  stage 2
   lmline_function_hash_privacy_probe() { :; }
   export -f lmline_function_hash_privacy_probe
   # A shadowed export silently doing nothing reproduces the original leak;
@@ -826,8 +831,10 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   builtin() { :; }
   command() { :; }
   declare -fx export builtin command
+  stage 3
   shell_functions=$(__lmline_collect_shell_functions)
   exported_functions=$(__lmline_collect_exported_functions)
+  stage 4
   # Independent reference for the exact lists and framing. The captured names
   # are already fixed; the checksum needs no exported-function or POSIX-mode
   # manipulation in this subshell.
@@ -850,15 +857,23 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     LMLINE_TEST_EXPECT_POSIX=:
     [[ $state != exported ]] || LMLINE_TEST_EXPECT_POSIX=x:original
     declare -x LMLINE_TEST_EXPECT_POSIX
+    stage 5
     [[ "$(__lmline_async_function_names_key)" == "$expected" ]]
+    stage 6
     after=$(declare -p POSIXLY_CORRECT 2>/dev/null || :; set +o)
+    stage 7
     [[ "$before" == "$after" ]]
+    stage 8
     [[ "$exported_functions" == "$(__lmline_collect_exported_functions)" ]]
+    stage 9
     [[ -f "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
+    stage 10
     [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/leak" ]]
+    stage 11
   ); done
   # Compare every affected key in an already-POSIX shell with its mutable
   # reference, including the environment inherited by the fake hash process.
+  stage 20
   for state in readonly readonly-exported readonly-privileged; do (
     cd "$LMLINE_TEST_FUNCTION_NAMES_DIR/git"
     # Context gates use builtin test: a failing collision keeps their enabled
@@ -878,8 +893,10 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     [[ $state != readonly-privileged ]] || helpers=(__lmline_async_function_names_key)
     state_exported_functions=$(__lmline_collect_exported_functions)
     expected_keys=()
+    stage 21
     for helper in "${helpers[@]}"; do
       key=$("$helper" generate)
+      stage 22
       [[ -n "$key" && $key != disabled && $key != absent ]]
       expected_keys+=("$key")
     done
@@ -950,6 +967,9 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     # Failure-only line numbers; no command text, paths, or values are printed.
     printf 'async collision trace lines:' >&2
     grep -oE '^\++[0-9]+:' "$widget_tmp/async-collision.trace" | tail -40 | tr '\n' ' ' >&2
+    printf '\n' >&2
+    printf 'async collision stage:' >&2
+    grep -oE 'stage=[0-9]+' "$widget_tmp/async-collision.trace" | tail -1 | tr -d '\n' >&2
     printf '\n' >&2
   fi
   fail "async identity sanitization resists builtin name collisions"
