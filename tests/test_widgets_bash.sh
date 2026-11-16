@@ -792,6 +792,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/sibling-key-collisions/config" \
 # Bash before patch 50 exports NAME=() { ... } instead of BASH_FUNC_NAME%%=...
 # so an injected patched-format record cannot be removed by export -nf there.
 lmline_export_format_probe() { :; }
+lmline_export_format_probe
 export -f lmline_export_format_probe
 if env | grep -q '^BASH_FUNC_lmline_export_format_probe%%='; then
   lmline_function_record() { printf 'BASH_FUNC_%s%%%%=() { %s; }' "$1" "$2"; }
