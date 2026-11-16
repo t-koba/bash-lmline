@@ -72,7 +72,11 @@ endpoints_file=$config_dir/endpoints.tsv
 models_file=$config_dir/models.tsv
 __lmline_tmp_paths=()
 __lmline_lock_path=
+__lmline_cleanup_owner=$BASHPID
 __lmline_cleanup() {
+  # EXIT traps can run in child shells; only the process that registered these
+  # lock and temporary paths may clean them up.
+  [[ $BASHPID == "$__lmline_cleanup_owner" ]] || return 0
   if [[ -n "$__lmline_lock_path" ]]; then
     # Owner-checked: never delete a successor's lock after a steal. The
     # function is defined by config.bash, sourced below before any lock is

@@ -16,11 +16,17 @@ names=(LMLINE_SPINNER LMLINE_PROGRESS LMLINE_STREAM LMLINE_STORE LMLINE_STORE_FA
 n=${#names[@]}
 pids=()
 for i in $(seq 1 "$n"); do
-  LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set "${names[$((i - 1))]}" "value$i" &
+  LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" config set "${names[$((i - 1))]}" "value$i" \
+    2>"$cfg_tmp/parallel-$i.err" &
   pids+=($!)
 done
 for pid in "${pids[@]}"; do
   wait "$pid" || fail "parallel config set exited non-zero"
+done
+for i in $(seq 1 "$n"); do
+  if grep -q 'not owned by this process' "$cfg_tmp/parallel-$i.err"; then
+    fail "parallel config cleanup ran outside its owner process"
+  fi
 done
 for i in $(seq 1 "$n"); do
   grep -qxF "export ${names[$((i - 1))]}='value$i'" "$cfg/settings.bash" \
