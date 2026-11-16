@@ -220,12 +220,11 @@ else
     set +e
     __lmline_trace_key_return() {
       if [[ $BASH_COMMAND == 'return 1' ]]; then
-        printf 'key return function=%s source=%s line=%s\n' \
-          "${FUNCNAME[1]:-main}" "${BASH_SOURCE[1]##*/}" "${BASH_LINENO[0]:-unknown}" >&2
+        printf 'key return function=%s source=%s line=%s\n' "$3" "$2" "$1" >&2
       fi
     }
     set -T
-    trap '__lmline_trace_key_return' DEBUG
+    trap '__lmline_trace_key_return "$LINENO" "${BASH_SOURCE[0]##*/}" "${FUNCNAME[0]:-main}"' DEBUG
     __lmline_suggested_commands_key </dev/null >/dev/null
     status=$?
     printf 'key replay status=%s\n' "$status" >&2
