@@ -65,8 +65,8 @@ set -e
 trap 'printf "stdin-hash-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
 source "$1/lmline/init.bash"
 __lmline_test_trace_helper_call() {
-  local helper_class=$1 helper_name=$2 helper_status=0 trace_file=$__lmline_test_trace_file
-  shift 2
+  local helper_class=$1 helper_name=$2 trace_file=$3 helper_status=0
+  shift 3
   "$helper_name" "$@" || helper_status=$?
   printf 'helper-call class=%s status=%s\n' "$helper_class" "$helper_status" >>"$trace_file"
   return "$helper_status"
@@ -76,24 +76,35 @@ __lmline_test_trace_hasher_failure() { return 3; }
 trace_file=$2/helper-status-probe
 : >"$trace_file"
 __lmline_test_trace_file=$trace_file
-if __lmline_test_trace_helper_call producer __lmline_test_trace_producer_failure 2>/dev/null; then
+if __lmline_test_trace_helper_call producer __lmline_test_trace_producer_failure \
+    "$trace_file" 2>/dev/null; then
   trace_producer_status=0
 else
   trace_producer_status=$?
 fi
-if __lmline_test_trace_helper_call hasher __lmline_test_trace_hasher_failure 2>/dev/null; then
+if __lmline_test_trace_helper_call hasher __lmline_test_trace_hasher_failure \
+    "$trace_file" 2>/dev/null; then
   trace_hasher_status=0
 else
   trace_hasher_status=$?
 fi
-[[ $trace_producer_status == 2 && $trace_hasher_status == 3 ]]
+if nested_trace_output=$(printf probe | __lmline_test_trace_helper_call hasher \
+    __lmline_test_trace_hasher_failure "$trace_file"); then
+  nested_trace_status=0
+else
+  nested_trace_status=$?
+fi
+[[ $trace_producer_status == 2 && $trace_hasher_status == 3 &&
+   $nested_trace_status == 3 && -z $nested_trace_output ]]
 {
   IFS= read -r trace_producer_record
   IFS= read -r trace_hasher_record
+  IFS= read -r trace_nested_hasher_record
 } <"$trace_file"
 unset __lmline_test_trace_file
 [[ $trace_producer_record == 'helper-call class=producer status=2' ]]
 [[ $trace_hasher_record == 'helper-call class=hasher status=3' ]]
+[[ $trace_nested_hasher_record == 'helper-call class=hasher status=3' ]]
 export PATH="$2/stdin-hash-bin:$PATH"
 [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
 # Reproduce Bash versions that retain a cached executable after PATH changes.
@@ -296,8 +307,10 @@ else
       # shellcheck disable=SC1090
       if . "$2/hash-key-producer-function.bash"; then
         __lmline_collect_suggested_commands() {
-          __lmline_test_trace_helper_call producer __lmline_trace_original_producer "$@"
+          __lmline_test_trace_helper_call producer __lmline_trace_original_producer \
+            "$__lmline_test_trace_file" "$@"
         }
+        printf 'helper-wrapper class=producer state=installed\n' >>"$helper_trace"
       fi
     fi
     if builtin declare -f __lmline_hash_stdin |
@@ -306,8 +319,10 @@ else
       # shellcheck disable=SC1090
       if . "$2/hash-key-hasher-function.bash"; then
         __lmline_hash_stdin() {
-          __lmline_test_trace_helper_call hasher __lmline_trace_original_hasher "$@"
+          __lmline_test_trace_helper_call hasher __lmline_trace_original_hasher \
+            "$__lmline_test_trace_file" "$@"
         }
+        printf 'helper-wrapper class=hasher state=installed\n' >>"$helper_trace"
       fi
     fi
     set -T
@@ -319,6 +334,7 @@ else
   /usr/bin/sed -En \
     -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=(none|[0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
+    -e 's/^helper-wrapper class=(producer|hasher) state=installed$/stdin-hash-check: helper wrapper class=\1 state=installed/p' \
     -e 's/^helper-call class=(producer|hasher) status=([0-9]+)$/stdin-hash-check: helper call class=\1 status=\2/p' \
     < <(/usr/bin/cat "$return_trace" "$helper_trace") | /usr/bin/tail -n 40 >&2
   exit 1
