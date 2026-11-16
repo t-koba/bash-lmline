@@ -37,6 +37,10 @@ ok - suggested-command lists ending in comments or blank lines remain available
   ! __lmline_hash_fd_supported 3 2 || fail "old Bash descriptor guard accepted dynamic descriptors"
   __lmline_hash_fd_supported 4 3 || fail "Bash 4.3 descriptor guard rejected dynamic descriptors"
   __lmline_hash_fd_supported 5 0 || fail "Bash 5 descriptor guard rejected dynamic descriptors"
+  for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
+    declare -f "$helper" | grep -Fq '__lmline_hash_fd_supported' ||
+      fail "$helper does not consult the descriptor guard"
+  done
 )
 ok - minimum-version descriptor guard covers both key helpers
 # Exercise the portable digest and ensure failed identities never match a job.
