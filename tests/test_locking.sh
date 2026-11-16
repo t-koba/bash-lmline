@@ -23,15 +23,32 @@ done
 for pid in "${pids[@]}"; do
   wait "$pid" || fail "parallel config set exited non-zero"
 done
+parallel_cleanup_warning=0
 for i in $(seq 1 "$n"); do
-  if grep -q 'not owned by this process' "$cfg_tmp/parallel-$i.err"; then
-    fail "parallel config cleanup ran outside its owner process"
+  err="$cfg_tmp/parallel-$i.err"
+  if grep -q 'not owned by this process' "$err"; then
+    parallel_cleanup_warning=1
+    holder=$(sed -n 's/.*(holder \([^)]*\));.*/\1/p' "$err" | head -n 1)
+    relation=outside-batch
+    if [[ $holder == "${pids[$((i - 1))]}" ]]; then
+      relation=emitting-writer
+    else
+      for j in $(seq 1 "$n"); do
+        if [[ $holder == "${pids[$((j - 1))]}" ]]; then
+          relation="writer-$j"
+          break
+        fi
+      done
+    fi
+    # Show only synthetic writer indexes, never runner paths or process IDs.
+    printf 'lock warning: writer=%s recorded-holder=%s\n' "$i" "$relation" >&2
   fi
 done
 for i in $(seq 1 "$n"); do
   grep -qxF "export ${names[$((i - 1))]}='value$i'" "$cfg/settings.bash" \
     || fail "parallel config set lost ${names[$((i - 1))]}"
 done
+((parallel_cleanup_warning == 0)) || fail "parallel config cleanup ran outside its owner process"
 
 # Concurrent model adds must not lose rows in models.tsv.
 LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" endpoint add local http://127.0.0.1:1234/v1 >/dev/null
