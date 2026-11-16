@@ -543,6 +543,8 @@ root = Path(os.environ["LMLINE_TEST_REQUEST_KEY_DIR"])
 args = sys.argv[1:]
 if (args and (len(args) != 2 or not all(arg.startswith("/dev/fd/") for arg in args))) or any(key.startswith("BASH_FUNC_") or value.startswith("() {") for key, value in os.environ.items()):
     (root / "leak").touch()
+if "LMLINE_TEST_REQUEST_KEY_EXPECT_CLEAN_POSIX" in os.environ and "POSIXLY_CORRECT" in os.environ:
+    (root / "leak").touch()
 with (root / "checked").open("a") as checked:
     checked.write("1")
 if args:
@@ -635,6 +637,19 @@ LMLINE_CONFIG_DIR="$widget_tmp/request-key/config" \
       [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
     done
   done
+  # Hash sanitization must enable POSIX mode without exporting it to the
+  # hasher. The prefix-assignment form leaked on legacy Bash; this assertion
+  # reaches the request-key boundary in an ordinary, non-posix shell.
+  [[ -z ${POSIXLY_CORRECT+x} && ! -o posix ]]
+  (
+    export LMLINE_TEST_REQUEST_KEY_EXPECT_CLEAN_POSIX=1
+    # Positive control: the fake hasher really sees an exported posix mode.
+    ( export POSIXLY_CORRECT=1; printf '' | sha256sum >/dev/null )
+    [[ -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+    rm -f "$LMLINE_TEST_REQUEST_KEY_DIR/leak"
+    [[ -n "$(__lmline_request_key generate input)" ]]
+    [[ ! -e "$LMLINE_TEST_REQUEST_KEY_DIR/leak" ]]
+  )
 ' _ "$repo_dir" || fail "request identity hides bodies from hash subprocesses"
 # Caller read/compgen shadows must not bypass the request-key scrub. A failing
 # read or an empty compgen previously left bodies exported while still

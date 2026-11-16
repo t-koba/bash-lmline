@@ -1727,11 +1727,7 @@ __lmline_request_key() (
         __lmline_unexport_function_impl "$name" 2>/dev/null || return 1
       done
     }
-    if [[ -o posix ]]; then
-      __lmline_request_unexport_functions || return 1
-    else
-      POSIXLY_CORRECT=1 __lmline_request_unexport_functions || return 1
-    fi
+    __lmline_in_posix_mode __lmline_request_unexport_functions || return 1
     __lmline_hash_stdin
   )
   # Match the rendered pwd -P bytes without exposing the path in the key.
