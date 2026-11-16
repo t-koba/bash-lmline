@@ -253,7 +253,8 @@ __lmline_lock_acquire() {
     fi
     sleep 0.1
   done
-  printf '%s\n' "$BASHPID" >"$lockdir/pid"
+  __lmline_lock_owner=$BASHPID
+  printf '%s\n' "$__lmline_lock_owner" >"$lockdir/pid"
   return 0
 }
 
@@ -267,8 +268,8 @@ __lmline_lock_release() {
   cur=$(cat "$lockdir/pid" 2>/dev/null) || cur=
   if [[ "$cur" != "$BASHPID" ]]; then
     case $phase in explicit|exit-cleanup) ;; *) phase=direct ;; esac
-    printf 'lmline: lock %s is not owned by this process (owner %s holder %s); release phase %s; leaving it intact\n' \
-      "$lockdir" "$BASHPID" "${cur:-unknown}" "$phase" >&2
+    printf 'lmline: lock %s is not owned by this process (owner %s holder %s acquired %s); release phase %s; leaving it intact\n' \
+      "$lockdir" "$BASHPID" "${cur:-unknown}" "${__lmline_lock_owner:-unknown}" "$phase" >&2
     return 0
   fi
   rm -rf "$lockdir"

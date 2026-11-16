@@ -807,8 +807,15 @@ malformed_function_record=$(lmline_function_record $'bad\nname' 'printf malforme
 inherited_record=$(lmline_function_record 'foo%bar' 'printf protected-percent-body')
 LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   LMLINE_TEST_FUNCTION_NAMES_DIR="$widget_tmp/function-names" \
+  LMLINE_TEST_ASYNC_TRACE="$widget_tmp/async-collision.trace" \
   PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
   bash --norc -e -i -c '
+  if [[ -n ${LMLINE_TEST_ASYNC_TRACE-} ]]; then
+    exec 9>"$LMLINE_TEST_ASYNC_TRACE"
+    BASH_XTRACEFD=9
+    PS4='+${LINENO}:'
+    set -x
+  fi
   source "$1/lmline/init.bash"
   lmline_function_hash_privacy_probe() { :; }
   export -f lmline_function_hash_privacy_probe
@@ -937,7 +944,15 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   /usr/bin/env "$2" \
     "$BASH" --norc -p -i "$LMLINE_TEST_FUNCTION_NAMES_DIR/protected-malformed-name-check.bash" "$1" \
     || exit 1
-' _ "$repo_dir" "$malformed_function_record" "$inherited_record" || fail "async identity sanitization resists builtin name collisions"
+' _ "$repo_dir" "$malformed_function_record" "$inherited_record" || {
+  if [[ -f "$widget_tmp/async-collision.trace" ]]; then
+    # Failure-only line numbers; no command text, paths, or values are printed.
+    printf 'async collision trace lines:' >&2
+    grep -oE '^\++[0-9]+:' "$widget_tmp/async-collision.trace" | tail -40 | tr '\n' ' ' >&2
+    printf '\n' >&2
+  fi
+  fail "async identity sanitization resists builtin name collisions"
+}
 LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-function" LMLINE_HISTORY_DIR="$widget_tmp/history-function" LMLINE_WIDGET_FUNCTION_MARKER="$widget_tmp/function-called" bash --norc -e -i -c '
   lmline/widget-function-probe() { : >"$LMLINE_WIDGET_FUNCTION_MARKER"; }
   source "$1/lmline/init.bash"
