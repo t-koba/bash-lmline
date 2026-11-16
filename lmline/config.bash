@@ -57,6 +57,22 @@ __lmline_unexport_function_impl() {
   unset -f -- "$name" 2>/dev/null
 }
 
+# A positional prefix assignment to a function is exported to commands that
+# function runs on some legacy Bash versions. Enable POSIX mode with an option
+# instead, so the mode cannot leak into the hash subprocess environment.
+__lmline_in_posix_mode() {
+  local status
+  if [[ -o posix ]]; then
+    "$@"
+    return $?
+  fi
+  set -o posix || return 1
+  "$@"
+  status=$?
+  set +o posix || return 1
+  return "$status"
+}
+
 # Direct unsanitized hash sites call this only inside a private subshell.
 # Unexport live functions without changing caller state or command resolution,
 # then reject residual modern/legacy transport (including malformed names).
@@ -100,7 +116,7 @@ __lmline_prepare_hash_environment() {
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   __lmline_check_no_function_transport || return 1
 }

@@ -167,7 +167,7 @@ __lmline_suggested_commands_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   # The async background worker does not expand caller aliases. Match that
   # visibility only in this private key-helper subshell; preserve rendering.
@@ -263,7 +263,7 @@ __lmline_git_context_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   digest=$(printf '%s\0%s\0' "$__lmline_git_root" "$__lmline_git_branch" | __lmline_hash_stdin 2>/dev/null) || return 1
   [[ -n "$digest" ]] || return 1
@@ -1002,7 +1002,7 @@ __lmline_project_markers_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   if command -v sha256sum >/dev/null 2>&1; then
     hash_command=(sha256sum)
@@ -1608,7 +1608,7 @@ __lmline_context_settings_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   {
     for name in \
@@ -1685,7 +1685,7 @@ __lmline_path_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   digest=$(
     { if [[ -v PATH ]]; then printf 'set\0%s\0' "$PATH"; else printf 'unset\0'; fi; } |

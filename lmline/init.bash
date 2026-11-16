@@ -413,7 +413,7 @@ __lmline_async_function_names_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   names_hash=$(printf 'shell-functions\n%s\nexported-functions\n%s\n' \
     "$shell_functions" "$exported_functions" | __lmline_hash_stdin 2>/dev/null) || return 1
@@ -472,7 +472,7 @@ __lmline_async_frontend_key() (
   if [[ -o posix ]]; then
     __lmline_unexport_functions || return 1
   else
-    POSIXLY_CORRECT=1 __lmline_unexport_functions || return 1
+    __lmline_in_posix_mode __lmline_unexport_functions || return 1
   fi
   case $1 in
     generate) backend=${LMLINE_GENERATE_BACKEND:-engine} ;;
