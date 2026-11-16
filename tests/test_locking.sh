@@ -28,22 +28,25 @@ for i in $(seq 1 "$n"); do
   err="$cfg_tmp/parallel-$i.err"
   if grep -q 'not owned by this process' "$err"; then
     parallel_lock_warning=1
-    holder=$(sed -n 's/.*(holder \([^)]*\));.*/\1/p' "$err" | head -n 1)
+    holder=$(sed -n 's/.*(owner [^ ]* holder \([^)]*\));.*/\1/p' "$err" | head -n 1)
+    owner=$(sed -n 's/.*(owner \([^ ]*\) holder [^)]*);.*/\1/p' "$err" | head -n 1)
     phase=$(sed -n 's/.*release phase \([^;]*\);.*/\1/p' "$err" | head -n 1)
     [[ -n $phase ]] || phase=unknown
     relation=outside-batch
-    if [[ $holder == "${pids[$((i - 1))]}" ]]; then
-      relation=emitting-writer
-    else
-      for j in $(seq 1 "$n"); do
-        if [[ $holder == "${pids[$((j - 1))]}" ]]; then
-          relation="writer-$j"
-          break
-        fi
-      done
-    fi
+    owner_relation=outside-batch
+    for j in $(seq 1 "$n"); do
+      if [[ $holder == "${pids[$((j - 1))]}" ]]; then
+        relation=writer-$j
+      fi
+      if [[ $owner == "${pids[$((j - 1))]}" ]]; then
+        owner_relation=writer-$j
+      fi
+    done
+    if [[ $holder == "${pids[$((i - 1))]}" ]]; then relation=emitting-writer; fi
+    if [[ $owner == "${pids[$((i - 1))]}" ]]; then owner_relation=emitting-writer; fi
     # Show synthetic writer indexes and a fixed release phase, never paths or PIDs.
-    printf 'lock warning: writer=%s recorded-holder=%s release-phase=%s\n' "$i" "$relation" "$phase" >&2
+    printf 'lock warning: writer=%s release-owner=%s recorded-holder=%s release-phase=%s\n' \
+      "$i" "$owner_relation" "$relation" "$phase" >&2
   fi
 done
 first_missing_setting=0

@@ -267,8 +267,8 @@ __lmline_lock_release() {
   cur=$(cat "$lockdir/pid" 2>/dev/null) || cur=
   if [[ "$cur" != "$BASHPID" ]]; then
     case $phase in explicit|exit-cleanup) ;; *) phase=direct ;; esac
-    printf 'lmline: lock %s is not owned by this process (holder %s); release phase %s; leaving it intact\n' \
-      "$lockdir" "${cur:-unknown}" "$phase" >&2
+    printf 'lmline: lock %s is not owned by this process (owner %s holder %s); release phase %s; leaving it intact\n' \
+      "$lockdir" "$BASHPID" "${cur:-unknown}" "$phase" >&2
     return 0
   fi
   rm -rf "$lockdir"
