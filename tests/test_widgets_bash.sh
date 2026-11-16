@@ -219,23 +219,31 @@ else
   (
     set +e
     __lmline_trace_previous_command=
+    __lmline_trace_last_status2_class=none
     __lmline_trace_key_return() {
       local prior_status=$? prior_command=$__lmline_trace_previous_command
-      local function=main command_class=other
-      if [[ $prior_status == 2 && ( ${FUNCNAME[0]:-} == __lmline_suggested_commands_key ||
-          ${FUNCNAME[1]:-} == __lmline_suggested_commands_key ) ]]; then
-        function=__lmline_suggested_commands_key
-        case $prior_command in
-          digest=*) command_class=digest-assignment ;;
-          membership_digest=*) command_class=membership-digest-assignment ;;
-          'exec {membership_fd}'*) command_class=membership-fd-open ;;
-          '{ exec {file_fd}'*) command_class=file-fd-open ;;
-          'wait "$producer"'*) command_class=producer-wait ;;
-          'exec {file_fd}'*) command_class=file-fd-close ;;
-          *) command_class=other ;;
-        esac
-        printf 'key failed status=%s function=%s command-class=%s\n' \
-          "$prior_status" "$function" "$command_class" >&2
+      local command_class=other
+      case $prior_command in
+        digest=*) command_class=digest-assignment ;;
+        membership_digest=*) command_class=membership-digest-assignment ;;
+        producer=*) command_class=producer-pid-assignment ;;
+        status=*) command_class=status-assignment ;;
+        'exec {membership_fd}'*) command_class=membership-fd-open ;;
+        '{ exec {file_fd}'*) command_class=file-fd-open ;;
+        'wait "$producer"'*) command_class=producer-wait ;;
+        'exec {file_fd}'*) command_class=file-fd-close ;;
+        '(( status == 0 ))'*) command_class=final-status-condition ;;
+        '[[ -n "$digest" ]]'*) command_class=digest-presence-condition ;;
+        '[[ -n "$membership_digest" ]]'*) command_class=membership-presence-condition ;;
+      esac
+      if (( prior_status == 2 )); then
+        __lmline_trace_last_status2_class=$command_class
+      fi
+      if [[ $BASH_COMMAND == 'return 1' &&
+          ( ${FUNCNAME[0]:-} == __lmline_suggested_commands_key ||
+            ${FUNCNAME[1]:-} == __lmline_suggested_commands_key ) ]]; then
+        printf 'key return prior-status=%s prior-class=%s last-status2-class=%s\n' \
+          "$prior_status" "$command_class" "$__lmline_trace_last_status2_class" >&2
       fi
       __lmline_trace_previous_command=$BASH_COMMAND
     }
@@ -246,7 +254,7 @@ else
     printf 'key replay status=%s\n' "$status" >&2
   ) 2>"$return_trace" || :
   /usr/bin/sed -En \
-    -e 's/^key failed status=([0-9]+) function=([^ ]*) command-class=([^ ]*)$/stdin-hash-check: key failed status=\1 function=\2 command-class=\3/p' \
+    -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
     "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
