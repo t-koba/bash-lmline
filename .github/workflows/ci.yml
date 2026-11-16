@@ -101,8 +101,17 @@ jobs:
           archive="$RUNNER_TEMP/bash-4.2.tar.gz"
           prefix="$RUNNER_TEMP/bash-4.2-install"
           repo="$GITHUB_WORKSPACE"
-          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
-            https://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz --output "$archive"
+          for attempt in 1 2 3; do
+            if curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              --connect-timeout 30 --max-time 180 \
+              https://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz --output "$archive"; then
+              break
+            fi
+            if (( attempt == 3 )); then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
           printf '%s  %s\n' "$BASH42_SHA256" "$archive" | sha256sum --check
           tar -xzf "$archive" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/bash-4.2"
