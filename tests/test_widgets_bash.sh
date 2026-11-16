@@ -264,7 +264,7 @@ else
     printf 'key replay status=%s\n' "$status" >&2
   ) 2>"$return_trace" || :
   /usr/bin/sed -En \
-    -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=([0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
+    -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=(none|[0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
     -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
     "$return_trace" | /usr/bin/tail -n 40 >&2
   exit 1
