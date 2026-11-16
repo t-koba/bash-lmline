@@ -246,16 +246,20 @@ __lmline_lock_acquire() {
   [[ "${LMLINE_NO_LOCK:-0}" == 1 ]] && return 0
   tries=$(( timeout * 10 ))
   mkdir -p "${lockdir%/*}" 2>/dev/null || true
-  while ! mkdir "$lockdir" 2>/dev/null; do
+  while :; do
+    if mkdir "$lockdir" 2>/dev/null; then
+      __lmline_lock_owner=$BASHPID
+      # Only the first claimant may create the owner record.
+      if (set -o noclobber; printf '%s\n' "$__lmline_lock_owner" >"$lockdir/pid") 2>/dev/null; then
+        return 0
+      fi
+    fi
     if (( ++i >= tries )); then
       printf 'lmline: config is locked by another lmline process (remove %s only after stopping all writers if stale)\n' "$lockdir" >&2
       return 1
     fi
     sleep 0.1
   done
-  __lmline_lock_owner=$BASHPID
-  printf '%s\n' "$__lmline_lock_owner" >"$lockdir/pid"
-  return 0
 }
 
 # Releases only a lock owned by this process. A stale holder whose lock was
