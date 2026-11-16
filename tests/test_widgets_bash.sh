@@ -835,7 +835,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     BASH_XTRACEFD=9
     PS4='+${LINENO}:'
     set -x
-    stage() { printf 'stage=%d\n' "$1" >&9; }
+    stage() { printf "stage=%d\n" "$1" >&9; }
   else
     stage() { :; }
   fi
