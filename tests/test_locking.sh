@@ -54,13 +54,40 @@ for i in $(seq 1 "$n"); do
   fi
 done
 if ((parallel_lock_warning || first_missing_setting)); then
-  # Re-run only a failed batch under fixed-label command wrappers. The passing
-  # path above stays uninstrumented so diagnostics cannot mask its interleaving.
+  # Re-run only a failed batch under a private DEBUG hook and command wrappers.
+  # The passing path stays uninstrumented so diagnostics cannot mask its interleaving.
   diag_cfg=$cfg_tmp/diagnostic-config
   trace_bin=$cfg_tmp/trace-bin
-  trace_file=$cfg_tmp/lock-events
+  trace_file=$(mktemp "$cfg_tmp/lock-events.XXXXXX")
+  trace_helper=$(mktemp "$cfg_tmp/trace-env.XXXXXX")
   mkdir "$trace_bin"
-  : >"$trace_file"
+  # mktemp keeps the raw trace and helper mode 600. Do not dump either.
+  cat >"$trace_helper" <<'EOF'
+# The replay starts privileged before sourcing this helper or the CLI. Keep
+# the hook out of BASH_ENV and child utility wrappers; do not rewrite production.
+set -T
+__lmline_test_lock_debug() {
+  local status=$1 cmd=$2 func=$3 caller_pid=$4 operation=
+  # DEBUG runs before commands. The next hook observes the printf's result;
+  # key pending state by BASHPID so inherited subshell hooks cannot consume it.
+  if [[ ${__lmline_test_owner_pending-} == "$caller_pid" ]]; then
+    printf '%s owner-write %s %s\n' "$LMLINE_TEST_LOCK_WRITER" "$status" "$caller_pid" >>"$LMLINE_TEST_LOCK_TRACE"
+    unset __lmline_test_owner_pending
+  fi
+  if [[ $func == __lmline_lock_acquire && $cmd == printf* && $cmd == *BASHPID* && $cmd == *'/pid'* ]]; then
+    __lmline_test_owner_pending=$caller_pid
+    operation=owner-write-start
+  elif [[ $func == __lmline_lock_release && $cmd == local* ]]; then
+    operation=release-start
+  fi
+  # Start events carry the incoming status, not a result of the next command.
+  if [[ -n $operation ]]; then
+    printf '%s %s %s %s\n' "$LMLINE_TEST_LOCK_WRITER" "$operation" "$status" "$caller_pid" >>"$LMLINE_TEST_LOCK_TRACE"
+  fi
+  return 0
+}
+trap '__lmline_test_lock_debug "$?" "$BASH_COMMAND" "${FUNCNAME[0]-}" "$BASHPID"' DEBUG
+EOF
   for utility in mkdir rm cat; do
     cat >"$trace_bin/$utility" <<'EOF'
 #!/usr/bin/env bash
@@ -93,8 +120,9 @@ EOF
   diag_pids=()
   for i in $(seq 1 "$n"); do
     PATH="$trace_bin:$PATH" LMLINE_TEST_LOCK_TRACE="$trace_file" LMLINE_TEST_LOCK_PATH="$diag_cfg/.lmline.lock" \
-      LMLINE_TEST_LOCK_WRITER="$i" LMLINE_CONFIG_DIR="$diag_cfg" "$repo_dir/lmline/lmline" \
-      config set "${names[$((i - 1))]}" "value$i" 2>"$cfg_tmp/diagnostic-$i.err" &
+      LMLINE_TEST_LOCK_WRITER="$i" LMLINE_CONFIG_DIR="$diag_cfg" \
+      command bash -p -c 'source "$1"; shift; source "$0" "$@"' \
+        "$repo_dir/lmline/lmline" "$trace_helper" config set "${names[$((i - 1))]}" "value$i" 2>/dev/null &
     diag_pids+=($!)
   done
   for pid in "${diag_pids[@]}"; do wait "$pid" || true; done
