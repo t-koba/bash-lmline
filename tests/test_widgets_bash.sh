@@ -837,7 +837,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   shell_functions=$(__lmline_collect_shell_functions)
   exported_functions=$(__lmline_collect_exported_functions)
   # Independent reference for the exact lists and framing.
-  expected=$(
+  if expected=$(
     POSIXLY_CORRECT=1
     \export -nf lmline_function_hash_privacy_probe export builtin command || {
       reference_status=$?
@@ -855,7 +855,13 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
       printf "reference-cksum-status:%s\\n" "${reference_status[*]}" >&2
       exit 1
     fi
-  )
+    printf "reference-reached-end\\n" >&2
+  ); then
+    reference_assignment_status=0
+  else
+    reference_assignment_status=$?
+    printf "reference-assignment-status:%s\\n" "$reference_assignment_status" >&2
+  fi
   expected=${expected%% *}
   for state in unset value exported posix; do (
     unset POSIXLY_CORRECT
