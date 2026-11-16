@@ -64,47 +64,46 @@ cat >"$widget_tmp/stdin-hash-check.bash" <<'CHECK'
 set -e
 trap 'printf "stdin-hash-check: line %s status %s\n" "$LINENO" "$?" >&2' ERR
 source "$1/lmline/init.bash"
-__lmline_test_trace_helper_call() {
-  local helper_class=$1 helper_name=$2 trace_file=$3 helper_status=0
-  shift 3
-  "$helper_name" "$@" || helper_status=$?
-  printf 'helper-call class=%s status=%s\n' "$helper_class" "$helper_status" >>"$trace_file"
-  return "$helper_status"
+# Protect the exact numeric status snapshot used by the failure-only replay
+# without wrapping or changing the real producer/hasher call sites.
+__lmline_test_capture_producer_failure() { printf 'probe\n'; return 7; }
+__lmline_test_capture_successful_hasher() { command cat >/dev/null; return 0; }
+__lmline_test_capture_successful_producer() { printf 'probe\n'; return 0; }
+__lmline_test_capture_hasher_failure() { command cat >/dev/null; return 9; }
+if capture_output=$(
+  set +e
+  set -o pipefail
+  __lmline_test_capture_producer_failure | __lmline_test_capture_successful_hasher
+  capture_status=("$?" "${PIPESTATUS[@]}")
+  printf '%s %s %s\n' "${capture_status[0]}" "${capture_status[1]}" "${capture_status[2]}"
+  exit "${capture_status[0]}"
+); then
+  capture_exit=0
+else
+  capture_exit=$?
+fi
+[[ $capture_exit == 7 && $capture_output == '7 7 0' ]] || {
+  printf 'stdin-hash-check: producer status capture failed\n' >&2
+  exit 1
 }
-__lmline_test_trace_producer_failure() { return 2; }
-__lmline_test_trace_hasher_failure() { return 3; }
-trace_file=$2/helper-status-probe
-: >"$trace_file"
-__lmline_test_trace_file=$trace_file
-if __lmline_test_trace_helper_call producer __lmline_test_trace_producer_failure \
-    "$trace_file" 2>/dev/null; then
-  trace_producer_status=0
+if capture_output=$(
+  set +e
+  set -o pipefail
+  __lmline_test_capture_successful_producer | __lmline_test_capture_hasher_failure
+  capture_status=("$?" "${PIPESTATUS[@]}")
+  printf '%s %s %s\n' "${capture_status[0]}" "${capture_status[1]}" "${capture_status[2]}"
+  exit "${capture_status[0]}"
+); then
+  capture_exit=0
 else
-  trace_producer_status=$?
+  capture_exit=$?
 fi
-if __lmline_test_trace_helper_call hasher __lmline_test_trace_hasher_failure \
-    "$trace_file" 2>/dev/null; then
-  trace_hasher_status=0
-else
-  trace_hasher_status=$?
-fi
-if nested_trace_output=$(printf probe | __lmline_test_trace_helper_call hasher \
-    __lmline_test_trace_hasher_failure "$trace_file"); then
-  nested_trace_status=0
-else
-  nested_trace_status=$?
-fi
-[[ $trace_producer_status == 2 && $trace_hasher_status == 3 &&
-   $nested_trace_status == 3 && -z $nested_trace_output ]]
-{
-  IFS= read -r trace_producer_record
-  IFS= read -r trace_hasher_record
-  IFS= read -r trace_nested_hasher_record
-} <"$trace_file"
-unset __lmline_test_trace_file
-[[ $trace_producer_record == 'helper-call class=producer status=2' ]]
-[[ $trace_hasher_record == 'helper-call class=hasher status=3' ]]
-[[ $trace_nested_hasher_record == 'helper-call class=hasher status=3' ]]
+[[ $capture_exit == 9 && $capture_output == '9 0 9' ]] || {
+  printf 'stdin-hash-check: hasher status capture failed\n' >&2
+  exit 1
+}
+unset -f __lmline_test_capture_producer_failure __lmline_test_capture_successful_hasher \
+  __lmline_test_capture_successful_producer __lmline_test_capture_hasher_failure
 export PATH="$2/stdin-hash-bin:$PATH"
 [[ $(builtin type -P "$3") == "$2/stdin-hash-bin/$3" ]]
 # Reproduce Bash versions that retain a cached executable after PATH changes.
@@ -242,101 +241,6 @@ else
     printf 'stdin-hash-check: membership substitution status=%s digest-present=%s\n' \
       "$substitution_status" "$digest_present" >&2
   )
-  # On the pinned Bash 4.2 job, keep a failing child trace local and expose
-  # only function names, source basenames, line/status numbers, and fixed
-  # command classes; never print commands, expanded arguments, values, or paths.
-  trace=$2/hash-key-trace
-  (
-    exec 9>"$trace"
-    BASH_XTRACEFD=9
-    PS4='+${FUNCNAME[0]:-main}:${BASH_SOURCE[0]##*/}:${LINENO}: status=$? pipestatus=${PIPESTATUS[*]} '
-    set -x
-    __lmline_suggested_commands_key </dev/null >/dev/null
-  ) 2>/dev/null || :
-  printf 'stdin-hash-check: suggested-key trace (function/source:line)\n' >&2
-  /usr/bin/sed -En 's/^\+([^:]+):([^:]+):([0-9]+): status=([0-9]+) pipestatus=([0-9]+( [0-9]+)*) .*/\1\/\2:\3 status=\4 pipestatus=\5/p' "$trace" |
-    /usr/bin/tail -n 120 >&2
-  return_trace=$2/hash-key-return-trace
-  helper_trace=$2/hash-key-helper-trace
-  : >"$helper_trace"
-  (
-    set +e
-    __lmline_test_trace_file=$helper_trace
-    __lmline_trace_previous_command=
-    __lmline_trace_last_status2_class=none
-    __lmline_trace_last_status2_followed_by=none
-    __lmline_trace_last_status2_pipestatus=none
-    __lmline_trace_key_return() {
-      local prior_status=$? prior_pipestatus=${PIPESTATUS[*]} prior_command=$__lmline_trace_previous_command
-      local current_command=$BASH_COMMAND command_class=other next_class=other
-      case $prior_command in
-        digest=*) command_class=digest-assignment ;;
-        membership_digest=*) command_class=membership-digest-assignment ;;
-        producer=*) command_class=producer-pid-assignment ;;
-        status=*) command_class=status-assignment ;;
-        'exec {membership_fd}'*) command_class=membership-fd-open ;;
-        '{ exec {file_fd}'*) command_class=file-fd-open ;;
-        'wait "$producer"'*) command_class=producer-wait ;;
-        'exec {file_fd}'*) command_class=file-fd-close ;;
-        '(( status == 0 ))'*) command_class=final-status-condition ;;
-        '[[ -n "$digest" ]]'*) command_class=digest-presence-condition ;;
-        '[[ -n "$membership_digest" ]]'*) command_class=membership-presence-condition ;;
-      esac
-      case $current_command in
-        '[[ -n "$digest" ]]'*) next_class=after-file-digest-assignment ;;
-        '[[ -n "$membership_digest" ]]'*) next_class=after-membership-digest-assignment ;;
-        'return 1'*) next_class=return-after-status-2 ;;
-      esac
-      if (( prior_status == 2 )); then
-        __lmline_trace_last_status2_class=$command_class
-        __lmline_trace_last_status2_followed_by=$next_class
-        __lmline_trace_last_status2_pipestatus=$prior_pipestatus
-      fi
-      if [[ $current_command == 'return 1' &&
-          ( ${FUNCNAME[0]:-} == __lmline_suggested_commands_key ||
-            ${FUNCNAME[1]:-} == __lmline_suggested_commands_key ) ]]; then
-        printf 'key return prior-status=%s prior-class=%s last-status2-class=%s last-status2-followed-by=%s last-status2-pipestatus=%s\n' \
-          "$prior_status" "$command_class" "$__lmline_trace_last_status2_class" \
-          "$__lmline_trace_last_status2_followed_by" "$__lmline_trace_last_status2_pipestatus" >&2
-      fi
-      __lmline_trace_previous_command=$current_command
-    }
-    if builtin declare -f __lmline_collect_suggested_commands |
-        /usr/bin/sed '1s/__lmline_collect_suggested_commands/__lmline_trace_original_producer/' \
-          >"$2/hash-key-producer-function.bash"; then
-      # shellcheck disable=SC1090
-      if . "$2/hash-key-producer-function.bash"; then
-        __lmline_collect_suggested_commands() {
-          __lmline_test_trace_helper_call producer __lmline_trace_original_producer \
-            "$__lmline_test_trace_file" "$@"
-        }
-        printf 'helper-wrapper class=producer state=installed\n' >>"$helper_trace"
-      fi
-    fi
-    if builtin declare -f __lmline_hash_stdin |
-        /usr/bin/sed '1s/__lmline_hash_stdin/__lmline_trace_original_hasher/' \
-          >"$2/hash-key-hasher-function.bash"; then
-      # shellcheck disable=SC1090
-      if . "$2/hash-key-hasher-function.bash"; then
-        __lmline_hash_stdin() {
-          __lmline_test_trace_helper_call hasher __lmline_trace_original_hasher \
-            "$__lmline_test_trace_file" "$@"
-        }
-        printf 'helper-wrapper class=hasher state=installed\n' >>"$helper_trace"
-      fi
-    fi
-    set -T
-    trap __lmline_trace_key_return DEBUG
-    __lmline_suggested_commands_key </dev/null >/dev/null
-    status=$?
-    printf 'key replay status=%s\n' "$status" >&2
-  ) 2>"$return_trace" || :
-  /usr/bin/sed -En \
-    -e 's/^key return prior-status=([0-9]+) prior-class=([^ ]*) last-status2-class=([^ ]*) last-status2-followed-by=([^ ]*) last-status2-pipestatus=(none|[0-9]+( [0-9]+)*)$/stdin-hash-check: key return prior-status=\1 prior-class=\2 last-status2-class=\3 last-status2-followed-by=\4 last-status2-pipestatus=\5/p' \
-    -e 's/^key replay status=([0-9]+)$/stdin-hash-check: replay status=\1/p' \
-    -e 's/^helper-wrapper class=(producer|hasher) state=installed$/stdin-hash-check: helper wrapper class=\1 state=installed/p' \
-    -e 's/^helper-call class=(producer|hasher) status=([0-9]+)$/stdin-hash-check: helper call class=\1 status=\2/p' \
-    < <(/usr/bin/cat "$return_trace" "$helper_trace") | /usr/bin/tail -n 40 >&2
   exit 1
 fi
 [[ -n "$file_digest" && -n "$membership_digest" && "$actual" == "$expected" ]]
@@ -366,8 +270,96 @@ TEST_LMLINE_HASH_ARG_LOG="$widget_tmp/hash-arg-counts" \
 TEST_LMLINE_HASH_STATUS_LOG="$widget_tmp/hash-statuses" \
 LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
   bash --norc -e -i "$widget_tmp/stdin-hash-check.bash" \
-    "$repo_dir" "$widget_tmp" "$test_hash_name" || \
+    "$repo_dir" "$widget_tmp" "$test_hash_name" || {
+  # Start over in the original interactive -e child environment, not in a
+  # conditional function wrapper or the failed child's already-mutated state.
+  # Reuse its exact setup (including PATH and the caller-owned hash cache),
+  # replacing only the final assertion with an instrumented key invocation.
+  replay_source=$(<"$widget_tmp/stdin-hash-check.bash")
+  replay_call='if actual=$(__lmline_suggested_commands_key </dev/null); then'
+  if [[ $replay_source != *"$replay_call"* ]]; then
+    fail "stdin hash replay invocation missing"
+  fi
+  replay_tail=${replay_source#*"$replay_call"}
+  if [[ $replay_tail == *"$replay_call"* ]]; then
+    fail "stdin hash replay invocation is ambiguous"
+  fi
+  (
+    umask 077
+    printf '%s\n' "${replay_source%%"$replay_call"*}" >"$widget_tmp/stdin-hash-replay.bash"
+    cat >>"$widget_tmp/stdin-hash-replay.bash" <<'REPLAY'
+exec 9>"$2/hash-key-membership-status"
+trap 'replay_exit=$?; printf "stdin-hash-replay: exit status=%s\n" "$replay_exit" >&9; exit "$replay_exit"' EXIT
+# declare -f normalizes redirection spacing. Fail closed if its source shape
+# changes: do not silently instrument a different pipeline or multiple sites.
+replay_function=$(builtin declare -f __lmline_suggested_commands_key)
+replay_needle='membership_digest=$(__lmline_collect_suggested_commands 2> /dev/null | __lmline_hash_stdin "${hash_command[@]}" 2> /dev/null)'
+replay_matches=0
+replay_tail=$replay_function
+while [[ $replay_tail == *"$replay_needle"* ]]; do
+  replay_matches=$((replay_matches + 1))
+  replay_tail=${replay_tail#*"$replay_needle"}
+done
+printf 'stdin-hash-replay: source matches=%s\n' "$replay_matches" >&9
+[[ $replay_matches == 1 ]] || exit 64
+read -r -d '' replay_replacement <<'MEMBERSHIP' || :
+membership_digest=$(
+    trap 'replay_exit=$?; printf "stdin-hash-replay: membership-exit status=%s\n" "$replay_exit" >&9; exit "$replay_exit"' EXIT
+    replay_errexit=0
+    case $- in *e*) replay_errexit=1 ;; esac
+    replay_pipefail=0
+    if [[ -o pipefail ]]; then replay_pipefail=1; fi
+    replay_posix=0
+    if [[ -o posix ]]; then replay_posix=1; fi
+    replay_monitor=0
+    if [[ -o monitor ]]; then replay_monitor=1; fi
+    replay_subshell=$BASH_SUBSHELL
+    __lmline_collect_suggested_commands 2> /dev/null | __lmline_hash_stdin "${hash_command[@]}" 2> /dev/null
+    replay_pipeline=("$?" "${PIPESTATUS[@]}")
+    printf 'stdin-hash-replay: pipeline status=%s producer=%s hasher=%s errexit=%s pipefail=%s posix=%s monitor=%s subshell=%s\n' \
+      "${replay_pipeline[0]}" "${replay_pipeline[1]}" "${replay_pipeline[2]}" \
+      "$replay_errexit" "$replay_pipefail" "$replay_posix" "$replay_monitor" \
+      "$replay_subshell" >&9
+    exit "${replay_pipeline[0]}"
+)
+MEMBERSHIP
+# The pipeline itself and its stdout are unchanged. The one assignment above
+# snapshots $? and both PIPESTATUS entries before anything can overwrite them;
+# explicit exit and EXIT markers retain the substitution's original status.
+replay_function=${replay_function/"$replay_needle"/"$replay_replacement"}
+printf '%s\n' "$replay_function" >"$2/hash-key-membership-function.bash"
+# shellcheck disable=SC1090
+source "$2/hash-key-membership-function.bash"
+# Keep exactly the original invocation's conditional and substitution context.
+if actual=$(__lmline_suggested_commands_key </dev/null); then
+  exit 0
+else
+  exit "$?"
+fi
+REPLAY
+  )
+  # No tracing, candidate output, paths, digests, or expanded arguments escape
+  # this private replay. Only the fixed numeric records on FD 9 are reported.
+  replay_status=0
+  TEST_LMLINE_REAL_HASH="$test_hash_real" \
+  TEST_LMLINE_HASH_MODE="$test_hash_mode" \
+  TEST_LMLINE_REAL_AWK="$test_awk_real" \
+  TEST_LMLINE_AWK_STATUS_LOG="$widget_tmp/awk-statuses" \
+  TEST_LMLINE_HASH_ARG_LOG="$widget_tmp/hash-arg-counts" \
+  TEST_LMLINE_HASH_STATUS_LOG="$widget_tmp/hash-statuses" \
+  LMLINE_CONFIG_DIR="$widget_tmp/config-stdin-hash" \
+    bash --norc -e -i "$widget_tmp/stdin-hash-replay.bash" \
+      "$repo_dir" "$widget_tmp" "$test_hash_name" >/dev/null 2>&1 || replay_status=$?
+  printf 'stdin-hash-replay: child status=%s\n' "$replay_status" >&2
+  if [[ -f $widget_tmp/hash-key-membership-status ]]; then
+    /usr/bin/sed -En \
+      -e '/^stdin-hash-replay: (membership-exit|exit) status=[0-9]+$/p' \
+      -e '/^stdin-hash-replay: source matches=[0-9]+$/p' \
+      -e '/^stdin-hash-replay: pipeline status=[0-9]+ producer=[0-9]+ hasher=[0-9]+ errexit=[01] pipefail=[01] posix=[01] monitor=[01] subshell=[0-9]+$/p' \
+      "$widget_tmp/hash-key-membership-status" >&2
+  fi
   fail "stdin-only custom hash executable compatibility"
+}
 
 ok "stdin-only custom hash executable compatibility"
 mkdir -p "$widget_tmp/function-names/privacy-bin"
