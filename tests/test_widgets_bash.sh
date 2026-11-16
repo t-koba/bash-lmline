@@ -89,6 +89,17 @@ printf 'echo from custom stdin hasher\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
 file_digest=$(__lmline_hash_stdin <"$LMLINE_SUGGESTED_COMMANDS_FILE")
 membership_digest=$(__lmline_collect_suggested_commands | __lmline_hash_stdin)
 expected=$file_digest:$membership_digest
+# Mirror the key helper's cold-cache collector under pipefail in an isolated
+# subshell. On failure, emit only its numeric status; do not add wrappers or
+# expose candidate text, paths, or command arguments.
+cold_collection_status=$(
+  set +e
+  set -o pipefail
+  unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE
+  __lmline_collect_suggested_commands >/dev/null 2>&1
+  status=$?
+  printf '%s' "$status"
+)
 : >"$TEST_LMLINE_HASH_ARG_LOG"
 : >"$TEST_LMLINE_HASH_STATUS_LOG"
 : >"$TEST_LMLINE_AWK_STATUS_LOG"
@@ -99,6 +110,8 @@ else
   [[ -n $actual ]] && actual_present=1 || actual_present=0
   printf 'stdin-hash-check: suggested-key status=%s digest-present=%s\n' \
     "$actual_status" "$actual_present" >&2
+  printf 'stdin-hash-check: cold-cache collection status=%s\n' \
+    "$cold_collection_status" >&2
   if [[ -s $TEST_LMLINE_HASH_ARG_LOG ]]; then
     while IFS= read -r arg_count; do printf 'hash wrapper argv-count=%s\n' "$arg_count" >&2; done <"$TEST_LMLINE_HASH_ARG_LOG"
   else
