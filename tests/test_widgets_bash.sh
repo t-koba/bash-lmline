@@ -14,6 +14,23 @@ fi
 printf 'lmline-candidate: low\tno matching risk rule\t-\tlmline/widget-function-probe\n'
 EOF
 chmod +x "$widget_tmp/engine-function"
+
+# A supported suggested-command list may end in a comment or blank line; the
+# reader's final filter status must not fail the checked collection pipeline.
+mkdir "$widget_tmp/list-rules"
+printf '# commands\nprintf\nls\n# end of list\n' >"$widget_tmp/list-rules/suggested_commands.txt"
+(
+  export LMLINE_INCLUDE_SUGGESTED_COMMANDS=1
+  export LMLINE_SUGGESTED_COMMANDS_FILE="$widget_tmp/list-rules/suggested_commands.txt"
+  source "$repo_dir/lmline/context.bash" >/dev/null 2>&1
+  actual=$(__lmline_collect_suggested_commands) || fail "comment-terminated suggested list failed"
+  [[ $actual == $'ls\nprintf' ]] || fail "comment-terminated suggested list lost commands"
+  printf '# commands\nprintf\nls\n\n' >"$LMLINE_SUGGESTED_COMMANDS_FILE"
+  unset __LMLINE_SUGGESTED_COMMANDS_FILE_CACHE __LMLINE_SUGGESTED_COMMANDS_CACHE
+  actual=$(__lmline_collect_suggested_commands) || fail "blank-terminated suggested list failed"
+  [[ $actual == $'ls\nprintf' ]] || fail "blank-terminated suggested list lost commands"
+)
+ok - suggested-command lists ending in comments or blank lines remain available
 # Exercise the portable digest and ensure failed identities never match a job.
 mkdir "$widget_tmp/hash-bin"
 for cmd in bash sort cksum cut awk; do ln -s "$(command -v "$cmd")" "$widget_tmp/hash-bin/$cmd"; done

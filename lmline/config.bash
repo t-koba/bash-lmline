@@ -420,4 +420,7 @@ __lmline_read_list_file() {
     line=${line%"${line##*[![:space:]]}"}
     [[ -n "$line" ]] && printf '%s\n' "$line"
   done <"$file"
+  # The final predicate is a filter, not a read result. A file ending in a
+  # comment or blank line must still report a complete, successful scan.
+  return 0
 }
