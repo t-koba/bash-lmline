@@ -406,12 +406,16 @@ ok "stdin-only custom hash executable compatibility"
 mkdir -p "$widget_tmp/function-names/privacy-bin"
 cat >"$widget_tmp/function-names/privacy-bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
-if [[ $# != 0 && ( $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ) ]] || env | grep -Eq '^BASH_FUNC_|=\(\) \{'; then
-  printf leaked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+if [[ $# != 0 && ( $# != 2 || $1 != /dev/fd/* || $2 != /dev/fd/* ) ]]; then
+  printf args >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+elif env | grep -q '^BASH_FUNC_'; then
+  printf bashfunc >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+elif env | grep -q '=() {'; then
+  printf body >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
 fi
 if [[ ${LMLINE_TEST_EXPECT_POSIX+x} &&
       ${POSIXLY_CORRECT+x}:${POSIXLY_CORRECT-} != "$LMLINE_TEST_EXPECT_POSIX" ]]; then
-  printf changed >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
+  printf posix >"$LMLINE_TEST_FUNCTION_NAMES_DIR/leak"
 fi
 printf checked >"$LMLINE_TEST_FUNCTION_NAMES_DIR/checked"
 exec cksum "$@"
@@ -971,6 +975,11 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
     printf 'async collision stage:' >&2
     grep -oE 'stage=[0-9]+' "$widget_tmp/async-collision.trace" | tail -1 | tr -d '\n' >&2
     printf '\n' >&2
+    if [[ -f "$widget_tmp/function-names/leak" ]]; then
+      printf 'async collision leak kind:' >&2
+      grep -oE '^(args|bashfunc|body|posix)$' "$widget_tmp/function-names/leak" | head -1 | tr -d '\n' >&2
+      printf '\n' >&2
+    fi
   fi
   fail "async identity sanitization resists builtin name collisions"
 }
