@@ -23,12 +23,14 @@ done
 for pid in "${pids[@]}"; do
   wait "$pid" || fail "parallel config set exited non-zero"
 done
-parallel_cleanup_warning=0
+parallel_lock_warning=0
 for i in $(seq 1 "$n"); do
   err="$cfg_tmp/parallel-$i.err"
   if grep -q 'not owned by this process' "$err"; then
-    parallel_cleanup_warning=1
+    parallel_lock_warning=1
     holder=$(sed -n 's/.*(holder \([^)]*\));.*/\1/p' "$err" | head -n 1)
+    phase=$(sed -n 's/.*release phase \([^;]*\);.*/\1/p' "$err" | head -n 1)
+    [[ -n $phase ]] || phase=unknown
     relation=outside-batch
     if [[ $holder == "${pids[$((i - 1))]}" ]]; then
       relation=emitting-writer
@@ -40,15 +42,15 @@ for i in $(seq 1 "$n"); do
         fi
       done
     fi
-    # Show only synthetic writer indexes, never runner paths or process IDs.
-    printf 'lock warning: writer=%s recorded-holder=%s\n' "$i" "$relation" >&2
+    # Show synthetic writer indexes and a fixed release phase, never paths or PIDs.
+    printf 'lock warning: writer=%s recorded-holder=%s release-phase=%s\n' "$i" "$relation" "$phase" >&2
   fi
 done
 for i in $(seq 1 "$n"); do
   grep -qxF "export ${names[$((i - 1))]}='value$i'" "$cfg/settings.bash" \
     || fail "parallel config set lost ${names[$((i - 1))]}"
 done
-((parallel_cleanup_warning == 0)) || fail "parallel config cleanup ran outside its owner process"
+((parallel_lock_warning == 0)) || fail "parallel config writer released a foreign lock"
 
 # Concurrent model adds must not lose rows in models.tsv.
 LMLINE_CONFIG_DIR="$cfg" "$repo_dir/lmline/lmline" endpoint add local http://127.0.0.1:1234/v1 >/dev/null

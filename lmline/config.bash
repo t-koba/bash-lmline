@@ -260,13 +260,15 @@ __lmline_lock_acquire() {
 # Releases only a lock owned by this process. A stale holder whose lock was
 # stolen must not delete the thief's replacement directory.
 __lmline_lock_release() {
-  local lockdir=${1-} cur
+  local lockdir=${1-} phase=${2:-direct} cur
   [[ "${LMLINE_NO_LOCK:-0}" == 1 ]] && return 0
   [[ -n "$lockdir" ]] || return 0
   [[ -d "$lockdir" ]] || return 0
   cur=$(cat "$lockdir/pid" 2>/dev/null) || cur=
   if [[ "$cur" != "$BASHPID" ]]; then
-    printf 'lmline: lock %s is not owned by this process (holder %s); leaving it intact\n' "$lockdir" "${cur:-unknown}" >&2
+    case $phase in explicit|exit-cleanup) ;; *) phase=direct ;; esac
+    printf 'lmline: lock %s is not owned by this process (holder %s); release phase %s; leaving it intact\n' \
+      "$lockdir" "${cur:-unknown}" "$phase" >&2
     return 0
   fi
   rm -rf "$lockdir"

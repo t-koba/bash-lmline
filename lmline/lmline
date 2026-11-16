@@ -82,7 +82,7 @@ __lmline_cleanup() {
     # function is defined by config.bash, sourced below before any lock is
     # taken; fall back to direct removal only if sourcing never ran.
     if command -v __lmline_lock_release >/dev/null 2>&1; then
-      __lmline_lock_release "$__lmline_lock_path"
+      __lmline_lock_release "$__lmline_lock_path" exit-cleanup
     else
       rm -rf "$__lmline_lock_path"
     fi
@@ -997,7 +997,7 @@ with_config_lock() {
   __lmline_lock_acquire "$config_dir/.lmline.lock" "${LMLINE_LOCK_TIMEOUT:-5}" || exit 1
   __lmline_lock_path=$config_dir/.lmline.lock
   "$@"
-  __lmline_lock_release "$__lmline_lock_path"
+  __lmline_lock_release "$__lmline_lock_path" explicit
   __lmline_lock_path=
 }
 
