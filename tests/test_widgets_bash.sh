@@ -419,6 +419,8 @@ EOF
 chmod +x "$widget_tmp/function-names/privacy-bin/sha256sum"
 cat >"$widget_tmp/function-names/protected-name-check.bash" <<'EOF'
 set -e
+set -E
+trap 'printf "collision-step:%s\n" "$LINENO" >&2' ERR
 source "$1/lmline/init.bash"
 inherited_names=$(__lmline_collect_exported_functions)
 [[ $'\n'$inherited_names$'\n' == *$'\n'foo%bar$'\n'* ]]
@@ -430,6 +432,8 @@ fi
 EOF
 cat >"$widget_tmp/function-names/protected-name-collision-check.bash" <<'EOF'
 set -e
+set -E
+trap 'printf "collision-step:%s\n" "$LINENO" >&2' ERR
 source "$1/lmline/init.bash"
 foo%bar() { :; }
 for helper in __lmline_async_function_names_key __lmline_path_key; do
@@ -441,6 +445,8 @@ done
 EOF
 cat >"$widget_tmp/function-names/protected-malformed-name-check.bash" <<'EOF'
 set -e
+set -E
+trap 'printf "collision-step:%s\n" "$LINENO" >&2' ERR
 source "$1/lmline/init.bash"
 if __lmline_path_key >/dev/null 2>&1; then exit 1; fi
 [[ ! -e "$LMLINE_TEST_FUNCTION_NAMES_DIR/checked" ]]
@@ -811,6 +817,8 @@ LMLINE_CONFIG_DIR="$widget_tmp/function-names/config-collisions" \
   LMLINE_TEST_ASYNC_TRACE="$widget_tmp/async-collision.trace" \
   PATH="$widget_tmp/function-names/privacy-bin:$PATH" \
   bash --norc -e -i -c '
+  set -E
+  trap '"'"'printf "collision-step:%s\n" "$LINENO" >&2'"'"' ERR
   if [[ -n ${LMLINE_TEST_ASYNC_TRACE-} ]]; then
     exec 9>"$LMLINE_TEST_ASYNC_TRACE"
     BASH_XTRACEFD=9
