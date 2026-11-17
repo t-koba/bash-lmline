@@ -101,4 +101,22 @@ grep -Fq 'terminal_status_policy=terminal-status-v2' <<<"$cache_key_body" \
   || fail "a command-only cache policy field is still present"
 ! grep -Fq 'case "$mode" in' <<<"$cache_key_body" \
   || fail "the cache policy revision is still limited to some modes"
+# Recreate the English entry after the candidate tests poisoned the cache.
+rm -f "$cache_dir"/*
+[[ $(run_explain en 60) == "mock explanation in English" ]] || fail "english cache setup"
+# Identify by content, not directory order: other request keys may coexist.
+english_entries=0
+for entry in "$cache_dir"/*; do
+  [[ -f "$entry" ]] || continue
+  if grep -Fxq 'mock explanation in English' "$entry"; then
+    touch -t 209901010000 "$entry"
+    english_entries=$((english_entries + 1))
+  fi
+done
+(( english_entries > 0 )) || fail "english cache entry missing"
+: >"$cfg_tmp/calls.log"
+[[ $(run_explain en 60) == "mock explanation in English" ]] || fail "future-dated english answer"
+! grep -q "tokens=cached" "$cfg_tmp/err.txt" || fail "future-dated cache hit"
+[[ $(grep -c called "$cfg_tmp/calls.log") == 1 ]] || fail "future-dated entry did not refetch"
+
 ok "cache invalidates on effective request change and policy revision"

@@ -1500,7 +1500,7 @@ __lmline_cache_lookup() {
   now=$(date +%s 2>/dev/null || printf '0')
   mtime=$(__lmline_file_mtime "$cache_file")
   [[ "$now" =~ ^[0-9]+$ && "$mtime" =~ ^[0-9]+$ ]] || return 1
-  (( now - mtime <= LMLINE_CACHE_TTL ))
+  (( mtime <= now && now - mtime <= LMLINE_CACHE_TTL ))
 }
 
 # Cached status labels use the same terminal boundary as provider labels.
