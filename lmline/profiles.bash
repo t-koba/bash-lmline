@@ -288,6 +288,10 @@ profile_endpoint_list_display() {
   done
 }
 
+profile_restore_echo() {
+  stty echo 2>/dev/null || true
+}
+
 profile_endpoint_set_secret() {
   local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name quoted_name tmp
   [[ -n "$name" ]] || { usage; exit 2; }
@@ -301,10 +305,15 @@ profile_endpoint_set_secret() {
     printf 'lmline: warning: secrets passed as command arguments can leak via shell history and ps; prefer the prompt: lmline endpoint set-secret %s\n' "$quoted_name" >&2
   fi
   if [[ -z "$value" ]]; then
+    local saved_exit_trap
+    saved_exit_trap=$(trap -p EXIT)
+    trap 'profile_restore_echo; if declare -F __lmline_cleanup >/dev/null; then __lmline_cleanup; fi' EXIT
     printf 'endpoint %s API key: ' "$( __lmline_display_endpoint "$name" )" >&2
     stty -echo 2>/dev/null || true
     IFS= read -r value || true
-    stty echo 2>/dev/null || true
+    profile_restore_echo
+    trap - EXIT
+    eval "$saved_exit_trap"
     printf '\n' >&2
   fi
   [[ -n "$value" ]] || { printf 'lmline: empty secret not stored\n' >&2; exit 2; }

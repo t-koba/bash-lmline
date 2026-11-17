@@ -3,6 +3,64 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: real PTY behavior, cancellation/child cleanup, and terminal-specific candidate review stay correct.
 
+# Interrupting a hidden API-key read must not leave the terminal echo disabled.
+if command -v expect >/dev/null 2>&1; then
+  secret_pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-secret-pty.XXXXXX")
+  LMLINE_CONFIG_DIR="$secret_pty_tmp/config" "$repo_dir/lmline/lmline" endpoint add pty https://example.invalid >/dev/null
+  cat >"$secret_pty_tmp/secret.exp" <<'EXPECT'
+set timeout 15
+log_user 1
+lassign $argv shell root tmp
+source "$root/tests/pty-expect-helpers.exp"
+# A noninteractive wrapper observes the terminal without Readline resetting it.
+# Catch INT in the wrapper so it can report the interrupted CLI's exit status.
+spawn $shell --noprofile --norc -c {
+  trap ':' INT
+  export LMLINE_CONFIG_DIR="$2/config"
+  "$1/lmline/lmline" endpoint set-secret pty
+  printf 'CLI_EXIT=%s\n' "$?"
+  stty -a
+} bash $root $tmp
+expect_required -exact "API key: "
+# The prompt can arrive before stty finishes disabling echo. Observe the slave
+# mode before interrupting, rather than letting that race hide the defect.
+set deadline [expr {[clock milliseconds] + 5000}]
+while {1} {
+  set modes [exec stty -a < $spawn_out(slave,name)]
+  if {[regexp {(^|[[:space:];])-echo([[:space:];]|$)} $modes]} {break}
+  if {[clock milliseconds] >= $deadline} {
+    puts stderr "secret PTY did not disable echo"
+    exit 1
+  }
+  after 10
+}
+send -- "\003"
+expect_required -exact "CLI_EXIT=130\r\n"
+expect {
+  eof {set modes $expect_out(buffer)}
+  timeout {puts stderr "secret PTY exit timeout"; exit 1}
+}
+if {![regexp {(^|[[:space:];])echo([[:space:];]|$)} $modes] ||
+    [regexp {(^|[[:space:];])-echo([[:space:];]|$)} $modes]} {
+  puts stderr "secret PTY echo was not restored"
+  exit 1
+}
+if {[lindex [wait] 3] != 0} {
+  puts stderr "secret PTY wrapper failed"
+  exit 1
+}
+EXPECT
+  if ! expect "$secret_pty_tmp/secret.exp" "$BASH" "$repo_dir" "$secret_pty_tmp" >"$secret_pty_tmp/transcript" 2>&1; then
+    cat "$secret_pty_tmp/transcript" >&2
+    rm -rf "$secret_pty_tmp"
+    fail "API-key prompt Ctrl-C restores terminal echo"
+  fi
+  rm -rf "$secret_pty_tmp"
+  ok "API-key prompt Ctrl-C restores terminal echo"
+else
+  printf 'skip - API-key prompt Ctrl-C restores terminal echo (expect not found)\n'
+fi
+
 # Ctrl-C must cancel the fallback's isolated job, not just its supervisor.
 if command -v expect >/dev/null 2>&1; then
   cancel_pty_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-cancel-pty.XXXXXX")
