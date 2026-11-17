@@ -534,7 +534,8 @@ lmline endpoint add myapi https://api.example/v1 --auth-header X-Api-Key --auth-
 `endpoint add` stores endpoint metadata in `~/.config/lmline/endpoints.tsv`.
 `model add` and `model refresh` store models in `~/.config/lmline/models.tsv`.
 `endpoint set-secret` stores the API key under `~/.config/lmline/secrets/` with
-mode `0600`; TSV files store only the secret file path.
+mode `0600`; TSV files store only the secret file path. When `VALUE` is omitted,
+the key is read from stdin, with or without a trailing newline.
 
 Profile listings and configuration views render endpoint and model names as
 terminal-safe labels; controls may be removed, so labels are not lookup keys. Stored names and
