@@ -169,6 +169,29 @@ __lmline_microsandbox_cli_capture() {
   return 0
 }
 
+# Only the first plain numeric version token is meaningful. Compare decimal
+# components without arithmetic so leading zeroes and large values are safe.
+# Unknown output is not evidence of an outdated CLI (or of a secure runtime).
+__lmline_microsandbox_version_warning() {
+  local token major minor patch
+  local -a tokens
+  while IFS=$' \t\r' read -r -a tokens; do
+    ((${#tokens[@]})) || continue
+    for token in "${tokens[@]}"; do
+      [[ $token =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || continue
+      major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]} patch=${BASH_REMATCH[3]}
+      if [[ $major =~ ^0+$ ]] && {
+        [[ $minor =~ ^0*[0-6]$ ]] ||
+          [[ $minor =~ ^0*7$ && $patch =~ ^0*([0-9]|1[01])$ ]]
+      }; then
+        printf 'warning=msb_version_below_0_7_12\nminimum_recommended=0.7.12\n' >&2
+      fi
+      return 0
+    done
+  done <<<"$1"
+  return 0
+}
+
 __lmline_microsandbox_check() {
   local msb version status=0
   msb=$(__lmline_microsandbox_command_path) || {
@@ -183,6 +206,7 @@ __lmline_microsandbox_check() {
   printf 'path=%s\n' "$msb"
   if (( status == 0 )) && [[ -n "$version" ]]; then
     printf 'version=%s\n' "$version"
+    __lmline_microsandbox_version_warning "$version"
   else
     printf 'version=unknown\n'
   fi
@@ -275,7 +299,7 @@ __lmline_microsandbox_setup() {
   local name=$1 image=$2 workspace_mode=$3 root=$4 workdir=$5 timeout_s=${6:-${LMLINE_MICROSANDBOX_SETUP_TIMEOUT:-30}}
   local memory=${LMLINE_MICROSANDBOX_MEMORY:-512M} cpus=${LMLINE_MICROSANDBOX_CPUS:-1}
   local msb mount_arg created=0 required check_script check_text manifest_file inspect_status=0
-  local status=0
+  local status=0 version
   [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || cpus=1
   [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=30
   command -v jq >/dev/null 2>&1 || {
@@ -287,6 +311,9 @@ __lmline_microsandbox_setup() {
     printf 'lmline: install microsandbox and make msb available on PATH, or set LMLINE_MICROSANDBOX_COMMAND\n' >&2
     return 1
   }
+  if version=$("$msb" --version 2>/dev/null); then
+    __lmline_microsandbox_version_warning "$version"
+  fi
   "$msb" --error inspect "$name" >/dev/null 2>&1 || inspect_status=$?
   if (( inspect_status == 0 )); then
     "$msb" --error start -q "$name" >/dev/null 2>&1 || true

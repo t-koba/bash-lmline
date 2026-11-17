@@ -893,6 +893,17 @@ lmline config set LMLINE_MICROSANDBOX_COMMAND msb
 lmline sandbox setup --image ghcr.io/example/project-dev:latest
 ```
 
+Use `msb` 0.7.12 or later for persistent/named sandboxes: older versions carry
+security risks for these workflows, including GHSA-34hr-p9jc-cpqx. Named
+sandboxes retain guest state, so do not reuse them across trust boundaries.
+Pinning `LMLINE_MICROSANDBOX_IMAGE` to a digest changes the guest image, not the
+`msb` runtime; upgrade `msb` itself. `sandbox check` and `sandbox setup`
+print `warning=msb_version_below_0_7_12` and `minimum_recommended=0.7.12` on
+stderr only when the first plain numeric `MAJOR.MINOR.PATCH` token in a
+successful version probe is older. This warning is non-fatal; unknown output
+or a failed probe is ignored, not certified safe. Existing output fields and
+ephemeral `msb run` behavior are unchanged. See [SECURITY.md](SECURITY.md).
+
 <details>
 <summary>Setup behavior and workspace mounts</summary>
 

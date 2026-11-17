@@ -26,6 +26,26 @@ The microsandbox backend isolates command execution from the host process, but c
 
 `lmline sandbox check` runs `msb --version` only. lmline does not install microsandbox automatically.
 
+Use microsandbox (`msb`) 0.7.12 or later for persistent/named-sandbox
+workflows (`lmline sandbox setup` and `LMLINE_MICROSANDBOX_NAME`). Older
+versions carry security risks for these workflows; upgrade before relying on
+persistent sandbox isolation. This floor addresses upstream advisory
+GHSA-34hr-p9jc-cpqx, where a guest-writable root-disk journal could expose host
+files in snapshots or delete files during compaction after restart or restore.
+Named sandboxes also retain guest state between commands, so do not reuse them
+across trust boundaries. Pinning `LMLINE_MICROSANDBOX_IMAGE` to a digest changes
+the guest image, not the `msb` runtime; upgrade `msb` itself. lmline does not
+install or enforce a runtime version.
+
+Both `sandbox check` and `sandbox setup` emit the non-fatal stderr diagnostic
+`warning=msb_version_below_0_7_12` with `minimum_recommended=0.7.12` when the
+first plain numeric `MAJOR.MINOR.PATCH` token in successful `msb --version`
+output is below 0.7.12. Unparseable output or a failed version probe produces
+no warning, not an assurance of safety. The diagnostic contains no raw version
+text; the existing `sandbox check` version field is unchanged. This is advice,
+not a security check or an execution gate; it does not change ephemeral
+`msb run` behavior or runtime flags.
+
 `lmline sandbox setup` bind-mounts the project root read-only by default and writes non-secret host environment metadata to `/etc/lmline-env.json` inside the sandbox. `--workspace writable` allows sandbox commands to write through to the project tree and should be used only for trusted workflows.
 
 Project-local `.lmline.bash` files are parsed as `export LMLINE_NAME='value'` assignments only. They are not sourced as shell code. Lines that are not simple `LMLINE_*` assignments are ignored.
