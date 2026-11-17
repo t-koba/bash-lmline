@@ -303,7 +303,7 @@ profile_endpoint_set_secret() {
   if [[ -z "$value" ]]; then
     printf 'endpoint %s API key: ' "$( __lmline_display_endpoint "$name" )" >&2
     stty -echo 2>/dev/null || true
-    IFS= read -r value
+    IFS= read -r value || true
     stty echo 2>/dev/null || true
     printf '\n' >&2
   fi

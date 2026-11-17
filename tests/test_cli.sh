@@ -997,6 +997,16 @@ if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/l
   fail "shrink refresh failure rejected"
 fi
 [[ "$(cat "$profiles_dir/models.tsv")" == "$before_shrink_failed" ]] || fail "shrink refresh failure preserved models"
+# An EOF-delimited secret is stored without leaking to command output.
+eof_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-eof-secret.XXXXXX")
+eof_secret='eof-secret-sentinel'
+LMLINE_CONFIG_DIR="$eof_secret_tmp/config" "$repo_dir/lmline/lmline" endpoint add eof https://example.invalid/v1 >/dev/null
+printf '%s' "$eof_secret" | LMLINE_CONFIG_DIR="$eof_secret_tmp/config" "$repo_dir/lmline/lmline" endpoint set-secret eof >"$eof_secret_tmp/stdout" 2>"$eof_secret_tmp/stderr" || fail "EOF-delimited secret exits successfully"
+eof_secret_path=$(awk -F'\t' '$1=="eof" {print $5}' "$eof_secret_tmp/config/endpoints.tsv")
+[[ -n "$eof_secret_path" && -f "$eof_secret_path" ]] || fail "EOF-delimited secret path recorded"
+cmp -s <(printf '%s' "$eof_secret") "$eof_secret_path" || fail "EOF-delimited secret stored exactly"
+! grep -Fq "$eof_secret" "$eof_secret_tmp/stdout" "$eof_secret_tmp/stderr" || fail "EOF-delimited secret leaked to output"
+rm -rf "$eof_secret_tmp"
 # Distinct endpoint names must never share a credential file.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a/b" https://a-b.invalid/v1
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a_b" https://aub.invalid/v1
