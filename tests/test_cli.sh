@@ -1005,6 +1005,9 @@ printf '%s' "$eof_secret" | LMLINE_CONFIG_DIR="$eof_secret_tmp/config" "$repo_di
 eof_secret_path=$(awk -F'\t' '$1=="eof" {print $5}' "$eof_secret_tmp/config/endpoints.tsv")
 [[ -n "$eof_secret_path" && -f "$eof_secret_path" ]] || fail "EOF-delimited secret path recorded"
 cmp -s <(printf '%s' "$eof_secret") "$eof_secret_path" || fail "EOF-delimited secret stored exactly"
+eof_secret_mode=$(stat -c %a "$eof_secret_path" 2>/dev/null || stat -f %Lp "$eof_secret_path")
+[[ "$eof_secret_mode" == 600 ]] || fail "EOF-delimited secret mode is 600"
+[[ -z $(find "$eof_secret_tmp/config/secrets" -name '*.secret.*' -print) ]] || fail "set-secret left temporary secret files"
 ! grep -Fq "$eof_secret" "$eof_secret_tmp/stdout" "$eof_secret_tmp/stderr" || fail "EOF-delimited secret leaked to output"
 rm -rf "$eof_secret_tmp"
 # Distinct endpoint names must never share a credential file.

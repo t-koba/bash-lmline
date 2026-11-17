@@ -289,7 +289,7 @@ profile_endpoint_list_display() {
 }
 
 profile_endpoint_set_secret() {
-  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name quoted_name
+  local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name quoted_name tmp
   [[ -n "$name" ]] || { usage; exit 2; }
   profile_require_name endpoint "$name"
   line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$name" )" >&2; exit 2; }
@@ -316,8 +316,11 @@ profile_endpoint_set_secret() {
   safe_name=${safe_name//\//%2F}
   secret_file=$config_dir/secrets/endpoint-${safe_name}-api-key.secret
   umask 077
-  printf '%s' "$value" >"$secret_file"
-  chmod 600 "$secret_file"
+  __lmline_mktemp tmp "${secret_file}.XXXXXX"
+  printf '%s' "$value" >"$tmp" || return 1
+  chmod 600 "$tmp" || return 1
+  mv "$tmp" "$secret_file" || return 1
+  __lmline_forget_tmp "$tmp"
   profile_upsert_line "$endpoints_file" 1 "$(printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s' "$name" "$base" "$auth_header" "$auth_scheme" "$secret_file" "$old_temp" "$old_tokens" "$old_tool" "$old_models_url" "$old_models_jq" "$old_models_prefix" "$old_models_include" "$old_models_exclude" "$old_auth_mode")"
 }
 
