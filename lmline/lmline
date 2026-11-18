@@ -94,6 +94,7 @@ trap __lmline_cleanup EXIT
 __lmline_mktemp() {
   local __var=$1 path
   path=$(mktemp "$2") || exit 1
+  chmod 600 "$path" || { rm -f "$path"; exit 1; }
   __lmline_tmp_paths+=("$path")
   printf -v "$__var" '%s' "$path"
 }
@@ -110,6 +111,7 @@ __lmline_forget_tmp() {
 __lmline_mktemp_dir() {
   local __var=$1 path
   path=$(mktemp -d "$2") || exit 1
+  chmod 700 "$path" || { rmdir "$path"; exit 1; }
   __lmline_tmp_paths+=("$path")
   printf -v "$__var" '%s' "$path"
 }

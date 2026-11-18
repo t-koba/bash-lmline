@@ -66,6 +66,18 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_
 persisted_history_risk_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk 'echo "!!"') || fail "history risk persisted setting command"
 grep -q '^risk=medium$' <<<"$persisted_history_risk_out" || fail "history risk persisted setting"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config unset LMLINE_RISK_HISTORY_EXPANSION_LEVEL
+
+umask_config_dir="$cfg_tmp/config-write-denying-umask"
+mkdir "$umask_config_dir"
+(
+  umask 0222 || exit 1
+  LMLINE_CONFIG_DIR="$umask_config_dir" "$repo_dir/lmline/lmline" \
+    config set LMLINE_RISK_HISTORY_EXPANSION_LEVEL medium
+) >/dev/null 2>&1 || fail "config set failed under umask 0222"
+[[ ! -e "$umask_config_dir/.lmline.lock" ]] || fail "config set left a lock under umask 0222"
+grep -qxF "export LMLINE_RISK_HISTORY_EXPANSION_LEVEL='medium'" "$umask_config_dir/settings.bash" 2>/dev/null ||
+  fail "config set did not persist the assignment under umask 0222"
+
 # A value the one-assignment-per-line format cannot hold is refused, so one
 # value cannot plant another setting.
 newline_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-newline-value.XXXXXX")
