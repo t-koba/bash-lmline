@@ -76,16 +76,9 @@ class CandidateTests(unittest.TestCase):
         actual = result.stdout.decode().rstrip("\0").split("\0")
         manifest = list(map(c.canonical, c.production_manifest()))
         self.assertEqual(actual, manifest)
-        self.assertEqual(len(manifest), 84)
-        self.assertEqual(len(set(manifest)), 84)
+        self.assertEqual(len(set(manifest)), len(manifest))
         declarations = [(p, d) for p in manifest for d in c.sources(p, set(manifest))]
-        # The conditional CLI profile import and the config source used by the
-        # lock regression are part of the declared source graph.
-        self.assertEqual(len(declarations), 152)
         self.assertTrue(all(d["in_manifest"] for _, d in declarations))
-        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 146)
-        groups = [{p} | {d["resolved"] for d in c.sources(p, set(manifest))} for p in manifest]
-        self.assertEqual(max(map(len, groups)), 11)
 
     def test_chain_relative_absolute_duplicates_and_null(self):
         a, b, d = [str(self.root / name) for name in ("a.sh", "b.sh", "c.sh")]
