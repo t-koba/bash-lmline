@@ -1200,6 +1200,9 @@ Trace files are written under `~/.config/lmline/traces/` and can contain
 prompts, paths, provider responses, accepted/rejected candidates, tool output,
 and captured output from `Ctrl-x Ctrl-f`.
 
+The trace directory must belong to you and stay private: lmline creates it with
+mode `0700` and writes no traces if it cannot make an existing directory private.
+
 ## Advanced Settings
 
 ```bash
