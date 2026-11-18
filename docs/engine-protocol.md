@@ -278,9 +278,11 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
   verbatim and in their original order, rebuilding `function_call` items from
   the tool calls actually executed. Assistant message text is sent as a
   separate message and is not duplicated, and replay state is never added to
-  `chat` or `messages` payloads. This is the manual-history mode required by
-  `store: false`: the engine re-sends the provider's own output items,
-  including their item ids, rather than relying on server-side persistence.
+  `chat` or `messages` payloads. This is caller-managed history: on every
+  buffered `responses` tool round the engine re-sends the provider's own
+  output items, including their item ids, rather than relying on server-side
+  persistence. Replay happens regardless of `LMLINE_STORE`; the `store` flag
+  only sets the provider-side retention hint on each payload.
   Caveat: a Responses-compatible provider must accept those replayed items on
   the follow-up request; one that does not persist or accept its own prior
   item ids can reject the next round. Assistant turns with no replay state
