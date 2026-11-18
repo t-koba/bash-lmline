@@ -1461,6 +1461,28 @@ __lmline_text_tool_requests_from_text() {
 
 # --- Response cache ---------------------------------------------------------
 
+# Cache entries hold user prompts and responses: the directory must be a real
+# directory owned by this user with private permissions. A symlink could send
+# writes to an arbitrary location, so it is never followed or repaired.
+__lmline_cache_dir_ready() {
+  local permissions
+  [[ -n "$cache_dir" ]] || return 1
+  [[ ! -L "$cache_dir" ]] || return 1
+  if [[ ! -d "$cache_dir" ]]; then
+    (umask 077 && mkdir -p "$cache_dir") >/dev/null 2>&1 || return 1
+  fi
+  [[ -d "$cache_dir" && -O "$cache_dir" ]] || return 1
+  permissions=$(stat -c %a "$cache_dir/." 2>/dev/null || stat -f %Lp "$cache_dir/." 2>/dev/null) || return 1
+  if [[ "$permissions" =~ ^0?700$ ]]; then
+    return 0
+  fi
+  # Only repair an owned real directory; a rejected symlink never reaches here.
+  [[ ! -L "$cache_dir" ]] || return 1
+  chmod 700 "$cache_dir" >/dev/null 2>&1 || return 1
+  permissions=$(stat -c %a "$cache_dir/." 2>/dev/null || stat -f %Lp "$cache_dir/." 2>/dev/null) || return 1
+  [[ "$permissions" =~ ^0?700$ ]]
+}
+
 __lmline_file_mtime() {
   local value
   value=$(stat -f %m "$1" 2>/dev/null)
@@ -1502,6 +1524,7 @@ __lmline_cache_key() {
 # Sets cache_file; returns 0 when a fresh entry exists.
 __lmline_cache_lookup() {
   local now mtime
+  __lmline_cache_dir_ready || return 1
   cache_file=$cache_dir/$(__lmline_cache_key)
   [[ -f "$cache_file" ]] || return 1
   now=$(date +%s 2>/dev/null || printf '0')
@@ -1578,8 +1601,7 @@ __lmline_cache_emit() {
 __lmline_cache_store() {
   local source_file=$1 temp_file
   [[ -n "$cache_file" && -s "$source_file" ]] || return 0
-  mkdir -p "$cache_dir" 2>/dev/null || return 0
-  chmod 700 "$cache_dir" 2>/dev/null || true
+  __lmline_cache_dir_ready || return 0
   temp_file=$cache_file.tmp.$$
   if ! { (umask 077; cp "$source_file" "$temp_file" 2>/dev/null) && mv "$temp_file" "$cache_file" 2>/dev/null; }; then
     rm -f "$temp_file" 2>/dev/null || true

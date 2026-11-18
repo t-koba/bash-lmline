@@ -104,6 +104,21 @@ third_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "cache expired run
 [[ $(cat "$cfg_tmp/cache-state") == 2 ]] || fail "expired cache refetches"
 [[ "$(candidates_of <<<"$third_out")" == "echo cached-cmd" ]] || fail "expired cache output"
 
+# A symlinked cache directory must not redirect private entries: neither a
+# lookup nor a store may write through the link into its target.
+real_cache_dir="$cfg_tmp/config/cache-real"
+link_target="$cfg_tmp/config/cache-link-target"
+mv "$cfg_tmp/config/cache" "$real_cache_dir"
+mkdir -p "$link_target"
+ln -s "$link_target" "$cfg_tmp/config/cache"
+printf '0\n' >"$cfg_tmp/cache-state"
+symlink_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "symlinked cache engine run"
+[[ "$(candidates_of <<<"$symlink_out")" == "echo cached-cmd" ]] || fail "symlinked cache output"
+[[ $(cat "$cfg_tmp/cache-state") == 1 ]] || fail "symlinked cache fetched response"
+[[ -z "$(find "$link_target" -mindepth 1 -print -quit)" ]] || fail "cache wrote through symlink"
+rm "$cfg_tmp/config/cache"
+mv "$real_cache_dir" "$cfg_tmp/config/cache"
+
 # Optional cache writes must not retain a partial staging file when copy or
 # atomic rename fails; candidate delivery remains successful in both cases.
 real_cp=$(command -v cp)
