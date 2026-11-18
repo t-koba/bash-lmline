@@ -1348,11 +1348,12 @@ lmline debug trace on     # write full request/response traces
 lmline doctor --check-api # dependency, profile, lock, and connectivity checks
 ```
 
-With tracing on, every engine call writes the exact payloads, responses,
-streamed text, and accepted/rejected candidates under
-`~/.config/lmline/traces/` (mode 0700). Error messages stay short on screen
-but include recovery hints (for example `lmline endpoint set-secret` on
-HTTP 401) and point at the trace for the full provider response.
+With tracing on, the engine saves exact payloads, responses, streamed text,
+and accepted/rejected candidates under `~/.config/lmline/traces/`. It creates
+that directory with mode 0700 and skips trace writes if it cannot secure
+and verify the directory. Skipping a trace does not affect the engine result.
+Error messages stay short on screen but include recovery hints (for example
+`lmline endpoint set-secret` on HTTP 401).
 
 The `lmline-meta:` line emitted by the engine includes machine-readable
 counters — token usage, tools used, elapsed time, plus `rejected=N` and

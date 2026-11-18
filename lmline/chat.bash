@@ -34,29 +34,37 @@ fi
 
 __lmline_trace_dir_ready() {
   # Traces contain prompts and provider responses; keep them user-only.
-  [[ -n "${LMLINE_TRACE_DIR:-}" ]] || return 1
-  mkdir -p "$LMLINE_TRACE_DIR" 2>/dev/null || return 1
-  chmod 700 "$LMLINE_TRACE_DIR" 2>/dev/null || true
-}
+  local dir=${LMLINE_TRACE_DIR:-} permissions
+  [[ -n "$dir" ]] || return 1
+  [[ "$dir" != -* ]] || dir=./$dir
+  [[ -d "$dir" ]] || (umask 077 && mkdir -p -m 700 "$dir") || return 1
+  [[ -O "$dir" ]] && chmod 700 "$dir" || return 1
+  # Check the destination directory itself, including if the path is a symlink.
+  permissions=$(stat -c %a "$dir/." || stat -f %Lp "$dir/.") || return 1
+  [[ "$permissions" =~ ^[0-7]{1,2}00$ ]]
+} >/dev/null 2>&1
 
 __lmline_trace_file() {
   local name=$1 file=$2
-  [[ -n "$LMLINE_TRACE_DIR" && -f "$file" ]] || return 0
+  [[ -n "${LMLINE_TRACE_DIR:-}" && -f "$file" ]] || return 0
   __lmline_trace_dir_ready || return 0
-  cp "$file" "$LMLINE_TRACE_DIR/$trace_id.$name" 2>/dev/null || true
+  (umask 077 && cp -- "$file" "$LMLINE_TRACE_DIR/$trace_id.$name") >/dev/null 2>&1 || true
 }
 
 __lmline_trace_meta() {
   __lmline_trace_dir_ready || return 0
-  {
-    printf 'trace_id=%s\n' "$trace_id"
-    printf 'mode=%s\n' "$mode"
-    printf 'shell=%s\n' "$shell_name"
-    printf 'cwd=%s\n' "$cwd"
-    printf 'point=%s\n' "$point"
-    printf 'line=%q\n' "$line"
-    printf 'request=%q\n' "$request_text"
-  } >"$LMLINE_TRACE_DIR/$trace_id.meta" 2>/dev/null || true
+  (
+    umask 077 || exit 1
+    {
+      printf 'trace_id=%s\n' "$trace_id"
+      printf 'mode=%s\n' "$mode"
+      printf 'shell=%s\n' "$shell_name"
+      printf 'cwd=%s\n' "$cwd"
+      printf 'point=%s\n' "$point"
+      printf 'line=%q\n' "$line"
+      printf 'request=%q\n' "$request_text"
+    } >"$LMLINE_TRACE_DIR/$trace_id.meta"
+  ) 2>/dev/null || true
 }
 
 __lmline_api_path() {
@@ -1357,9 +1365,8 @@ __lmline_tool_request_name() {
 
 # Records a note about a text-protocol request that the parser did not use.
 __lmline_trace_tool_parse() {
-  [[ -n "${LMLINE_TRACE_DIR:-}" ]] || return 0
   __lmline_trace_dir_ready || return 0
-  printf '%s\n' "$1" >>"${LMLINE_TRACE_DIR}/${trace_id:-trace}.text-tool-parse.log" 2>/dev/null || true
+  (umask 077 && printf '%s\n' "$1" >>"$LMLINE_TRACE_DIR/${trace_id:-trace}.text-tool-parse.log") 2>/dev/null || true
 }
 
 # True when the text names a local tool request anywhere in it.
