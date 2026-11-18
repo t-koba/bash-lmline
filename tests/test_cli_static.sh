@@ -165,4 +165,10 @@ for route in 'complete setting-values LMLINE_CLIPBOARD_PROVIDER' 'complete clipb
   fi
   grep -q 'file is not readable' "$tmp/actual.err" || fail "missing configured-file diagnostic: $route"
 done
+# The minimum-Bash job must survive a single GNU mirror outage while keeping
+# the pinned archive verified before it is built.
+workflow="$repo_dir/.github/workflows/ci.yml"
+grep -q 'https://mirrors.kernel.org/gnu/bash/bash-4.2.tar.gz' "$workflow" || fail "Bash 4.2 download has no fallback mirror"
+grep -q 'for attempt in 1 2' "$workflow" || fail "Bash 4.2 download does not retry a mirror"
+grep -q 'sha256sum --check' "$workflow" || fail "Bash 4.2 download no longer verifies the archive checksum"
 ok "static CLI config independence and dynamic config loading"
