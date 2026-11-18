@@ -3,7 +3,7 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: test captures stay in per-run temporary directories rather than fixed /tmp paths.
 
-capture_pattern='/tmp/lmline-[[:alnum:]_-]*\.(out|err)'
+capture_pattern='/tmp/lmline-[[:alnum:]_.-]*\.(out|err)'
 
 fixed_captures() {
   grep -rEn "$capture_pattern" "$1/tests" 2>/dev/null || true
@@ -29,6 +29,13 @@ reported=$(fixed_captures "$work")
 [[ -n "$reported" ]] || fail "a fixed capture path was not reported"
 grep -q 'test_fixture.sh:4:' <<<"$reported" \
   || fail "the report does not identify the offending line: $reported"
+
+# A dot inside the basename is just as fixed as a flat name.
+printf 'run >%s/lmline-dotted.case.out 2>%s/lmline-dotted.case.err\n' \
+  "$fixed_root" "$fixed_root" >>"$work/tests/test_fixture.sh"
+reported=$(fixed_captures "$work")
+grep -q 'test_fixture.sh:5:' <<<"$reported" \
+  || fail "a dotted fixed capture path was not reported: $reported"
 
 # The repository itself keeps the convention.
 reported=$(fixed_captures "$repo_dir")
