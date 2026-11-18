@@ -474,6 +474,8 @@ jq -e '[.tools[]? | select(.type == "web_search")] | length == 0' \
   "$bodies_dir/body-2.json" >/dev/null || fail "the second round asks for another search"
 jq -e '[.input[]? | select(.type == "web_search_call")] | length == 1' \
   "$bodies_dir/body-2.json" >/dev/null || fail "the second round drops the earlier search results"
+jq -e '[.input[]? | select(.type == "web_search_call" and .id == "ws_1" and .action.query == "how to list files")] | length == 1' \
+  "$bodies_dir/body-2.json" >/dev/null || fail "the second round changes the earlier search item"
 grep -q 'limited to one provider request' "$ws_tmp/t9.err" || fail "the search limit is not reported"
 ok "web search asks the provider once per exchange"
 
