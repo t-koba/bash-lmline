@@ -85,6 +85,7 @@ if [[ ! -v __LMLINE_ASYNC_OWNER ]]; then
   declare -gi __LMLINE_ASYNC_OWNER=0
   declare -g __LMLINE_ASYNC_KEY=""
   declare -g __LMLINE_ASYNC_FILE=""
+  declare -g __LMLINE_ASYNC_DIR=""
   declare -g __LMLINE_ASYNC_MODE=""
   declare -gi __LMLINE_ASYNC_POINT=0
   declare -gi __LMLINE_ASYNC_PID=0
@@ -499,6 +500,10 @@ __lmline_async_cleanup() {
     wait "$__LMLINE_ASYNC_PID" 2>/dev/null || true
   fi
   rm -f "$__LMLINE_ASYNC_FILE" "$__LMLINE_ASYNC_FILE.status" "$__LMLINE_ASYNC_FILE.status.err" "$__LMLINE_ASYNC_FILE.tmp."*
+  if [[ -n "${__LMLINE_ASYNC_DIR:-}" ]]; then
+    rm -rf -- "$__LMLINE_ASYNC_DIR"
+    __LMLINE_ASYNC_DIR=""
+  fi
   __LMLINE_ASYNC_FILE=""
   __LMLINE_ASYNC_PID=0
   __LMLINE_ASYNC_KEY=""
@@ -796,10 +801,18 @@ __lmline_generate_async_widget() {
   fi
 
   __lmline_async_cleanup
-  async_file=$(mktemp "${TMPDIR:-/tmp}/lmline-async.XXXXXX") || {
+  local dir
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-async.XXXXXX") || dir=
+  if [[ -n "$dir" ]] && ! command chmod 0700 "$dir"; then
+    command rmdir -- "$dir" 2>/dev/null || true
+    dir=
+  fi
+  if [[ -z "$dir" ]]; then
     __lmline_hint final "${LMLINE_PS0}async temp file failed"
     return 0
-  }
+  fi
+  async_file=$dir/result
+  __LMLINE_ASYNC_DIR=$dir
   __lmline_async_start "$mode" "$original" "$point" "$async_file" "$current_key"
   __lmline_hint show "${LMLINE_PS0}[$mode] generating in background; press the same key to insert when ready"
 }

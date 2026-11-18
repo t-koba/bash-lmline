@@ -1316,6 +1316,8 @@ for session in 1 2; do
     __lmline_generate_widget >/dev/null 2>&1
     wait "$__LMLINE_ASYNC_PID"
     async_file=$__LMLINE_ASYNC_FILE
+    spool_parent=${async_file%/*}
+    [[ -e $spool_parent && -d $spool_parent && $(ls -ld "$spool_parent" | cut -c2-10) == rwx------ ]]
     saved_trap=$(trap -p EXIT)
     if [[ $2 == 1 ]]; then
       # Force the parent handler to run in a child even though Bash normally resets it.

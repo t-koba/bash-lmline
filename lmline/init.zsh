@@ -292,6 +292,7 @@ typeset -g __LMLINE_ZSH_LAST_MODE=
 typeset -g __LMLINE_ZSH_LAST_SUGGESTION_ID=
 (( ${+__LMLINE_ZSH_ASYNC_KEY} )) || typeset -g __LMLINE_ZSH_ASYNC_KEY=
 (( ${+__LMLINE_ZSH_ASYNC_FILE} )) || typeset -g __LMLINE_ZSH_ASYNC_FILE=
+(( ${+__LMLINE_ZSH_ASYNC_DIR} )) || typeset -g __LMLINE_ZSH_ASYNC_DIR=
 (( ${+__LMLINE_ZSH_ASYNC_PID} )) || typeset -gi __LMLINE_ZSH_ASYNC_PID=0
 (( ${+__LMLINE_ZSH_ASYNC_STARTED} )) || typeset -gi __LMLINE_ZSH_ASYNC_STARTED=0
 (( ${+__LMLINE_ZSH_ASYNC_NOTIFIED} )) || typeset -gi __LMLINE_ZSH_ASYNC_NOTIFIED=0
@@ -307,6 +308,10 @@ __lmline_zsh_async_cleanup() {
     wait "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null || true
   fi
   rm -f "$__LMLINE_ZSH_ASYNC_FILE" "$__LMLINE_ZSH_ASYNC_FILE.status" "$__LMLINE_ZSH_ASYNC_FILE.status.err" "$__LMLINE_ZSH_ASYNC_FILE.tmp."*(N) "$__LMLINE_ZSH_ASYNC_FILE.frame."*(N) "$__LMLINE_ZSH_ASYNC_FILE.key"*(N)
+  if [[ -n "${__LMLINE_ZSH_ASYNC_DIR:-}" ]]; then
+    command rm -rf -- "$__LMLINE_ZSH_ASYNC_DIR"
+    __LMLINE_ZSH_ASYNC_DIR=
+  fi
   __LMLINE_ZSH_ASYNC_FILE=
   __LMLINE_ZSH_ASYNC_PID=0
   __LMLINE_ZSH_ASYNC_KEY=
@@ -992,9 +997,19 @@ __lmline_zsh_generate_async() {
     return 0
   fi
 
-  async_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-async.XXXXXX") || async_file=
-  if [[ -n "$async_file" ]] && ! command chmod 0600 "$async_file"; then
-    command rm -f -- "$async_file"
+  # Drop the previous spool before creating the next private directory: the
+  # async starter calls cleanup again before it takes ownership.
+  __lmline_zsh_async_cleanup
+  local async_dir
+  async_dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-async.XXXXXX") || async_dir=
+  if [[ -n "$async_dir" ]] && ! command chmod 0700 "$async_dir"; then
+    command rmdir -- "$async_dir" 2>/dev/null || true
+    async_dir=
+  fi
+  if [[ -n "$async_dir" ]]; then
+    async_file=$async_dir/result
+    __LMLINE_ZSH_ASYNC_DIR=$async_dir
+  else
     async_file=
   fi
   if [[ -z "$async_file" ]]; then

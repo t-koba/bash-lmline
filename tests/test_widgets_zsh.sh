@@ -560,6 +560,8 @@ EOF
           sleep 0.1
         done
         [[ -s "$__LMLINE_ZSH_ASYNC_FILE" && $(<"$__LMLINE_ZSH_ASYNC_FILE.status") == ok ]]
+        spool_parent=${__LMLINE_ZSH_ASYNC_FILE%/*}
+        [[ -e $spool_parent && -d $spool_parent && $(ls -ld "$spool_parent" | cut -c2-10) == rwx------ ]]
         lmline-zsh-generate-widget
       fi
       [[ "$BUFFER" == "echo zsh-widget" ]]
