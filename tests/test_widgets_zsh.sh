@@ -10,6 +10,7 @@ if command -v zsh >/dev/null 2>&1; then
   cursor_wait_seconds=$((10#$cursor_wait_seconds))
   (( cursor_wait_seconds > 0 )) || fail "invalid LMLINE_TEST_CURSOR_WAIT_SECONDS"
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")
+  trap 'rm -rf -- "$zsh_tmp"' EXIT
   printf '#!/usr/bin/env bash\nsleep 0.2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"\n' >"$zsh_tmp/engine"
   chmod +x "$zsh_tmp/engine"
   # The version probe remains, but an empty config needs no Bash export bridge.
@@ -490,37 +491,36 @@ EOF
     [[ "$BUFFER" == "lmline/widget-function-probe" ]]
     [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget hands off function names without executing them"
-  # Child Zsh shells enable errexit explicitly so an early failed assertion cannot be masked.
-  LMLINE_CONFIG_DIR="$zsh_tmp/config-sync" LMLINE_ENGINE="$zsh_tmp/engine" zsh -efic '
-    source "$1/lmline/init.zsh"
-    [[ "$options[interactivecomments]" == on ]]
-    [[ $(__lmline_zsh_mode "ls | ") == generate ]]
-    [[ $(__lmline_zsh_mode "ls |") == generate ]]
-    BUFFER="# say one"
-    CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-1.out 2>/tmp/lmline-zsh-widget-1.err
-    [[ "$BUFFER" == "echo zsh-widget" ]]
-  ' _ "$repo_dir" || fail "zsh sync widget"
-  LMLINE_CONFIG_DIR="$zsh_tmp/config-async" LMLINE_ASYNC=1 LMLINE_ENGINE="$zsh_tmp/engine" zsh -efic '
-    source "$1/lmline/init.zsh"
-    BUFFER="# say one"
-    CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-1.out 2>/tmp/lmline-zsh-widget-async-1.err
-    [[ "$BUFFER" == "# say one" ]]
-    [[ -z $(jobs) ]]
-    # The engine writes its answer when it finishes, and the widget reads it
-    # only once the engine is gone. The test waits for both instead of for a
-    # second, so a loaded machine does not fail it.
-    for i in {1..150}; do
-      if [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]] && ! kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; then
-        break
+  # A restrictive caller umask must leave the async spool and sync bridge writable.
+  for async in 1 0; do
+    mkdir "$zsh_tmp/tmp-widget-$async" "$zsh_tmp/config-widget-$async"
+    TMPDIR="$zsh_tmp/tmp-widget-$async" LMLINE_CONFIG_DIR="$zsh_tmp/config-widget-$async" LMLINE_PROJECT_CONFIG=0 \
+      LMLINE_ASYNC="$async" LMLINE_GENERATE_BACKEND=engine LMLINE_ENGINE="$zsh_tmp/engine" LMLINE_STATUS_MODE=none zsh -efic '
+      umask 0222
+      source "$1/lmline/init.zsh"
+      [[ "$options[interactivecomments]" == on ]]
+      [[ $(__lmline_zsh_mode "ls | ") == generate ]]
+      [[ $(__lmline_zsh_mode "ls |") == generate ]]
+      BUFFER="# say one"
+      CURSOR=${#BUFFER}
+      lmline-zsh-generate-widget
+      if [[ "$LMLINE_ASYNC" == 1 ]]; then
+        [[ "$BUFFER" == "# say one" ]]
+        [[ -z $(jobs) ]]
+        (( __LMLINE_ZSH_ASYNC_PID > 0 ))
+        deadline=$((SECONDS + $2))
+        while kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; do
+          (( SECONDS < deadline )) || exit 1
+          sleep 0.1
+        done
+        [[ -s "$__LMLINE_ZSH_ASYNC_FILE" && $(<"$__LMLINE_ZSH_ASYNC_FILE.status") == ok ]]
+        lmline-zsh-generate-widget
       fi
-      sleep 0.1
-    done
-    [[ -s "$__LMLINE_ZSH_ASYNC_FILE" ]]
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-2.out 2>/tmp/lmline-zsh-widget-async-2.err
-    [[ "$BUFFER" == "echo zsh-widget" ]]
-  ' _ "$repo_dir" || fail "zsh async widget"
+      [[ "$BUFFER" == "echo zsh-widget" ]]
+      leftovers=("$TMPDIR"/*(ND))
+      (( ${#leftovers} == 0 ))
+    ' _ "$repo_dir" "$cursor_wait_seconds" || fail "zsh widget under umask 0222 (async=$async)"
+  done
   mkdir "$zsh_tmp/async-exit"
   for session in 1 2; do
     TMPDIR="$zsh_tmp/async-exit" LMLINE_CONFIG_DIR="$zsh_tmp/config-async-exit" LMLINE_PROJECT_CONFIG=0 \
@@ -1960,7 +1960,6 @@ EOF
     out=$(<"$tmp_out")
     [[ "$out" == *"suggestion ready"* && $__LMLINE_ZSH_ASYNC_NOTIFIED == 1 ]]
   ' _ "$repo_dir" "$zsh_tmp/config-notify-enabled" || fail "zsh async notify opt-in reload"
-  rm -rf "$zsh_tmp"
   ok "zsh integration"
 else
   printf 'skip - zsh integration (zsh not found)\n'
