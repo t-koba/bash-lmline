@@ -1219,24 +1219,60 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
   __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
-# Async spool artifacts must be private even under a permissive caller umask.
-mkdir "$widget_tmp/private-async"
-umask 022 TMPDIR="$widget_tmp/private-async" LMLINE_CONFIG_DIR="$widget_tmp/config-private" \
-  LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" LMLINE_HISTORY_DIR="$widget_tmp/history-private" \
-  bash --norc -e -i -c '
-  source "$1/lmline/init.bash"
-  mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
-  READLINE_LINE="# say one"
-  READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/dev/null 2>&1
-  wait "$__LMLINE_ASYNC_PID" || exit 1
-  async_file=$__LMLINE_ASYNC_FILE
-  [[ -f "$async_file" && -f "$async_file.status" && -f "$async_file.status.err" ]] || exit 1
-  [[ $(mode "$async_file") == 600 ]] || exit 1
-  [[ $(mode "$async_file.status") == 600 ]] || exit 1
-  [[ $(mode "$async_file.status.err") == 600 ]] || exit 1
-  __lmline_async_cleanup
-' _ "$repo_dir" || fail "async spool files stay private under umask 022"
+# Completed, unconsumed spools must be private and removed on shell exit.
+for session in 1 2; do
+  spool_dir=$widget_tmp/async-exit-$session
+  mkdir "$spool_dir"
+  status=0
+  TMPDIR="$spool_dir" LMLINE_CONFIG_DIR="$widget_tmp/config-async-exit-$session" LMLINE_PROJECT_CONFIG=0 \
+    LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" bash --norc -e -i -c '
+    umask 022
+    source "$1/lmline/init.bash"
+    exit_probe() {
+      [[ -z $(find "$TMPDIR" -name "lmline-async.*" -print -quit) ]] || return 1
+      printf "user EXIT status: %s\n" "$1" >>"$TMPDIR/user-exit"
+    }
+    if [[ $2 == 2 ]]; then
+      trap '\''exit_probe "$?"'\'' EXIT
+    fi
+    READLINE_LINE="# leave unconsumed"
+    READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    wait "$__LMLINE_ASYNC_PID"
+    async_file=$__LMLINE_ASYNC_FILE
+    saved_trap=$(trap -p EXIT)
+    if [[ $2 == 1 ]]; then
+      # Force the parent handler to run in a child even though Bash normally resets it.
+      ( eval "$saved_trap"; exit 0 )
+      mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+      for file in "$async_file" "$async_file.status" "$async_file.status.err"; do
+        [[ $(mode "$file") == 600 ]]
+      done
+    else
+      READLINE_LINE="# replace unconsumed"
+      READLINE_POINT=${#READLINE_LINE}
+      __lmline_generate_widget >/dev/null 2>&1
+      wait "$__LMLINE_ASYNC_PID"
+      [[ ! -e $async_file && $(trap -p EXIT) == "$saved_trap" ]]
+      source "$1/lmline/init.bash"
+      [[ $(trap -p EXIT) == "$saved_trap" ]]
+      async_file=$__LMLINE_ASYNC_FILE
+    fi
+    [[ "$READLINE_LINE" == "# "*unconsumed && -s $async_file && -f $async_file.status.err ]]
+    [[ $(<"$async_file.status") == ok ]]
+    grep -Fq "echo one" "$async_file"
+    if [[ $2 == 2 ]]; then exit 23; fi
+    exit 0
+  ' _ "$repo_dir" "$session" || status=$?
+  [[ -z $(find "$spool_dir" -name 'lmline-async.*' -print -quit) ]] || fail "Bash async exit left spool files in session $session"
+  if grep -rFq 'echo one' "$spool_dir"; then fail "Bash async exit left candidate text in session $session"; fi
+  if [[ $session == 1 ]]; then
+    [[ $status == 0 ]] || fail "Bash async exit session 1 returned $status"
+  else
+    [[ $status == 23 && -f $spool_dir/user-exit && $(<"$spool_dir/user-exit") == 'user EXIT status: 23' ]] ||
+      fail "Bash user EXIT trap did not run once after cleanup with the original status"
+  fi
+done
 # Fail only the final async rename after the engine produced valid candidates.
 mkdir "$widget_tmp/fail-publish-bin"
 cat >"$widget_tmp/fail-publish-bin/mv" <<'EOF'

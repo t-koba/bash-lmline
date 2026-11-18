@@ -80,13 +80,17 @@ declare -gi __LMLINE_ENGINE_STATUS=0
 declare -g __LMLINE_ENGINE_ERROR=""
 declare -g __LMLINE_ENGINE_OUTPUT=""
 declare -g __LMLINE_ENGINE_STATUS_LINE=""
-declare -g __LMLINE_ASYNC_KEY=""
-declare -g __LMLINE_ASYNC_FILE=""
-declare -g __LMLINE_ASYNC_MODE=""
-declare -gi __LMLINE_ASYNC_POINT=0
-declare -gi __LMLINE_ASYNC_PID=0
-declare -gi __LMLINE_ASYNC_STARTED=0
-declare -gi __LMLINE_ASYNC_NOTIFIED=0
+# Re-sourcing must not forget a spool that this shell still owns.
+if [[ ! -v __LMLINE_ASYNC_OWNER ]]; then
+  declare -gi __LMLINE_ASYNC_OWNER=0
+  declare -g __LMLINE_ASYNC_KEY=""
+  declare -g __LMLINE_ASYNC_FILE=""
+  declare -g __LMLINE_ASYNC_MODE=""
+  declare -gi __LMLINE_ASYNC_POINT=0
+  declare -gi __LMLINE_ASYNC_PID=0
+  declare -gi __LMLINE_ASYNC_STARTED=0
+  declare -gi __LMLINE_ASYNC_NOTIFIED=0
+fi
 declare -gi __LMLINE_SHOW_CANDIDATE_COUNT=0
 
 
@@ -485,7 +489,7 @@ __lmline_async_frontend_key() (
 )
 
 __lmline_async_cleanup() {
-  [[ -n "${__LMLINE_ASYNC_FILE:-}" ]] || return 0
+  [[ $__LMLINE_ASYNC_OWNER == "$BASHPID" && -n "$__LMLINE_ASYNC_FILE" ]] || return 0
   if (( __LMLINE_ASYNC_PID > 0 )) && kill -0 "$__LMLINE_ASYNC_PID" 2>/dev/null; then
     kill -TERM "$__LMLINE_ASYNC_PID" 2>/dev/null || true
     wait "$__LMLINE_ASYNC_PID" 2>/dev/null || true
@@ -496,9 +500,30 @@ __lmline_async_cleanup() {
   __LMLINE_ASYNC_KEY=""
 }
 
+__lmline_async_exit_cleanup() {
+  __lmline_async_cleanup || :
+  return "$1"
+}
+
+__lmline_async_install_exit_trap() {
+  [[ $BASHPID == "$$" ]] || return 0
+  local saved prefix='__lmline_async_exit_cleanup "$?" && :'
+  saved=$(trap -p EXIT)
+  # Decode Bash's quoted action, without running it. Chain in the trap's own
+  # scope and keep its original $? without triggering errexit on nonzero exit.
+  set -- ''
+  if [[ -n $saved ]]; then
+    eval "set -- ${saved#trap -- }"
+  fi
+  [[ $1 == "$prefix" || $1 == "$prefix"$'\n'* ]] && return 0
+  builtin trap -- "$prefix${1:+$'\n'$1}" EXIT
+}
+
 __lmline_async_start() {
   local mode=$1 line=$2 point=$3 async_file=$4 request_key=${5-} async_status_file tmp_out
   __lmline_async_cleanup
+  __lmline_async_install_exit_trap
+  __LMLINE_ASYNC_OWNER=$BASHPID
   async_status_file=$async_file.status
   tmp_out=$async_file.tmp.$$
   rm -f "$async_status_file" "$tmp_out"
