@@ -286,7 +286,7 @@ __lmline_lock_acquire() {
   tries=$(( timeout * 10 ))
   mkdir -p "${lockdir%/*}" 2>/dev/null || true
   while :; do
-    if mkdir "$lockdir" 2>/dev/null; then
+    if mkdir "$lockdir" 2>/dev/null && chmod 700 "$lockdir" 2>/dev/null; then
       __lmline_lock_owner=$BASHPID
       # Only the first claimant may create the owner record.
       if (set -o noclobber; printf '%s\n' "$__lmline_lock_owner" >"$lockdir/pid") 2>/dev/null; then

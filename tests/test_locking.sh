@@ -7,6 +7,23 @@ cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-lock-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT
 cfg="$cfg_tmp/config"
 
+# Lock ownership must be recordable even when the umask denies write access
+# to a newly created directory.
+# shellcheck source=lmline/config.bash
+source "$repo_dir/lmline/config.bash"
+umask_lock_dir="$cfg_tmp/umask.lock"
+saved_umask=$(umask)
+umask 0222
+if ! __lmline_lock_acquire "$umask_lock_dir" 1; then
+  umask "$saved_umask"
+  fail "lock acquisition failed under umask 0222"
+fi
+umask "$saved_umask"
+[[ -f "$umask_lock_dir/pid" ]] || fail "pid record missing under umask 0222"
+[[ "$(cat "$umask_lock_dir/pid")" == "$BASHPID" ]] || fail "wrong lock owner under umask 0222"
+__lmline_lock_release "$umask_lock_dir" || fail "lock release failed under umask 0222"
+[[ ! -e "$umask_lock_dir" ]] || fail "released lock remained under umask 0222"
+
 # Concurrent config writers must not lose each other's updates. The names
 # are catalogued settings, because the setter refuses a name the catalog
 # does not know.
