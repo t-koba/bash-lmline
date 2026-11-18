@@ -506,6 +506,17 @@ EOF
     [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
     [[ ! -e "$LMLINE_WIDGET_NOEXEC_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget inserts commands without executing them"
+  # Async completion follows the same insert-only contract.
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-async-noexec" LMLINE_ASYNC=1 LMLINE_PROJECT_CONFIG=0 LMLINE_ENGINE="$zsh_tmp/engine-noexec" LMLINE_WIDGET_NOEXEC_MARKER="$zsh_tmp/async-command-called" zsh -efic '
+    source "$1/lmline/init.zsh"
+    BUFFER="# make a marker"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>/dev/null
+    wait "$__LMLINE_ZSH_ASYNC_PID" || exit 1
+    lmline-zsh-generate-widget >/dev/null 2>/dev/null
+    [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
+    [[ ! -e "$LMLINE_WIDGET_NOEXEC_MARKER" ]]
+  ' _ "$repo_dir" || fail "zsh async widget inserts commands without executing them"
   # A restrictive caller umask must leave the async spool and sync bridge writable.
   for async in 1 0; do
     mkdir "$zsh_tmp/tmp-widget-$async" "$zsh_tmp/config-widget-$async"

@@ -1242,6 +1242,18 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
   __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
+# Async completion must be insert-only as well: a canary candidate that would
+# create a file must stay unrun after the worker finishes and is consumed.
+LMLINE_CONFIG_DIR="$widget_tmp/config-async-noexec" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-noexec" LMLINE_HISTORY_DIR="$widget_tmp/history-async-noexec" LMLINE_TEST_NOEXEC_MARKER="$widget_tmp/async-command-called" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# make a marker"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>/dev/null
+  wait "$__LMLINE_ASYNC_PID" || exit 1
+  __lmline_generate_widget >/dev/null 2>/dev/null
+  [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
+  [[ ! -e "$LMLINE_TEST_NOEXEC_MARKER" ]]
+' _ "$repo_dir" || fail "bash async widget inserts commands without executing them"
 # Completed, unconsumed spools must be private and removed on shell exit.
 for session in 1 2; do
   spool_dir=$widget_tmp/async-exit-$session
