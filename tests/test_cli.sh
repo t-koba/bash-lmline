@@ -11,6 +11,17 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" model add openai t
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" use openai test-model >/dev/null
 config_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config get)
 grep -q "LMLINE_BASE_URL=.*https://api.openai.com/v1" <<<"$config_out" || fail "endpoint use base url"
+# A relative config directory beginning with a dash must not be parsed as an option.
+dash_cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dash-config.XXXXXX")
+(
+  cd "$dash_cfg_tmp" || exit 1
+  LMLINE_CONFIG_DIR=-config "$repo_dir/lmline/lmline" endpoint add dash https://example.invalid/v1 >/dev/null || exit 1
+  LMLINE_CONFIG_DIR=-config "$repo_dir/lmline/lmline" endpoint set-secret dash dash-secret >/dev/null 2>&1 || exit 1
+) || fail "dash-leading relative config directory failed"
+[[ -f "$dash_cfg_tmp/-config/secrets/endpoint-dash-api-key.secret" ]] ||
+  fail "dash-leading relative config directory did not store the secret"
+rm -rf "$dash_cfg_tmp"
+ok "dash-leading relative config directory stores secrets"
 grep -q "LMLINE_MODEL=.*test-model" <<<"$config_out" || fail "endpoint use model"
 grep -q "LMLINE_API_KEY_FILE=" <<<"$config_out" || fail "secret file reference"
 LMLINE_CONFIG_DIR="$cfg_tmp/config-mixed-case" "$repo_dir/lmline/lmline" endpoint add mixed-case hTtPs://api.example.invalid/v1 --models-url HtTpS://catalog.example.invalid/models >/dev/null || fail "case-insensitive HTTP(S) schemes accepted"

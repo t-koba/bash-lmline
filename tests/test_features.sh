@@ -156,6 +156,18 @@ for dot_config in "$cache_link/." "$cache_link/./" "$cache_link/../config"; do
   [[ $(cat "$cfg_tmp/cache-state") == 1 ]] || fail "dot-component config did not fetch a fresh response"
 done
 
+# A relative config directory beginning with a dash must not be parsed as an
+# option when the engine creates its private cache.
+(
+  cd "$cfg_tmp" || exit 1
+  printf '0\n' >"$cfg_tmp/cache-state"
+  run_engine_at -dash-config >"$cfg_tmp/dash-config.out" 2>/dev/null ||
+    fail "dash-leading config engine run"
+)
+[[ -n "$(find "$cfg_tmp/-dash-config/cache" -maxdepth 1 -type f -print -quit)" ]] ||
+  fail "dash-leading config did not create a cache entry"
+[[ $(cat "$cfg_tmp/cache-state") == 1 ]] || fail "dash-leading config did not fetch a fresh response"
+
 # Optional cache writes must not retain a partial staging file when copy or
 # atomic rename fails; candidate delivery remains successful in both cases.
 real_cp=$(command -v cp)

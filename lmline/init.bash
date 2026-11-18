@@ -23,6 +23,8 @@ fi
 __LMLINE_DIR=$(cd -- "$__LMLINE_DIR" && pwd -P)
 
 __LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
+# Directory utilities parse a leading dash as an option.
+[[ $__LMLINE_CONFIG_DIR != -* ]] || __LMLINE_CONFIG_DIR=./$__LMLINE_CONFIG_DIR
 # shellcheck source=lmline/config.bash
 source "$__LMLINE_DIR/config.bash"
 # Prime before loading; the post-load check still catches startup changes.
