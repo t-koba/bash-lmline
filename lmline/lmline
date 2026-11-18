@@ -242,7 +242,7 @@ commands:
   debug trace on|off      save engine request/response trace files
   keys                    show lmline key binding config variables
   explain COMMAND...      explain a command through the engine
-  enable                  print .bashrc snippet
+  enable                  print shell startup snippets
   disable                 print removal guidance
 
 Use `lmline COMMAND --help` for command-specific usage.
@@ -948,7 +948,7 @@ EOF
     enable:) cat <<'EOF'
 usage: lmline enable
 
-Print a shell startup snippet that enables lmline.
+Print shell startup snippets that enable lmline.
 EOF
       ;;
     disable:) cat <<'EOF'
@@ -1836,19 +1836,28 @@ EOF
     [[ $# -gt 0 ]] || { usage; exit 2; }
     print_explanation "$*"
     ;;
-  enable)
-    [[ "${2-}" == -h || "${2-}" == --help ]] && { print_cli_help enable; exit 0; }
+  enable|disable)
+    [[ "${2-}" == -h || "${2-}" == --help ]] && { print_cli_help "$cmd"; exit 0; }
+    action='Add this to'
+    [[ $cmd != disable ]] || action='Remove or comment out this block from'
+    if [[ $config_dir == "$HOME/.config/lmline" ]]; then
+      bash_init='"$HOME/.config/lmline/init.bash"'
+      zsh_init='"$HOME/.config/lmline/init.zsh"'
+    else
+      bash_init=$(quote_bash "$config_dir/init.bash")
+      zsh_init=$(quote_bash "$config_dir/init.zsh")
+    fi
     cat <<EOF
-Add this to ~/.bashrc:
+$action ~/.bashrc:
 
 if [[ \$- == *i* ]]; then
-  source "$config_dir/init.bash"
+  source $bash_init
 fi
+
+$action ~/.zshrc (use \$ZDOTDIR/.zshrc if ZDOTDIR is set):
+
+source $zsh_init
 EOF
-    ;;
-  disable)
-    [[ "${2-}" == -h || "${2-}" == --help ]] && { print_cli_help disable; exit 0; }
-    printf 'Remove or comment out the lmline source block from ~/.bashrc.\n'
     ;;
   -h|--help|'')
     usage
