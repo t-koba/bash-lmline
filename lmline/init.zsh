@@ -404,6 +404,9 @@ __lmline_zsh_set_candidates() {
   for payload in "${(@f)output}"; do
     [[ "$payload" == 'lmline-candidate: '* ]] || continue
     payload=${payload#lmline-candidate: }
+    # The protocol requires risk, reason, flags, and candidate fields. Without
+    # this guard a short line would be parsed with the reason as its candidate.
+    [[ "$payload" == *$'\t'*$'\t'*$'\t'* ]] || continue
     risk=${payload%%$'\t'*}; rest=${payload#*$'\t'}
     reason=${rest%%$'\t'*}; rest=${rest#*$'\t'}
     flags=${rest%%$'\t'*}; candidate=${rest#*$'\t'}

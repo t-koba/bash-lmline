@@ -1743,6 +1743,13 @@ EOF
     __lmline_zsh_process_bridge_output "$output_file" "$status_file"
     [[ "$__LMLINE_ZSH_STATUS_LINE" == "$expected_status" && "$__LMLINE_ZSH_BRIDGE_OUTPUT" == "$expected_output" ]]
   ' _ "$repo_dir" "$zsh_tmp" || fail "zsh bridge output filtering"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-parse" zsh -efic '
+    source "$1/lmline/init.zsh"
+    output=$(printf "lmline-candidate: low\tonly-two-fields\nlmline-candidate: low\treason\t-\techo valid\n")
+    __lmline_zsh_set_candidates "$output"
+    (( ${#__LMLINE_ZSH_CANDIDATES} == 1 ))
+    [[ ${__LMLINE_ZSH_CANDIDATES[1]} == "echo valid" ]]
+  ' _ "$repo_dir" || fail "zsh malformed candidate fields rejected"
   printf '#!/usr/bin/env bash\nmode=\nwhile (($#)); do case "$1" in --mode) mode=$2; shift 2;; *) shift;; esac; done\nif [[ "$mode" == explain ]]; then printf "zsh explained\\n"; else printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"; fi\n' >"$zsh_tmp/engine-explain"
   chmod +x "$zsh_tmp/engine-explain"
   LMLINE_CONFIG_DIR="$zsh_tmp/config-explain" LMLINE_PS0="[lm] " LMLINE_ENGINE="$zsh_tmp/engine-explain" zsh -efic '
