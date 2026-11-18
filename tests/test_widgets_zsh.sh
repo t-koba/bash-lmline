@@ -506,6 +506,25 @@ EOF
     [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
     [[ ! -e "$LMLINE_WIDGET_NOEXEC_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget inserts commands without executing them"
+  # Cycling re-applies stored candidates, which must stay insert-only too.
+  cat >"$zsh_tmp/engine-cycle-noexec" <<'EOF'
+#!/usr/bin/env bash
+printf 'lmline-candidate: low\tno matching risk rule\t-\ttouch %s\n' "$LMLINE_WIDGET_NOEXEC_MARKER"
+printf 'lmline-candidate: low\tno matching risk rule\t-\ttouch %s-second\n' "$LMLINE_WIDGET_NOEXEC_MARKER"
+EOF
+  chmod +x "$zsh_tmp/engine-cycle-noexec"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cycle-noexec" LMLINE_ASYNC=0 LMLINE_PROJECT_CONFIG=0 LMLINE_ENGINE="$zsh_tmp/engine-cycle-noexec" LMLINE_WIDGET_NOEXEC_MARKER="$zsh_tmp/cycle-command-called" zsh -efic '
+    source "$1/lmline/init.zsh"
+    BUFFER="# make markers"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/dev/null 2>/dev/null
+    [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
+    lmline-zsh-next-widget
+    [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER-second" ]]
+    lmline-zsh-prev-widget
+    [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
+    [[ ! -e "$LMLINE_WIDGET_NOEXEC_MARKER" && ! -e "$LMLINE_WIDGET_NOEXEC_MARKER-second" ]]
+  ' _ "$repo_dir" || fail "zsh candidate cycling does not execute candidates"
   # Async completion follows the same insert-only contract.
   LMLINE_CONFIG_DIR="$zsh_tmp/config-async-noexec" LMLINE_ASYNC=1 LMLINE_PROJECT_CONFIG=0 LMLINE_ENGINE="$zsh_tmp/engine-noexec" LMLINE_WIDGET_NOEXEC_MARKER="$zsh_tmp/async-command-called" zsh -efic '
     source "$1/lmline/init.zsh"

@@ -1019,6 +1019,25 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-noexec" LMLINE_ASYNC=0 LMLINE_ENGINE="$wid
   [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
   [[ ! -e "$LMLINE_TEST_NOEXEC_MARKER" ]]
 ' _ "$repo_dir" || fail "bash widget inserts commands without executing them"
+# Cycling re-applies stored candidates, which must stay insert-only too.
+cat >"$widget_tmp/engine-cycle-noexec" <<'EOF'
+#!/usr/bin/env bash
+printf 'lmline-candidate: low\tno matching risk rule\t-\ttouch %s\n' "$LMLINE_TEST_NOEXEC_MARKER"
+printf 'lmline-candidate: low\tno matching risk rule\t-\ttouch %s-second\n' "$LMLINE_TEST_NOEXEC_MARKER"
+EOF
+chmod +x "$widget_tmp/engine-cycle-noexec"
+LMLINE_CONFIG_DIR="$widget_tmp/config-cycle-noexec" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-cycle-noexec" LMLINE_HISTORY_DIR="$widget_tmp/history-cycle-noexec" LMLINE_TEST_NOEXEC_MARKER="$widget_tmp/cycle-command-called" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# make markers"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>/dev/null
+  [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
+  __lmline_next_widget
+  [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER-second" ]]
+  __lmline_prev_widget
+  [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
+  [[ ! -e "$LMLINE_TEST_NOEXEC_MARKER" && ! -e "$LMLINE_TEST_NOEXEC_MARKER-second" ]]
+' _ "$repo_dir" || fail "bash candidate cycling does not execute candidates"
 # A restrictive caller umask must not break synchronous generation or leak
 # into the interactive shell's own mask.
 LMLINE_CONFIG_DIR="$widget_tmp/config-umask" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-umask" bash --norc -e -i -c '
