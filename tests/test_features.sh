@@ -537,4 +537,40 @@ for path in /tmp/link/. /tmp/link/./ /tmp/link/../target ./link/../target; do
   __lmline_path_has_traversal_after_component "$path" || fail "shared helper accepted a dot component: $path"
 done
 
+# A dash-leading relative TMPDIR must not be reinterpreted as mktemp options:
+# the engine's private workspace has to land under the configured directory.
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do case "$1" in -o) out=$2; shift 2 ;; *) shift ;; esac; done
+printf '%s' '{"model":"m","choices":[{"message":{"content":"echo tmpdir-ok"},"finish_reason":"stop"}]}' >"$out"
+printf '200\tapplication/json'
+EOF
+cat >"$fake_bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+for last do :; done
+printf '%s\n' "$last" >>"$LMLINE_MKTEMP_LOG"
+exec "$LMLINE_REAL_MKTEMP" "$@"
+EOF
+chmod +x "$fake_bin/mktemp"
+mkdir -m 700 -- "$cfg_tmp/-tmp"
+: >"$cfg_tmp/mktemp.log"
+(
+  cd "$cfg_tmp" || exit 1
+  if run_engine LMLINE_TOOL_MODE=none \
+    TMPDIR=-tmp LMLINE_MKTEMP_LOG="$cfg_tmp/mktemp.log" \
+    LMLINE_REAL_MKTEMP=$(command -v mktemp) >"$cfg_tmp/tmpdir.out" 2>"$cfg_tmp/tmpdir.err"
+  then
+    :
+  else
+    cat "$cfg_tmp/tmpdir.out" "$cfg_tmp/tmpdir.err" >&2
+    fail "engine run with dash-leading TMPDIR"
+  fi
+)
+grep -q "^$cfg_tmp/-tmp/lmline-" "$cfg_tmp/mktemp.log" ||
+  fail "engine did not use the configured dash-leading TMPDIR"
+! grep -q '^-tmp/' "$cfg_tmp/mktemp.log" ||
+  fail "mktemp reinterpreted a dash-leading TMPDIR as options"
+ok "engine uses a dash-leading relative TMPDIR"
+
 ok "features (protocol, retry, cache, stream, crud, risk)"

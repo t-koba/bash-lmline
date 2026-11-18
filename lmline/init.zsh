@@ -8,6 +8,7 @@ typeset -g LMLINE_DIR=${0:A:h}
 typeset -g LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 # Directory utilities parse a leading dash as an option.
 [[ $LMLINE_CONFIG_DIR != -* ]] || LMLINE_CONFIG_DIR=./$LMLINE_CONFIG_DIR
+[[ ${TMPDIR:-} != -* ]] || TMPDIR=$PWD/$TMPDIR
 
 if ! command -v bash >/dev/null 2>&1; then
   print -ru2 -- 'lmline: zsh integration requires bash 4.2 or newer for the bridge.'

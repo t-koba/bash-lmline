@@ -54,6 +54,7 @@ __lmline_program_name=lmline-engine
 config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 # Directory utilities parse a leading dash as an option.
 [[ $config_dir != -* ]] || config_dir=./$config_dir
+[[ ${TMPDIR:-} != -* ]] || TMPDIR=$PWD/$TMPDIR
 script_dir=${BASH_SOURCE[0]%/*}
 [[ $script_dir == "${BASH_SOURCE[0]}" ]] && script_dir=.
 script_dir=$(cd -- "$script_dir" && pwd -P)
