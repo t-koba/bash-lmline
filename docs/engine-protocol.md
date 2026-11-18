@@ -272,6 +272,21 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
   `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
   `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`).
 - Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. The ChatGPT subscription route always sends `store: false`; an explicit `LMLINE_STORE=1` is ignored with a warning. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
+- In the buffered `responses` tool loop, each follow-up round replays the
+  previous response's opaque output items (`reasoning` with its
+  `encrypted_content`, web-search events, and other non-message items)
+  verbatim and in their original order, rebuilding `function_call` items from
+  the tool calls actually executed. Assistant message text is sent as a
+  separate message and is not duplicated, and replay state is never added to
+  `chat` or `messages` payloads. This is the manual-history mode required by
+  `store: false`: the engine re-sends the provider's own output items,
+  including their item ids, rather than relying on server-side persistence.
+  Caveat: a Responses-compatible provider must accept those replayed items on
+  the follow-up request; one that does not persist or accept its own prior
+  item ids can reject the next round. Assistant turns with no replay state
+  (older cached shapes) convert to plain `responses` input as before. Replay
+  applies only to buffered `responses` tool rounds, not to streaming or to the
+  `chat`/`messages` formats.
 - A Responses body with status `failed` or a top-level error object is reported
   as a provider failure with its code and message in every buffered mode,
   including `explain` and `clip`; it never reaches candidate extraction or the
