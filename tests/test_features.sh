@@ -92,6 +92,13 @@ second_out=$(run_engine "${cache_env[@]}" 2>"$cfg_tmp/cache.err") || fail "cache
 grep -q 'lmline-status: m=test-model; cached' "$cfg_tmp/cache.err" || fail "cache hit status"
 cache_entry=$(find "$cfg_tmp/config/cache" -maxdepth 1 -type f | sed -n '1p')
 [[ -n "$cache_entry" ]] || fail "cache entry exists"
+# Cache storage stays private to the user: the directory is 0700 and
+# entries are written under umask 077.
+file_mode() {
+  stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+[[ $(file_mode "$cfg_tmp/config/cache") == 700 ]] || fail "cache directory mode"
+[[ $(file_mode "$cache_entry") == 600 ]] || fail "cache entry mode"
 touch -t 202001010000 "$cache_entry"
 third_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "cache expired run"
 [[ $(cat "$cfg_tmp/cache-state") == 2 ]] || fail "expired cache refetches"
