@@ -295,18 +295,11 @@ profile_restore_echo() {
 # Credentials are long-lived, so never write them through a symlinked or
 # loosely owned secrets directory. Establish and verify its privacy first.
 __lmline_secrets_dir_ready() {
-  local dir=$config_dir/secrets permissions previous_umask mkdir_status=0
-  if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$dir" ]]; then
-    previous_umask=$(umask) || return 1
-    umask 077
-    mkdir -p "$dir" 2>/dev/null || mkdir_status=1
-    umask "$previous_umask"
-    (( mkdir_status == 0 )) || return 1
-  fi
-  [[ -d "$dir" && ! -L "$dir" && -O "$dir" ]] || return 1
-  chmod 700 "$dir" 2>/dev/null || return 1
-  permissions=$(stat -c %a "$dir/." 2>/dev/null || stat -f %Lp "$dir/." 2>/dev/null) || return 1
-  [[ $permissions =~ ^0?700$ ]]
+  local dir=$config_dir/secrets
+  # Recheck after creation: a symlink swapped in during mkdir must not pass.
+  [[ ! -L "$dir" ]] || return 1
+  __lmline_private_dir_ready "$dir" || return 1
+  [[ ! -L "$dir" ]] || return 1
 }
 
 profile_endpoint_set_secret() {

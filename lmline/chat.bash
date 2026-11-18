@@ -1465,22 +1465,11 @@ __lmline_text_tool_requests_from_text() {
 # directory owned by this user with private permissions. A symlink could send
 # writes to an arbitrary location, so it is never followed or repaired.
 __lmline_cache_dir_ready() {
-  local permissions
   [[ -n "$cache_dir" ]] || return 1
+  # Recheck after creation: a symlink swapped in during mkdir must not pass.
   [[ ! -L "$cache_dir" ]] || return 1
-  if [[ ! -d "$cache_dir" ]]; then
-    (umask 077 && mkdir -p "$cache_dir") >/dev/null 2>&1 || return 1
-  fi
-  [[ -d "$cache_dir" && -O "$cache_dir" ]] || return 1
-  permissions=$(stat -c %a "$cache_dir/." 2>/dev/null || stat -f %Lp "$cache_dir/." 2>/dev/null) || return 1
-  if [[ "$permissions" =~ ^0?700$ ]]; then
-    return 0
-  fi
-  # Only repair an owned real directory; a rejected symlink never reaches here.
+  __lmline_private_dir_ready "$cache_dir" || return 1
   [[ ! -L "$cache_dir" ]] || return 1
-  chmod 700 "$cache_dir" >/dev/null 2>&1 || return 1
-  permissions=$(stat -c %a "$cache_dir/." 2>/dev/null || stat -f %Lp "$cache_dir/." 2>/dev/null) || return 1
-  [[ "$permissions" =~ ^0?700$ ]]
 }
 
 __lmline_file_mtime() {
