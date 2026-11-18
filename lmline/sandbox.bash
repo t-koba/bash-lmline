@@ -299,7 +299,7 @@ __lmline_microsandbox_setup() {
   local name=$1 image=$2 workspace_mode=$3 root=$4 workdir=$5 timeout_s=${6:-${LMLINE_MICROSANDBOX_SETUP_TIMEOUT:-30}}
   local memory=${LMLINE_MICROSANDBOX_MEMORY:-512M} cpus=${LMLINE_MICROSANDBOX_CPUS:-1}
   local msb mount_arg created=0 required check_script check_text manifest_file inspect_status=0
-  local status=0 version
+  local status=0 version manifest_target=$name:/etc/lmline-env.json
   [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || cpus=1
   [[ "$timeout_s" =~ ^[1-9][0-9]*$ ]] || timeout_s=30
   command -v jq >/dev/null 2>&1 || {
@@ -336,12 +336,16 @@ __lmline_microsandbox_setup() {
   fi
 
   manifest_file=$(mktemp "${TMPDIR:-/tmp}/lmline-sandbox-env.XXXXXX") || return 1
-  __lmline_env_manifest_for_sandbox "$root" "$name" >"$manifest_file" || {
-    rm -f "$manifest_file"
-    return 1
-  }
-  "$msb" --error copy "$manifest_file" "$name:/etc/lmline-env.json" >/dev/null 2>&1 || true
-  rm -f "$manifest_file"
+  if __lmline_env_manifest_for_sandbox "$root" "$name" >"$manifest_file"; then
+    "$msb" --error copy "$manifest_file" "$manifest_target" >/dev/null || {
+      status=$?
+      printf 'lmline: failed to copy sandbox manifest to %s (msb exit %s)\n' "$manifest_target" "$status" >&2
+    }
+  else
+    status=1
+  fi
+  rm -f -- "$manifest_file" || return 1
+  (( status == 0 )) || return "$status"
 
   required=$(__lmline_sandbox_required_commands | awk 'NF && !seen[$0]++')
   if [[ -n "$required" ]]; then

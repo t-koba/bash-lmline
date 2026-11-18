@@ -912,8 +912,9 @@ ephemeral `msb run` behavior are unchanged. See [SECURITY.md](SECURITY.md).
 root at `/workspace` by default, writes `/etc/lmline-env.json` with non-secret
 host environment metadata, and checks command availability from
 `local_commands.txt`, `suggested_commands.txt`, and
-`LMLINE_MICROSANDBOX_REQUIRED_COMMANDS`. If required commands are missing, build
-or choose an OCI image that contains them and run setup again.
+`LMLINE_MICROSANDBOX_REQUIRED_COMMANDS`. Setup fails if it cannot copy the
+manifest into the sandbox. If required commands are missing, build or choose
+an OCI image that contains them and run setup again.
 
 The default workspace mount is read-only. Use `--workspace writable` only when
 you deliberately want sandbox commands to write through to the project tree.

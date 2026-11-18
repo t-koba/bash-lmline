@@ -1552,10 +1552,19 @@ case "$sub" in
     fi
     ;;
   inspect)
-    exit 1
+    [[ -n ${FAKE_MSB_STATE:-} && -f $FAKE_MSB_STATE ]]
     ;;
-  start|create|copy)
+  create)
+    if [[ -n ${FAKE_MSB_STATE:-} ]]; then
+      touch "$FAKE_MSB_STATE"
+    fi
+    ;;
+  start)
     exit 0
+    ;;
+  copy)
+    [[ -s ${1-} && ${2-} == *:/etc/lmline-env.json ]] || exit 64
+    exit "${FAKE_MSB_COPY_STATUS:-0}"
     ;;
   *)
     exit 64
@@ -1579,12 +1588,30 @@ sandbox_cli_out=$(FAKE_MSB_ARGV_LOG="$command_tmp/msb.argv" LMLINE_MICROSANDBOX_
 grep -q '^msb:echo cli$' <<<"$sandbox_cli_out" || fail "sandbox run microsandbox"
 printf '%s\0' --error run app-entrypoint-image:test --timeout 7s -c 2 -m 768M --entrypoint /bin/sh -- -c 'echo cli' >"$command_tmp/msb.expected"
 cmp -s "$command_tmp/msb.expected" "$command_tmp/msb.argv" || fail "sandbox ephemeral shell override argv"
-sandbox_setup_out=$(LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --name lmline-test --image test-image --workspace none)
+sandbox_setup=(env FAKE_MSB_STATE="$command_tmp/msb.state" FAKE_MSB_LOG="$command_tmp/msb-setup.log"
+  LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config"
+  "$repo_dir/lmline/lmline" sandbox setup --name lmline-test --image test-image --workspace none)
+sandbox_setup_out=$("${sandbox_setup[@]}")
 grep -q '^sandbox_name=lmline-test$' <<<"$sandbox_setup_out" || fail "sandbox setup name"
+grep -q '^created=1$' <<<"$sandbox_setup_out" || fail "sandbox setup creates sandbox"
 grep -q '^image=test-image$' <<<"$sandbox_setup_out" || fail "sandbox setup image"
 grep -q '^workspace_mode=none$' <<<"$sandbox_setup_out" || fail "sandbox setup workspace mode"
 grep -q '^  missing git$' <<<"$sandbox_setup_out" || fail "sandbox setup command check"
 grep -q 'LMLINE_MICROSANDBOX_NAME' <<<"$sandbox_setup_out" || fail "sandbox setup next config"
+sandbox_setup_out=$("${sandbox_setup[@]}")
+grep -q '^created=0$' <<<"$sandbox_setup_out" || fail "sandbox setup reuses sandbox"
+[[ $(grep -c '^create ' "$command_tmp/msb-setup.log") == 1 ]] || fail "sandbox setup creates exactly once"
+
+mkdir "$command_tmp/setup-tmp"
+sandbox_setup_status=0
+TMPDIR="$command_tmp/setup-tmp" FAKE_MSB_COPY_STATUS=7 "${sandbox_setup[@]}" \
+  >"$command_tmp/setup.out" 2>"$command_tmp/setup.err" || sandbox_setup_status=$?
+[[ $sandbox_setup_status == 7 ]] || fail "sandbox setup propagates manifest copy exit 7 (got $sandbox_setup_status)"
+grep -Fq 'failed to copy sandbox manifest to lmline-test:/etc/lmline-env.json (msb exit 7)' \
+  "$command_tmp/setup.err" || fail "sandbox setup reports manifest copy failure"
+[[ ! -s "$command_tmp/setup.out" ]] || fail "sandbox setup printed success output after manifest copy failure"
+! compgen -G "$command_tmp/setup-tmp/lmline-sandbox-env.*" >/dev/null || fail "sandbox setup leaked its temporary manifest"
+
 command_root=$(cd -P -- "$command_tmp" && pwd -P)
 FAKE_MSB_LOG="$command_tmp/msb.log" LMLINE_MICROSANDBOX_COMMAND="$fake_msb" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" sandbox setup --name lmline-test-ro --image test-image --workspace readonly --root "$command_tmp" >/dev/null
 grep -F -q -- "--volume $command_root:/workspace:ro" "$command_tmp/msb.log" || fail "sandbox setup readonly volume"
