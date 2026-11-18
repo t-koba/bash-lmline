@@ -573,4 +573,32 @@ grep -q "^$cfg_tmp/-tmp/lmline-" "$cfg_tmp/mktemp.log" ||
   fail "mktemp reinterpreted a dash-leading TMPDIR as options"
 ok "engine uses a dash-leading relative TMPDIR"
 
+: >"$cfg_tmp/mktemp.log"
+real_mktemp=$(command -v mktemp)
+(
+  cd "$cfg_tmp" || exit 1
+  PATH="$fake_bin:$PATH" TMPDIR=-tmp \
+    LMLINE_MKTEMP_LOG="$cfg_tmp/mktemp.log" \
+    LMLINE_REAL_MKTEMP="$real_mktemp" \
+    LMLINE_CONFIG_DIR="$crud_dir" "$repo_dir/lmline/lmline" \
+    config set LMLINE_DEBUG 1 >/dev/null 2>&1 || fail "CLI run with dash-leading TMPDIR"
+)
+grep -q "^$cfg_tmp/-tmp/lmline-cfg" "$cfg_tmp/mktemp.log" ||
+  fail "CLI did not use the configured dash-leading TMPDIR"
+ok "CLI uses a dash-leading relative TMPDIR"
+
+for shell in bash zsh; do
+  shell_flags=(-f -e -i)
+  [[ $shell != bash ]] || shell_flags=(--norc -e -i)
+  shell_tmpdir=$(
+    cd "$cfg_tmp" || exit 1
+    TMPDIR=-tmp LMLINE_BIND_KEYS=0 "$shell" "${shell_flags[@]}" \
+      -c 'source "$@"; printf "%s\n" "$TMPDIR"' _ \
+      "$repo_dir/lmline/init.$shell" 2>/dev/null
+  ) || fail "$shell integration failed with dash-leading TMPDIR"
+  [[ $shell_tmpdir == "$cfg_tmp/-tmp" ]] ||
+    fail "$shell integration did not normalize dash-leading TMPDIR"
+  ok "$shell integration normalizes a dash-leading relative TMPDIR"
+done
+
 ok "features (protocol, retry, cache, stream, crud, risk)"
