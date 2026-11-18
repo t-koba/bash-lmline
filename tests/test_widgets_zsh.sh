@@ -495,6 +495,17 @@ EOF
     [[ "$BUFFER" == "lmline/widget-function-probe" ]]
     [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget hands off function names without executing them"
+  # A generated command is inserted into the buffer, never run.
+  printf '#!/usr/bin/env bash\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\ttouch %%s\\n" "$LMLINE_WIDGET_NOEXEC_MARKER"\n' >"$zsh_tmp/engine-noexec"
+  chmod +x "$zsh_tmp/engine-noexec"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-noexec" LMLINE_ASYNC=0 LMLINE_PROJECT_CONFIG=0 LMLINE_ENGINE="$zsh_tmp/engine-noexec" LMLINE_WIDGET_NOEXEC_MARKER="$zsh_tmp/command-called" zsh -efic '
+    source "$1/lmline/init.zsh"
+    BUFFER="# make a marker"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-noexec.out 2>/tmp/lmline-zsh-widget-noexec.err
+    [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
+    [[ ! -e "$LMLINE_WIDGET_NOEXEC_MARKER" ]]
+  ' _ "$repo_dir" || fail "zsh widget inserts commands without executing them"
   # A restrictive caller umask must leave the async spool and sync bridge writable.
   for async in 1 0; do
     mkdir "$zsh_tmp/tmp-widget-$async" "$zsh_tmp/config-widget-$async"
