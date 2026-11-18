@@ -7,6 +7,17 @@ cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-lock-test.XXXXXX")
 trap 'rm -rf "$cfg_tmp"' EXIT
 cfg="$cfg_tmp/config"
 
+# A regular file in the config path is a filesystem error, not contention.
+touch "$cfg_tmp/not-a-directory"
+if LMLINE_CONFIG_DIR="$cfg_tmp/not-a-directory/config" LMLINE_LOCK_TIMEOUT=1 "$repo_dir/lmline/lmline" \
+  config set LMLINE_PROGRESS no 2>"$cfg_tmp/parent.err"; then
+  fail "config set succeeded without a config directory"
+fi
+grep -Eq 'not-a-directory.*(Not a directory|File exists)' "$cfg_tmp/parent.err" \
+  || fail "config set did not report the config directory creation error"
+! grep -Eq 'locked by another lmline process|remove .* if stale' "$cfg_tmp/parent.err" \
+  || fail "config directory creation failure was reported as lock contention"
+
 # Lock ownership must be recordable even when the umask denies write access
 # to a newly created directory.
 # shellcheck source=lmline/config.bash

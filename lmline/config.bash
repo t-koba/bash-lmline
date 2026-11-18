@@ -284,7 +284,7 @@ __lmline_lock_acquire() {
   local lockdir=$1 timeout=${2:-5} tries i=0
   [[ "${LMLINE_NO_LOCK:-0}" == 1 ]] && return 0
   tries=$(( timeout * 10 ))
-  mkdir -p "${lockdir%/*}" 2>/dev/null || true
+  mkdir -p "${lockdir%/*}" || return 1
   while :; do
     if mkdir "$lockdir" 2>/dev/null; then
       # Private mode is hardening, not a lock precondition: some filesystems
