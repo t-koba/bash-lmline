@@ -13,7 +13,7 @@ if LMLINE_CONFIG_DIR="$cfg_tmp/not-a-directory/config" LMLINE_LOCK_TIMEOUT=1 "$r
   config set LMLINE_PROGRESS no 2>"$cfg_tmp/parent.err"; then
   fail "config set succeeded without a config directory"
 fi
-grep -Eq 'not-a-directory.*(Not a directory|File exists)' "$cfg_tmp/parent.err" \
+grep -Fxq "lmline: could not create config directory: $cfg_tmp/not-a-directory/config" "$cfg_tmp/parent.err" \
   || fail "config set did not report the config directory creation error"
 ! grep -Eq 'locked by another lmline process|remove .* if stale' "$cfg_tmp/parent.err" \
   || fail "config directory creation failure was reported as lock contention"
