@@ -326,12 +326,33 @@ __lmline_lock_release() {
   rm -rf "$lockdir"
 }
 
+# Refuse spellings that re-enter a named component with "." or "..", such as
+# "<link>/.", "<link>/./" or "<link>/../target": those resolve a symlink
+# before [[ -L ]] can see it. Leading "./" and "../" prefixes, empty
+# components and absolute paths stay usable; on macOS /tmp itself is a
+# symlink, so checking every component would reject legitimate paths.
+__lmline_path_has_traversal_after_component() {
+  local path=$1 component named=0
+  local -a components
+  IFS=/ read -r -a components <<<"$path"
+  for component in "${components[@]}"; do
+    [[ -n $component ]] || continue
+    if [[ $component == . || $component == .. ]]; then
+      (( named )) && return 0
+    else
+      named=1
+    fi
+  done
+  return 1
+}
+
 # Establish a real, user-owned directory with private permissions before it
 # receives private data. Callers add their own policy (path emptiness, symlink
 # refusal) around this shared mechanism.
 __lmline_private_dir_ready() {
   local dir=$1 permissions previous_umask mkdir_status=0
   [[ -n "$dir" ]] || return 1
+  __lmline_path_has_traversal_after_component "$dir" && return 1
   # Callers check symlinks before this point, and a trailing slash resolves a
   # symlink before [[ -L ]] can see it. Normalize here so chmod and stat never
   # operate on a symlink path, whatever form the caller supplied.

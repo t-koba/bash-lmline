@@ -31,6 +31,10 @@ if ! declare -F __lmline_chatgpt_apply_payload >/dev/null 2>&1; then
   # shellcheck source=lmline/chatgpt.bash
   source "$__LMLINE_CHAT_DIR/chatgpt.bash"
 fi
+if ! declare -F __lmline_path_has_traversal_after_component >/dev/null 2>&1; then
+  # shellcheck source=lmline/config.bash
+  source "$__LMLINE_CHAT_DIR/config.bash" || return 1
+fi
 
 __lmline_trace_dir_ready() {
   # Traces contain prompts and provider responses; keep them user-only.
@@ -43,6 +47,7 @@ __lmline_trace_dir_ready() {
     dir=${dir%/}
   done
   LMLINE_TRACE_DIR=$dir
+  __lmline_path_has_traversal_after_component "$dir" && return 1
   [[ ! -L "$dir" ]] || return 1
   [[ -d "$dir" ]] || (umask 077 && mkdir -p "$dir") || return 1
   # Recheck after creation: a symlink swapped in during mkdir must not pass.

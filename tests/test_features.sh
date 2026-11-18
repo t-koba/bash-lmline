@@ -138,6 +138,24 @@ populated_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "populated sym
 rm "$cfg_tmp/config/cache"
 mv "$link_target" "$cfg_tmp/config/cache"
 
+# A symlinked config directory spelled with a dot component cannot hide from
+# the shared private-directory guard: the planted cache entry stays unread.
+cache_link="$cfg_tmp/config-dot-link"
+ln -s "$cfg_tmp/config" "$cache_link"
+run_engine_at() {
+  env PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$1" \
+    LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model \
+    LMLINE_TOOL_MODE=none LMLINE_FAKE_CURL_STATE="$cfg_tmp/cache-state" LMLINE_CACHE_TTL=300 \
+    "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 \
+    --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1
+}
+for dot_config in "$cache_link/." "$cache_link/./" "$cache_link/../config"; do
+  printf '0\n' >"$cfg_tmp/cache-state"
+  dot_out=$(run_engine_at "$dot_config" 2>/dev/null) || fail "dot-component cache engine run"
+  [[ "$(candidates_of <<<"$dot_out")" == "echo cached-cmd" ]] || fail "dot-component config served a planted cache entry"
+  [[ $(cat "$cfg_tmp/cache-state") == 1 ]] || fail "dot-component config did not fetch a fresh response"
+done
+
 # Optional cache writes must not retain a partial staging file when copy or
 # atomic rename fails; candidate delivery remains successful in both cases.
 real_cp=$(command -v cp)
@@ -495,5 +513,16 @@ risk_of() { LMLINE_CONFIG_DIR="$crud_dir" "$repo_dir/lmline/lmline" risk "$1" | 
 [[ $(risk_of 'mkfs.ext4 /dev/sda1') == high ]] || fail "risk mkfs at line start"
 [[ $(risk_of 'sudo ls') == high ]] || fail "risk sudo at line start"
 [[ $(risk_of 'echo dde') == low ]] || fail "risk no false positive on substring"
+
+# The shared traversal check keeps ordinary relative prefixes usable and
+# rejects only dot components after a named component.
+# shellcheck source=lmline/config.bash
+source "$repo_dir/lmline/config.bash"
+for path in ./traces ../traces /tmp/traces /tmp/traces/; do
+  ! __lmline_path_has_traversal_after_component "$path" || fail "shared helper rejected a normal path: $path"
+done
+for path in /tmp/link/. /tmp/link/./ /tmp/link/../target ./link/../target; do
+  __lmline_path_has_traversal_after_component "$path" || fail "shared helper accepted a dot component: $path"
+done
 
 ok "features (protocol, retry, cache, stream, crud, risk)"

@@ -1027,6 +1027,23 @@ __lmline_zsh_generate_async() {
   zle redisplay 2>/dev/null || true
 }
 
+# Refuse "." or ".." after a named component: those spellings resolve a
+# symlink before [[ -L ]] can see it. Leading "./" and "../" prefixes stay
+# usable; on macOS /tmp itself is a symlink, so every component cannot be
+# rejected. Split without globbing; empty components are harmless.
+__lmline_zsh_path_has_traversal_after_component() {
+  local component named=0
+  for component in ${(@s:/:)1}; do
+    [[ -n $component ]] || continue
+    if [[ $component == . || $component == .. ]]; then
+      (( named )) && return 0
+    else
+      named=1
+    fi
+  done
+  return 1
+}
+
 # The log holds the user's own command lines, so establish the directory's
 # privacy before opening the log. Ownership and mode are re-checked on every
 # record: a loosened directory must not leak the next one.
@@ -1039,6 +1056,7 @@ __lmline_zsh_history_dir_ready() {
     dir=${dir%/}
   done
   typeset -g LMLINE_HISTORY_DIR=$dir
+  __lmline_zsh_path_has_traversal_after_component "$dir" && return 1
   # Recheck after creation: a symlink swapped in during mkdir must not pass.
   [[ ! -L "$dir" ]] || return 1
   if [[ ! -d "$dir" ]]; then

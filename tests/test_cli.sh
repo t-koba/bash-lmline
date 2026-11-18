@@ -142,7 +142,8 @@ grep -q '^default=0$' <<<"$describe_project" || fail "config describe project-co
 describe_secret=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_API_KEY_FILE)
 grep -F -q 'value=***REDACTED***' <<<"$describe_secret" || fail "config describe redacts secret"
 describe_trace=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_TRACE_DIR)
-grep -Fq 'user-owned and mode 0700 required' <<<"$describe_trace" || fail "config describe trace privacy"
+grep -Fq 'must be a real, non-symlink, user-owned mode 0700 directory or tracing is skipped' <<<"$describe_trace" || fail "config describe trace privacy"
+grep -Fq 'trailing slash, "." or ".." cannot hide a symlink' <<<"$describe_trace" || fail "config describe trace dot components"
 describe_history=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HISTORY_DIR)
 grep -Fq 'user-owned and mode 0700 required, or records are skipped' <<<"$describe_history" || fail "config describe history privacy"
 describe_retries=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HTTP_RETRIES)
@@ -1040,6 +1041,21 @@ fi
 grep -q 'secrets directory is unsafe' "$symlink_secret_tmp/err" || fail "set-secret did not report the unsafe secrets directory"
 [[ -z $(find "$symlink_secret_tmp/outside" -type f -print) ]] || fail "credential was written through the symlinked secrets directory"
 rm -rf "$symlink_secret_tmp"
+# A symlinked config directory spelled with a dot component is refused by the
+# shared private-directory guard just like a directly symlinked secrets dir.
+dot_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dot-secret.XXXXXX")
+LMLINE_CONFIG_DIR="$dot_secret_tmp/config" "$repo_dir/lmline/lmline" endpoint add dotted https://example.invalid/v1 >/dev/null
+mkdir -p "$dot_secret_tmp/config/secrets"
+ln -s "$dot_secret_tmp/config" "$dot_secret_tmp/config-link"
+for dot_config in "$dot_secret_tmp/config-link/." "$dot_secret_tmp/config-link/./" "$dot_secret_tmp/config-link/../config"; do
+  if printf '%s' 'dot-secret-sentinel' | LMLINE_CONFIG_DIR="$dot_config" "$repo_dir/lmline/lmline" \
+    endpoint set-secret dotted >"$dot_secret_tmp/out" 2>"$dot_secret_tmp/err"; then
+    fail "set-secret accepted a dot-component symlinked config directory"
+  fi
+  grep -q 'secrets directory is unsafe' "$dot_secret_tmp/err" || fail "set-secret did not report the unsafe dot-component secrets directory"
+done
+[[ -z $(find "$dot_secret_tmp/config/secrets" -type f -print) ]] || fail "credential was written through a dot-component symlinked config directory"
+rm -rf "$dot_secret_tmp"
 # Distinct endpoint names must never share a credential file.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a/b" https://a-b.invalid/v1
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a_b" https://aub.invalid/v1

@@ -57,7 +57,10 @@ trace_target="$work/trace-target"
 mkdir -m 0700 "$trace_target"
 ln -s "$trace_target" "$trace_symlink"
 target_mode=$(stat -c %a "$trace_target" 2>/dev/null || stat -f %Lp "$trace_target")
-for trace_dir in "$trace_symlink" "$trace_symlink/" "$trace_symlink///"; do
+# Dot components after the symlink resolve it before the final-component
+# check, so those spellings must be refused too.
+for trace_dir in "$trace_symlink" "$trace_symlink/" "$trace_symlink///" \
+  "$trace_symlink/." "$trace_symlink/./" "$trace_symlink/../${trace_target##*/}"; do
   LMLINE_TRACE_DIR="$trace_dir" PATH="$work/trace-bin:$PATH" LMLINE_TEST_CHMOD_STATUS=0 \
     trace_preview >"$work/trace.out" 2>"$work/trace.err" || fail 'symlinked trace changed engine exit status'
   [[ -L "$trace_symlink" ]] || fail 'trace directory symlink was replaced'

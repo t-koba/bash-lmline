@@ -231,6 +231,19 @@ for shell in bash zsh; do
   done
   ok "$shell refuses to record into a symlinked history directory with trailing slashes"
 
+  # A dot component after the symlink resolves it before [[ -L ]] can see it;
+  # every such spelling must be refused without touching the target.
+  target_mode=$(private_mode "$target") || fail "cannot read symlink target mode"
+  for dot_form in "$history_dir/." "$history_dir/./" "$history_dir/../${target##*/}"; do
+    private_record "$shell" "$dot_form"
+    [[ -L "$history_dir" ]] || fail "$shell replaced a history directory symlink with a dot component"
+    [[ $(readlink "$history_dir") == "$target" ]] || fail "$shell changed a history directory symlink target with a dot component"
+    [[ ! -e "$target/suggestions.log" ]] || fail "$shell wrote a record into a symlinked history directory with a dot component"
+    ! grep -q '^id=' "$target/suggestions.log" 2>/dev/null || fail "$shell wrote a record through a history directory symlink with a dot component"
+    [[ $(private_mode "$target") == "$target_mode" ]] || fail "$shell changed a symlink target's mode with a dot component"
+  done
+  ok "$shell refuses to record into a symlinked history directory via dot components"
+
   parent="$tmp/private-blocked-$shell"
   mkdir -m 700 "$parent"
   mkdir -m 500 "$parent/no-write"

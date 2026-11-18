@@ -617,6 +617,7 @@ __lmline_history_dir_ready() {
     dir=${dir%/}
   done
   LMLINE_HISTORY_DIR=$dir
+  __lmline_path_has_traversal_after_component "$dir" && return 1
   # Recheck after creation: a symlink swapped in during mkdir must not pass.
   [[ ! -L "$dir" ]] || return 1
   __lmline_private_dir_ready "$dir" || return 1
