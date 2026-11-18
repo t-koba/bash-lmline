@@ -1331,7 +1331,8 @@ doctor_api_out=$(LMLINE_ALLOW_INSECURE_HTTP=1 PATH="$doctor_api_bin:$PATH" LMLIN
 grep -q 'connection=failed' <<<"$doctor_api_out" || fail "doctor api failure"
 grep -q 'lmline use ENDPOINT MODEL' <<<"$doctor_api_out" || fail "doctor api hint"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" debug trace on
-LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config get | grep -q "LMLINE_TRACE_DIR=" || fail "trace config on"
+LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config get \
+  | grep -Fq "export LMLINE_TRACE_DIR='$cfg_tmp/config/traces'" || fail "trace location"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" debug trace off
 ! LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config get | grep -q "LMLINE_TRACE_DIR=" || fail "trace config off"
 payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
