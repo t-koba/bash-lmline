@@ -1019,6 +1019,17 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-noexec" LMLINE_ASYNC=0 LMLINE_ENGINE="$wid
   [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
   [[ ! -e "$LMLINE_TEST_NOEXEC_MARKER" ]]
 ' _ "$repo_dir" || fail "bash widget inserts commands without executing them"
+# A restrictive caller umask must not break synchronous generation or leak
+# into the interactive shell's own mask.
+LMLINE_CONFIG_DIR="$widget_tmp/config-umask" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-umask" bash --norc -e -i -c '
+  umask 0222
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# say one"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/tmp/lmline-widget-umask.out 2>/tmp/lmline-widget-umask.err
+  [[ "$READLINE_LINE" == "echo one" ]]
+  [[ "$(umask)" == 0222 ]]
+' _ "$repo_dir" || fail "bash widget generates under a restrictive umask"
 # Child interactive Bash shells enable errexit explicitly; parent shell options do not propagate.
 LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"

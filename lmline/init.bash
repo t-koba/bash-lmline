@@ -266,7 +266,8 @@ __lmline_run_internal_job() {
   case $- in
     *m*) had_monitor=1; set +m ;;
   esac
-  { "$@" >"$output_file" 2>&1 & pid=$!; } 2>/dev/null
+  # The job and everything it creates stay private; the caller keeps its umask.
+  { ( umask 077; "$@" >"$output_file" 2>&1 ) & pid=$!; } 2>/dev/null
   status=0
   __lmline_wait_with_spinner "$pid" "$label" "$output_file" || status=$?
   __lmline_hint clear
@@ -335,6 +336,9 @@ __lmline_call_engine() {
   __LMLINE_ENGINE_OUTPUT=""
   __LMLINE_ENGINE_STATUS_LINE=""
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-call.XXXXXX") || return 1
+  # The caller's umask may deny writes in a fresh directory; the internal job
+  # needs that directory for its private output file.
+  chmod 700 "$tmp" 2>/dev/null || { rm -rf "$tmp"; return 1; }
   output_file=$tmp/output
   status=0
   __lmline_run_internal_job "$label" "$output_file" __lmline_call_engine_raw "$mode" "$line" "$point" || status=$?
