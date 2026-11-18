@@ -4,6 +4,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: public CLI, config, profile, endpoint, and model contracts remain correct and safe.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-config-test.XXXXXX")
+export cfg_tmp
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" endpoint add openai https://api.openai.com/v1 --auth-header Authorization --auth-scheme Bearer >/dev/null
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" endpoint set-secret openai redaction-sentinel >/dev/null
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" model add openai test-model >/dev/null
@@ -144,10 +145,10 @@ describe_trace=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" c
 grep -Fq 'user-owned and mode 0700 required' <<<"$describe_trace" || fail "config describe trace privacy"
 describe_retries=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HTTP_RETRIES)
 grep -Fq '0 by default on ChatGPT or native-search routes' <<<"$describe_retries" || fail "config describe retry default"
-if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NOT_A_SETTING >/tmp/lmline-describe-bad.out 2>/tmp/lmline-describe-bad.err; then
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NOT_A_SETTING >"$cfg_tmp/describe-bad.out" 2>"$cfg_tmp/describe-bad.err"; then
   fail "config describe unknown setting rejected"
 fi
-grep -q 'unknown setting: LMLINE_NOT_A_SETTING' /tmp/lmline-describe-bad.err || fail "config describe unknown setting error"
+grep -q 'unknown setting: LMLINE_NOT_A_SETTING' "$cfg_tmp/describe-bad.err" || fail "config describe unknown setting error"
 complete_commands=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" complete commands)
 grep -q '^sandbox$' <<<"$complete_commands" || fail "complete commands sandbox"
 grep -q '^config$' <<<"$complete_commands" || fail "complete commands config"
@@ -211,10 +212,10 @@ history_show_help=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline
 grep -q '^usage: lmline history show' <<<"$history_show_help" || fail "history show help"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" debug trace --help | grep -q '^usage: lmline debug trace' || fail "debug trace help"
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate --help | grep -q '^usage: lmline payload MODE' || fail "payload mode help"
-if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" help definitely-not-a-lmline-topic >/tmp/lmline-help-bad.out 2>/tmp/lmline-help-bad.err; then
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" help definitely-not-a-lmline-topic >"$cfg_tmp/help-bad.out" 2>"$cfg_tmp/help-bad.err"; then
   fail "unknown help topic rejected"
 fi
-grep -q 'unknown help topic: definitely-not-a-lmline-topic' /tmp/lmline-help-bad.err || fail "unknown help topic error"
+grep -q 'unknown help topic: definitely-not-a-lmline-topic' "$cfg_tmp/help-bad.err" || fail "unknown help topic error"
 secret_file=$(grep "^export LMLINE_API_KEY_FILE=" "$cfg_tmp/config/settings.bash" | sed -E "s/^export LMLINE_API_KEY_FILE='?([^']*)'?$/\1/")
 [[ -f "$secret_file" ]] || fail "secret file exists"
 LMLINE_CONFIG_DIR="$cfg_tmp/config-local" "$repo_dir/lmline/lmline" endpoint add local http://127.0.0.1:8080/v1 >/dev/null
@@ -424,91 +425,91 @@ EOF
     LMLINE_CLIPBOARD_PROVIDERS_FILE="$cfg_tmp/clipboard-providers.tsv" zsh -fic '
     source "$1/lmline/init.zsh"
     compadd() { local arg; for arg in "${@:2}"; do [[ "$arg" == -- ]] && continue; print -r -- "$arg" >>"$OUT"; done; }
-    OUT=/tmp/lmline-zsh-complete-endpoints.out
+    OUT="$cfg_tmp/zsh-complete-endpoints.out"
     : >"$OUT"
     words=(lmline use "")
     CURRENT=3
     _lmline
-    grep -q "^local$" /tmp/lmline-zsh-complete-endpoints.out || exit 1
-    OUT=/tmp/lmline-zsh-complete-models.out
+    grep -q "^local$" "$cfg_tmp/zsh-complete-endpoints.out" || exit 1
+    OUT="$cfg_tmp/zsh-complete-models.out"
     : >"$OUT"
     words=(lmline use cloud "")
     CURRENT=4
     _lmline
-    grep -q "^openai/gpt-test$" /tmp/lmline-zsh-complete-models.out || exit 1
-    OUT=/tmp/lmline-zsh-complete-clipboard-providers.out
+    grep -q "^openai/gpt-test$" "$cfg_tmp/zsh-complete-models.out" || exit 1
+    OUT="$cfg_tmp/zsh-complete-clipboard-providers.out"
     : >"$OUT"
     words=(lmline clip --provider "")
     CURRENT=4
     _lmline
     grep -Fqx "custom provider" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-config-settings.out
+    OUT="$cfg_tmp/zsh-complete-config-settings.out"
     : >"$OUT"
     words=(lmline config set LMLINE_MIC "")
     CURRENT=4
     _lmline
     grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-config-describe.out
+    OUT="$cfg_tmp/zsh-complete-config-describe.out"
     : >"$OUT"
     words=(lmline config describe LMLINE_MIC "")
     CURRENT=4
     _lmline
     grep -q "^LMLINE_MICROSANDBOX_COMMAND$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-backend-values.out
+    OUT="$cfg_tmp/zsh-complete-backend-values.out"
     : >"$OUT"
     words=(lmline config set LMLINE_EXEC_BACKEND "")
     CURRENT=5
     _lmline
     grep -q "^microsandbox$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-api-format-values.out
+    OUT="$cfg_tmp/zsh-complete-api-format-values.out"
     : >"$OUT"
     words=(lmline config set LMLINE_API_FORMAT "")
     CURRENT=5
     _lmline
     grep -q "^responses$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-endpoint-add.out
+    OUT="$cfg_tmp/zsh-complete-endpoint-add.out"
     : >"$OUT"
     words=(lmline endpoint add ep https://example.invalid/v1 "")
     CURRENT=6
     _lmline
     grep -q "^--models-url$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-model-add.out
+    OUT="$cfg_tmp/zsh-complete-model-add.out"
     : >"$OUT"
     words=(lmline model add local local-test-model "")
     CURRENT=6
     _lmline
     grep -q "^--api-format$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-model-api-format.out
+    OUT="$cfg_tmp/zsh-complete-model-api-format.out"
     : >"$OUT"
     words=(lmline model add local local-test-model --api-format "")
     CURRENT=7
     _lmline
     grep -q "^responses$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-help-config.out
+    OUT="$cfg_tmp/zsh-complete-help-config.out"
     : >"$OUT"
     words=(lmline help config "")
     CURRENT=4
     _lmline
     grep -q "^describe$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-subcommands.out
+    OUT="$cfg_tmp/zsh-complete-subcommands.out"
     : >"$OUT"
     words=(lmline complete subcommands con "")
     CURRENT=4
     _lmline
     grep -q "^config$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-sandbox.out
+    OUT="$cfg_tmp/zsh-complete-sandbox.out"
     : >"$OUT"
     words=(lmline sandbox "")
     CURRENT=3
     _lmline
     grep -q "^setup$" "$OUT" || exit 1
-    OUT=/tmp/lmline-zsh-complete-sandbox-workspace.out
+    OUT="$cfg_tmp/zsh-complete-sandbox-workspace.out"
     : >"$OUT"
     words=(lmline sandbox setup --workspace "")
     CURRENT=5
     _lmline
     grep -q "^readonly$" "$OUT" || exit 1
-  ' _ "$repo_dir" /tmp/lmline-zsh-complete.out || fail "zsh profile completion"
+  ' _ "$repo_dir" "$cfg_tmp/zsh-complete.out" || fail "zsh profile completion"
   if command -v expect >/dev/null 2>&1; then
     printf 'custom provider\tno-such-lmline-provider-command\n' >"$cfg_tmp/zsh-pty-providers.tsv"
     printf 'custom-provider\tno-such-lmline-provider-command\n' >"$cfg_tmp/zsh-pty-midword-providers.tsv"
@@ -738,26 +739,26 @@ grep -q "LMLINE_API_FORMAT=.*chat" <<<"$profile_config" || fail "use model api f
 current_out=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" current)
 grep -q '^endpoint=local$' <<<"$current_out" || fail "current endpoint"
 grep -q '^profile_status=matched$' <<<"$current_out" || fail "current matched"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add "bad name" model >/tmp/lmline-profile-bad.out 2>/tmp/lmline-profile-bad.err; then
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add "bad name" model >"$cfg_tmp/profile-bad.out" 2>"$cfg_tmp/profile-bad.err"; then
   fail "invalid endpoint name rejected"
 fi
-grep -q "invalid endpoint name" /tmp/lmline-profile-bad.err || fail "invalid endpoint error"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad "ftp://example.invalid/v1" >/tmp/lmline-profile-bad-url.out 2>/tmp/lmline-profile-bad-url.err; then
+grep -q "invalid endpoint name" "$cfg_tmp/profile-bad.err" || fail "invalid endpoint error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad "ftp://example.invalid/v1" >"$cfg_tmp/profile-bad-url.out" 2>"$cfg_tmp/profile-bad-url.err"; then
   fail "invalid endpoint url rejected"
 fi
-grep -q "invalid base_url" /tmp/lmline-profile-bad-url.err || fail "invalid endpoint url error"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-tool https://example.invalid/v1 --tool-mode maybe >/tmp/lmline-profile-bad-tool.out 2>/tmp/lmline-profile-bad-tool.err; then
+grep -q "invalid base_url" "$cfg_tmp/profile-bad-url.err" || fail "invalid endpoint url error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-tool https://example.invalid/v1 --tool-mode maybe >"$cfg_tmp/profile-bad-tool.out" 2>"$cfg_tmp/profile-bad-tool.err"; then
   fail "invalid endpoint tool mode rejected"
 fi
-grep -q "invalid tool_mode" /tmp/lmline-profile-bad-tool.err || fail "invalid tool mode error"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local bad-model --max-tokens nope >/tmp/lmline-profile-bad-tokens.out 2>/tmp/lmline-profile-bad-tokens.err; then
+grep -q "invalid tool_mode" "$cfg_tmp/profile-bad-tool.err" || fail "invalid tool mode error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local bad-model --max-tokens nope >"$cfg_tmp/profile-bad-tokens.out" 2>"$cfg_tmp/profile-bad-tokens.err"; then
   fail "invalid model max tokens rejected"
 fi
-grep -q "invalid max_tokens" /tmp/lmline-profile-bad-tokens.err || fail "invalid max tokens error"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local bad-model --api-format maybe >/tmp/lmline-profile-bad-api-format.out 2>/tmp/lmline-profile-bad-api-format.err; then
+grep -q "invalid max_tokens" "$cfg_tmp/profile-bad-tokens.err" || fail "invalid max tokens error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add local bad-model --api-format maybe >"$cfg_tmp/profile-bad-api-format.out" 2>"$cfg_tmp/profile-bad-api-format.err"; then
   fail "invalid model api format rejected"
 fi
-grep -q "invalid api_format" /tmp/lmline-profile-bad-api-format.err || fail "invalid api format error"
+grep -q "invalid api_format" "$cfg_tmp/profile-bad-api-format.err" || fail "invalid api format error"
 fake_refresh_bin="$cfg_tmp/profile-refresh-bin"
 mkdir -p "$fake_refresh_bin"
 cat >"$fake_refresh_bin/curl" <<'EOF'
@@ -830,20 +831,20 @@ PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmli
 custom_jq_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list custom-jq)
 grep -q $'^custom-jq\tnested-a' <<<"$custom_jq_models" || fail "custom jq refresh model a"
 grep -q $'^custom-jq\tnested-b' <<<"$custom_jq_models" || fail "custom jq refresh model b"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-regex https://bad.example/v1 --models-include '[' >/tmp/lmline-bad-model-regex.out 2>/tmp/lmline-bad-model-regex.err; then
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-regex https://bad.example/v1 --models-include '[' >"$cfg_tmp/bad-model-regex.out" 2>"$cfg_tmp/bad-model-regex.err"; then
   fail "invalid models include rejected"
 fi
-grep -q "invalid models_include" /tmp/lmline-bad-model-regex.err || fail "invalid models include error"
-if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-jq https://bad.example/v1 --models-jq '.data[' >/tmp/lmline-bad-model-jq.out 2>/tmp/lmline-bad-model-jq.err; then
+grep -q "invalid models_include" "$cfg_tmp/bad-model-regex.err" || fail "invalid models include error"
+if LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add bad-jq https://bad.example/v1 --models-jq '.data[' >"$cfg_tmp/bad-model-jq.out" 2>"$cfg_tmp/bad-model-jq.err"; then
   fail "invalid models jq rejected"
 fi
-grep -q "invalid models_jq" /tmp/lmline-bad-model-jq.err || fail "invalid models jq error"
+grep -q "invalid models_jq" "$cfg_tmp/bad-model-jq.err" || fail "invalid models jq error"
 cat >"$fake_refresh_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 exit 9
 EOF
 before_failed_refresh=$(cat "$profiles_dir/models.tsv")
-if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh cloud >/tmp/lmline-refresh-fail.out 2>/tmp/lmline-refresh-fail.err; then
+if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh cloud >"$cfg_tmp/refresh-fail.out" 2>"$cfg_tmp/refresh-fail.err"; then
   fail "refresh failure rejected"
 fi
 [[ "$(cat "$profiles_dir/models.tsv")" == "$before_failed_refresh" ]] || fail "refresh failure preserved models"
@@ -862,8 +863,8 @@ else
 fi
 EOF
 chmod +x "$fake_refresh_bin/curl"
-PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >/tmp/lmline-shrink-first.out 2>/tmp/lmline-shrink-first.err || fail "shrink first refresh"
-grep -q "refreshed 2 models for shrink (2 added, 0 updated, 0 removed)" /tmp/lmline-shrink-first.err || fail "shrink first counts"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >"$cfg_tmp/shrink-first.out" 2>"$cfg_tmp/shrink-first.err" || fail "shrink first refresh"
+grep -q "refreshed 2 models for shrink (2 added, 0 updated, 0 removed)" "$cfg_tmp/shrink-first.err" || fail "shrink first counts"
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add shrink keep-a --temperature 0.7 --max-tokens 111 --tool-mode openai >/dev/null
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use shrink drop-b >/dev/null
 cat >"$fake_refresh_bin/curl" <<'EOF'
@@ -878,10 +879,10 @@ else
 fi
 EOF
 chmod +x "$fake_refresh_bin/curl"
-PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >/tmp/lmline-shrink-second.out 2>/tmp/lmline-shrink-second.err || fail "shrink second refresh"
-grep -q "refreshed 1 models for shrink (0 added, 1 updated, 1 removed)" /tmp/lmline-shrink-second.err || fail "shrink second counts"
-grep -Fxq "lmline: refreshed 1 models for shrink (0 added, 1 updated, 1 removed); removed models: drop-b" /tmp/lmline-shrink-second.err || fail "shrink removed name"
-grep -q "warning: selected model drop-b is no longer served by shrink; run lmline use shrink MODEL to select another" /tmp/lmline-shrink-second.err || fail "shrink selected removed warning"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >"$cfg_tmp/shrink-second.out" 2>"$cfg_tmp/shrink-second.err" || fail "shrink second refresh"
+grep -q "refreshed 1 models for shrink (0 added, 1 updated, 1 removed)" "$cfg_tmp/shrink-second.err" || fail "shrink second counts"
+grep -Fxq "lmline: refreshed 1 models for shrink (0 added, 1 updated, 1 removed); removed models: drop-b" "$cfg_tmp/shrink-second.err" || fail "shrink removed name"
+grep -q "warning: selected model drop-b is no longer served by shrink; run lmline use shrink MODEL to select another" "$cfg_tmp/shrink-second.err" || fail "shrink selected removed warning"
 shrink_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list shrink)
 grep -q $'^shrink\tkeep-a\t0.7\t111\topenai\tchat$' <<<"$shrink_models" || fail "shrink kept settings survive"
 ! grep -q $'^shrink\tdrop-b' <<<"$shrink_models" || fail "shrink removed id gone"
@@ -893,12 +894,12 @@ grep -q $'^cloud\tcloud/model-a' <<<"$cloud_models_after_shrink" || fail "shrink
 # Filtered-out but still-served manual model remains after refresh.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add keep-filtered https://keep.example/v1 --models-url https://keep.example/models --models-include 'keep-' >/dev/null
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model add keep-filtered other-no >/dev/null
-PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh keep-filtered >/tmp/lmline-keep-filtered.out 2>/tmp/lmline-keep-filtered.err || fail "keep-filtered refresh"
-grep -q "refreshed 2 models for keep-filtered (1 added, 0 updated, 0 removed)" /tmp/lmline-keep-filtered.err || fail "keep-filtered counts"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh keep-filtered >"$cfg_tmp/keep-filtered.out" 2>"$cfg_tmp/keep-filtered.err" || fail "keep-filtered refresh"
+grep -q "refreshed 2 models for keep-filtered (1 added, 0 updated, 0 removed)" "$cfg_tmp/keep-filtered.err" || fail "keep-filtered counts"
 keep_filtered_models=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model list keep-filtered)
 grep -q $'^keep-filtered\tkeep-yes' <<<"$keep_filtered_models" || fail "keep-filtered imported model present"
 grep -q $'^keep-filtered\tother-no' <<<"$keep_filtered_models" || fail "keep-filtered still-served filtered-out model kept"
-! grep -q "warning: selected model" /tmp/lmline-keep-filtered.err || fail "keep-filtered must not warn for other endpoint selection"
+! grep -q "warning: selected model" "$cfg_tmp/keep-filtered.err" || fail "keep-filtered must not warn for other endpoint selection"
 # A valid raw catalog with zero importable records still reconciles, preserving
 # manual rows byte-for-byte, removing stale rows, and never switching selection.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add all-filtered https://all-filtered.example/v1 --models-include '^import-' >/dev/null
@@ -983,7 +984,7 @@ else
 fi
 EOF
 chmod +x "$fake_refresh_bin/curl"
-PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh fb >/dev/null 2>/tmp/lmline-fb-first.err || fail "fb first refresh"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh fb >/dev/null 2>"$cfg_tmp/fb-first.err" || fail "fb first refresh"
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" use fb fb-b >/dev/null
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config unset LMLINE_ACTIVE_ENDPOINT
 cat >"$fake_refresh_bin/curl" <<'EOF'
@@ -996,10 +997,10 @@ else
 fi
 EOF
 chmod +x "$fake_refresh_bin/curl"
-PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh fb >/dev/null 2>/tmp/lmline-fb-second.err || fail "fb second refresh"
-grep -q "refreshed 1 models for fb (0 added, 1 updated, 1 removed)" /tmp/lmline-fb-second.err || fail "fb second counts"
-grep -Fxq "lmline: refreshed 1 models for fb (0 added, 1 updated, 1 removed); removed models: fb-b" /tmp/lmline-fb-second.err || fail "fb removed name"
-grep -q "warning: selected model fb-b is no longer served by fb; run lmline use fb MODEL to select another" /tmp/lmline-fb-second.err || fail "fb fallback warning"
+PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh fb >/dev/null 2>"$cfg_tmp/fb-second.err" || fail "fb second refresh"
+grep -q "refreshed 1 models for fb (0 added, 1 updated, 1 removed)" "$cfg_tmp/fb-second.err" || fail "fb second counts"
+grep -Fxq "lmline: refreshed 1 models for fb (0 added, 1 updated, 1 removed); removed models: fb-b" "$cfg_tmp/fb-second.err" || fail "fb removed name"
+grep -q "warning: selected model fb-b is no longer served by fb; run lmline use fb MODEL to select another" "$cfg_tmp/fb-second.err" || fail "fb fallback warning"
 fb_config=$(LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" config get)
 grep -q "LMLINE_MODEL=.*fb-b" <<<"$fb_config" || fail "fb config not silently switched"
 # Failed refresh on the shrunken endpoint preserves the file.
@@ -1009,7 +1010,7 @@ exit 9
 EOF
 chmod +x "$fake_refresh_bin/curl"
 before_shrink_failed=$(cat "$profiles_dir/models.tsv")
-if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >/tmp/lmline-shrink-fail.out 2>/tmp/lmline-shrink-fail.err; then
+if PATH="$fake_refresh_bin:$PATH" LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" model refresh shrink >"$cfg_tmp/shrink-fail.out" 2>"$cfg_tmp/shrink-fail.err"; then
   fail "shrink refresh failure rejected"
 fi
 [[ "$(cat "$profiles_dir/models.tsv")" == "$before_shrink_failed" ]] || fail "shrink refresh failure preserved models"
@@ -1148,14 +1149,14 @@ risk_dir="$cfg_tmp/risk"
 mkdir -p "$risk_dir"
 printf 'high\t*deploy production*\tcustom deployment pattern\n' >"$risk_dir/risk_patterns.tsv"
 LMLINE_CONFIG_DIR="$risk_dir" "$repo_dir/lmline/lmline" risk "deploy production now" | grep -q "reason=custom deployment pattern" || fail "custom risk patterns"
-if LMLINE_SUGGESTED_COMMANDS_FILE="$cfg_tmp/missing-suggested-commands.txt" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" >/tmp/lmline-missing-suggestions.out 2>/tmp/lmline-missing-suggestions.err; then
+if LMLINE_SUGGESTED_COMMANDS_FILE="$cfg_tmp/missing-suggested-commands.txt" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" context "# list files" >"$cfg_tmp/missing-suggestions.out" 2>"$cfg_tmp/missing-suggestions.err"; then
   fail "missing explicit suggested commands file failed open"
 fi
-grep -q "suggested_commands file is not readable" /tmp/lmline-missing-suggestions.err || fail "missing suggested commands error"
-if LMLINE_RISK_PATTERNS_FILE="$cfg_tmp/missing-risk-patterns.tsv" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk "echo hi" >/tmp/lmline-missing-risk.out 2>/tmp/lmline-missing-risk.err; then
+grep -q "suggested_commands file is not readable" "$cfg_tmp/missing-suggestions.err" || fail "missing suggested commands error"
+if LMLINE_RISK_PATTERNS_FILE="$cfg_tmp/missing-risk-patterns.tsv" LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" risk "echo hi" >"$cfg_tmp/missing-risk.out" 2>"$cfg_tmp/missing-risk.err"; then
   fail "missing explicit risk patterns file failed open"
 fi
-grep -q "risk_patterns file is not readable" /tmp/lmline-missing-risk.err || fail "missing risk patterns error"
+grep -q "risk_patterns file is not readable" "$cfg_tmp/missing-risk.err" || fail "missing risk patterns error"
 command_exists_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" command-exists awk definitely-not-a-command-for-lmline)
 grep -q $'^awk\tfound\t' <<<"$command_exists_out" || fail "command-exists found"
 grep -q $'^definitely-not-a-command-for-lmline\tmissing$' <<<"$command_exists_out" || fail "command-exists missing"
@@ -1370,9 +1371,9 @@ payload_clip=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" pay
 grep -q '"max_tokens": 1200' <<<"$payload_clip" || fail "payload clip token budget"
 grep -q 'Answer a question about pasted terminal or clipboard text' <<<"$payload_clip" || fail "payload clip system"
 payload_explain_bad_status=0
-LMLINE_EXPLAIN_DETAIL=verbose LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload explain "echo hi" >/tmp/lmline-bad-detail.out 2>/tmp/lmline-bad-detail.err || payload_explain_bad_status=$?
+LMLINE_EXPLAIN_DETAIL=verbose LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload explain "echo hi" >"$cfg_tmp/bad-detail.out" 2>"$cfg_tmp/bad-detail.err" || payload_explain_bad_status=$?
 [[ "$payload_explain_bad_status" != 0 ]] || fail "payload explain invalid detail status"
-grep -q 'invalid LMLINE_EXPLAIN_DETAIL' /tmp/lmline-bad-detail.err || fail "payload explain invalid detail error"
+grep -q 'invalid LMLINE_EXPLAIN_DETAIL' "$cfg_tmp/bad-detail.err" || fail "payload explain invalid detail error"
 grep -q 'suggested_commands' <<<"$payload_out" || fail "payload context"
 grep -q '"tools":' <<<"$payload_out" || fail "default auto payload tools"
 ! grep -q '"name": "git_status"' <<<"$payload_out" || fail "default payload sent git_status tool"

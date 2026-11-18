@@ -11,10 +11,10 @@ LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_
 export LMLINE_TOOL_COMMAND_INFO=1
 printf '# list files\n' >"$cfg_tmp/line"
 printf '## available_tools\n' >"$cfg_tmp/context"
-if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode unknown --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-invalid-mode.out 2>/tmp/lmline-invalid-mode.err; then
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode unknown --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/invalid-mode.out" 2>"$cfg_tmp/invalid-mode.err"; then
   fail "invalid mode unexpectedly accepted"
 fi
-grep -q 'invalid --mode: unknown' /tmp/lmline-invalid-mode.err || fail "invalid mode rejection"
+grep -q 'invalid --mode: unknown' "$cfg_tmp/invalid-mode.err" || fail "invalid mode rejection"
 # An unrecognized tool mode is a typo, not an implicit opt-in to tools: it
 # must fail closed before any payload is generated.
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TOOL_MODE=typo "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/invalid-tool-mode.out" 2>"$cfg_tmp/invalid-tool-mode.err"; then
@@ -726,10 +726,10 @@ JSON
 printf '200'
 EOF
 chmod +x "$fake_bin/curl"
-if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-choice-error.out 2>/tmp/lmline-choice-error.err; then
+if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/choice-error.out" 2>"$cfg_tmp/choice-error.err"; then
   fail "choice error unexpectedly succeeded"
 fi
-grep -q 'choice error: upstream provider returned no content' /tmp/lmline-choice-error.err || fail "choice error surfaced"
+grep -q 'choice error: upstream provider returned no content' "$cfg_tmp/choice-error.err" || fail "choice error surfaced"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
@@ -794,7 +794,7 @@ printf '200'
 EOF
 chmod +x "$fake_bin/curl"
 printf '0\n' >"$cfg_tmp/fake-curl-state"
-if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-same-retry.out 2>/tmp/lmline-same-retry.err; then
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/same-retry.out" 2>"$cfg_tmp/same-retry.err"; then
   fail "same-as-input retry unexpectedly succeeded"
 fi
 [[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "same-as-input should not retry"
@@ -814,9 +814,9 @@ printf '{"choices":[{"message":{"role":"assistant","content":%s}}]}\n' "$(jq -Rn
 printf '200'
 EOF
 chmod +x "$fake_bin/curl"
-PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-too-long.out 2>/tmp/lmline-too-long.err
-[[ $(candidates_of </tmp/lmline-too-long.out | LC_ALL=C wc -c | tr -d ' ') -le 4097 ]] || fail "too-long candidate output not truncated"
-grep -q 'candidate-truncated' /tmp/lmline-too-long.err || fail "too-long candidate truncation marker"
+PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/too-long.out" 2>"$cfg_tmp/too-long.err"
+[[ $(candidates_of <"$cfg_tmp/too-long.out" | LC_ALL=C wc -c | tr -d ' ') -le 4097 ]] || fail "too-long candidate output not truncated"
+grep -q 'candidate-truncated' "$cfg_tmp/too-long.err" || fail "too-long candidate truncation marker"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
@@ -859,10 +859,10 @@ printf '<html>unauthorized</html>\n' >"$out"
 printf '401'
 EOF
 chmod +x "$fake_bin/curl"
-if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-non-json.out 2>/tmp/lmline-non-json.err; then
+if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/non-json.out" 2>"$cfg_tmp/non-json.err"; then
   fail "non-json error unexpectedly succeeded"
 fi
-grep -q 'non-JSON error response' /tmp/lmline-non-json.err || fail "non-json error detail"
+grep -q 'non-JSON error response' "$cfg_tmp/non-json.err" || fail "non-json error detail"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
@@ -878,10 +878,10 @@ printf '{"error":{"message":"bad key message"}}\n' >"$out"
 printf '401\tapplication/json'
 EOF
 chmod +x "$fake_bin/curl"
-if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-json-error.out 2>/tmp/lmline-json-error.err; then
+if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/json-error.out" 2>"$cfg_tmp/json-error.err"; then
   fail "json error unexpectedly succeeded"
 fi
-grep -q 'bad key message' /tmp/lmline-json-error.err || fail "json error message detail"
+grep -q 'bad key message' "$cfg_tmp/json-error.err" || fail "json error message detail"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
@@ -897,11 +897,11 @@ printf '{"error":{"message":"Function tools with reasoning_effort are not suppor
 printf '400\tapplication/json'
 EOF
 chmod +x "$fake_bin/curl"
-if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=openai LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-400-hint.out 2>/tmp/lmline-400-hint.err; then
+if PATH="$fake_bin:$PATH" LMLINE_TOOL_MODE=openai LMLINE_CACHE_TTL=0 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/400-hint.out" 2>"$cfg_tmp/400-hint.err"; then
   fail "responses-required 400 unexpectedly succeeded"
 fi
-grep -q 'Please use /v1/responses instead' /tmp/lmline-400-hint.err || fail "responses-required detail"
-grep -q 'LMLINE_API_FORMAT=responses or LMLINE_TOOL_MODE=text' /tmp/lmline-400-hint.err || fail "responses-required hint"
+grep -q 'Please use /v1/responses instead' "$cfg_tmp/400-hint.err" || fail "responses-required detail"
+grep -q 'LMLINE_API_FORMAT=responses or LMLINE_TOOL_MODE=text' "$cfg_tmp/400-hint.err" || fail "responses-required hint"
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
@@ -1032,7 +1032,7 @@ printf '400\tapplication/json'
 EOF
 chmod +x "$fake_bin/curl"
 printf '0\n' >"$cfg_tmp/fake-curl-state"
-if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >/tmp/lmline-compat-noretry.out 2>/tmp/lmline-compat-noretry.err; then
+if PATH="$fake_bin:$PATH" LMLINE_FAKE_CURL_STATE="$cfg_tmp/fake-curl-state" LMLINE_TOOL_MODE=none LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 >"$cfg_tmp/compat-noretry.out" 2>"$cfg_tmp/compat-noretry.err"; then
   fail "unrelated 400 unexpectedly succeeded"
 fi
 [[ $(cat "$cfg_tmp/fake-curl-state") == 1 ]] || fail "unrelated 400 should not retry"
@@ -1116,20 +1116,20 @@ EOF
 chmod +x "$fake_bin/curl"
 auto_catalog_out=$(PATH="$fake_bin:$PATH" LMLINE_CONFIG_DIR="$cfg_tmp/auto-catalog" LMLINE_BASE_URL=https://chat.example/v1 LMLINE_MODEL= LMLINE_MODELS_URL=https://catalog.example/models/search "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1)
 [[ "$(candidates_of <<<"$auto_catalog_out")" == "echo auto-catalog" ]] || fail "generic catalog auto model discovery"
-warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.openai.com/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=test "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-warn-payload.out 2>&1 || true)
-grep -q 'warning: no API key configured' /tmp/lmline-warn-payload.out || fail "cloud api key warning"
-sakura_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.ai.sakura.ad.jp/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=gpt-oss-120b "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-sakura-warn-payload.out 2>&1 || true)
-grep -q 'warning: no API key configured' /tmp/lmline-sakura-warn-payload.out || fail "sakura api key warning"
-workers_ai_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.cloudflare.com/client/v4/accounts/test-account/ai/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=@cf/meta/llama-3.1-8b-instruct "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-workers-ai-warn-payload.out 2>&1 || true)
-grep -q 'warning: no API key configured' /tmp/lmline-workers-ai-warn-payload.out || fail "workers ai api key warning"
-opencode_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://opencode.ai/zen/go/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=kimi-k2.7-code "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-opencode-warn-payload.out 2>&1 || true)
-grep -q 'warning: no API key configured' /tmp/lmline-opencode-warn-payload.out || fail "opencode api key warning"
-LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=http://127.0.0.1:1234/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=test "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-local-payload.out 2>&1
-! grep -q 'warning: no API key configured' /tmp/lmline-local-payload.out || fail "local api key warning"
-if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TEMPERATURE=bad "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >/tmp/lmline-bad-temperature.out 2>/tmp/lmline-bad-temperature.err; then
+warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.openai.com/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=test "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/warn-payload.out" 2>&1 || true)
+grep -q 'warning: no API key configured' "$cfg_tmp/warn-payload.out" || fail "cloud api key warning"
+sakura_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.ai.sakura.ad.jp/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=gpt-oss-120b "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/sakura-warn-payload.out" 2>&1 || true)
+grep -q 'warning: no API key configured' "$cfg_tmp/sakura-warn-payload.out" || fail "sakura api key warning"
+workers_ai_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://api.cloudflare.com/client/v4/accounts/test-account/ai/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=@cf/meta/llama-3.1-8b-instruct "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/workers-ai-warn-payload.out" 2>&1 || true)
+grep -q 'warning: no API key configured' "$cfg_tmp/workers-ai-warn-payload.out" || fail "workers ai api key warning"
+opencode_warn_payload_err=$(LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=https://opencode.ai/zen/go/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=kimi-k2.7-code "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/opencode-warn-payload.out" 2>&1 || true)
+grep -q 'warning: no API key configured' "$cfg_tmp/opencode-warn-payload.out" || fail "opencode api key warning"
+LMLINE_CONFIG_DIR="$cfg_tmp/noauth-config" LMLINE_BASE_URL=http://127.0.0.1:1234/v1 LMLINE_API_KEY_FILE= LMLINE_MODEL=test "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/local-payload.out" 2>&1
+! grep -q 'warning: no API key configured' "$cfg_tmp/local-payload.out" || fail "local api key warning"
+if LMLINE_CONFIG_DIR="$cfg_tmp/config" LMLINE_TEMPERATURE=bad "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload >"$cfg_tmp/bad-temperature.out" 2>"$cfg_tmp/bad-temperature.err"; then
   fail "invalid engine temperature rejected"
 fi
-grep -q "invalid LMLINE_TEMPERATURE" /tmp/lmline-bad-temperature.err || fail "invalid engine temperature error"
+grep -q "invalid LMLINE_TEMPERATURE" "$cfg_tmp/bad-temperature.err" || fail "invalid engine temperature error"
 
 # Non-chat formats run tool-less and warn instead of silently dropping tools.
 responses_payload_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/api-format" LMLINE_BASE_URL=https://api-format.example/v1 LMLINE_MODEL=model-responses LMLINE_API_FORMAT=responses LMLINE_TOOL_MODE=openai "$repo_dir/lmline/engine" --mode generate --shell bash --cwd "$repo_dir" --point 0 --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 --dry-run-payload 2>"$cfg_tmp/responses-warn.err")

@@ -4,20 +4,21 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: the fix widget applies suggestions through the expected review and safety contract.
 
 fix_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix-widget.XXXXXX")
+export fix_tmp
 printf '#!/usr/bin/env bash\nmode=\nline_file=\nwhile (($#)); do case "$1" in --mode) mode=$2; shift 2;; --line-file) line_file=$2; shift 2;; *) shift;; esac; done\nif [[ "$mode" == fix ]]; then grep -q "exit_status=" "$line_file" && printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo fixed\\n"; else printf "lmline-candidate: low\\tno matching risk rule\\t-\\techo default\\n"; fi\n' >"$fix_tmp/engine"
 chmod +x "$fix_tmp/engine"
 LMLINE_CONFIG_DIR="$fix_tmp/config" LMLINE_EXEC_BACKEND=local LMLINE_ASYNC=0 LMLINE_ENGINE="$fix_tmp/engine" LMLINE_HISTORY_DIR="$fix_tmp/history" bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="false"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_fix_widget >/tmp/lmline-widget-fix.out 2>/tmp/lmline-widget-fix.err
+  __lmline_fix_widget >"$fix_tmp/widget-fix.out" 2>"$fix_tmp/widget-fix.err"
   [[ "$READLINE_LINE" == "echo fixed" ]]
 ' _ "$repo_dir" || fail "fix widget"
 LMLINE_CONFIG_DIR="$fix_tmp/config" LMLINE_EXEC_BACKEND=local LMLINE_ENGINE="$fix_tmp/engine" bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="rm -rf build"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_fix_widget >/tmp/lmline-widget-fix-risk.out 2>/tmp/lmline-widget-fix-risk.err
+  __lmline_fix_widget >"$fix_tmp/widget-fix-risk.out" 2>"$fix_tmp/widget-fix-risk.err"
   [[ "$READLINE_LINE" == "rm -rf build" ]]
 ' _ "$repo_dir" || fail "fix high-risk refusal"
 # A shell with errexit on must survive the refusal: the internal command that
@@ -27,7 +28,7 @@ LMLINE_CONFIG_DIR="$fix_tmp/config" LMLINE_EXEC_BACKEND=local LMLINE_ENGINE="$fi
   source "$1/lmline/init.bash"
   READLINE_LINE="rm -rf build"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_fix_widget >/tmp/lmline-widget-fix-errexit.out 2>/tmp/lmline-widget-fix-errexit.err
+  __lmline_fix_widget >"$fix_tmp/widget-fix-errexit.out" 2>"$fix_tmp/widget-fix-errexit.err"
   [[ "$READLINE_LINE" == "rm -rf build" ]]
 ' _ "$repo_dir" || fail "fix high-risk refusal with errexit on"
 printf '%s\n' \
@@ -41,16 +42,16 @@ LMLINE_CONFIG_DIR="$fix_tmp/config2" LMLINE_EXEC_BACKEND=local LMLINE_ENGINE="$f
   source "$1/lmline/init.bash"
   READLINE_LINE="false"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_fix_widget >/tmp/lmline-widget-fix-same.out 2>/tmp/lmline-widget-fix-same.err
+  __lmline_fix_widget >"$fix_tmp/widget-fix-same.out" 2>"$fix_tmp/widget-fix-same.err"
   [[ "$READLINE_LINE" == "echo corrected" ]]
 ' _ "$repo_dir" || fail "fix uses engine correction"
 LMLINE_CONFIG_DIR="$fix_tmp/config3" LMLINE_EXEC_BACKEND=local LMLINE_ENGINE="$fix_tmp/engine" bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="echo corrected"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_fix_widget >/tmp/lmline-widget-fix-ok.out 2>/tmp/lmline-widget-fix-ok.err
+  __lmline_fix_widget >"$fix_tmp/widget-fix-ok.out" 2>"$fix_tmp/widget-fix-ok.err"
   [[ "$READLINE_LINE" == "echo corrected" ]]
-  grep -q "command succeeded; no fix needed" /tmp/lmline-widget-fix-ok.err
+  grep -q "command succeeded; no fix needed" "$fix_tmp/widget-fix-ok.err"
 ' _ "$repo_dir" || fail "fix successful command"
 # A typo in the backend setting must not cause fix to fall back to host-local
 # execution. The fixture engine records invocation, while the current line is
@@ -70,9 +71,9 @@ bash --norc -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE="false"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_fix_widget >/tmp/lmline-widget-fix-invalid-backend.out 2>/tmp/lmline-widget-fix-invalid-backend.err
+  __lmline_fix_widget >"$fix_tmp/widget-fix-invalid-backend.out" 2>"$fix_tmp/widget-fix-invalid-backend.err"
   [[ "$READLINE_LINE" == "false" ]]
-  grep -q "invalid LMLINE_EXEC_BACKEND" /tmp/lmline-widget-fix-invalid-backend.err
+  grep -q "invalid LMLINE_EXEC_BACKEND" "$fix_tmp/widget-fix-invalid-backend.err"
 ' _ "$repo_dir" || fail "fix accepted an invalid execution backend"
 [[ ! -e "$fix_tmp/engine-called" ]] || fail "fix executed through local backend after invalid setting"
 ok "fix refuses invalid execution backend without local execution"
