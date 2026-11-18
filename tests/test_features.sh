@@ -222,6 +222,37 @@ cwd_b_hit=$(env PATH="$fake_bin:$PATH" "${cwd_engine_env[@]}" "${cwd_base_env[@]
 [[ "$(candidates_of <<<"$cwd_b_hit")" == "echo project-b" ]] || fail "cwd cache hit output"
 [[ $(cat "$cfg_tmp/cwd-state") == 2 ]] || fail "cwd cache same directory hits"
 
+# fix depends on captured execution output and clip on clipboard content;
+# neither input is in the cache key, so both modes must ask the provider every
+# time even when a cache TTL is set.
+uncached_bin="$cfg_tmp/uncached-bin"
+mkdir -p "$uncached_bin" "$cfg_tmp/uncached-config"
+cat >"$uncached_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=
+while (($#)); do case "$1" in -o) out=$2; shift 2 ;; *) shift ;; esac; done
+state=${LMLINE_FAKE_CURL_STATE:?}
+count=0; [[ -f "$state" ]] && read -r count <"$state"
+count=$((count + 1)); printf '%s\n' "$count" >"$state"
+printf '{"model":"m","choices":[{"message":{"content":"echo unchanged"},"finish_reason":"stop"}]}' >"$out"
+printf '200\tapplication/json'
+EOF
+chmod +x "$uncached_bin/curl"
+uncached_env=(LMLINE_CONFIG_DIR="$cfg_tmp/uncached-config" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model LMLINE_TOOL_MODE=none LMLINE_CACHE_TTL=300)
+for uncached_mode in fix clip; do
+  printf '0\n' >"$cfg_tmp/uncached-state"
+  for pass in 1 2; do
+    env PATH="$uncached_bin:$PATH" "${uncached_env[@]}" LMLINE_FAKE_CURL_STATE="$cfg_tmp/uncached-state" \
+      "$repo_dir/lmline/engine" --mode "$uncached_mode" --shell bash --cwd "$repo_dir" --point 0 \
+      --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
+      >"$cfg_tmp/uncached-$uncached_mode-$pass.out" 2>"$cfg_tmp/uncached-$uncached_mode-$pass.err" \
+      || fail "$uncached_mode engine run $pass"
+  done
+  [[ "$(cat "$cfg_tmp/uncached-state")" == 2 ]] || fail "$uncached_mode served a cached answer"
+  ! grep -q 'tokens=cached' "$cfg_tmp/uncached-$uncached_mode-2.err" || fail "$uncached_mode reported a cache hit"
+done
+ok "fix and clip never use cached answers"
+
 # --- streaming (explain, tool mode none) -------------------------------------
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
