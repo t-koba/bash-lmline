@@ -56,7 +56,7 @@ Debug tracing can save request/response payloads, accepted and rejected candidat
 
 When `LMLINE_CACHE_TTL` is above 0, generated candidates and explanation text are stored under `~/.config/lmline/cache/` (directory mode `0700`, files user-only). Cached entries can contain your prompt lines and model responses; expired entries are pruned opportunistically, and `rm -rf ~/.config/lmline/cache` clears the cache at any time. `fix` and `clip` responses are never cached.
 
-The suggestion log under `~/.config/lmline/history/` (directory mode `0700`, log file mode `0600`) records the commands you accepted: their text, the working directory, and the time. It is readable by `lmline history show` and `lmline history tendencies`, and you can delete it at any time.
+The suggestion log under `~/.config/lmline/history/` (directory mode `0700`, log file mode `0600`) records the commands you accepted: their text, the working directory, and the time. It is readable by `lmline history show` and `lmline history tendencies`, and you can delete it at any time. Before every record, lmline requires `LMLINE_HISTORY_DIR` to be a user-owned directory with mode `0700` and `suggestions.log` to be a user-owned regular file with mode `0600`; it never follows a symlink for the log. If an existing destination is unsafe or cannot be made private, that suggestion is not recorded.
 
 For registered endpoints, store API keys with endpoint-scoped secrets:
 
