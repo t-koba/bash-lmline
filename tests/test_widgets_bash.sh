@@ -1351,6 +1351,29 @@ for session in 1 2; do
       fail "Bash user EXIT trap did not run once after cleanup with the original status"
   fi
 done
+# A relative TMPDIR must be anchored before the spool is created; changing
+# directory afterwards must not hide the spool from exit cleanup.
+mkdir "$widget_tmp/async-exit-relative"
+TMPDIR=async-exit-relative LMLINE_CONFIG_DIR="$widget_tmp/config-async-exit-relative" LMLINE_PROJECT_CONFIG=0 \
+  LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" bash --norc -e -i -c '
+    cd -- "$2" || exit 1
+    source "$1/lmline/init.bash"
+    READLINE_LINE="# leave unconsumed after cd"
+    READLINE_POINT=${#READLINE_LINE}
+    __lmline_generate_widget >/dev/null 2>&1
+    wait "$__LMLINE_ASYNC_PID"
+    async_file=$__LMLINE_ASYNC_FILE
+    [[ $async_file == /* ]]
+    [[ -s $async_file && -f $async_file.status.err ]]
+    grep -Fq "echo one" "$async_file"
+    cd -- "$1"
+    exit 0
+  ' _ "$repo_dir" "$widget_tmp" || fail "Bash async relative TMPDIR spool creation"
+[[ -z $(find "$widget_tmp/async-exit-relative" -name 'lmline-async.*' -print -quit) ]] ||
+  fail "Bash async exit left spool files with relative TMPDIR"
+if grep -rFq 'echo one' "$widget_tmp/async-exit-relative"; then
+  fail "Bash async exit left candidate text with relative TMPDIR"
+fi
 # Fail only the final async rename after the engine produced valid candidates.
 mkdir "$widget_tmp/fail-publish-bin"
 cat >"$widget_tmp/fail-publish-bin/mv" <<'EOF'

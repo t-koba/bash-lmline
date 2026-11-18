@@ -929,7 +929,7 @@ __lmline_zsh_async_prompt_check() {
 }
 
 __lmline_zsh_generate_async() {
-  local original=$1 mode=$2 point=$3 async_file current_key async_status_file err_msg async_elapsed
+  local original=$1 mode=$2 point=$3 async_file current_key async_status_file err_msg async_elapsed spool_base
   local -i async_key_ready=0
   if (( __LMLINE_ZSH_ASYNC_PID > 0 )); then
     # Check publication before any live-key work: a live supervisor without
@@ -1001,7 +1001,9 @@ __lmline_zsh_generate_async() {
   # async starter calls cleanup again before it takes ownership.
   __lmline_zsh_async_cleanup
   local async_dir
-  async_dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-async.XXXXXX") || async_dir=
+  spool_base=${TMPDIR:-/tmp}
+  [[ $spool_base == /* ]] || spool_base=$PWD/$spool_base
+  async_dir=$(mktemp -d "$spool_base/lmline-zsh-async.XXXXXX") || async_dir=
   if [[ -n "$async_dir" ]] && ! command chmod 0700 "$async_dir"; then
     command rmdir -- "$async_dir" 2>/dev/null || true
     async_dir=
