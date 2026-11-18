@@ -611,7 +611,10 @@ __lmline_load_candidates_from_file() {
 __lmline_history_dir_ready() {
   local dir=${LMLINE_HISTORY_DIR:-}
   [[ -n "$dir" ]] || return 1
-  __lmline_private_dir_ready "$dir"
+  # Recheck after creation: a symlink swapped in during mkdir must not pass.
+  [[ ! -L "$dir" ]] || return 1
+  __lmline_private_dir_ready "$dir" || return 1
+  [[ ! -L "$dir" ]] || return 1
 }
 
 __lmline_history_log_ready() {

@@ -207,6 +207,17 @@ for shell in bash zsh; do
   ! grep -q '^id=' "$canary" || fail "$shell wrote a record through a symlink"
   ok "$shell refuses to record through a suggestion log symlink"
 
+  history_dir="$tmp/private-history-symlink-$shell"
+  target="$tmp/private-history-target-$shell"
+  mkdir -m 700 "$target"
+  ln -s "$target" "$history_dir"
+  private_record "$shell" "$history_dir"
+  [[ -L "$history_dir" ]] || fail "$shell replaced a history directory symlink"
+  [[ $(readlink "$history_dir") == "$target" ]] || fail "$shell changed a history directory symlink target"
+  [[ ! -e "$target/suggestions.log" ]] || fail "$shell wrote a record into a symlinked history directory"
+  ! grep -q '^id=' "$target/suggestions.log" 2>/dev/null || fail "$shell wrote a record through a history directory symlink"
+  ok "$shell refuses to record into a symlinked history directory"
+
   parent="$tmp/private-blocked-$shell"
   mkdir -m 700 "$parent"
   mkdir -m 500 "$parent/no-write"

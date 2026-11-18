@@ -1033,6 +1033,8 @@ __lmline_zsh_generate_async() {
 __lmline_zsh_history_dir_ready() {
   local dir=${LMLINE_HISTORY_DIR:-} permissions previous_umask mkdir_status=0
   [[ -n "$dir" ]] || return 1
+  # Recheck after creation: a symlink swapped in during mkdir must not pass.
+  [[ ! -L "$dir" ]] || return 1
   if [[ ! -d "$dir" ]]; then
     previous_umask=$(umask) || return 1
     umask 077
@@ -1040,10 +1042,13 @@ __lmline_zsh_history_dir_ready() {
     umask "$previous_umask"
     (( mkdir_status == 0 )) || return 1
   fi
+  # Do not chmod through a symlink swapped in during creation.
+  [[ ! -L "$dir" ]] || return 1
   [[ -O "$dir" ]] || return 1
   command chmod 700 "$dir" 2>/dev/null || return 1
   # Check the destination itself, including when the path ends in a symlink.
   permissions=$(stat -c %a "$dir/." 2>/dev/null || stat -f %Lp "$dir/." 2>/dev/null) || return 1
+  [[ ! -L "$dir" ]] || return 1
   [[ $permissions =~ ^0?700$ ]]
 }
 
