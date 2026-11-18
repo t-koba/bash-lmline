@@ -35,8 +35,8 @@ copilot_env=(
   LMLINE_COPILOT_TIMEOUT=3000
 )
 
-# Lifecycle safety uses an owned, harmless IPC child to model PID reuse. Never
-# signal a PID read from disk, even to check whether the process still exists.
+# Lifecycle safety uses an owned, harmless IPC child to model PID reuse. No
+# signal, even a liveness probe, should use a PID record without a live socket.
 (
   lifecycle_env=(
     "${copilot_env[@]}"
@@ -95,6 +95,15 @@ function cleaned(expectStopped = true) {
     assert(!fs.existsSync(process.env.LMLINE_TEST_LSP_STOPPED), 'unresponsive LSP exited gracefully instead of being force-stopped');
   }
 }
+async function waitFor(daemon, predicate, label) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    if (daemon.exitCode !== null || daemon.signalCode !== null) throw new Error(`daemon exited before ${label}`);
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
 async function directSignalShutdown(withChild) {
   const directRuntime = path.join(path.dirname(runtime), withChild ? 'sigterm-child' : 'sigterm-empty');
   fs.rmSync(directRuntime, { recursive: true, force: true });
@@ -114,20 +123,11 @@ async function directSignalShutdown(withChild) {
     if (stderr.length < 4096) stderr += chunk.slice(0, 4096 - stderr.length);
   });
   const recordAt = name => path.join(directRuntime, `daemon.${name}`);
-  async function waitFor(predicate, label) {
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      if (predicate()) return;
-      if (daemon.exitCode !== null || daemon.signalCode !== null) throw new Error(`daemon exited before ${label}`);
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
-    throw new Error(`timed out waiting for ${label}`);
-  }
   try {
-    await waitFor(() => fs.existsSync(recordAt('sock')), 'daemon socket');
+    await waitFor(daemon, () => fs.existsSync(recordAt('sock')), 'daemon socket');
     if (withChild) {
       await exec(process.execPath, [process.argv[2], 'status'], { env, timeout: 10000 });
-      await waitFor(() => fs.existsSync(process.env.LMLINE_FAKE_COPILOT_LOG)
+      await waitFor(daemon, () => fs.existsSync(process.env.LMLINE_FAKE_COPILOT_LOG)
         && fs.readFileSync(process.env.LMLINE_FAKE_COPILOT_LOG, 'utf8').includes('initialize'), 'LSP initialization');
     }
     const exited = once(daemon, 'exit');
@@ -147,6 +147,40 @@ async function directSignalShutdown(withChild) {
         daemon.kill('SIGKILL');
         await killed;
       }
+    }
+  }
+}
+async function legacyRestart() {
+  const term = path.join(runtime, 'legacy-term');
+  const daemon = spawn(process.execPath, ['-e', `
+    const fs = require('fs');
+    const record = name => require('path').join(process.argv[1], 'daemon.' + name);
+    process.on('SIGTERM', () => fs.writeFileSync(process.argv[2], 'received'));
+    require('net').createServer(socket => {
+      require('readline').createInterface({ input: socket }).once('line', line => {
+        require('assert').strictEqual(JSON.parse(line).op, 'restart');
+        socket.end('{"ok":true}\\n'); // Old daemons acknowledge without shutting down.
+      });
+    }).listen(record('sock'), () => {
+      fs.mkdirSync(record('lock'));
+      fs.writeFileSync(record('pid'), String(process.pid));
+    });
+  `, runtime, term], { stdio: ['ignore', 'ignore', 'inherit'] });
+  try {
+    await waitFor(daemon, () => fs.existsSync(record('pid')), 'legacy daemon readiness');
+    const { stdout } = await cli('restart');
+    assert.strictEqual(stdout, 'copilot daemon stopped\n');
+    await waitFor(daemon, () => daemon.signalCode !== null || daemon.exitCode !== null, 'legacy daemon exit');
+    assert.strictEqual(daemon.signalCode, 'SIGKILL', 'legacy daemon ignored SIGTERM but was not force-stopped');
+    assert(fs.existsSync(term), 'legacy daemon was not sent SIGTERM before escalation');
+    for (const name of ['sock', 'pid', 'lock']) {
+      assert(!fs.existsSync(record(name)), `legacy restart left daemon.${name}`);
+    }
+  } finally {
+    if (daemon.exitCode === null && daemon.signalCode === null) {
+      const exited = once(daemon, 'exit');
+      daemon.kill('SIGKILL');
+      await exited;
     }
   }
 }
@@ -197,6 +231,7 @@ async function directSignalShutdown(withChild) {
 
     await directSignalShutdown(false); // No LSP child: the signal handler must exit normally.
     await directSignalShutdown(true); // An owned child must also drain before normal exit.
+    await legacyRestart();
   } finally {
     await cli('restart').catch(() => {});
     if (child.exitCode === null && child.signalCode === null) {

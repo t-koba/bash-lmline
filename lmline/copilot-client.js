@@ -71,8 +71,8 @@ function connect(payload, timeout = timeoutMs) {
   });
 }
 
-// Only the private socket establishes liveness. A recorded PID may have been
-// reused by an unrelated process and must never be used to probe or stop it.
+// Only the private socket establishes daemon liveness; a recorded PID alone
+// may belong to an unrelated process.
 function daemonAlive() {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(socketPath);
@@ -488,12 +488,6 @@ async function runDaemon() {
   if (!await listen(server)) return;
   fs.chmodSync(socketPath, 0o600);
   const identity = socketIdentity();
-  const cleanup = () => {
-    if (socketIdentity() !== identity) return;
-    try { fs.unlinkSync(socketPath); } catch (_) {}
-    try { fs.unlinkSync(pidPath); } catch (_) {}
-    try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch (_) {}
-  };
   let stopping = false;
   function stop(code = 0) {
     if (stopping) return;
@@ -510,7 +504,7 @@ async function runDaemon() {
       child.kill('SIGTERM');
     } else process.exit(code);
   }
-  process.on('exit', cleanup);
+  process.on('exit', () => cleanupRuntime(identity));
   process.on('SIGTERM', () => stop());
   server.on('error', error => { fs.appendFileSync(logPath, `daemon socket error: ${error.message}\n`, { mode: 0o600 }); stop(1); });
   fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
@@ -518,21 +512,79 @@ async function runDaemon() {
   fs.mkdirSync(lockPath, { recursive: true, mode: 0o700 });
 }
 
+function cleanupRuntime(identity) {
+  if (socketIdentity() !== identity) return;
+  try { fs.unlinkSync(pidPath); } catch (_) {}
+  try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch (_) {}
+  if (identity !== null && socketIdentity() === identity) {
+    try { fs.unlinkSync(socketPath); } catch (_) {}
+  }
+}
+
+function recordedDaemonPid() {
+  let text;
+  try { text = fs.readFileSync(pidPath, 'utf8').trim(); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  const pid = /^\d+$/.test(text) ? Number(text) : 0;
+  // Node accepts signed 32-bit PIDs. Exclude special targets and this client.
+  return pid > 1 && pid <= 0x7fffffff && pid !== process.pid ? pid : null;
+}
+
+async function sameDaemonAlive(identity) {
+  return identity !== null && socketIdentity() === identity && await daemonAlive() && socketIdentity() === identity;
+}
+
+async function waitForDaemonStop(identity, timeout) {
+  const deadline = Date.now() + timeout;
+  while (await sameDaemonAlive(identity)) {
+    if (Date.now() >= deadline) return false;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return true;
+}
+
+async function restartDaemon() {
+  const identity = socketIdentity();
+  try {
+    const response = await connect({ op: 'restart' });
+    if (!response.ok) throw new Error(response.error);
+  } catch (error) {
+    if (['ENOENT', 'ECONNREFUSED'].includes(error.code)) return;
+    throw error;
+  }
+  if (await waitForDaemonStop(identity, 5000)) return;
+
+  // Older daemons acknowledge restart but only stop their LSP child. Signal
+  // the recorded PID only while the same private socket is still listening.
+  const pid = recordedDaemonPid();
+  let signaled = false;
+  for (const signal of ['SIGTERM', 'SIGKILL']) {
+    if (await sameDaemonAlive(identity)) {
+      if (pid === null || recordedDaemonPid() !== pid) break;
+      try {
+        process.kill(pid, 0);
+        process.kill(pid, signal);
+        signaled = true;
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error;
+      }
+    }
+    if (await waitForDaemonStop(identity, 1000)) {
+      if (signaled) {
+        const current = socketIdentity();
+        if (current === identity || (current === null && recordedDaemonPid() === pid)) cleanupRuntime(current);
+      }
+      return;
+    }
+  }
+  throw new Error('daemon did not stop');
+}
+
 async function main() {
   const command = process.argv[2];
   if (command === 'daemon') return runDaemon();
   if (command === 'restart') {
-    try {
-      const response = await connect({ op: 'restart' });
-      if (!response.ok) throw new Error(response.error);
-      const deadline = Date.now() + 5000;
-      while (await daemonAlive()) {
-        if (Date.now() >= deadline) throw new Error('daemon did not stop');
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-    } catch (error) {
-      if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error;
-    }
+    await restartDaemon();
     process.stdout.write('copilot daemon stopped\n'); return;
   }
   let payload;
