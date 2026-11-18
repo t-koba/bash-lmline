@@ -1421,7 +1421,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CHATGPT_NO_BROWSER` | `0` | skip the browser during the ChatGPT sign-in (`0` opens it, `1` skips it) |
 | `LMLINE_WEB_SEARCH` | `0` | native provider web search (`0` disables, `1` enables; Responses format only) |
 | `LMLINE_ENGINE_TIMEOUT` | `60` | seconds per provider request |
-| `LMLINE_HTTP_RETRIES` | `1` | transient HTTP-status and curl retries (defaults to 0 on ChatGPT or native-search routes; a positive explicit value enables them) |
+| `LMLINE_HTTP_RETRIES` | `1` | transient HTTP-status and curl retries (0 by default on ChatGPT or native-search routes; a positive explicit value enables them) |
 | `LMLINE_RETRY_DELAY` | `1` | seconds between retries |
 | `LMLINE_CACHE_TTL` | `600` | response cache TTL in seconds (0 disables) |
 | `LMLINE_STREAM` | `0` | stream `explain` and `clip` responses |

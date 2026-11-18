@@ -299,7 +299,7 @@ LMLINE_ALLOW_INSECURE_HTTP	0	require explicit https:// for API-key route request
 LMLINE_AUTH_MODE	api-key	authentication path: api-key or chatgpt (ChatGPT subscription)
 LMLINE_WEB_SEARCH	0	native provider web search (0 disables, 1 enables; responses format only)
 LMLINE_ENGINE_TIMEOUT	60	seconds per provider request
-LMLINE_HTTP_RETRIES	1	transient provider retries
+LMLINE_HTTP_RETRIES	1	transient HTTP-status and curl retries (0 by default on ChatGPT or native-search routes; a positive explicit value enables them)
 LMLINE_RETRY_DELAY	1	seconds between retries
 LMLINE_CACHE_TTL	600	response cache TTL in seconds (0 disables)
 LMLINE_STREAM	0	stream explain and clip responses
