@@ -1033,6 +1033,12 @@ __lmline_zsh_generate_async() {
 __lmline_zsh_history_dir_ready() {
   local dir=${LMLINE_HISTORY_DIR:-} permissions previous_umask mkdir_status=0
   [[ -n "$dir" ]] || return 1
+  # A trailing slash resolves a symlink before [[ -L ]] can see it. Use the
+  # normalized path for every check and for the append after this returns.
+  while [[ $dir == */ && $dir != / ]]; do
+    dir=${dir%/}
+  done
+  typeset -g LMLINE_HISTORY_DIR=$dir
   # Recheck after creation: a symlink swapped in during mkdir must not pass.
   [[ ! -L "$dir" ]] || return 1
   if [[ ! -d "$dir" ]]; then

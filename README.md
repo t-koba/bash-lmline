@@ -1385,7 +1385,7 @@ single-setting help. Detailed tables are grouped below.
 | --- | --- | --- |
 | `LMLINE_CONFIG_DIR` | `~/.config/lmline` | config, installed support files, profiles, secrets, cache, traces |
 | `LMLINE_BIN_DIR` | `~/.local/bin` | install target for the `lmline` symlink |
-| `LMLINE_HISTORY_DIR` | `$LMLINE_CONFIG_DIR/history` | recorded suggestion log directory; must be user-owned mode `0700` or records are skipped |
+| `LMLINE_HISTORY_DIR` | `$LMLINE_CONFIG_DIR/history` | recorded suggestion log directory; must be a real, non-symlink, user-owned mode `0700` directory or records are skipped (a trailing slash does not make a symlink acceptable) |
 | `LMLINE_DEFAULTS_DIR` | installed defaults | packaged data-file defaults |
 | `LMLINE_USER_RULES_DIR` | `$LMLINE_CONFIG_DIR` | user override directory for data files |
 

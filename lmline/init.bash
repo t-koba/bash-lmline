@@ -611,6 +611,12 @@ __lmline_load_candidates_from_file() {
 __lmline_history_dir_ready() {
   local dir=${LMLINE_HISTORY_DIR:-}
   [[ -n "$dir" ]] || return 1
+  # A trailing slash resolves a symlink before [[ -L ]] can see it. Use the
+  # normalized path for every check and for the append after this returns.
+  while [[ $dir == */ && $dir != / ]]; do
+    dir=${dir%/}
+  done
+  LMLINE_HISTORY_DIR=$dir
   # Recheck after creation: a symlink swapped in during mkdir must not pass.
   [[ ! -L "$dir" ]] || return 1
   __lmline_private_dir_ready "$dir" || return 1

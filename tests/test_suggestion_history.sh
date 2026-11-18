@@ -218,6 +218,19 @@ for shell in bash zsh; do
   ! grep -q '^id=' "$target/suggestions.log" 2>/dev/null || fail "$shell wrote a record through a history directory symlink"
   ok "$shell refuses to record into a symlinked history directory"
 
+  # A trailing slash resolves a symlink before [[ -L ]] can see it, so the
+  # normalized path must be refused exactly like the plain one.
+  target_mode=$(private_mode "$target") || fail "cannot read symlink target mode"
+  for slashes in / ///; do
+    private_record "$shell" "$history_dir$slashes"
+    [[ -L "$history_dir" ]] || fail "$shell replaced a history directory symlink with trailing slashes"
+    [[ $(readlink "$history_dir") == "$target" ]] || fail "$shell changed a history directory symlink target with trailing slashes"
+    [[ ! -e "$target/suggestions.log" ]] || fail "$shell wrote a record into a symlinked history directory with trailing slashes"
+    ! grep -q '^id=' "$target/suggestions.log" 2>/dev/null || fail "$shell wrote a record through a history directory symlink with trailing slashes"
+    [[ $(private_mode "$target") == "$target_mode" ]] || fail "$shell changed a symlink target's mode with trailing slashes"
+  done
+  ok "$shell refuses to record into a symlinked history directory with trailing slashes"
+
   parent="$tmp/private-blocked-$shell"
   mkdir -m 700 "$parent"
   mkdir -m 500 "$parent/no-write"

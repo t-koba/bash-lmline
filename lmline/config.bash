@@ -332,6 +332,12 @@ __lmline_lock_release() {
 __lmline_private_dir_ready() {
   local dir=$1 permissions previous_umask mkdir_status=0
   [[ -n "$dir" ]] || return 1
+  # Callers check symlinks before this point, and a trailing slash resolves a
+  # symlink before [[ -L ]] can see it. Normalize here so chmod and stat never
+  # operate on a symlink path, whatever form the caller supplied.
+  while [[ $dir == */ && $dir != / ]]; do
+    dir=${dir%/}
+  done
   # Skip the external mkdir on warm writes, but retain a shell-function
   # override. Set and restore umask in this shell so a non-exported override
   # still sees the private mask for every component mkdir creates.
