@@ -143,6 +143,8 @@ describe_secret=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" 
 grep -F -q 'value=***REDACTED***' <<<"$describe_secret" || fail "config describe redacts secret"
 describe_trace=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_TRACE_DIR)
 grep -Fq 'user-owned and mode 0700 required' <<<"$describe_trace" || fail "config describe trace privacy"
+describe_history=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HISTORY_DIR)
+grep -Fq 'user-owned and mode 0700 required, or records are skipped' <<<"$describe_history" || fail "config describe history privacy"
 describe_retries=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HTTP_RETRIES)
 grep -Fq '0 by default on ChatGPT or native-search routes' <<<"$describe_retries" || fail "config describe retry default"
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NOT_A_SETTING >"$cfg_tmp/describe-bad.out" 2>"$cfg_tmp/describe-bad.err"; then
