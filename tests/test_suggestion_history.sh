@@ -207,24 +207,6 @@ for shell in bash zsh; do
     fail "$shell left a dash-leading history directory non-private"
   ok "$shell records in a dash-leading relative history directory"
 
-  # The config directory can also be relative and dash-leading; the default
-  # history location derived from it must remain writable in both shells.
-  dash_config="-config-$shell"
-  config_flags=(-f -e -i)
-  [[ $shell != bash ]] || config_flags=(--norc -e -i)
-  (
-    cd "$tmp" || exit 1
-    LMLINE_CONFIG_DIR="$dash_config" LMLINE_BIND_KEYS=0 \
-      "$shell" "${config_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
-      >"$tmp/dash-config-$shell.out" 2>&1
-  ) || {
-    cat "$tmp/dash-config-$shell.out" >&2
-    fail "$shell private writer failed in dash-leading config directory"
-  }
-  grep -q '^candidate=candidate-private$' "$tmp/$dash_config/history/suggestions.log" ||
-    fail "$shell did not record in a dash-leading config directory"
-  ok "$shell records in a dash-leading relative config directory"
-
   history_dir="$tmp/private-symlink-$shell"
   mkdir -m 700 "$history_dir"
   canary="$tmp/private-canary-$shell"

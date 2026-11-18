@@ -6,8 +6,7 @@ setopt interactivecomments
 
 typeset -g LMLINE_DIR=${0:A:h}
 typeset -g LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
-# Directory utilities parse a leading dash as an option.
-[[ $LMLINE_CONFIG_DIR != -* ]] || LMLINE_CONFIG_DIR=./$LMLINE_CONFIG_DIR
+# mktemp parses a dash-leading TMPDIR template as options.
 [[ ${TMPDIR:-} != -* ]] || TMPDIR=$PWD/$TMPDIR
 
 if ! command -v bash >/dev/null 2>&1; then
