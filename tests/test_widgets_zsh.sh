@@ -1905,6 +1905,27 @@ EOF
     [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-risk-test" ]]
     grep -q "high-risk; inserted as comment" /tmp/lmline-zsh-high.err
   ' _ "$repo_dir" || fail "zsh high risk hint"
+  # Cycling back to a high-risk candidate must restore its review marker.
+  cat >"$zsh_tmp/engine-cycle-risk" <<'EOF'
+#!/usr/bin/env bash
+printf 'lmline-candidate: low\t-\t-\techo safe\n'
+printf 'lmline-candidate: high\trecursive remove\t-\trm -rf /tmp/lmline-zsh-cycle-risk\n'
+EOF
+  chmod +x "$zsh_tmp/engine-cycle-risk"
+  LMLINE_CONFIG_DIR="$zsh_tmp/config-cycle-risk" LMLINE_ASYNC=0 LMLINE_ENGINE="$zsh_tmp/engine-cycle-risk" zsh -efic '
+    source "$1/lmline/init.zsh"
+    BUFFER="# cycle risk"
+    CURSOR=${#BUFFER}
+    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-cycle-risk.out 2>/tmp/lmline-zsh-widget-cycle-risk.err
+    [[ "$BUFFER" == "echo safe" ]]
+    lmline-zsh-next-widget 2>>/tmp/lmline-zsh-widget-cycle-risk.err
+    [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-cycle-risk" ]]
+    grep -q "high-risk; inserted as comment" /tmp/lmline-zsh-widget-cycle-risk.err
+    lmline-zsh-prev-widget 2>>/tmp/lmline-zsh-widget-cycle-risk.err
+    [[ "$BUFFER" == "echo safe" ]]
+    lmline-zsh-next-widget 2>>/tmp/lmline-zsh-widget-cycle-risk.err
+    [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-cycle-risk" ]]
+  ' _ "$repo_dir" || fail "zsh cycling restores the high-risk review marker"
   zsh_fix_marker="$zsh_tmp/fix-disabled-marker"
   zsh_fix_survived="$zsh_tmp/fix-disabled-survived"
   env -u LMLINE_EXEC_BACKEND LMLINE_CONFIG_DIR="$zsh_tmp/config-fix-disabled" LMLINE_ENGINE="$zsh_tmp/engine" zsh -efic '

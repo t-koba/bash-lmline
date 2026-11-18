@@ -1160,6 +1160,27 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-high" LMLINE_ASYNC=0 LMLINE_ENGINE="$widge
   [[ "$READLINE_LINE" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-risk-test" ]]
   grep -q "high-risk; inserted as comment" /tmp/lmline-widget-high.err
 ' _ "$repo_dir" || fail "bash high risk hint"
+# Cycling back to a high-risk candidate must restore its review marker.
+cat >"$widget_tmp/engine-cycle-risk" <<'EOF'
+#!/usr/bin/env bash
+printf 'lmline-candidate: low\t-\t-\techo safe\n'
+printf 'lmline-candidate: high\trecursive remove\t-\trm -rf /tmp/lmline-cycle-risk\n'
+EOF
+chmod +x "$widget_tmp/engine-cycle-risk"
+LMLINE_CONFIG_DIR="$widget_tmp/config-cycle-risk" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-cycle-risk" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# cycle risk"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/tmp/lmline-widget-cycle-risk.out 2>/tmp/lmline-widget-cycle-risk.err
+  [[ "$READLINE_LINE" == "echo safe" ]]
+  __lmline_next_widget 2>>/tmp/lmline-widget-cycle-risk.err
+  [[ "$READLINE_LINE" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-cycle-risk" ]]
+  grep -q "high-risk; inserted as comment" /tmp/lmline-widget-cycle-risk.err
+  __lmline_prev_widget 2>>/tmp/lmline-widget-cycle-risk.err
+  [[ "$READLINE_LINE" == "echo safe" ]]
+  __lmline_next_widget 2>>/tmp/lmline-widget-cycle-risk.err
+  [[ "$READLINE_LINE" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-cycle-risk" ]]
+' _ "$repo_dir" || fail "bash cycling restores the high-risk review marker"
 cat >"$widget_tmp/engine-explain" <<'EOF'
 #!/usr/bin/env bash
 mode=
