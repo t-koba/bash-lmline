@@ -1104,9 +1104,9 @@ TZ=America/Los_Angeles LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=
   LMLINE_HISTORY_DIR=$link
   __lmline_record_suggestion "generate" "# say three" "echo three"
   [[ -L $LMLINE_HISTORY_DIR ]]
-  [[ $(ls -ld "$target" | cut -c2-10) == rwx------ ]]
-  [[ $(ls -l "$link/suggestions.log" | cut -c2-10) == rw------- ]]
-' _ "$repo_dir" || fail "the suggestion log keeps UTC records, symlink behavior and user-only permissions"
+  [[ $(ls -ld "$target" | cut -c2-10) == rwxrwxrwx ]]
+  [[ ! -e "$link/suggestions.log" ]]
+' _ "$repo_dir" || fail "the suggestion log keeps UTC records, refuses a symlinked directory and keeps user-only permissions"
 LMLINE_CONFIG_DIR="$widget_tmp/config-date-function" LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-date-function" bash --norc -e -i -c '
   date() { printf custom-date; }
   source "$1/lmline/init.bash"
