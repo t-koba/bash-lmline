@@ -38,7 +38,7 @@ fi
 
 __lmline_trace_dir_ready() {
   # Traces contain prompts and provider responses; keep them user-only.
-  local dir=${LMLINE_TRACE_DIR:-} permissions
+  local dir=${LMLINE_TRACE_DIR:-}
   [[ -n "$dir" ]] || return 1
   [[ "$dir" != -* ]] || dir=./$dir
   # A trailing slash resolves a symlink before [[ -L ]] can see it. Use the
@@ -49,15 +49,9 @@ __lmline_trace_dir_ready() {
   LMLINE_TRACE_DIR=$dir
   __lmline_path_has_traversal_after_component "$dir" && return 1
   [[ ! -L "$dir" ]] || return 1
-  [[ -d "$dir" ]] || (umask 077 && mkdir -p "$dir") || return 1
+  __lmline_private_dir_ready "$dir" || return 1
   # Recheck after creation: a symlink swapped in during mkdir must not pass.
   [[ ! -L "$dir" ]] || return 1
-  [[ -O "$dir" ]] && chmod 700 "$dir" || return 1
-  # Never chmod or write through a symlink swapped in before or after chmod.
-  [[ ! -L "$dir" ]] || return 1
-  permissions=$(stat -c %a "$dir/." || stat -f %Lp "$dir/.") || return 1
-  [[ ! -L "$dir" ]] || return 1
-  [[ "$permissions" =~ ^[0-7]{1,2}00$ ]]
 } >/dev/null 2>&1
 
 __lmline_trace_file() {
