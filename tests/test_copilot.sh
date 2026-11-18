@@ -150,6 +150,58 @@ async function directSignalShutdown(withChild) {
     }
   }
 }
+async function earlySignalShutdown() {
+  const earlyRuntime = path.join(path.dirname(runtime), 'sigterm-early');
+  fs.rmSync(earlyRuntime, { recursive: true, force: true });
+  fs.mkdirSync(earlyRuntime, { recursive: true });
+  const preload = path.join(path.dirname(runtime), 'delay-listen.js');
+  fs.writeFileSync(preload, `
+    const net = require('net');
+    const original = net.Server.prototype.listen;
+    net.Server.prototype.listen = function (...args) {
+      if (process.env.LMLINE_TEST_DELAY_LISTEN && String(args[0]).endsWith('daemon.sock')) {
+        const target = this;
+        setTimeout(() => original.apply(target, args), Number(process.env.LMLINE_TEST_DELAY_LISTEN));
+        return target;
+      }
+      return original.apply(this, args);
+    };
+  `);
+  const env = {
+    ...process.env,
+    LMLINE_COPILOT_RUNTIME_DIR: earlyRuntime,
+    LMLINE_TEST_DELAY_LISTEN: '1500',
+    NODE_OPTIONS: `--require=${preload}`,
+  };
+  const recordAt = name => path.join(earlyRuntime, `daemon.${name}`);
+  const daemon = spawn(process.execPath, [process.argv[2], 'daemon'], {
+    env, stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderr = '';
+  daemon.stderr.setEncoding('utf8');
+  daemon.stderr.on('data', chunk => {
+    if (stderr.length < 4096) stderr += chunk.slice(0, 4096 - stderr.length);
+  });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 400));
+    assert.strictEqual(daemon.exitCode, null, `daemon exited before signal: ${stderr}`);
+    const exited = once(daemon, 'exit');
+    assert.strictEqual(daemon.kill('SIGTERM'), true, 'could not signal starting daemon');
+    const [code, signal] = await exited;
+    assert.strictEqual(code, 0, `early SIGTERM exited ${code}: ${stderr}`);
+    assert.strictEqual(signal, null, 'early SIGTERM killed the daemon by signal');
+    assert(!fs.existsSync(recordAt('sock')), 'early SIGTERM left a socket');
+    assert(!fs.existsSync(recordAt('pid')), 'early SIGTERM left a pid record');
+    assert(!fs.existsSync(recordAt('lock')), 'early SIGTERM left a lock');
+  } finally {
+    if (daemon.exitCode === null && daemon.signalCode === null) {
+      const exited = once(daemon, 'exit');
+      daemon.kill('SIGKILL');
+      await exited;
+    }
+  }
+}
+
 async function legacyRestart() {
   const term = path.join(runtime, 'legacy-term');
   const daemon = spawn(process.execPath, ['-e', `
@@ -231,6 +283,7 @@ async function legacyRestart() {
 
     await directSignalShutdown(false); // No LSP child: the signal handler must exit normally.
     await directSignalShutdown(true); // An owned child must also drain before normal exit.
+    await earlySignalShutdown(); // A signal before the socket binds must still shut down cleanly.
     await legacyRestart();
   } finally {
     await cli('restart').catch(() => {});
