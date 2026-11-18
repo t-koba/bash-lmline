@@ -485,12 +485,14 @@ async function runDaemon() {
       );
     });
   });
-  if (!await listen(server)) return;
-  fs.chmodSync(socketPath, 0o600);
-  const identity = socketIdentity();
+  let identity = null;
+  let stopRequested = false;
   let stopping = false;
   function stop(code = 0) {
     if (stopping) return;
+    // A signal may arrive before the socket is bound. Defer it rather than
+    // letting Node's default SIGTERM action kill the daemon mid-startup.
+    if (identity === null) { stopRequested = true; return; }
     stopping = true;
     const child = lsp.child;
     if (child && child.exitCode === null && child.signalCode === null) {
@@ -504,10 +506,14 @@ async function runDaemon() {
       child.kill('SIGTERM');
     } else process.exit(code);
   }
-  process.on('exit', () => cleanupRuntime(identity));
+  process.on('exit', () => { if (identity !== null) cleanupRuntime(identity); });
   process.on('SIGTERM', () => stop());
+  if (!await listen(server)) return;
+  fs.chmodSync(socketPath, 0o600);
+  identity = socketIdentity();
   server.on('error', error => { fs.appendFileSync(logPath, `daemon socket error: ${error.message}\n`, { mode: 0o600 }); stop(1); });
   fs.writeFileSync(pidPath, `${process.pid}\n`, { mode: 0o600 });
+  if (stopRequested) stop();
   // Retain the directory as a runtime marker, never as evidence of liveness.
   fs.mkdirSync(lockPath, { recursive: true, mode: 0o700 });
 }
