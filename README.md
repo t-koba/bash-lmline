@@ -1336,7 +1336,9 @@ respectively, where the filesystem supports POSIX permissions. The lock is
 for local callers in the same PID namespace; it is not a distributed lock.
 `lmline doctor` reports the detected backend as `credential_lock`.
 `LMLINE_CHATGPT_LOCK_WAIT_MS` bounds the wait for the lock, not how long the
-command may hold it.
+command may hold it. The former `LMLINE_CHATGPT_LOCK_STALE_MS` setting has no
+effect because kernel locks have no stale threshold; the CLI warns once when
+that variable is still set.
 
 ## Debugging
 

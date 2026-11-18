@@ -164,6 +164,9 @@ case "${1-}:${2-}:${3-}" in
     source "$script_dir/profiles.bash"
     ;;
 esac
+if [[ -n ${LMLINE_CHATGPT_LOCK_STALE_MS-} ]]; then
+  printf 'lmline: warning: LMLINE_CHATGPT_LOCK_STALE_MS is no longer used; credential locks have no stale-lock threshold\n' >&2
+fi
 : "${LMLINE_CANDIDATE_COUNT:=3}"
 __lmline_init_dirs "$script_dir"
 : "${LMLINE_PS0:=🍋‍🟩 }"

@@ -62,6 +62,15 @@ grep -q '^format=unsupported' <<<"$doctor_out" || fail "doctor shows the api-key
 grep -q 'native web search needs LMLINE_API_FORMAT=responses' <<<"$doctor_out" || fail "doctor explains the search format requirement"
 ok "the doctor report shows the authentication and search state"
 
+# 6b. The removed stale-lock setting is announced once instead of ignored.
+LMLINE_CHATGPT_LOCK_STALE_MS=500 lmline doctor >"$cli_tmp/legacy-lock.out" 2>"$cli_tmp/legacy-lock.err" \
+  || fail "doctor with the removed stale-lock setting"
+[[ "$(grep -c 'LMLINE_CHATGPT_LOCK_STALE_MS is no longer used' "$cli_tmp/legacy-lock.err")" == 1 ]] \
+  || fail "the removed stale-lock setting has no single actionable warning"
+lmline doctor >"$cli_tmp/current-lock.out" 2>"$cli_tmp/current-lock.err" || fail "doctor without the legacy setting"
+[[ ! -s "$cli_tmp/current-lock.err" ]] || fail "doctor warns without the legacy setting"
+ok "the removed stale-lock setting warns once"
+
 # 7. The help and the completion list the ChatGPT commands.
 help_out=$(lmline help chatgpt) || fail "help for the chatgpt commands"
 grep -q '^usage: lmline chatgpt login' <<<"$help_out" || fail "help for the chatgpt commands"
