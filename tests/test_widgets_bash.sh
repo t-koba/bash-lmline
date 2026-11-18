@@ -1647,6 +1647,8 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
   [[ "$key" != "$(__lmline_project_markers_key)" ]]
   __lmline_generate_widget >/dev/null 2>&1
   second=$__LMLINE_ASYNC_PID
+  # The engine writes its marker from a TERM trap, so wait for the descendant.
+  for i in {1..200}; do [[ -s one.stopped ]] && break; sleep 0.05; done
   [[ "$second" != "$first" && -s one.stopped && "$READLINE_LINE" == "# markers" ]]
   for i in {1..200}; do [[ -s two.ready ]] && break; sleep 0.05; done
   [[ -s two.ready ]]
@@ -1669,6 +1671,8 @@ LMLINE_TEST_MARKERS_DIR="$widget_tmp/markers" LMLINE_CONFIG_DIR="$widget_tmp/con
   [[ "$key" != "$(__lmline_project_markers_key)" ]]
   __lmline_generate_widget >/dev/null 2>&1
   second=$__LMLINE_ASYNC_PID
+  # The engine writes its marker from a TERM trap, so wait for the descendant.
+  for i in {1..200}; do [[ -s absent.stopped ]] && break; sleep 0.05; done
   [[ "$second" != "$first" && -s absent.stopped && "$READLINE_LINE" == "# markers" ]]
   ! kill -0 "$first" 2>/dev/null
   for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done

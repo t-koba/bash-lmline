@@ -923,6 +923,8 @@ EOF
     [[ "$key" != "$(__lmline_zsh_project_markers_key)" ]]
     lmline-zsh-generate-widget >/dev/null 2>&1
     second=$__LMLINE_ZSH_ASYNC_PID
+    # The engine writes its marker from a TERM trap, so wait for the descendant.
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_MARKERS_DIR/one.stopped" ]] && break; sleep 0.05; done
     [[ "$second" != "$first" && -s one.stopped && "$BUFFER" == "# markers" ]]
     for i in {1..200}; do [[ -s two.ready ]] && break; sleep 0.05; done
     [[ -s two.ready ]]
@@ -945,6 +947,8 @@ EOF
     [[ "$key" != "$(__lmline_zsh_project_markers_key)" ]]
     lmline-zsh-generate-widget >/dev/null 2>&1
     second=$__LMLINE_ZSH_ASYNC_PID
+    # The engine writes its marker from a TERM trap, so wait for the descendant.
+    for i in {1..200}; do [[ -s "$LMLINE_TEST_MARKERS_DIR/absent.stopped" ]] && break; sleep 0.05; done
     [[ "$second" != "$first" && -s absent.stopped && "$BUFFER" == "# markers" ]]
     ! kill -0 "$first" 2>/dev/null
     for i in {1..200}; do [[ -s one.ready ]] && break; sleep 0.05; done
