@@ -24,6 +24,39 @@ umask "$saved_umask"
 __lmline_lock_release "$umask_lock_dir" || fail "lock release failed under umask 0222"
 [[ ! -e "$umask_lock_dir" ]] || fail "released lock remained under umask 0222"
 
+# A failed chmod must not make the lock unavailable or strand a pid-less lock.
+fail_chmod_bin="$cfg_tmp/fail-chmod-bin"
+mkdir "$fail_chmod_bin"
+printf '#!/bin/sh\nexit 1\n' >"$fail_chmod_bin/chmod"
+chmod +x "$fail_chmod_bin/chmod"
+fallback_lock_dir="$cfg_tmp/fallback.lock"
+saved_path=$PATH
+PATH="$fail_chmod_bin:$PATH"
+if ! __lmline_lock_acquire "$fallback_lock_dir" 1; then
+  PATH=$saved_path
+  fail "lock acquisition failed when chmod is unavailable"
+fi
+PATH=$saved_path
+[[ -f "$fallback_lock_dir/pid" ]] || fail "pid record missing when chmod is unavailable"
+__lmline_lock_release "$fallback_lock_dir" || fail "lock release failed when chmod is unavailable"
+[[ ! -e "$fallback_lock_dir" ]] || fail "released lock remained when chmod is unavailable"
+
+# If neither chmod nor the umask permits a pid record, the failed lock
+# directory must be removed rather than blocking every later writer.
+no_chmod_lock_dir="$cfg_tmp/no-chmod.lock"
+saved_umask=$(umask)
+saved_path=$PATH
+umask 0222
+PATH="$fail_chmod_bin:$PATH"
+if __lmline_lock_acquire "$no_chmod_lock_dir" 1 2>/dev/null; then
+  PATH=$saved_path
+  umask "$saved_umask"
+  fail "lock acquired without a writable pid record"
+fi
+PATH=$saved_path
+umask "$saved_umask"
+[[ ! -e "$no_chmod_lock_dir" ]] || fail "unusable lock directory was stranded"
+
 # Concurrent config writers must not lose each other's updates. The names
 # are catalogued settings, because the setter refuses a name the catalog
 # does not know.

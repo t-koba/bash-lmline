@@ -286,12 +286,17 @@ __lmline_lock_acquire() {
   tries=$(( timeout * 10 ))
   mkdir -p "${lockdir%/*}" 2>/dev/null || true
   while :; do
-    if mkdir "$lockdir" 2>/dev/null && chmod 700 "$lockdir" 2>/dev/null; then
+    if mkdir "$lockdir" 2>/dev/null; then
+      # Private mode is hardening, not a lock precondition: some filesystems
+      # reject chmod even though the freshly created directory is writable.
+      chmod 700 "$lockdir" 2>/dev/null || true
       __lmline_lock_owner=$BASHPID
       # Only the first claimant may create the owner record.
       if (set -o noclobber; printf '%s\n' "$__lmline_lock_owner" >"$lockdir/pid") 2>/dev/null; then
         return 0
       fi
+      # Do not strand a directory that no process can own or release.
+      rmdir "$lockdir" 2>/dev/null || true
     fi
     if (( ++i >= tries )); then
       printf 'lmline: config is locked by another lmline process (remove %s only after stopping all writers if stale)\n' "$lockdir" >&2
