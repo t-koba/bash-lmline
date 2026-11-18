@@ -42,9 +42,9 @@ __lmline_payload_for_format responses "$cfg_tmp/source.json" "$cfg_tmp/next.json
 expected_ws=$(jq -S -nc '{type:"web_search_call",id:"ws_1",status:"completed",action:{type:"search",query:"awk"}}')
 [[ $(jq -S -c '.input[] | select(.type=="web_search_call")' "$cfg_tmp/next.json") == "$expected_ws" ]] \
   || fail "replayed web search verbatim"
-[[ $(jq '[.input | to_entries[] | select(.value.type=="reasoning" or .value.type=="web_search_call" or .value.type=="function_call") | .key] | .[0] < .[1] and .[1] < .[2]' "$cfg_tmp/next.json") == "true" ]] \
+[[ $(jq -r '[.input[] | select(.type=="reasoning" or .type=="web_search_call" or .type=="function_call") | .type] | join(",")' "$cfg_tmp/next.json") == "reasoning,web_search_call,function_call" ]] \
   || fail "web search replay order"
-[[ $(jq '[.input | to_entries[] | select(.value.type=="reasoning" or .value.type=="function_call" or .value.type=="function_call_output") | .key] | .[0] < .[1] and .[1] < .[2]' "$cfg_tmp/next.json") == "true" ]] || fail "replay order"
+[[ $(jq -r '[.input[] | select(.type=="reasoning" or .type=="function_call" or .type=="function_call_output") | .type] | join(",")' "$cfg_tmp/next.json") == "reasoning,function_call,function_call_output" ]] || fail "replay order"
 [[ $(jq -r '[.input[]? | select(.type=="function_call") | .call_id] | join(" ")' "$cfg_tmp/next.json") == "call_1" ]] || fail "replayed call id"
 [[ $(jq -r '[.input[]? | select(.type=="function_call_output") | .call_id] | join(" ")' "$cfg_tmp/next.json") == "call_1" ]] || fail "replayed output id"
 [[ $(jq '[.input[]? | select(.type=="message")] | length' "$cfg_tmp/next.json") == 0 ]] || fail "message item duplicated"
