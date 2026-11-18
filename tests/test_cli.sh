@@ -140,6 +140,8 @@ grep -q '^values=0 1$' <<<"$describe_project" || fail "config describe project-c
 grep -q '^default=0$' <<<"$describe_project" || fail "config describe project-config default"
 describe_secret=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_API_KEY_FILE)
 grep -F -q 'value=***REDACTED***' <<<"$describe_secret" || fail "config describe redacts secret"
+describe_trace=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_TRACE_DIR)
+grep -Fq 'user-owned and mode 0700 required' <<<"$describe_trace" || fail "config describe trace privacy"
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NOT_A_SETTING >/tmp/lmline-describe-bad.out 2>/tmp/lmline-describe-bad.err; then
   fail "config describe unknown setting rejected"
 fi
