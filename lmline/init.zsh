@@ -312,6 +312,12 @@ __lmline_zsh_async_cleanup() {
   __LMLINE_ZSH_ASYNC_KEY=
 }
 
+# A completed request may still own its spool when the shell exits.
+typeset -ga zshexit_functions
+if [[ -z ${zshexit_functions[(re)__lmline_zsh_async_cleanup]} ]]; then
+  zshexit_functions+=(__lmline_zsh_async_cleanup)
+fi
+
 __lmline_zsh_hint() {
   case "$LMLINE_STATUS_MODE" in
     log|debug) print -ru2 -- "$1" ;;

@@ -521,6 +521,37 @@ EOF
     lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-async-2.out 2>/tmp/lmline-zsh-widget-async-2.err
     [[ "$BUFFER" == "echo zsh-widget" ]]
   ' _ "$repo_dir" || fail "zsh async widget"
+  mkdir "$zsh_tmp/async-exit"
+  for session in 1 2; do
+    TMPDIR="$zsh_tmp/async-exit" LMLINE_CONFIG_DIR="$zsh_tmp/config-async-exit" LMLINE_PROJECT_CONFIG=0 \
+      LMLINE_ASYNC=1 LMLINE_GENERATE_BACKEND=engine LMLINE_ENGINE="$zsh_tmp/engine" zsh -efic '
+      cd -- "$TMPDIR"
+      if [[ $2 == 2 ]]; then
+        exit_probe_before() { :; }
+        exit_probe_after() { :; }
+        zshexit_functions=(exit_probe_before exit_probe_after)
+      fi
+      source "$1/lmline/init.zsh"
+      BUFFER="# leave unconsumed"
+      CURSOR=${#BUFFER}
+      lmline-zsh-generate-widget >/dev/null 2>&1
+      (( __LMLINE_ZSH_ASYNC_PID > 0 ))
+      deadline=$((SECONDS + $3))
+      while kill -0 "$__LMLINE_ZSH_ASYNC_PID" 2>/dev/null; do
+        (( SECONDS < deadline )) || exit 1
+        sleep 0.1
+      done
+      spool=$__LMLINE_ZSH_ASYNC_FILE
+      [[ "$BUFFER" == "# leave unconsumed" && -s "$spool" && -s "$spool.key" && -f "$spool.status.err" ]]
+      [[ $(<"$spool.status") == ok ]]
+      if [[ $2 == 2 ]]; then
+        source "$1/lmline/init.zsh"
+        [[ "${(j: :)zshexit_functions}" == "exit_probe_before exit_probe_after __lmline_zsh_async_cleanup" ]]
+      fi
+      exit 0
+    ' _ "$repo_dir" "$session" "$cursor_wait_seconds" || fail "zsh async exit session $session"
+    [[ -z "$(find "$zsh_tmp/async-exit" -name 'lmline-zsh-async.*' -print -quit)" ]] || fail "zsh async exit left spool files in session $session"
+  done
   # The bridge supervisor runs in Bash, so inject failure through PATH.
   mkdir "$zsh_tmp/fail-publish-bin"
   cat >"$zsh_tmp/fail-publish-bin/mv" <<'EOF'
