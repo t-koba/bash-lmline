@@ -247,10 +247,15 @@ EOF
 chmod +x "$uncached_bin/curl"
 uncached_env=(LMLINE_CONFIG_DIR="$cfg_tmp/uncached-config" LMLINE_BASE_URL=https://api.test.invalid/v1 LMLINE_MODEL=test-model LMLINE_TOOL_MODE=none LMLINE_CACHE_TTL=300)
 for uncached_mode in fix clip; do
+  # Plain clip answers can be emitted from cache; annotated clip answers
+  # cannot, which would make a cache hit fail for unrelated reasons.
+  uncached_format=annotated
+  [[ "$uncached_mode" == clip ]] && uncached_format=plain
   printf '0\n' >"$cfg_tmp/uncached-state"
   for pass in 1 2; do
     env PATH="$uncached_bin:$PATH" "${uncached_env[@]}" LMLINE_FAKE_CURL_STATE="$cfg_tmp/uncached-state" \
-      "$repo_dir/lmline/engine" --mode "$uncached_mode" --shell bash --cwd "$repo_dir" --point 0 \
+      "$repo_dir/lmline/engine" --mode "$uncached_mode" --format "$uncached_format" \
+        --shell bash --cwd "$repo_dir" --point 0 \
       --line-file "$cfg_tmp/line" --context-file "$cfg_tmp/context" --n 1 \
       >"$cfg_tmp/uncached-$uncached_mode-$pass.out" 2>"$cfg_tmp/uncached-$uncached_mode-$pass.err" \
       || fail "$uncached_mode engine run $pass"
