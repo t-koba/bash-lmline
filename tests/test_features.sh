@@ -119,6 +119,25 @@ symlink_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "symlinked cache
 rm "$cfg_tmp/config/cache"
 mv "$real_cache_dir" "$cfg_tmp/config/cache"
 
+# The lookup guard must reject the link even when it hides a fresh entry.
+# Reuse the entry written by the successful run above, planting a candidate
+# that can only appear if that entry is read through the symlink.
+planted_entry="$cfg_tmp/config/cache/${cache_entry##*/}"
+[[ -f "$planted_entry" ]] || fail "fresh cache entry for symlink lookup"
+planted_file="$cfg_tmp/planted-cache-entry"
+sed 's/echo cached-cmd/echo planted-cache-hit/' "$planted_entry" >"$planted_file"
+cat "$planted_file" >"$planted_entry"
+mv "$cfg_tmp/config/cache" "$real_cache_dir"
+rmdir "$link_target"
+mv "$real_cache_dir" "$link_target"
+ln -s "$link_target" "$cfg_tmp/config/cache"
+printf '0\n' >"$cfg_tmp/cache-state"
+populated_out=$(run_engine "${cache_env[@]}" 2>/dev/null) || fail "populated symlinked cache engine run"
+[[ "$(candidates_of <<<"$populated_out")" == "echo cached-cmd" ]] || fail "populated symlinked cache served planted candidate"
+[[ $(cat "$cfg_tmp/cache-state") == 1 ]] || fail "populated symlinked cache fetched response"
+rm "$cfg_tmp/config/cache"
+mv "$link_target" "$cfg_tmp/config/cache"
+
 # Optional cache writes must not retain a partial staging file when copy or
 # atomic rename fails; candidate delivery remains successful in both cases.
 real_cp=$(command -v cp)
