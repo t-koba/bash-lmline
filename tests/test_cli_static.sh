@@ -68,20 +68,20 @@ config defaults --help
 ROUTES
 
 # Shell integration is guidance only, for either reported login shell.
-mkdir -p "$tmp/home/"{.config/lmline,zdot}
-cp -R "$tmp/home" "$tmp/home-before"
+mkdir -p "$tmp/home-dir/"{.config/lmline,zdot}
+cp -R "$tmp/home-dir" "$tmp/home-dir-before"
 for startup in absent present; do
   config_override=
   bash_init='"$HOME/.config/lmline/init.bash"'
   zsh_init='"$HOME/.config/lmline/init.zsh"'
   if [[ $startup == present ]]; then
-    for home in "$tmp/home" "$tmp/home-before"; do
+    for home in "$tmp/home-dir" "$tmp/home-dir-before"; do
       printf '# bash sentinel\n' >"$home/.bashrc"
       printf '# zsh sentinel\n' >"$home/.zshrc"
       printf '# custom zsh sentinel\n' >"$home/zdot/.zshrc"
       mkdir "$home/custom config"
     done
-    config_override="$tmp/home/custom config"
+    config_override="$tmp/home-dir/custom config"
     bash_init="'$config_override/init.bash'"
     zsh_init="'$config_override/init.zsh'"
   fi
@@ -100,10 +100,10 @@ $action ~/.zshrc (use \$ZDOTDIR/.zshrc if ZDOTDIR is set):
 source $zsh_init
 EOF
     for shell in /bin/bash /bin/zsh; do
-      HOME="$tmp/home" ZDOTDIR="$tmp/home/zdot" SHELL="$shell" LMLINE_CONFIG_DIR="$config_override" \
+      HOME="$tmp/home-dir" ZDOTDIR="$tmp/home-dir/zdot" SHELL="$shell" LMLINE_CONFIG_DIR="$config_override" \
         "$repo_dir/lmline/lmline" "$route" >"$tmp/actual" || fail "$route guidance ($shell, $startup startup files)"
       diff -u "$tmp/expected" "$tmp/actual" || fail "incorrect $route guidance ($shell, $startup startup files)"
-      diff -r "$tmp/home-before" "$tmp/home" || fail "$route changed files ($shell, $startup startup files)"
+      diff -r "$tmp/home-dir-before" "$tmp/home-dir" || fail "$route changed files ($shell, $startup startup files)"
     done
   done
 done
