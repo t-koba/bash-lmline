@@ -605,14 +605,49 @@ __lmline_load_candidates_from_file() {
   fi
 }
 
+# The log holds the user's own command lines, so establish the directory's
+# privacy before opening the log. Ownership and mode are re-checked on every
+# record: a loosened directory must not leak the next one.
+__lmline_history_dir_ready() {
+  local dir=${LMLINE_HISTORY_DIR:-} permissions previous_umask mkdir_status=0
+  [[ -n "$dir" ]] || return 1
+  # Skip the external mkdir on warm writes, but retain a shell-function
+  # override. Set and restore umask in this shell so a non-exported override
+  # still sees the private mask for every component mkdir creates.
+  if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$dir" ]]; then
+    previous_umask=$(umask) || return 1
+    umask 077
+    mkdir -p "$dir" 2>/dev/null || mkdir_status=1
+    umask "$previous_umask"
+    (( mkdir_status == 0 )) || return 1
+  fi
+  [[ -O "$dir" ]] || return 1
+  chmod 700 "$dir" 2>/dev/null || return 1
+  # Check the destination itself, including when the path ends in a symlink.
+  permissions=$(stat -c %a "$dir/." 2>/dev/null || stat -f %Lp "$dir/." 2>/dev/null) || return 1
+  [[ $permissions =~ ^0?700$ ]]
+}
+
+__lmline_history_log_ready() {
+  local dir=${LMLINE_HISTORY_DIR:-} history_log permissions previous_umask create_status=0
+  [[ -n "$dir" ]] || return 1
+  history_log=$dir/suggestions.log
+  if [[ -e "$history_log" || -L "$history_log" ]]; then
+    [[ -f "$history_log" && ! -L "$history_log" && -O "$history_log" ]] || return 1
+    chmod 600 "$history_log" 2>/dev/null || return 1
+  else
+    previous_umask=$(umask) || return 1
+    umask 077
+    : >>"$history_log" 2>/dev/null || create_status=1
+    umask "$previous_umask"
+    (( create_status == 0 )) || return 1
+  fi
+  permissions=$(stat -c %a "$history_log" 2>/dev/null || stat -f %Lp "$history_log" 2>/dev/null) || return 1
+  [[ $permissions =~ ^0?600$ ]]
+}
+
 __lmline_record_suggestion() {
   local mode=$1 original=$2 candidate=$3 date_id timestamp tz_declaration tz_attributes record bytes
-  # The log holds the user's own command lines, so it stays user-only.
-  # Skip the external mkdir on warm writes, but retain a shell-function override.
-  if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$LMLINE_HISTORY_DIR" ]]; then
-    mkdir -p "$LMLINE_HISTORY_DIR" 2>/dev/null || true
-  fi
-  chmod 700 "$LMLINE_HISTORY_DIR" 2>/dev/null || true
   # Bash 4.2+ printf %T avoids two external date processes. Keep the normal
   # command path when either utility is overridden by a shell function.
   if builtin declare -F date >/dev/null 2>&1 || builtin declare -F printf >/dev/null 2>&1; then
@@ -632,10 +667,11 @@ __lmline_record_suggestion() {
   __LMLINE_LAST_SUGGESTION_ID=$date_id-$$
   builtin printf -v record 'id=%q\ntimestamp=%q\ncwd=%q\nmode=%q\noriginal=%q\ncandidate=%q' \
     "$__LMLINE_LAST_SUGGESTION_ID" "$timestamp" "$PWD" "$mode" "$original" "$candidate"
+  __lmline_history_dir_ready || return 0
+  __lmline_history_log_ready || return 0
   # Buffer the whole record in one dd output block: shell output can split at newlines.
-  bytes=$(command wc -c 2>/dev/null <<<"$record") &&
-    command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
-  chmod 600 "$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
+  bytes=$(command wc -c 2>/dev/null <<<"$record") || return 0
+  command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
 }
 
 # Applies the candidate at the given index using the engine's risk/flag

@@ -139,3 +139,86 @@ for shell in bash zsh; do
     fail "$shell suggestion records interleaved or mismatched"
   ok "$shell suggestion history keeps concurrent records intact"
 done
+
+# Privacy helpers must establish the mode before the append. The fake dd
+# checks the log mode at append time, so a record can only appear if the
+# tightening happened first.
+mkdir -p "$tmp/private-bin"
+cat >"$tmp/private-bin/dd" <<'DD'
+#!/usr/bin/env bash
+mode=$(stat -c %a "$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || stat -f %Lp "$LMLINE_HISTORY_DIR/suggestions.log") || exit 1
+[[ $mode == 600 || $mode == 0600 ]] || exit 1
+exec "$LMLINE_TEST_DD" "$@"
+DD
+chmod +x "$tmp/private-bin/dd"
+cat >"$tmp/private-writer" <<'PRIVATE_WRITER'
+source "$1/lmline/init.$2"
+if [[ $2 == bash ]]; then
+  __lmline_record_suggestion generate original-private candidate-private
+else
+  __lmline_zsh_record_suggestion generate original-private candidate-private
+fi
+PRIVATE_WRITER
+
+private_mode() {
+  stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+
+private_record() {
+  local shell=$1 history_dir=$2
+  local flags=(-f -e -i)
+  [[ $shell != bash ]] || flags=(--norc -e -i)
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-private-$shell" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+    >"$tmp/private-$shell.out" 2>&1 || {
+      cat "$tmp/private-$shell.out" >&2
+      fail "$shell private suggestion writer failed"
+    }
+}
+
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s private suggestion history (shell unavailable)\n' "$shell"
+    continue
+  fi
+
+  history_dir="$tmp/private-log-$shell"
+  mkdir -m 700 "$history_dir"
+  : >"$history_dir/suggestions.log"
+  chmod 666 "$history_dir/suggestions.log"
+  private_record "$shell" "$history_dir"
+  grep -q '^candidate=candidate-private$' "$history_dir/suggestions.log" ||
+    fail "$shell did not record after tightening a loose log"
+  [[ $(private_mode "$history_dir/suggestions.log") == 600 ]] ||
+    fail "$shell left the suggestion log world-writable"
+  ok "$shell tightens a loose suggestion log before recording"
+
+  history_dir="$tmp/private-symlink-$shell"
+  mkdir -m 700 "$history_dir"
+  canary="$tmp/private-canary-$shell"
+  printf 'canary-only\n' >"$canary"
+  ln -s "$canary" "$history_dir/suggestions.log"
+  private_record "$shell" "$history_dir"
+  [[ -L "$history_dir/suggestions.log" ]] || fail "$shell replaced a suggestion log symlink"
+  [[ $(readlink "$history_dir/suggestions.log") == "$canary" ]] ||
+    fail "$shell changed a suggestion log symlink target"
+  grep -q '^canary-only$' "$canary" || fail "$shell truncated a symlink target"
+  ! grep -q '^id=' "$canary" || fail "$shell wrote a record through a symlink"
+  ok "$shell refuses to record through a suggestion log symlink"
+
+  parent="$tmp/private-blocked-$shell"
+  mkdir -m 700 "$parent"
+  mkdir -m 500 "$parent/no-write"
+  # A privileged runner can still create the directory; do not claim a check
+  # the fixture cannot make.
+  if mkdir "$parent/no-write/probe" 2>/dev/null; then
+    rmdir "$parent/no-write/probe"
+    printf 'skip - %s unwritable parent (parent is writable here)\n' "$shell"
+    continue
+  fi
+  history_dir="$parent/no-write/history"
+  private_record "$shell" "$history_dir"
+  [[ ! -e "$history_dir/suggestions.log" ]] || fail "$shell recorded into an unwritable parent"
+  ok "$shell writes no record when the history directory cannot be established"
+done
