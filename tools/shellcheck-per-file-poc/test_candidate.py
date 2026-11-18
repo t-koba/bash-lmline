@@ -76,13 +76,14 @@ class CandidateTests(unittest.TestCase):
         actual = result.stdout.decode().rstrip("\0").split("\0")
         manifest = list(map(c.canonical, c.production_manifest()))
         self.assertEqual(actual, manifest)
-        self.assertEqual(len(manifest), 83)
-        self.assertEqual(len(set(manifest)), 83)
+        self.assertEqual(len(manifest), 84)
+        self.assertEqual(len(set(manifest)), 84)
         declarations = [(p, d) for p in manifest for d in c.sources(p, set(manifest))]
-        # The conditional CLI profile import is part of the declared source graph.
-        self.assertEqual(len(declarations), 150)
+        # The conditional CLI profile import and the config source used by the
+        # lock regression are part of the declared source graph.
+        self.assertEqual(len(declarations), 152)
         self.assertTrue(all(d["in_manifest"] for _, d in declarations))
-        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 145)
+        self.assertEqual(len({(p, d["resolved"]) for p, d in declarations}), 146)
         groups = [{p} | {d["resolved"] for d in c.sources(p, set(manifest))} for p in manifest]
         self.assertEqual(max(map(len, groups)), 11)
 
