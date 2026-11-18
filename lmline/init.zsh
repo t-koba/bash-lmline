@@ -507,7 +507,7 @@ __lmline_zsh_mode() {
 __lmline_zsh_run_bridge() {
   local label=$1 action=$2 mode=$3 line=$4 point=$5 tmp output_file pid had_monitor=0
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX") || return 1
-  command chmod 0700 -- "$tmp" || { command rmdir -- "$tmp"; return 1; }
+  command chmod 0700 "$tmp" || { command rmdir -- "$tmp"; return 1; }
   output_file=$tmp/output
   if [[ -o monitor ]]; then
     had_monitor=1
@@ -631,7 +631,7 @@ __lmline_zsh_bridge() {
           line=$3
           point=$4
           tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX") || exit 1
-          command chmod 0700 -- "$tmp" || { command rmdir -- "$tmp"; exit 1; }
+          command chmod 0700 "$tmp" || { command rmdir -- "$tmp"; exit 1; }
           trap "rm -rf \"$tmp\"" EXIT
           engine_file="$tmp/engine"
           status=0
@@ -761,7 +761,7 @@ __lmline_zsh_identity_key() {
   caller_functions=$(print -l -- ${(ok)functions} 2>/dev/null) || caller_functions=
   if [[ -n "$async_file" ]]; then
     frame=$("${__lmline_env_unset[@]}" mktemp "$async_file.frame.XXXXXX") || return 1
-    if ! "${__lmline_env_unset[@]}" chmod 0600 -- "$frame" || ! __lmline_zsh_identity_frame >"$frame"; then
+    if ! "${__lmline_env_unset[@]}" chmod 0600 "$frame" || ! __lmline_zsh_identity_frame >"$frame"; then
       command rm -f -- "$frame"
       return 1
     fi
@@ -993,7 +993,7 @@ __lmline_zsh_generate_async() {
   fi
 
   async_file=$(mktemp "${TMPDIR:-/tmp}/lmline-zsh-async.XXXXXX") || async_file=
-  if [[ -n "$async_file" ]] && ! command chmod 0600 -- "$async_file"; then
+  if [[ -n "$async_file" ]] && ! command chmod 0600 "$async_file"; then
     command rm -f -- "$async_file"
     async_file=
   fi

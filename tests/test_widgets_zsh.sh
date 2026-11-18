@@ -11,6 +11,10 @@ if command -v zsh >/dev/null 2>&1; then
   (( cursor_wait_seconds > 0 )) || fail "invalid LMLINE_TEST_CURSOR_WAIT_SECONDS"
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")
   trap 'rm -rf -- "$zsh_tmp"' EXIT
+  # BSD getopt stops scanning at the mode operand, so a following `--` becomes
+  # a filename. Linux CI cannot execute that shape, so guard it statically.
+  ! grep -Eq 'chmod +[0-7]{3,4} +-- ' "$repo_dir/lmline/init.zsh" \
+    || fail "zsh temp chmod uses a non-portable separator"
   printf '#!/usr/bin/env bash\nsleep 0.2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-widget\\n"\n' >"$zsh_tmp/engine"
   chmod +x "$zsh_tmp/engine"
   # The version probe remains, but an empty config needs no Bash export bridge.
