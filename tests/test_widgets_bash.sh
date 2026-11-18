@@ -1007,6 +1007,18 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$w
   [[ "$READLINE_LINE" == "lmline/widget-function-probe" ]]
   [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
 ' _ "$repo_dir" || fail "bash widget hands off function names without executing them"
+# A generated command is inserted into the line buffer, never run: a canary
+# command that would create a file must leave no trace until the user presses Enter.
+printf '#!/usr/bin/env bash\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\ttouch %%s\\n" "$LMLINE_TEST_NOEXEC_MARKER"\n' >"$widget_tmp/engine-noexec"
+chmod +x "$widget_tmp/engine-noexec"
+LMLINE_CONFIG_DIR="$widget_tmp/config-noexec" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine-noexec" LMLINE_HISTORY_DIR="$widget_tmp/history-noexec" LMLINE_TEST_NOEXEC_MARKER="$widget_tmp/command-called" bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  READLINE_LINE="# make a marker"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/tmp/lmline-widget-noexec.out 2>/tmp/lmline-widget-noexec.err
+  [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
+  [[ ! -e "$LMLINE_TEST_NOEXEC_MARKER" ]]
+' _ "$repo_dir" || fail "bash widget inserts commands without executing them"
 # Child interactive Bash shells enable errexit explicitly; parent shell options do not propagate.
 LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
