@@ -145,7 +145,8 @@ describe_trace=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" c
 grep -Fq 'must be a real, non-symlink, user-owned mode 0700 directory or tracing is skipped' <<<"$describe_trace" || fail "config describe trace privacy"
 grep -Fq 'trailing slash, "." or ".." cannot hide a symlink' <<<"$describe_trace" || fail "config describe trace dot components"
 describe_history=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HISTORY_DIR)
-grep -Fq 'user-owned and mode 0700 required, or records are skipped' <<<"$describe_history" || fail "config describe history privacy"
+grep -Fq 'must be a real, non-symlink, user-owned mode 0700 directory or records are skipped' <<<"$describe_history" || fail "config describe history privacy"
+grep -Fq 'trailing slash, "." or ".." cannot hide a symlink' <<<"$describe_history" || fail "config describe history dot components"
 describe_retries=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_HTTP_RETRIES)
 grep -Fq '0 by default on ChatGPT or native-search routes' <<<"$describe_retries" || fail "config describe retry default"
 if LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_NOT_A_SETTING >"$cfg_tmp/describe-bad.out" 2>"$cfg_tmp/describe-bad.err"; then
