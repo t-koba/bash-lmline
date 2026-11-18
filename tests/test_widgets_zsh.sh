@@ -10,6 +10,7 @@ if command -v zsh >/dev/null 2>&1; then
   cursor_wait_seconds=$((10#$cursor_wait_seconds))
   (( cursor_wait_seconds > 0 )) || fail "invalid LMLINE_TEST_CURSOR_WAIT_SECONDS"
   zsh_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-widget.XXXXXX")
+  export zsh_tmp
   trap 'rm -rf -- "$zsh_tmp"' EXIT
   # BSD getopt stops scanning at the mode operand, so a following `--` becomes
   # a filename. Linux CI cannot execute that shape, so guard it statically.
@@ -491,7 +492,7 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="# call the shell function"
     CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-function.out 2>/tmp/lmline-zsh-widget-function.err
+    lmline-zsh-generate-widget >"$zsh_tmp/widget-function.out" 2>"$zsh_tmp/widget-function.err"
     [[ "$BUFFER" == "lmline/widget-function-probe" ]]
     [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget hands off function names without executing them"
@@ -502,7 +503,7 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="# make a marker"
     CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-noexec.out 2>/tmp/lmline-zsh-widget-noexec.err
+    lmline-zsh-generate-widget >"$zsh_tmp/widget-noexec.out" 2>"$zsh_tmp/widget-noexec.err"
     [[ "$BUFFER" == "touch $LMLINE_WIDGET_NOEXEC_MARKER" ]]
     [[ ! -e "$LMLINE_WIDGET_NOEXEC_MARKER" ]]
   ' _ "$repo_dir" || fail "zsh widget inserts commands without executing them"
@@ -1785,7 +1786,7 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="# fail"
     CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-async-fail1.out 2>/tmp/lmline-zsh-async-fail1.err
+    lmline-zsh-generate-widget >"$zsh_tmp/async-fail1.out" 2>"$zsh_tmp/async-fail1.err"
     # The failed engine writes its reason when it finishes, and the widget
     # reports it only once the engine is gone. The test waits for both
     # instead of for a second.
@@ -1796,8 +1797,8 @@ EOF
       sleep 0.1
     done
     [[ -s "$__LMLINE_ZSH_ASYNC_FILE.status.err" ]]
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-async-fail2.out 2>/tmp/lmline-zsh-async-fail2.err
-    grep -q "synthetic zsh async failure" /tmp/lmline-zsh-async-fail2.err
+    lmline-zsh-generate-widget >"$zsh_tmp/async-fail2.out" 2>"$zsh_tmp/async-fail2.err"
+    grep -q "synthetic zsh async failure" "$zsh_tmp/async-fail2.err"
   ' _ "$repo_dir" || fail "zsh async failure hint"
   LMLINE_CONFIG_DIR="$zsh_tmp/config2" LMLINE_ASYNC=0 LMLINE_ENGINE="$zsh_tmp/engine" zsh -efic '
     source "$1/lmline/init.zsh"
@@ -1832,12 +1833,12 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="echo hi"
     CURSOR=${#BUFFER}
-    lmline-zsh-explain-widget >/tmp/lmline-zsh-explain.out 2>/tmp/lmline-zsh-explain.err
-    grep -q "\\[lm\\] command: echo hi" /tmp/lmline-zsh-explain.err
-    grep -q "\\[lm\\] risk=low" /tmp/lmline-zsh-explain.err
-    grep -q "\\[lm\\] command summary:" /tmp/lmline-zsh-explain.err
-    grep -q "\\[lm\\] model explanation:" /tmp/lmline-zsh-explain.err
-    grep -q "zsh explained" /tmp/lmline-zsh-explain.err
+    lmline-zsh-explain-widget >"$zsh_tmp/explain.out" 2>"$zsh_tmp/explain.err"
+    grep -q "\\[lm\\] command: echo hi" "$zsh_tmp/explain.err"
+    grep -q "\\[lm\\] risk=low" "$zsh_tmp/explain.err"
+    grep -q "\\[lm\\] command summary:" "$zsh_tmp/explain.err"
+    grep -q "\\[lm\\] model explanation:" "$zsh_tmp/explain.err"
+    grep -q "zsh explained" "$zsh_tmp/explain.err"
   ' _ "$repo_dir" || fail "zsh explain widget"
   printf '#!/usr/bin/env bash\nprintf "lmline-engine: request failed: curl: (28) Operation timed out after 12003 milliseconds with 0 bytes received\\n" >&2\nexit 1\n' >"$zsh_tmp/engine-fail"
   chmod +x "$zsh_tmp/engine-fail"
@@ -1847,11 +1848,11 @@ EOF
     CURSOR=${#BUFFER}
     # A failed synchronous engine deliberately makes the widget return 1.
     widget_status=0
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-fail.out 2>/tmp/lmline-zsh-fail.err || widget_status=$?
+    lmline-zsh-generate-widget >"$zsh_tmp/fail.out" 2>"$zsh_tmp/fail.err" || widget_status=$?
     [[ "$widget_status" == 1 ]]
     [[ "$BUFFER" == "# say one" ]]
-    grep -q "request timed out" /tmp/lmline-zsh-fail.err
-    grep -q "LMLINE_ENGINE_TIMEOUT" /tmp/lmline-zsh-fail.err
+    grep -q "request timed out" "$zsh_tmp/fail.err"
+    grep -q "LMLINE_ENGINE_TIMEOUT" "$zsh_tmp/fail.err"
   ' _ "$repo_dir" || fail "zsh engine failure is surfaced"
   printf '#!/usr/bin/env bash\nprintf "lmline-status: m=zsh-model; tok=80/8/88\\n" >&2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-one\\nlmline-candidate: low\\tno matching risk rule\\t-\\techo zsh-two\\n"\n' >"$zsh_tmp/engine"
   chmod +x "$zsh_tmp/engine"
@@ -1859,19 +1860,19 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER=""
     CURSOR=0
-    lmline-zsh-rewrite-widget >/tmp/lmline-zsh-rewrite-empty.out 2>/tmp/lmline-zsh-rewrite-empty.err
+    lmline-zsh-rewrite-widget >"$zsh_tmp/rewrite-empty.out" 2>"$zsh_tmp/rewrite-empty.err"
     [[ "$BUFFER" == "" ]]
     BUFFER="echo old"
     CURSOR=${#BUFFER}
-    lmline-zsh-rewrite-widget >/tmp/lmline-zsh-rewrite.out 2>/tmp/lmline-zsh-rewrite.err
+    lmline-zsh-rewrite-widget >"$zsh_tmp/rewrite.out" 2>"$zsh_tmp/rewrite.err"
     [[ "$BUFFER" == "echo zsh-one" ]]
-    grep -q "3 candidates; m=zsh-model; tok=80/8/88" /tmp/lmline-zsh-rewrite.err
+    grep -q "3 candidates; m=zsh-model; tok=80/8/88" "$zsh_tmp/rewrite.err"
     lmline-zsh-next-widget
     [[ "$BUFFER" == "echo zsh-two" ]]
-    if grep -q "2/3" /tmp/lmline-zsh-rewrite.err; then exit 1; fi
+    if grep -q "2/3" "$zsh_tmp/rewrite.err"; then exit 1; fi
     lmline-zsh-next-widget
     [[ "$BUFFER" == "echo old" ]]
-    if grep -q "3/3" /tmp/lmline-zsh-rewrite.err; then exit 1; fi
+    if grep -q "3/3" "$zsh_tmp/rewrite.err"; then exit 1; fi
     lmline-zsh-prev-widget
     [[ "$BUFFER" == "echo zsh-two" ]]
     test -s "$LMLINE_HISTORY_DIR/suggestions.log"
@@ -1890,9 +1891,9 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="# medium"
     CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-medium.out 2>/tmp/lmline-zsh-medium.err
+    lmline-zsh-generate-widget >"$zsh_tmp/medium.out" 2>"$zsh_tmp/medium.err"
     [[ "$BUFFER" == "echo hi > out.txt" ]]
-    grep -q "medium-risk; review before Enter" /tmp/lmline-zsh-medium.err
+    grep -q "medium-risk; review before Enter" "$zsh_tmp/medium.err"
     grep -q "candidate=" "$LMLINE_HISTORY_DIR/suggestions.log"
   ' _ "$repo_dir" || fail "zsh medium risk and history"
   printf '#!/usr/bin/env bash\nprintf "lmline-candidate: high\\trecursive remove\\t-\\trm -rf /tmp/lmline-zsh-risk-test\\n"\n' >"$zsh_tmp/engine-high"
@@ -1901,9 +1902,9 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="# high"
     CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-high.out 2>/tmp/lmline-zsh-high.err
+    lmline-zsh-generate-widget >"$zsh_tmp/high.out" 2>"$zsh_tmp/high.err"
     [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-risk-test" ]]
-    grep -q "high-risk; inserted as comment" /tmp/lmline-zsh-high.err
+    grep -q "high-risk; inserted as comment" "$zsh_tmp/high.err"
   ' _ "$repo_dir" || fail "zsh high risk hint"
   # Cycling back to a high-risk candidate must restore its review marker.
   cat >"$zsh_tmp/engine-cycle-risk" <<'EOF'
@@ -1916,14 +1917,14 @@ EOF
     source "$1/lmline/init.zsh"
     BUFFER="# cycle risk"
     CURSOR=${#BUFFER}
-    lmline-zsh-generate-widget >/tmp/lmline-zsh-widget-cycle-risk.out 2>/tmp/lmline-zsh-widget-cycle-risk.err
+    lmline-zsh-generate-widget >"$zsh_tmp/widget-cycle-risk.out" 2>"$zsh_tmp/widget-cycle-risk.err"
     [[ "$BUFFER" == "echo safe" ]]
-    lmline-zsh-next-widget 2>>/tmp/lmline-zsh-widget-cycle-risk.err
+    lmline-zsh-next-widget 2>>"$zsh_tmp/widget-cycle-risk.err"
     [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-cycle-risk" ]]
-    grep -q "high-risk; inserted as comment" /tmp/lmline-zsh-widget-cycle-risk.err
-    lmline-zsh-prev-widget 2>>/tmp/lmline-zsh-widget-cycle-risk.err
+    grep -q "high-risk; inserted as comment" "$zsh_tmp/widget-cycle-risk.err"
+    lmline-zsh-prev-widget 2>>"$zsh_tmp/widget-cycle-risk.err"
     [[ "$BUFFER" == "echo safe" ]]
-    lmline-zsh-next-widget 2>>/tmp/lmline-zsh-widget-cycle-risk.err
+    lmline-zsh-next-widget 2>>"$zsh_tmp/widget-cycle-risk.err"
     [[ "$BUFFER" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-zsh-cycle-risk" ]]
   ' _ "$repo_dir" || fail "zsh cycling restores the high-risk review marker"
   zsh_fix_marker="$zsh_tmp/fix-disabled-marker"

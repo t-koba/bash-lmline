@@ -4,6 +4,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: interactive Bash Readline widgets preserve candidate cycling, async generation, review, and cancellation.
 
 widget_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-widget-test.XXXXXX")
+export widget_tmp
 printf '#!/usr/bin/env bash\nprintf "lmline-status: m=widget-model; tok=100/23/123\\n" >&2\nprintf "lmline-candidate: low\\tno matching risk rule\\t-\\techo one\\nlmline-candidate: low\\tno matching risk rule\\t-\\techo two\\n"\n' >"$widget_tmp/engine"
 chmod +x "$widget_tmp/engine"
 cat >"$widget_tmp/engine-function" <<'EOF'
@@ -1003,7 +1004,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-function" LMLINE_ASYNC=0 LMLINE_ENGINE="$w
   source "$1/lmline/init.bash"
   READLINE_LINE="# call the shell function"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-function.out 2>/tmp/lmline-widget-function.err
+  __lmline_generate_widget >"$widget_tmp/function.out" 2>"$widget_tmp/function.err"
   [[ "$READLINE_LINE" == "lmline/widget-function-probe" ]]
   [[ ! -e "$LMLINE_WIDGET_FUNCTION_MARKER" ]]
 ' _ "$repo_dir" || fail "bash widget hands off function names without executing them"
@@ -1015,7 +1016,7 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-noexec" LMLINE_ASYNC=0 LMLINE_ENGINE="$wid
   source "$1/lmline/init.bash"
   READLINE_LINE="# make a marker"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-noexec.out 2>/tmp/lmline-widget-noexec.err
+  __lmline_generate_widget >"$widget_tmp/noexec.out" 2>"$widget_tmp/noexec.err"
   [[ "$READLINE_LINE" == "touch $LMLINE_TEST_NOEXEC_MARKER" ]]
   [[ ! -e "$LMLINE_TEST_NOEXEC_MARKER" ]]
 ' _ "$repo_dir" || fail "bash widget inserts commands without executing them"
@@ -1045,10 +1046,10 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-umask" LMLINE_ASYNC=0 LMLINE_ENGINE="$widg
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >"$2/umask.out" 2>"$2/umask.err"
+  __lmline_generate_widget >"$widget_tmp/umask.out" 2>"$widget_tmp/umask.err"
   [[ "$READLINE_LINE" == "echo one" ]]
   [[ "$(umask)" == 0222 ]]
-' _ "$repo_dir" "$widget_tmp" || fail "bash widget generates under a restrictive umask"
+' _ "$repo_dir" || fail "bash widget generates under a restrictive umask"
 # Child interactive Bash shells enable errexit explicitly; parent shell options do not propagate.
 LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
@@ -1062,9 +1063,9 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
   [[ $(__lmline_infer_mode "printf foo") == generate ]]
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-sync.out 2>/tmp/lmline-widget-sync.err
+  __lmline_generate_widget >"$widget_tmp/sync.out" 2>"$widget_tmp/sync.err"
   [[ "$READLINE_LINE" == "echo one" ]]
-  grep -q "2 candidates; m=widget-model; tok=100/23/123" /tmp/lmline-widget-sync.err
+  grep -q "2 candidates; m=widget-model; tok=100/23/123" "$widget_tmp/sync.err"
 ' _ "$repo_dir" || fail "sync widget"
 # A flag marker is present only as a whole one: a token that merely carries
 # the word does not mark the candidate.
@@ -1074,8 +1075,8 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-copilot-token" LMLINE_ASYNC=0 LMLINE_ENGIN
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-copilot-token.out 2>/tmp/lmline-widget-copilot-token.err
-  ! grep -q "candidate-truncated" /tmp/lmline-widget-copilot-token.err
+  __lmline_generate_widget >"$widget_tmp/copilot-token.out" 2>"$widget_tmp/copilot-token.err"
+  ! grep -q "candidate-truncated" "$widget_tmp/copilot-token.err"
 ' _ "$repo_dir" || fail "a copilot token does not mark the candidate truncated"
 # The suggestion log holds the user own command lines, so it stays user-only.
 TZ=America/Los_Angeles LMLINE_CONFIG_DIR="$widget_tmp/config-mode" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history-mode" bash --norc -e -i -c '
@@ -1135,10 +1136,10 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-fail" LMLINE_ASYNC=0 LMLINE_ENGINE="$widge
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-fail.out 2>/tmp/lmline-widget-fail.err
+  __lmline_generate_widget >"$widget_tmp/fail.out" 2>"$widget_tmp/fail.err"
   [[ "$READLINE_LINE" == "# say one" ]]
-  grep -q "request timed out" /tmp/lmline-widget-fail.err
-  grep -q "LMLINE_ENGINE_TIMEOUT" /tmp/lmline-widget-fail.err
+  grep -q "request timed out" "$widget_tmp/fail.err"
+  grep -q "LMLINE_ENGINE_TIMEOUT" "$widget_tmp/fail.err"
 ' _ "$repo_dir" || fail "engine failure is surfaced"
 printf '#!/usr/bin/env bash\nprintf "lmline-candidate: medium\\twrites to a file or descriptor\\t-\\techo hi > out.txt\\n"\n' >"$widget_tmp/engine-medium"
 chmod +x "$widget_tmp/engine-medium"
@@ -1146,9 +1147,9 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-medium" LMLINE_ASYNC=0 LMLINE_ENGINE="$wid
   source "$1/lmline/init.bash"
   READLINE_LINE="# medium"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-medium.out 2>/tmp/lmline-widget-medium.err
+  __lmline_generate_widget >"$widget_tmp/medium.out" 2>"$widget_tmp/medium.err"
   [[ "$READLINE_LINE" == "echo hi > out.txt" ]]
-  grep -q "medium-risk; review before Enter" /tmp/lmline-widget-medium.err
+  grep -q "medium-risk; review before Enter" "$widget_tmp/medium.err"
 ' _ "$repo_dir" || fail "bash medium risk hint"
 printf '#!/usr/bin/env bash\nprintf "lmline-candidate: high\\trecursive remove\\t-\\trm -rf /tmp/lmline-risk-test\\n"\n' >"$widget_tmp/engine-high"
 chmod +x "$widget_tmp/engine-high"
@@ -1156,9 +1157,9 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-high" LMLINE_ASYNC=0 LMLINE_ENGINE="$widge
   source "$1/lmline/init.bash"
   READLINE_LINE="# high"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-high.out 2>/tmp/lmline-widget-high.err
+  __lmline_generate_widget >"$widget_tmp/high.out" 2>"$widget_tmp/high.err"
   [[ "$READLINE_LINE" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-risk-test" ]]
-  grep -q "high-risk; inserted as comment" /tmp/lmline-widget-high.err
+  grep -q "high-risk; inserted as comment" "$widget_tmp/high.err"
 ' _ "$repo_dir" || fail "bash high risk hint"
 # Cycling back to a high-risk candidate must restore its review marker.
 cat >"$widget_tmp/engine-cycle-risk" <<'EOF'
@@ -1171,14 +1172,14 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-cycle-risk" LMLINE_ASYNC=0 LMLINE_ENGINE="
   source "$1/lmline/init.bash"
   READLINE_LINE="# cycle risk"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-cycle-risk.out 2>/tmp/lmline-widget-cycle-risk.err
+  __lmline_generate_widget >"$widget_tmp/cycle-risk.out" 2>"$widget_tmp/cycle-risk.err"
   [[ "$READLINE_LINE" == "echo safe" ]]
-  __lmline_next_widget 2>>/tmp/lmline-widget-cycle-risk.err
+  __lmline_next_widget 2>>"$widget_tmp/cycle-risk.err"
   [[ "$READLINE_LINE" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-cycle-risk" ]]
-  grep -q "high-risk; inserted as comment" /tmp/lmline-widget-cycle-risk.err
-  __lmline_prev_widget 2>>/tmp/lmline-widget-cycle-risk.err
+  grep -q "high-risk; inserted as comment" "$widget_tmp/cycle-risk.err"
+  __lmline_prev_widget 2>>"$widget_tmp/cycle-risk.err"
   [[ "$READLINE_LINE" == "echo safe" ]]
-  __lmline_next_widget 2>>/tmp/lmline-widget-cycle-risk.err
+  __lmline_next_widget 2>>"$widget_tmp/cycle-risk.err"
   [[ "$READLINE_LINE" == "# REVIEW REQUIRED: rm -rf /tmp/lmline-cycle-risk" ]]
 ' _ "$repo_dir" || fail "bash cycling restores the high-risk review marker"
 cat >"$widget_tmp/engine-explain" <<'EOF'
@@ -1207,22 +1208,22 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-explain" LMLINE_PS0="[lm] " LMLINE_ENGINE=
   source "$1/lmline/init.bash"
   READLINE_LINE="echo hi"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_explain_widget >/tmp/lmline-widget-explain.out 2>/tmp/lmline-widget-explain.err
-  grep -q "\\[lm\\] command: echo hi" /tmp/lmline-widget-explain.err
-  grep -q "\\[lm\\] risk=low" /tmp/lmline-widget-explain.err
-  grep -q "\\[lm\\] command summary:" /tmp/lmline-widget-explain.err
-  grep -q "^echo is" /tmp/lmline-widget-explain.err
-  grep -q "\\[lm\\] model explanation:" /tmp/lmline-widget-explain.err
-  grep -q "\\[lm\\] m=explain-model; tok=50/16/66" /tmp/lmline-widget-explain.err
-  grep -q "explained command" /tmp/lmline-widget-explain.err
+  __lmline_explain_widget >"$widget_tmp/explain.out" 2>"$widget_tmp/explain.err"
+  grep -q "\\[lm\\] command: echo hi" "$widget_tmp/explain.err"
+  grep -q "\\[lm\\] risk=low" "$widget_tmp/explain.err"
+  grep -q "\\[lm\\] command summary:" "$widget_tmp/explain.err"
+  grep -q "^echo is" "$widget_tmp/explain.err"
+  grep -q "\\[lm\\] model explanation:" "$widget_tmp/explain.err"
+  grep -q "\\[lm\\] m=explain-model; tok=50/16/66" "$widget_tmp/explain.err"
+  grep -q "explained command" "$widget_tmp/explain.err"
 ' _ "$repo_dir" || fail "bash explain widget"
 LMLINE_CONFIG_DIR="$widget_tmp/config-explain-long" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
   READLINE_LINE=$2
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_explain_widget >/tmp/lmline-widget-explain-long.out 2>/tmp/lmline-widget-explain-long.err
-  grep -q "\\[lm\\] command: printf" /tmp/lmline-widget-explain-long.err
-  grep -q "line-bytes=.*${#READLINE_LINE}" /tmp/lmline-widget-explain-long.err
+  __lmline_explain_widget >"$widget_tmp/explain-long.out" 2>"$widget_tmp/explain-long.err"
+  grep -q "\\[lm\\] command: printf" "$widget_tmp/explain-long.err"
+  grep -q "line-bytes=.*${#READLINE_LINE}" "$widget_tmp/explain-long.err"
 ' _ "$repo_dir" "$long_explain_cmd" || fail "bash explain long line"
 cli_explain_out=$(LMLINE_CONFIG_DIR="$widget_tmp/config-explain-cli" LMLINE_PS0="[lm] " LMLINE_ENGINE="$widget_tmp/engine-explain" "$repo_dir/lmline/lmline" explain "echo hi")
 grep -q "\\[lm\\] command: echo hi" <<<"$cli_explain_out" || fail "cli explain command"
@@ -1251,13 +1252,13 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp
   LMLINE_SELECTOR=definitely-not-a-selector
   READLINE_LINE=""
   READLINE_POINT=0
-  __lmline_rewrite_widget >/tmp/lmline-widget-rewrite-empty.out 2>/tmp/lmline-widget-rewrite-empty.err
+  __lmline_rewrite_widget >"$widget_tmp/rewrite-empty.out" 2>"$widget_tmp/rewrite-empty.err"
   [[ "$READLINE_LINE" == "" ]]
   READLINE_LINE="echo old"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_rewrite_widget >/tmp/lmline-widget-rewrite.out 2>/tmp/lmline-widget-rewrite.err
+  __lmline_rewrite_widget >"$widget_tmp/rewrite.out" 2>"$widget_tmp/rewrite.err"
   [[ "$READLINE_LINE" == "echo one" ]]
-  grep -q "selector unavailable" /tmp/lmline-widget-rewrite.err
+  grep -q "selector unavailable" "$widget_tmp/rewrite.err"
   __lmline_next_widget
   [[ "$READLINE_LINE" == "echo two" ]]
   __lmline_next_widget
@@ -1275,11 +1276,11 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-async1.out 2>/tmp/lmline-widget-async1.err
+  __lmline_generate_widget >"$widget_tmp/async1.out" 2>"$widget_tmp/async1.err"
   async_pid=$__LMLINE_ASYNC_PID
   [[ $async_pid -gt 0 && "$READLINE_LINE" == "# say one" ]]
   wait "$async_pid" || exit 1
-  __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
+  __lmline_generate_widget >"$widget_tmp/async2.out" 2>"$widget_tmp/async2.err"
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
 # Async completion must be insert-only as well: a canary candidate that would
@@ -2604,12 +2605,12 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-async-fail" LMLINE_ASYNC=1 LMLINE_ENGINE="
   source "$1/lmline/init.bash"
   READLINE_LINE="# fail"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-fail1.out 2>/tmp/lmline-widget-fail1.err
+  __lmline_generate_widget >"$widget_tmp/fail1.out" 2>"$widget_tmp/fail1.err"
   async_pid=$__LMLINE_ASYNC_PID
   [[ $async_pid -gt 0 ]]
   wait "$async_pid" || exit 1
-  __lmline_generate_widget >/tmp/lmline-widget-fail2.out 2>/tmp/lmline-widget-fail2.err
-  grep -q "synthetic async failure" /tmp/lmline-widget-fail2.err
+  __lmline_generate_widget >"$widget_tmp/fail2.out" 2>"$widget_tmp/fail2.err"
+  grep -q "synthetic async failure" "$widget_tmp/fail2.err"
 ' _ "$repo_dir" || fail "async failure hint"
 rm -rf "$widget_tmp"
 ok "widgets"
