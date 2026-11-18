@@ -93,8 +93,10 @@ for shell in bash zsh; do
     cat "$tmp/""$shell"-*.out >&2
     fail "$shell suggestion writers did not finish"
   fi
-  if [[ $shell == bash && $(wc -c <"$history_dir/dd-calls") != 1 ]]; then
-    fail "bash suggestion record used more than one append"
+  if [[ $shell == bash ]]; then
+    # BSD wc pads its count; compare numerically, not as text.
+    append_calls=$(wc -c <"$history_dir/dd-calls")
+    ((append_calls == 1)) || fail "bash suggestion record used more than one append"
   fi
   # Check the six fields in order and exactly one original/candidate pair per writer.
   awk -v pad="$padding" -v shell="$shell" '
