@@ -487,6 +487,18 @@ grep -q 'chatgpt.com/settings/usage' "$route_tmp/plan-429.err" \
   || fail "the plan usage limit has no recovery: $(sed -n '1p' "$route_tmp/plan-429.err")"
 ! grep -q 'set-secret' "$route_tmp/plan-429.err" || fail "the plan route gives API-key advice"
 ! grep -q 'LMLINE_HTTP_RETRIES' "$route_tmp/plan-429.err" || fail "the plan route advises raising the retries"
+
+# An explicit positive budget opts into repeating a transient plan error,
+# even though the default on this route is a single attempt.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-429 LMLINE_HTTP_RETRIES=1 LMLINE_RETRY_DELAY=0 \
+    >"$route_tmp/plan-429-explicit.out" 2>"$route_tmp/plan-429-explicit.err"; then
+  fail "the paid route accepted a plan refusal with explicit retries"
+fi
+[[ "$(cat "$count_file")" == 2 ]] || fail "explicit retries did not repeat the plan HTTP 429"
+grep -q 'transient provider error; retrying (1/1)' "$route_tmp/plan-429-explicit.err" \
+  || fail "explicit plan retry progress"
+ok "an explicit retry budget repeats a plan HTTP 429"
 # A stream that ends without a terminal event is a local interruption, not a
 # provider token-limit truncation, and must not recommend raising the limit.
 reset_fake
