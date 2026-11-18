@@ -1045,10 +1045,10 @@ LMLINE_CONFIG_DIR="$widget_tmp/config-umask" LMLINE_ASYNC=0 LMLINE_ENGINE="$widg
   source "$1/lmline/init.bash"
   READLINE_LINE="# say one"
   READLINE_POINT=${#READLINE_LINE}
-  __lmline_generate_widget >/tmp/lmline-widget-umask.out 2>/tmp/lmline-widget-umask.err
+  __lmline_generate_widget >"$2/umask.out" 2>"$2/umask.err"
   [[ "$READLINE_LINE" == "echo one" ]]
   [[ "$(umask)" == 0222 ]]
-' _ "$repo_dir" || fail "bash widget generates under a restrictive umask"
+' _ "$repo_dir" "$widget_tmp" || fail "bash widget generates under a restrictive umask"
 # Child interactive Bash shells enable errexit explicitly; parent shell options do not propagate.
 LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=0 LMLINE_ENGINE="$widget_tmp/engine" LMLINE_HISTORY_DIR="$widget_tmp/history" bash --norc -e -i -c '
   source "$1/lmline/init.bash"
