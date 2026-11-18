@@ -19,10 +19,9 @@ padding=${padding// /x}
 mkdir "$tmp/bin"
 cat >"$tmp/bin/dd" <<'DD'
 #!/usr/bin/env bash
-# Bash has opened the append fd. Let both peers finish before writing to it.
+# Bash has opened the append fd. Let writer 2 finish, then writer 3 waits for us.
 : >"$LMLINE_HISTORY_DIR/start-peers" || exit 1
 await done-2
-await done-3
 exec "$LMLINE_TEST_DD" "$@"
 DD
 chmod +x "$tmp/bin/dd"
@@ -56,12 +55,14 @@ else
   }
   record_suggestion=__lmline_zsh_record_suggestion
 fi
-if [[ $writer != 1 ]]; then
+if [[ $writer == 2 ]]; then
   await start-peers
+elif [[ $writer == 3 ]]; then
+  await done-1
 fi
 "$record_suggestion" generate "original $writer-$padding" "candidate $writer-$padding"
 : >"$LMLINE_HISTORY_DIR/done-$writer"
-# With a full-record zsh append, no standalone id print releases the peers.
+# With a full-record zsh append, no standalone id print releases writer 2.
 if [[ $2 == zsh && $writer == 1 ]]; then
   : >"$LMLINE_HISTORY_DIR/start-peers"
 fi
