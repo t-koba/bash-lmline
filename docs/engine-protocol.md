@@ -272,23 +272,22 @@ lmline-citation: <url>\t<title>  # a URL the answer cites (native search)
   `max_completion_tokens`, `max_output_tokens`, or `temperature`, it retries once without
   `temperature` (and with `max_completion_tokens` in place of `max_tokens` on `chat`).
 - Provider-side request storage is explicit: the engine sends `store: false` on `chat` and `responses` payloads by default (`LMLINE_STORE=0`, fail-closed) and `store: true` when `LMLINE_STORE=1`. The ChatGPT subscription route always sends `store: false`; an explicit `LMLINE_STORE=1` is ignored with a warning. `messages` has no `store` field. If a provider rejects the `store` field with HTTP 400, the request fails by default; `LMLINE_STORE_FALLBACK=1` opts into one retry without the field. That fallback is limited to errors indicating the `store` field itself was rejected; a broad mention of `store` is not enough, and the retry emits an `lmline-progress:` line.
-- In the buffered `responses` tool loop, each follow-up round replays the
-  previous response's opaque output items (`reasoning` with its
-  `encrypted_content`, web-search events, and other non-message items)
-  verbatim and in their original order, rebuilding `function_call` items from
-  the tool calls actually executed. Assistant message text is sent as a
-  separate message and is not duplicated, and replay state is never added to
-  `chat` or `messages` payloads. This is caller-managed history: on every
-  buffered `responses` tool round the engine re-sends the provider's own
-  output items, including their item ids, rather than relying on server-side
-  persistence. Replay happens regardless of `LMLINE_STORE`; the `store` flag
-  only sets the provider-side retention hint on each payload.
-  Caveat: a Responses-compatible provider must accept those replayed items on
-  the follow-up request; one that does not persist or accept its own prior
-  item ids can reject the next round. Assistant turns with no replay state
-  (older cached shapes) convert to plain `responses` input as before. Replay
-  applies only to buffered `responses` tool rounds, not to streaming or to the
-  `chat`/`messages` formats.
+- In the buffered `responses` tool loop, each follow-up round re-sends the
+  previous response's opaque non-message items (`reasoning` with its
+  `encrypted_content`, web-search events, and others) verbatim in their
+  original order, keeping their item ids, and rebuilds `function_call` items
+  from the tool calls actually executed with `call_id` only. Assistant message
+  text is sent as a separate message and is not duplicated, and replay state
+  is never added to `chat` or `messages` payloads. This is caller-managed
+  history and happens regardless of `LMLINE_STORE`; the `store` flag only sets
+  the provider-side retention hint on each payload. Caveat: replayed ids must
+  be acceptable to the provider. A stateless (`store: false`) provider that
+  does not persist items can reject an id it never stored, while a persistent
+  (`store: true`) provider may reject an already-persisted id as a duplicate;
+  either failure surfaces on a tool round after the first. Assistant turns with
+  no replay state (older cached shapes) convert to plain `responses` input as
+  before. Replay applies only to buffered `responses` tool rounds, not to
+  streaming or to the `chat`/`messages` formats.
 - A Responses body with status `failed` or a top-level error object is reported
   as a provider failure with its code and message in every buffered mode,
   including `explain` and `clip`; it never reaches candidate extraction or the
