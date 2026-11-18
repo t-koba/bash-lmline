@@ -41,6 +41,31 @@ __lmline_payload_for_format responses "$cfg_tmp/source.json" "$cfg_tmp/next.json
 [[ $(jq '[.input[]? | select(.type=="message")] | length' "$cfg_tmp/next.json") == 0 ]] || fail "message item duplicated"
 [[ $(jq '[.input[]? | select(.role=="assistant")] | length' "$cfg_tmp/next.json") == 1 ]] || fail "assistant text duplicated"
 
+# Opaque items keep their provider item ids; function_call items are rebuilt
+# from the executed tool calls and carry call_id only, never the provider id.
+[[ $(jq '[.input[]? | select(.type=="function_call" and has("id"))] | length' "$cfg_tmp/next.json") == 0 ]] \
+  || fail "function_call item id forwarded"
+[[ $(jq -c '[.input[] | tostring | contains("fc_1")] | any' "$cfg_tmp/next.json") == "false" ]] \
+  || fail "provider function_call id leaked"
+
+# Replay is caller-managed and independent of provider-side storage. The full
+# payload writer adds only the retention hint; it does not alter replay items.
+work_dir=$cfg_tmp
+LMLINE_MODEL=gpt-5-mini LMLINE_TEMPERATURE=0.1 max_tokens=100 \
+  LMLINE_TOOL_MODE=none LMLINE_TOOL_CHOICE=auto LMLINE_WEB_SEARCH=0 \
+  LMLINE_AUTH_MODE=api-key LMLINE_API_FORMAT=responses LMLINE_STORE=0 \
+  __lmline_write_chat_payload "$cfg_tmp/messages.2.json" "$cfg_tmp/store0.json" 0
+LMLINE_MODEL=gpt-5-mini LMLINE_TEMPERATURE=0.1 max_tokens=100 \
+  LMLINE_TOOL_MODE=none LMLINE_TOOL_CHOICE=auto LMLINE_WEB_SEARCH=0 \
+  LMLINE_AUTH_MODE=api-key LMLINE_API_FORMAT=responses LMLINE_STORE=1 \
+  __lmline_write_chat_payload "$cfg_tmp/messages.2.json" "$cfg_tmp/store1.json" 0
+[[ $(jq -r '.store' "$cfg_tmp/store0.json") == "false" ]] || fail "store false hint"
+[[ $(jq -r '.store' "$cfg_tmp/store1.json") == "true" ]] || fail "store true hint"
+[[ $(jq -r '[.input[]? | select(.type=="reasoning") | .id] | join(" ")' "$cfg_tmp/store1.json") == "rs_1" ]] \
+  || fail "replay under store true"
+[[ "$(jq -c '.input' "$cfg_tmp/store0.json")" == "$(jq -c '.input' "$cfg_tmp/store1.json")" ]] \
+  || fail "store hint changed replay input"
+
 # Chat payloads never carry replay state (reachable after a compatibility round).
 __lmline_payload_for_format chat "$cfg_tmp/source.json" "$cfg_tmp/chat.json"
 [[ $(jq '[.messages[]? | has("responses_replay")] | any' "$cfg_tmp/chat.json") == "false" ]] || fail "chat replay leak"
