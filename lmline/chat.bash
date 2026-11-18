@@ -37,7 +37,7 @@ __lmline_trace_dir_ready() {
   local dir=${LMLINE_TRACE_DIR:-} permissions
   [[ -n "$dir" ]] || return 1
   [[ "$dir" != -* ]] || dir=./$dir
-  [[ -d "$dir" ]] || (umask 077 && mkdir -p -m 700 "$dir") || return 1
+  [[ -d "$dir" ]] || (umask 077 && mkdir -p "$dir") || return 1
   [[ -O "$dir" ]] && chmod 700 "$dir" || return 1
   # Check the destination directory itself, including if the path is a symlink.
   permissions=$(stat -c %a "$dir/." || stat -f %Lp "$dir/.") || return 1
