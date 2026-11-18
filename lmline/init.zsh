@@ -1011,21 +1011,22 @@ __lmline_zsh_generate_async() {
 }
 
 __lmline_zsh_record_suggestion() {
-  local mode=$1 original=$2 candidate=$3 id timestamp
+  local mode=$1 original=$2 candidate=$3 id timestamp record bytes
   id=$(date -u +%Y%m%d%H%M%S 2>/dev/null || print '0')-$$
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || print 'unknown')
   __LMLINE_ZSH_LAST_SUGGESTION_ID=$id
   # The log holds the user's own command lines, so it stays user-only.
   command mkdir -p "$LMLINE_HISTORY_DIR" 2>/dev/null || return 0
   command chmod 700 "$LMLINE_HISTORY_DIR" 2>/dev/null || true
-  {
-    print "id=${(q)id}"
-    print "timestamp=${(q)timestamp}"
-    print "cwd=${(q)PWD}"
-    print "mode=${(q)mode}"
-    print "original=${(q)original}"
-    print "candidate=${(q)candidate}"
-  } >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
+  print -v record "id=${(q)id}
+timestamp=${(q)timestamp}
+cwd=${(q)PWD}
+mode=${(q)mode}
+original=${(q)original}
+candidate=${(q)candidate}"
+  # Buffer the whole record in one dd output block: shell output can split at newlines.
+  bytes=$(command wc -c 2>/dev/null <<<"$record") &&
+    command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
   command chmod 600 "$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
 }
 

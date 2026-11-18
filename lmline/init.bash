@@ -597,7 +597,7 @@ __lmline_load_candidates_from_file() {
 }
 
 __lmline_record_suggestion() {
-  local mode=$1 original=$2 candidate=$3 date_id timestamp tz_declaration tz_attributes
+  local mode=$1 original=$2 candidate=$3 date_id timestamp tz_declaration tz_attributes record bytes
   # The log holds the user's own command lines, so it stays user-only.
   # Skip the external mkdir on warm writes, but retain a shell-function override.
   if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$LMLINE_HISTORY_DIR" ]]; then
@@ -621,14 +621,11 @@ __lmline_record_suggestion() {
     esac
   fi
   __LMLINE_LAST_SUGGESTION_ID=$date_id-$$
-  {
-    printf 'id=%q\n' "$__LMLINE_LAST_SUGGESTION_ID"
-    printf 'timestamp=%q\n' "$timestamp"
-    printf 'cwd=%q\n' "$PWD"
-    printf 'mode=%q\n' "$mode"
-    printf 'original=%q\n' "$original"
-    printf 'candidate=%q\n' "$candidate"
-  } >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
+  builtin printf -v record 'id=%q\ntimestamp=%q\ncwd=%q\nmode=%q\noriginal=%q\ncandidate=%q' \
+    "$__LMLINE_LAST_SUGGESTION_ID" "$timestamp" "$PWD" "$mode" "$original" "$candidate"
+  # Buffer the whole record in one dd output block: shell output can split at newlines.
+  bytes=$(command wc -c 2>/dev/null <<<"$record") &&
+    command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
   chmod 600 "$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
 }
 
