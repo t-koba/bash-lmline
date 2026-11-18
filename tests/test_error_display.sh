@@ -50,6 +50,26 @@ grep -Fq 'synthetic-trace-prompt' "$private_trace"/*.meta || fail 'private metad
 cmp -s "$work/trace-off.out" "$work/trace.out" && cmp -s "$work/trace-off.err" "$work/trace.err" \
   || fail 'private trace changed engine output or diagnostics'
 
+# A symlink must never be chmodded or written through, even when its real
+# target is already private; trailing slashes must not hide the symlink.
+trace_symlink="$work/trace-symlink"
+trace_target="$work/trace-target"
+mkdir -m 0700 "$trace_target"
+ln -s "$trace_target" "$trace_symlink"
+target_mode=$(stat -c %a "$trace_target" 2>/dev/null || stat -f %Lp "$trace_target")
+for trace_dir in "$trace_symlink" "$trace_symlink/" "$trace_symlink///"; do
+  LMLINE_TRACE_DIR="$trace_dir" PATH="$work/trace-bin:$PATH" LMLINE_TEST_CHMOD_STATUS=0 \
+    trace_preview >"$work/trace.out" 2>"$work/trace.err" || fail 'symlinked trace changed engine exit status'
+  [[ -L "$trace_symlink" ]] || fail 'trace directory symlink was replaced'
+  [[ $(readlink "$trace_symlink") == "$trace_target" ]] || fail 'trace directory symlink target changed'
+  [[ -z $(ls -A "$trace_target") ]] || fail "trace was written through a symlinked directory: $trace_dir"
+  [[ $(stat -c %a "$trace_target" 2>/dev/null || stat -f %Lp "$trace_target") == "$target_mode" ]] \
+    || fail "symlink target mode changed: $trace_dir"
+  cmp -s "$work/trace-off.out" "$work/trace.out" && cmp -s "$work/trace-off.err" "$work/trace.err" \
+    || fail "symlinked trace changed engine output or diagnostics: $trace_dir"
+done
+ok 'symlinked trace directories are refused'
+
 fixture=$work/error.json
 hint='; full error: lmline debug trace on'
 prefix=$'\e[32m[lm]\e[0m '

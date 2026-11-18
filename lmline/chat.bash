@@ -37,10 +37,21 @@ __lmline_trace_dir_ready() {
   local dir=${LMLINE_TRACE_DIR:-} permissions
   [[ -n "$dir" ]] || return 1
   [[ "$dir" != -* ]] || dir=./$dir
+  # A trailing slash resolves a symlink before [[ -L ]] can see it. Use the
+  # normalized path for every check and for the writes after this returns.
+  while [[ $dir == */ && $dir != / ]]; do
+    dir=${dir%/}
+  done
+  LMLINE_TRACE_DIR=$dir
+  [[ ! -L "$dir" ]] || return 1
   [[ -d "$dir" ]] || (umask 077 && mkdir -p "$dir") || return 1
+  # Recheck after creation: a symlink swapped in during mkdir must not pass.
+  [[ ! -L "$dir" ]] || return 1
   [[ -O "$dir" ]] && chmod 700 "$dir" || return 1
-  # Check the destination directory itself, including if the path is a symlink.
+  # Never chmod or write through a symlink swapped in before or after chmod.
+  [[ ! -L "$dir" ]] || return 1
   permissions=$(stat -c %a "$dir/." || stat -f %Lp "$dir/.") || return 1
+  [[ ! -L "$dir" ]] || return 1
   [[ "$permissions" =~ ^[0-7]{1,2}00$ ]]
 } >/dev/null 2>&1
 

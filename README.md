@@ -1449,7 +1449,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_PROMPT_DIR` | installed prompts | prompt override directory |
 | `LMLINE_PROMPT_VERSION` | `3` | prompt/context version marker used in request keys |
 | `LMLINE_RESPONSE_LOCALE` | locale-derived when locale context is enabled | response language selector |
-| `LMLINE_TRACE_DIR` | empty | trace output directory; user-owned and mode 0700 required, or tracing is skipped |
+| `LMLINE_TRACE_DIR` | empty | trace output directory; must be a real, non-symlink, user-owned mode `0700` directory or tracing is skipped (a trailing slash does not make a symlink acceptable) |
 
 </details>
 
