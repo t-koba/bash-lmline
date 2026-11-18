@@ -1219,6 +1219,24 @@ LMLINE_CONFIG_DIR="$widget_tmp/config" LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp
   __lmline_generate_widget >/tmp/lmline-widget-async2.out 2>/tmp/lmline-widget-async2.err
   [[ "$READLINE_LINE" == "echo one" ]]
 ' _ "$repo_dir" || fail "async widget"
+# Async spool artifacts must be private even under a permissive caller umask.
+mkdir "$widget_tmp/private-async"
+umask 022 TMPDIR="$widget_tmp/private-async" LMLINE_CONFIG_DIR="$widget_tmp/config-private" \
+  LMLINE_ASYNC=1 LMLINE_ENGINE="$widget_tmp/engine-async" LMLINE_HISTORY_DIR="$widget_tmp/history-private" \
+  bash --norc -e -i -c '
+  source "$1/lmline/init.bash"
+  mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+  READLINE_LINE="# say one"
+  READLINE_POINT=${#READLINE_LINE}
+  __lmline_generate_widget >/dev/null 2>&1
+  wait "$__LMLINE_ASYNC_PID" || exit 1
+  async_file=$__LMLINE_ASYNC_FILE
+  [[ -f "$async_file" && -f "$async_file.status" && -f "$async_file.status.err" ]] || exit 1
+  [[ $(mode "$async_file") == 600 ]] || exit 1
+  [[ $(mode "$async_file.status") == 600 ]] || exit 1
+  [[ $(mode "$async_file.status.err") == 600 ]] || exit 1
+  __lmline_async_cleanup
+' _ "$repo_dir" || fail "async spool files stay private under umask 022"
 # Fail only the final async rename after the engine produced valid candidates.
 mkdir "$widget_tmp/fail-publish-bin"
 cat >"$widget_tmp/fail-publish-bin/mv" <<'EOF'

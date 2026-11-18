@@ -503,6 +503,9 @@ __lmline_async_start() {
   tmp_out=$async_file.tmp.$$
   rm -f "$async_status_file" "$tmp_out"
   (
+    # Scope privacy to the worker and its descendants; the interactive shell's
+    # umask stays unchanged. The inner redirections happen after this point.
+    umask 077
     # Only the worker and its descendants enter this private process group.
     # The supervisor stays outside it so TERM can cancel and reap the worker
     # before cleanup removes any files. Do not change the caller's job control.
