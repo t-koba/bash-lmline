@@ -83,6 +83,22 @@ JSON
   printf '429\tapplication/json'
   exit 0
 fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-empty ]]; then
+  # A completed response with no answer content.
+  cat >"$out" <<'JSON'
+{"id":"resp_empty","object":"response","model":"test-model","status":"completed",
+ "output":[{"type":"message","id":"msg_empty","role":"assistant","content":[]}],
+ "usage":{"input_tokens":3,"output_tokens":0,"total_tokens":3}}
+JSON
+  printf '200\tapplication/json'
+  exit 0
+fi
+if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-store-400 ]]; then
+  # A gateway that rejects the explicit store field.
+  printf '{"error":{"message":"Unrecognized request argument supplied: store"}}\n' >"$out"
+  printf '400\tapplication/json'
+  exit 0
+fi
 if [[ "${LMLINE_FAKE_CURL_MODE:-}" == plan-numeric-code ]]; then
   # A gateway answers with a numeric code.
   cat >"$out" <<'JSON'
@@ -499,6 +515,29 @@ fi
 grep -q 'transient provider error; retrying (1/1)' "$route_tmp/plan-429-explicit.err" \
   || fail "explicit plan retry progress"
 ok "an explicit retry budget repeats a plan HTTP 429"
+
+# An empty answer stays a single plan request even with an explicit budget.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-empty LMLINE_HTTP_RETRIES=1 LMLINE_RETRY_DELAY=0 \
+    >"$route_tmp/plan-empty.out" 2>"$route_tmp/plan-empty.err"; then
+  fail "the paid route accepted an empty answer with explicit retries"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the plan route repeated an empty answer with explicit retries"
+grep -q 'empty message content' "$route_tmp/plan-empty.err" || fail "the empty answer is not reported: $(sed -n '1p' "$route_tmp/plan-empty.err")"
+! grep -q 'retrying' "$route_tmp/plan-empty.err" || fail "the empty answer was retried"
+ok "an empty answer is not repeated on the plan route"
+
+# A rejected store field must not trigger the omit-and-retry fallback on a
+# route that already sends store:false.
+reset_fake
+if run_engine LMLINE_FAKE_CURL_MODE=plan-store-400 LMLINE_STORE_FALLBACK=1 \
+    LMLINE_HTTP_RETRIES=1 LMLINE_RETRY_DELAY=0 \
+    >"$route_tmp/plan-store.out" 2>"$route_tmp/plan-store.err"; then
+  fail "the paid route accepted a rejected store field"
+fi
+[[ "$(cat "$count_file")" == 1 ]] || fail "the plan route retried a rejected store field"
+! grep -q 'retrying without store field' "$route_tmp/plan-store.err" || fail "the plan route used the store fallback"
+ok "the plan route does not retry a rejected store field"
 # A stream that ends without a terminal event is a local interruption, not a
 # provider token-limit truncation, and must not recommend raising the limit.
 reset_fake
