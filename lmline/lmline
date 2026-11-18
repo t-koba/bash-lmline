@@ -1751,7 +1751,7 @@ case "$cmd" in
         suggestions=$history_dir/suggestions.log
         if [[ -f "$suggestions" ]]; then
           awk '
-            /^mode=/ { sub(/^mode=/, "", $0); counts[$0]++; total++ }
+            /^mode=./ { sub(/^mode=/, "", $0); counts[$0]++; total++ }
             END {
               printf "total=%d\n", total
               for (mode in counts) printf "%s=%d\n", mode, counts[mode]

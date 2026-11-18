@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # shellcheck source=tests/lib.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-# Risk: concurrent widgets can corrupt the suggestion log by mixing records.
+# Risk: concurrent widgets can mix suggestion records, and malformed mode markers can skew counts.
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-suggestion-history.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
+
+mkdir "$tmp/tendencies"
+printf '%s\n' 'mode=generate' 'unrecognized line' 'mode=' 'mode=fix' >"$tmp/tendencies/suggestions.log"
+tendencies=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$tmp/tendencies" \
+  "$repo_dir/lmline/lmline" history tendencies | sort) || fail "history tendencies command failed"
+[[ $tendencies == $'fix=1\ngenerate=1\ntotal=2' ]] || fail "unexpected history tendencies: $tendencies"
+ok "history tendencies count only nonempty modes"
+
 # Exceed common shell stdio buffer sizes; one print call need not be one write.
 printf -v padding '%8192s' ''
 padding=${padding// /x}
