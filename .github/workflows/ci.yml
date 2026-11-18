@@ -28,12 +28,15 @@ jobs:
         # its bounded monitor regression. Both jobs keep native OS coverage.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           # The commit-subject check reads the history to find the commit
           # that added it, so the whole history is needed.
           fetch-depth: 0
+          persist-credentials: false
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y jq zsh expect xz-utils ripgrep
