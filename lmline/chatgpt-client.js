@@ -12,7 +12,7 @@ const https = require('https');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { URL, URLSearchParams } = require('url');
 
 const configDir = process.env.LMLINE_CONFIG_DIR || path.join(os.homedir(), '.config', 'lmline');
@@ -234,63 +234,172 @@ function saveCredentials(credential) {
   try { fs.chmodSync(credentialsFile, 0o600); } catch (_) {}
 }
 
-// Credential commands share a persistent file, never a pathname lease. Only
-// the kernel decides when a holder has gone away; the file is never unlinked.
 const LOCK_WAIT_MS = positiveInt(process.env.LMLINE_CHATGPT_LOCK_WAIT_MS, 180000);
 const LOCK_BUSY = 'another lmline ChatGPT credential command is in progress; try again in a moment';
 const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
+const flockEnv = { ...process.env, LC_ALL: 'C' };
+// Some Node builds omit O_EXLOCK even though open(2) supports this BSD ABI flag.
+const O_EXLOCK = fs.constants.O_EXLOCK ?? (
+  ['darwin', 'freebsd', 'openbsd', 'netbsd'].includes(process.platform) ? 0x20 : undefined
+);
+
+function credentialLockBackend() {
+  if (process.platform === 'linux') {
+    const { stdout, stderr, error } = spawnSync('flock', ['--help'], {
+      env: flockEnv, encoding: 'utf8', timeout: 1000, killSignal: 'SIGKILL', maxBuffer: 8192
+    });
+    // BusyBox can print help to stderr, with short options grouped together.
+    const help = `${stdout || ''}\n${stderr || ''}`;
+    const advertises = flag => new RegExp(`(?:^|[\\s\\[])-${flag}\\b`, 'm').test(help);
+    if (!error && advertises('w') && (advertises('x') || /\[-[a-z]*x[a-z]*\]/.test(help))) {
+      return advertises('E') ? 'flock-util-linux' : 'flock-busybox';
+    }
+  }
+  return typeof O_EXLOCK === 'number' && typeof fs.constants.O_NONBLOCK === 'number'
+    ? 'o-exlock' : 'node-directory';
+}
+
+async function waitForCredentialLock(deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error(LOCK_BUSY);
+  await sleep(Math.min(100, remaining));
+}
+
+function unlinkIfPresent(file) {
+  try { fs.unlinkSync(file); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
+
+function removeEmptyLockDirectory(dir) {
+  try { fs.rmdirSync(dir); }
+  catch (error) {
+    if (['ENOTEMPTY', 'EEXIST'].includes(error.code)) return false;
+    if (error.code !== 'ENOENT') throw error;
+  }
+  return true;
+}
+
+async function acquireDirectoryLock(dir, deadline) {
+  const nonce = crypto.randomBytes(12).toString('hex');
+  const name = `pid-${process.pid}-${nonce}`;
+  const marker = path.join(dir, name);
+  const release = () => {
+    unlinkIfPresent(marker);
+    removeEmptyLockDirectory(dir);
+  };
+  do {
+    let created = false;
+    try {
+      fs.mkdirSync(dir, { mode: 0o700 });
+      try { fs.chmodSync(dir, 0o700); } catch (_) {}
+      created = true;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    if (created) {
+      let acquired = false;
+      try {
+        fs.writeFileSync(marker, `${process.pid}\n`, { flag: 'wx', mode: 0o600 });
+        try { fs.chmodSync(marker, 0o600); } catch (_) {}
+        const entries = fs.readdirSync(dir);
+        // A reaper can remove an empty mkdir before its creator publishes
+        // the PID. Only enter with a sole marker; rmdir cannot remove it.
+        acquired = entries.length === 1 && entries[0] === name;
+        if (acquired) return release;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      } finally {
+        if (!acquired) release();
+      }
+    }
+    try {
+      if (!fs.lstatSync(dir).isDirectory()) throw new Error('invalid credential lock directory');
+      for (const entry of fs.readdirSync(dir)) {
+        // Read the PID from the unique name, not partially written contents.
+        // A stale observation can only unlink this particular generation.
+        const match = /^pid-([1-9]\d{0,9})-[0-9a-f]{24}$/.exec(entry);
+        if (!match || Number(match[1]) > 0x7fffffff) continue;
+        try { process.kill(Number(match[1]), 0); }
+        catch (error) {
+          if (error.code === 'ESRCH') unlinkIfPresent(path.join(dir, entry));
+          else if (error.code !== 'EPERM') throw error;
+        }
+      }
+      if (!removeEmptyLockDirectory(dir)) await waitForCredentialLock(deadline);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  } while (Date.now() < deadline);
+  throw new Error(LOCK_BUSY);
+}
 
 async function withCredentialLock(action) {
   const file = path.join(path.dirname(credentialsFile), 'credentials.lock');
   ensureDirectory(path.dirname(file));
+  const backend = credentialLockBackend();
+  const deadline = Date.now() + LOCK_WAIT_MS;
   let fd;
   let helper;
+  let releaseDirectory;
   const handlers = {};
   const release = () => {
-    // A helper still waiting for acquisition must not outlive this command.
-    if (helper) helper.kill();
-    helper = undefined;
-    if (fd !== undefined) fs.closeSync(fd);
-    fd = undefined;
     for (const signal of Object.keys(handlers)) process.removeListener(signal, handlers[signal]);
     process.removeListener('exit', release);
+    try {
+      // A helper still waiting for acquisition must not outlive this command.
+      if (helper) helper.kill('SIGKILL');
+      if (fd !== undefined) fs.closeSync(fd);
+    } finally {
+      if (releaseDirectory) releaseDirectory();
+    }
   };
   for (const signal of Object.keys(signalExitCodes)) {
-    handlers[signal] = () => { release(); process.exit(signalExitCodes[signal]); };
+    handlers[signal] = () => {
+      try { release(); } finally { process.exit(signalExitCodes[signal]); }
+    };
     process.on(signal, handlers[signal]);
   }
   process.on('exit', release);
   try {
     const { O_CREAT, O_RDWR, O_NONBLOCK } = fs.constants;
-    if (process.platform === 'linux') {
+    if (backend.startsWith('flock-')) {
       fd = fs.openSync(file, O_CREAT | O_RDWR, 0o600);
       fs.fchmodSync(fd, 0o600);
-      // fd 3 shares the parent's open file description. Once flock exits,
-      // the parent's fd alone holds the lock until release closes it.
+      const utilLinux = backend === 'flock-util-linux';
+      const remaining = Math.max(0, deadline - Date.now());
+      // BusyBox implementations can require whole seconds. Bound the rounded
+      // wait from Node as well. fd 3 shares the parent's open file description.
+      const seconds = utilLinux ? remaining / 1000 : Math.ceil(remaining / 1000);
+      const args = ['-x', '-w', String(seconds), ...(utilLinux ? ['-E', '75'] : []), '3'];
       await new Promise((resolve, reject) => {
-        helper = spawn('flock', ['-x', '-w', String(LOCK_WAIT_MS / 1000), '-E', '75', '3'], {
-          stdio: ['ignore', 'ignore', 'ignore', fd]
-        });
-        helper.once('error', () => {
+        helper = spawn('flock', args, { env: flockEnv, stdio: ['ignore', 'pipe', 'pipe', fd] });
+        let diagnostic = '';
+        for (const stream of [helper.stdout, helper.stderr]) {
+          stream.on('data', chunk => { diagnostic = (diagnostic + chunk).slice(0, 8192); });
+        }
+        let timedOut = false;
+        const timer = utilLinux ? undefined : setTimeout(() => {
+          timedOut = helper.kill('SIGKILL');
+        }, remaining);
+        helper.once('close', (code, signal) => {
+          clearTimeout(timer);
           helper = undefined;
-          reject(new Error('credential locking requires util-linux flock'));
+          // An unavailable helper or a false advertisement of its flags can
+          // fall back. Never interpret a usage diagnostic as contention.
+          const usage = /\busage:|\b(?:invalid|unrecognized|unknown|illegal) option\b/i.test(diagnostic);
+          const busy = utilLinux ? code === 75 : (timedOut && signal === 'SIGKILL') || (
+            code === 1 && /^(?:flock:\s*(?:timeout|timed out))?$/i.test(diagnostic.trim())
+          );
+          if (code === 0 || usage) resolve();
+          else reject(new Error(busy ? LOCK_BUSY : 'cannot acquire the OS credential lock'));
         });
-        helper.once('exit', code => {
-          helper = undefined;
-          if (code === 0) resolve();
-          else reject(new Error(code === 75 ? LOCK_BUSY : 'cannot acquire the OS credential lock'));
+        helper.once('error', error => {
+          clearTimeout(timer);
+          if (['ENOENT', 'EACCES', 'ENOEXEC'].includes(error.code)) resolve();
+          else reject(new Error('cannot acquire the OS credential lock'));
         });
       });
-    } else {
-      // Node does not expose O_EXLOCK on every BSD build. This is the native
-      // open(2) ABI value on these systems, not a file-age or PID fallback.
-      const O_EXLOCK = fs.constants.O_EXLOCK ?? (
-        ['darwin', 'freebsd', 'openbsd', 'netbsd'].includes(process.platform) ? 0x20 : undefined
-      );
-      if (typeof O_EXLOCK !== 'number' || typeof O_NONBLOCK !== 'number') {
-        throw new Error('credential locking requires OS support for O_EXLOCK and O_NONBLOCK');
-      }
-      const deadline = Date.now() + LOCK_WAIT_MS;
+    } else if (backend === 'o-exlock') {
       for (;;) {
         try {
           fd = fs.openSync(file, O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK, 0o600);
@@ -299,13 +408,14 @@ async function withCredentialLock(action) {
           if (!['EWOULDBLOCK', 'EAGAIN'].includes(error.code)) {
             throw new Error(`cannot acquire the OS credential lock: ${error.code || 'unavailable'}`);
           }
-          const remaining = deadline - Date.now();
-          if (remaining <= 0) throw new Error(LOCK_BUSY);
-          await sleep(Math.min(100, remaining));
+          await waitForCredentialLock(deadline);
         }
       }
       fs.fchmodSync(fd, 0o600);
     }
+    // PATH can differ between callers. Share the portable guard even when
+    // holding a kernel lock, so a fallback caller cannot enter alongside us.
+    releaseDirectory = await acquireDirectoryLock(`${file}.dir`, deadline);
     return await action();
   } finally {
     release();
@@ -743,6 +853,7 @@ async function main() {
   if (command === 'login') return cmdLogin({ reauth: false });
   if (command === 'reauth') return cmdLogin({ reauth: true });
   if (command === 'status') return cmdStatus();
+  if (command === 'credential-lock') return out(`credential_lock=${credentialLockBackend()}`);
   if (command === 'refresh') return cmdRefresh();
   if (command === 'logout') return cmdLogout(args.includes('--purge'));
   if (command === 'token') return cmdToken();

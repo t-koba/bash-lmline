@@ -351,7 +351,7 @@ LMLINE_CONDENSE_PATTERNS_FILE	installed defaults	priority pattern file for conde
 LMLINE_SUGGESTED_COMMANDS_LIMIT	120	suggested commands sent per request
 LMLINE_NO_LOCK	0	disable config-dir locking
 LMLINE_LOCK_TIMEOUT	5	seconds to wait for the config lock
-LMLINE_CHATGPT_LOCK_WAIT_MS	180000	maximum milliseconds a ChatGPT command waits to acquire the OS-held credential lock
+LMLINE_CHATGPT_LOCK_WAIT_MS	180000	maximum milliseconds a ChatGPT command waits to acquire the credential lock
 LMLINE_CHATGPT_CREDENTIALS_FILE	$LMLINE_CONFIG_DIR/chatgpt/credentials.json	credential file the ChatGPT client reads and writes
 LMLINE_CHATGPT_HOST_ID_FILE	$LMLINE_CONFIG_DIR/chatgpt/host-id	host identifier file the ChatGPT client reads and writes
 LMLINE_CHATGPT_AUTH_URL	https://auth.openai.com	authorization endpoint of the ChatGPT sign-in
@@ -1368,6 +1368,7 @@ case "$cmd" in
     printf '\nchatgpt\n'
     printf 'auth_mode=%s\n' "${LMLINE_AUTH_MODE:-api-key}"
     chatgpt_client status 2>/dev/null || printf 'status=unavailable\n  -> lmline chatgpt login\n'
+    chatgpt_client credential-lock 2>/dev/null || printf 'credential_lock=unavailable\n'
     printf '\nweb_search\n'
     printf 'enabled=%s\n' "${LMLINE_WEB_SEARCH:-0}"
     case "${LMLINE_API_FORMAT:-chat}" in

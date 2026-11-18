@@ -9,3 +9,5 @@ timeout
 sha256sum
 shasum
 cksum
+# Linux kernel locking for ChatGPT credentials, when supported.
+flock

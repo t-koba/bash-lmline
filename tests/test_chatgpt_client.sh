@@ -11,6 +11,10 @@ mock_base=""
 credentials_file="$chatgpt_tmp/credentials.json"
 host_id_file="$chatgpt_tmp/host-id"
 browser_script="$chatgpt_tmp/browser.sh"
+node_executable=$(command -v node)
+platform=$(node -p 'process.platform')
+no_flock="$chatgpt_tmp/no-flock"
+mkdir "$no_flock"
 
 cleanup() {
   if [[ -n "$lock_holder_pid" ]]; then
@@ -84,13 +88,13 @@ wait_for_refresh_request() {
 }
 
 client() {
-  env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
+  LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
     LMLINE_CHATGPT_AUTH_URL="$mock_base" \
     LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
     LMLINE_CHATGPT_HOST_ID_FILE="$host_id_file" \
     LMLINE_CHATGPT_BROWSER_COMMAND="$browser_script" \
     LMLINE_CHATGPT_TIMEOUT=20 \
-    node "$repo_dir/lmline/chatgpt-client.js" "$@"
+    "$node_executable" "$repo_dir/lmline/chatgpt-client.js" "$@"
 }
 
 cat >"$browser_script" <<'BROWSER'
@@ -297,16 +301,18 @@ concurrent_token_2=$(sed -n '1p' "$chatgpt_tmp/concurrent-2.out")
 [[ "$concurrent_token_1" == "$concurrent_token_2" ]] || fail "the concurrent token commands disagree"
 ok "ChatGPT serializes concurrent token refreshes"
 
-# 15. A slow holder keeps the lock until the command ends: the second token
-# command reuses its stored token instead of refreshing the rotated token.
+# 15. A slow holder keeps the lock until the command ends. On Linux, hide
+# flock from both callers to exercise serialization in the Node fallback.
 credentials_file="$chatgpt_tmp/credentials-slow-lock.json"
 start_mock "rotate_refresh" "$chatgpt_tmp/mock-slow-lock.log" 2000
 client login >/dev/null 2>&1 || fail "ChatGPT login before the live lock test"
 expire_credential "$credentials_file"
-client token >"$chatgpt_tmp/slow-lock-1.out" 2>"$chatgpt_tmp/slow-lock-1.err" &
+slow_lock_path=$PATH
+[[ "$platform" != linux ]] || slow_lock_path=$no_flock
+PATH="$slow_lock_path" client token >"$chatgpt_tmp/slow-lock-1.out" 2>"$chatgpt_tmp/slow-lock-1.err" &
 slow_lock_pid_1=$!
 wait_for_refresh_request "$chatgpt_tmp/mock-slow-lock.log"
-client token >"$chatgpt_tmp/slow-lock-2.out" 2>"$chatgpt_tmp/slow-lock-2.err" &
+PATH="$slow_lock_path" client token >"$chatgpt_tmp/slow-lock-2.out" 2>"$chatgpt_tmp/slow-lock-2.err" &
 slow_lock_pid_2=$!
 slow_lock_rc_1=0
 slow_lock_rc_2=0
@@ -316,7 +322,9 @@ wait "$slow_lock_pid_2" || slow_lock_rc_2=$?
 [[ "$slow_lock_rc_2" == 0 ]] || fail "the second live-lock token command failed: $(sed -n '1p' "$chatgpt_tmp/slow-lock-2.err")"
 [[ "$(sed -n '1p' "$chatgpt_tmp/slow-lock-1.out")" == "$(sed -n '1p' "$chatgpt_tmp/slow-lock-2.out")" ]] \
   || fail "the live-lock token commands disagree"
-ok "ChatGPT holds the credential lock throughout a slow refresh"
+[[ "$(grep -c '^token_grant_type=refresh_token$' "$chatgpt_tmp/mock-slow-lock.log")" == 1 ]] \
+  || fail "the waiting caller refreshed again instead of reusing the stored token"
+ok "ChatGPT holds the credential lock throughout a slow refresh (without flock on Linux)"
 
 # 16. A logout that overlaps a refresh leaves the session signed out.
 credentials_file="$chatgpt_tmp/credentials-logout-race.json"
@@ -357,19 +365,26 @@ start_mock "rotate_refresh" "$chatgpt_tmp/mock-signalled.log" 3000
 client login >/dev/null 2>&1 || fail "ChatGPT login before the signalled lock test"
 expire_credential "$credentials_file"
 lock_file="$chatgpt_tmp/credentials.lock"
-for signal_case in "INT 130" "HUP 129" "TERM 143"; do
-  signal_name=${signal_case%% *}
-  expected_status=${signal_case##* }
+lock_dir="$lock_file.dir"
+lock_backend=$(client credential-lock)
+signal_cases=("INT 130" "HUP 129" "TERM 143")
+if [[ "$platform" == linux ]]; then
+  signal_cases+=("TERM 143 fallback" "KILL 137 fallback")
+fi
+for signal_case in "${signal_cases[@]}"; do
+  read -r signal_name expected_status signal_backend <<<"$signal_case"
+  signal_path=$PATH
+  [[ "$signal_backend" != fallback ]] || signal_path=$no_flock
   refreshes_before=$(grep -c '^token_grant_type=refresh_token$' "$chatgpt_tmp/mock-signalled.log" || true)
-  env LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
+  PATH="$signal_path" LMLINE_CONFIG_DIR="$chatgpt_tmp/config" \
     LMLINE_CHATGPT_AUTH_URL="$mock_base" \
     LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
     LMLINE_CHATGPT_HOST_ID_FILE="$host_id_file" \
     LMLINE_CHATGPT_BROWSER_COMMAND="$browser_script" \
     LMLINE_CHATGPT_TIMEOUT=20 \
-    node "$repo_dir/lmline/chatgpt-client.js" token \
+    "$node_executable" "$repo_dir/lmline/chatgpt-client.js" token \
     >"$chatgpt_tmp/signalled-$signal_name.out" 2>"$chatgpt_tmp/signalled-$signal_name.err" &
-  signalled_pid=$!
+  lock_holder_pid=$!
   signal_ready=0
   for ((attempt = 0; attempt < 200; attempt++)); do
     refreshes_now=$(grep -c '^token_grant_type=refresh_token$' "$chatgpt_tmp/mock-signalled.log" || true)
@@ -377,24 +392,45 @@ for signal_case in "INT 130" "HUP 129" "TERM 143"; do
       signal_ready=1
       break
     fi
-    if ! kill -0 "$signalled_pid" 2>/dev/null; then break; fi
+    if ! kill -0 "$lock_holder_pid" 2>/dev/null; then break; fi
     sleep 0.05
   done
-  [[ "$signal_ready" == 1 && -e "$lock_file" ]] \
+  [[ "$signal_ready" == 1 && -d "$lock_dir" ]] \
     || fail "the $signal_name signal test did not reach an active refresh"
-  kill -"$signal_name" "$signalled_pid" 2>/dev/null || true
+  if [[ "$signal_name" == KILL ]]; then
+    pid_files=("$lock_dir"/pid-"$lock_holder_pid"-*)
+    [[ "$(file_mode "$lock_dir")" == 700 && "$(file_mode "${pid_files[0]}")" == 600 ]] \
+      || fail "the fallback lock directory or PID marker is not private"
+    [[ "$(cat "${pid_files[0]}")" == "$lock_holder_pid" ]] || fail "the PID marker does not name the live holder"
+    if LMLINE_CHATGPT_LOCK_WAIT_MS=200 client token >"$chatgpt_tmp/mixed.out" 2>"$chatgpt_tmp/mixed.err"; then
+      fail "a live fallback holder did not block a caller on the normal PATH"
+    fi
+    grep -q 'another lmline ChatGPT credential command is in progress' "$chatgpt_tmp/mixed.err" \
+      || fail "the waiting caller did not report contention"
+    [[ ! -s "$chatgpt_tmp/mixed.out" ]] || fail "the waiting caller printed a token"
+  fi
+  kill -"$signal_name" "$lock_holder_pid" 2>/dev/null || true
   signalled_status=0
-  wait "$signalled_pid" 2>/dev/null || signalled_status=$?
+  wait "$lock_holder_pid" 2>/dev/null || signalled_status=$?
+  lock_holder_pid=""
   [[ "$signalled_status" == "$expected_status" ]] \
     || fail "a $signal_name signalled command reports the wrong exit status: $signalled_status"
-  [[ -f "$lock_file" && "$(file_mode "$lock_file")" == 600 ]] \
-    || fail "a signalled command removed or exposed the persistent lock file"
-  LMLINE_CHATGPT_LOCK_WAIT_MS=500 client token \
+  if [[ "$signal_name" == KILL ]]; then
+    [[ -f "${pid_files[0]}" ]] || fail "the killed fallback holder did not leave a stale PID marker"
+  else
+    [[ ! -e "$lock_dir" ]] || fail "a signalled command left the lock directory behind"
+  fi
+  if [[ "$lock_backend" != credential_lock=node-directory ]]; then
+    [[ -f "$lock_file" && "$(file_mode "$lock_file")" == 600 ]] \
+      || fail "a signalled command removed or exposed the persistent lock file"
+  fi
+  PATH="$signal_path" LMLINE_CHATGPT_LOCK_WAIT_MS=500 client token \
     >"$chatgpt_tmp/signalled-2.out" 2>"$chatgpt_tmp/signalled-2.err" \
     || fail "the command after $signal_name cannot acquire the lock: $(sed -n '1p' "$chatgpt_tmp/signalled-2.err")"
+  [[ ! -e "$lock_dir" ]] || fail "the next command left a stale lock directory"
   expire_credential "$credentials_file"
 done
-ok "ChatGPT releases the credential lock when the command is signalled"
+ok "ChatGPT releases the lock on signals and recovers a killed fallback holder on Linux"
 
 # 19. A kernel lock cannot be stolen by aging its file. This synthetic holder
 # needs no auth server; killing it releases the lock without deleting the file.
@@ -408,7 +444,6 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   scopes: ['chatgpt.tokens.use.direct']
 }), { mode: 0o600 });
 CREDENTIAL
-lock_file="$chatgpt_tmp/credentials.lock"
 cat >"$chatgpt_tmp/lock-holder.js" <<'HOLDER'
 const fs = require('fs');
 const [file, ready] = process.argv.slice(2);
@@ -422,64 +457,94 @@ if (process.platform !== 'linux') {
 fs.writeFileSync(ready, String(fs.statSync(file).ino));
 setInterval(() => {}, 1000);
 HOLDER
-if [[ "$(node -p 'process.platform')" == linux ]]; then
-  flock -F "$lock_file" node "$chatgpt_tmp/lock-holder.js" "$lock_file" "$chatgpt_tmp/lock.ready" &
-else
-  node "$chatgpt_tmp/lock-holder.js" "$lock_file" "$chatgpt_tmp/lock.ready" &
+if [[ "$lock_backend" != credential_lock=node-directory ]]; then
+  waiter_path=$PATH
+  if [[ "$platform" == linux ]]; then
+    real_flock=$(command -v flock)
+    busybox_bin="$chatgpt_tmp/busybox-bin"
+    mkdir "$busybox_bin"
+    cat >"$busybox_bin/flock" <<'FLOCK'
+#!/bin/sh
+if [ "$1" = --help ]; then
+  printf '%s\n' 'Usage: flock [-sxun] [-w SEC] FD' >&2
+  exit 1
 fi
-lock_holder_pid=$!
-for ((attempt = 0; attempt < 200; attempt++)); do
-  [[ -s "$chatgpt_tmp/lock.ready" ]] && break
-  kill -0 "$lock_holder_pid" 2>/dev/null || fail "the synthetic lock holder exited early"
-  sleep 0.05
-done
-[[ -s "$chatgpt_tmp/lock.ready" ]] || fail "the synthetic holder did not acquire the lock"
-touch -t 200001010000 "$lock_file"
-LMLINE_CHATGPT_LOCK_WAIT_MS=750 client token \
-  >"$chatgpt_tmp/kernel-blocked-1.out" 2>"$chatgpt_tmp/kernel-blocked-1.err" &
-kernel_waiter_1=$!
-LMLINE_CHATGPT_LOCK_WAIT_MS=750 client token \
-  >"$chatgpt_tmp/kernel-blocked-2.out" 2>"$chatgpt_tmp/kernel-blocked-2.err" &
-kernel_waiter_2=$!
-kernel_waiter_status_1=0
-kernel_waiter_status_2=0
-wait "$kernel_waiter_1" || kernel_waiter_status_1=$?
-wait "$kernel_waiter_2" || kernel_waiter_status_2=$?
-[[ "$kernel_waiter_status_1" == 1 && "$kernel_waiter_status_2" == 1 ]] \
-  || fail "competing waiters must both time out, got $kernel_waiter_status_1 and $kernel_waiter_status_2"
-for waiter in 1 2; do
-  grep -q 'another lmline ChatGPT credential command is in progress' "$chatgpt_tmp/kernel-blocked-$waiter.err" \
-    || fail "competing waiter $waiter did not report contention"
-  [[ ! -s "$chatgpt_tmp/kernel-blocked-$waiter.out" ]] \
-    || fail "competing waiter $waiter printed a token"
-done
-kill -0 "$lock_holder_pid" 2>/dev/null || fail "the lock holder died before the contention check"
-kill -KILL "$lock_holder_pid"
-wait "$lock_holder_pid" 2>/dev/null || true
-lock_holder_pid=""
-LMLINE_CHATGPT_LOCK_WAIT_MS=250 client token \
-  >"$chatgpt_tmp/kernel-released.out" 2>"$chatgpt_tmp/kernel-released.err" \
-  || fail "the command cannot immediately acquire an abandoned kernel lock"
-[[ "$(cat "$chatgpt_tmp/kernel-released.out")" == synthetic-kernel-lock-token ]] \
-  || fail "the command after a killed holder did not run exactly once"
-[[ "$(node -e 'console.log(require("fs").statSync(process.argv[1]).ino)' "$lock_file")" == "$(cat "$chatgpt_tmp/lock.ready")" ]] \
-  || fail "a waiter replaced the persistent lock file"
-[[ "$(file_mode "$lock_file")" == 600 ]] || fail "the persistent lock file is not private"
-ok "ChatGPT respects an ancient kernel lock and acquires it as soon as its holder dies"
-
-# An unavailable primitive must never silently run the token command unlocked.
-if [[ "$(node -p 'process.platform')" == linux ]]; then
-  node_executable=$(command -v node)
-  mkdir "$chatgpt_tmp/no-flock"
-  if env PATH="$chatgpt_tmp/no-flock" LMLINE_CHATGPT_CREDENTIALS_FILE="$credentials_file" \
-    "$node_executable" "$repo_dir/lmline/chatgpt-client.js" token \
-    >"$chatgpt_tmp/no-flock.out" 2>"$chatgpt_tmp/no-flock.err"; then
-    fail "the token command ran without flock"
+[ "$#" -eq 4 ] && [ "$1" = -x ] && [ "$2" = -w ] && [ "$4" = 3 ] || exit 2
+case $3 in *[!0-9]*|'') exit 2 ;; esac
+exec "$REAL_FLOCK" "$@"
+FLOCK
+    chmod +x "$busybox_bin/flock"
+    export REAL_FLOCK="$real_flock"
+    waiter_path=$busybox_bin
+    (
+      exec 3<>"$lock_file"
+      flock -x -w 2 3
+      exec "$node_executable" "$chatgpt_tmp/lock-holder.js" "$lock_file" "$chatgpt_tmp/lock.ready"
+    ) &
+  else
+    node "$chatgpt_tmp/lock-holder.js" "$lock_file" "$chatgpt_tmp/lock.ready" &
   fi
-  grep -q 'credential locking requires util-linux flock' "$chatgpt_tmp/no-flock.err" \
-    || fail "an unavailable flock has no actionable diagnostic"
-  [[ ! -s "$chatgpt_tmp/no-flock.out" ]] || fail "a command without flock printed a token"
-  ok "ChatGPT fails closed when flock is unavailable"
+  lock_holder_pid=$!
+  for ((attempt = 0; attempt < 200; attempt++)); do
+    [[ -s "$chatgpt_tmp/lock.ready" ]] && break
+    kill -0 "$lock_holder_pid" 2>/dev/null || fail "the synthetic lock holder exited early"
+    sleep 0.05
+  done
+  [[ -s "$chatgpt_tmp/lock.ready" ]] || fail "the synthetic holder did not acquire the lock"
+  touch -t 200001010000 "$lock_file"
+  LMLINE_CHATGPT_LOCK_WAIT_MS=750 client token \
+    >"$chatgpt_tmp/kernel-blocked-1.out" 2>"$chatgpt_tmp/kernel-blocked-1.err" &
+  kernel_waiter_1=$!
+  PATH="$waiter_path" LMLINE_CHATGPT_LOCK_WAIT_MS=750 client token \
+    >"$chatgpt_tmp/kernel-blocked-2.out" 2>"$chatgpt_tmp/kernel-blocked-2.err" &
+  kernel_waiter_2=$!
+  kernel_waiter_status_1=0
+  kernel_waiter_status_2=0
+  wait "$kernel_waiter_1" || kernel_waiter_status_1=$?
+  wait "$kernel_waiter_2" || kernel_waiter_status_2=$?
+  [[ "$kernel_waiter_status_1" == 1 && "$kernel_waiter_status_2" == 1 ]] \
+    || fail "competing waiters must both time out, got $kernel_waiter_status_1 and $kernel_waiter_status_2"
+  for waiter in 1 2; do
+    grep -q 'another lmline ChatGPT credential command is in progress' "$chatgpt_tmp/kernel-blocked-$waiter.err" \
+      || fail "competing waiter $waiter did not report contention"
+    [[ ! -s "$chatgpt_tmp/kernel-blocked-$waiter.out" ]] \
+      || fail "competing waiter $waiter printed a token"
+  done
+  kill -0 "$lock_holder_pid" 2>/dev/null || fail "the lock holder died before the contention check"
+  kill -KILL "$lock_holder_pid"
+  wait "$lock_holder_pid" 2>/dev/null || true
+  lock_holder_pid=""
+  PATH="$waiter_path" LMLINE_CHATGPT_LOCK_WAIT_MS=250 client token \
+    >"$chatgpt_tmp/kernel-released.out" 2>"$chatgpt_tmp/kernel-released.err" \
+    || fail "the command cannot immediately acquire an abandoned kernel lock"
+  [[ "$(cat "$chatgpt_tmp/kernel-released.out")" == synthetic-kernel-lock-token ]] \
+    || fail "the command after a killed holder did not run exactly once"
+  [[ "$(node -e 'console.log(require("fs").statSync(process.argv[1]).ino)' "$lock_file")" == "$(cat "$chatgpt_tmp/lock.ready")" ]] \
+    || fail "a waiter replaced the persistent lock file"
+  [[ "$(file_mode "$lock_file")" == 600 ]] || fail "the persistent lock file is not private"
+  ok "ChatGPT respects an ancient kernel lock and acquires it as soon as its holder dies (also with BusyBox-style flock on Linux)"
+
+fi
+
+# A flock that advertises -w but rejects the invocation is not contention.
+if [[ "$platform" == linux ]]; then
+  broken_bin="$chatgpt_tmp/broken-flock"
+  mkdir "$broken_bin"
+  cat >"$broken_bin/flock" <<'FLOCK'
+#!/bin/sh
+if [ "$1" = --help ]; then
+  printf '%s\n' 'Usage: flock [-x] [-w SEC] FD' >&2
+else
+  printf '%s\n' 'flock: invalid option -w' >&2
+fi
+exit 1
+FLOCK
+  chmod +x "$broken_bin/flock"
+  mkdir -m 700 "$lock_dir" # Stale: the would-be holder never published its PID.
+  [[ "$(PATH="$broken_bin" LMLINE_CHATGPT_LOCK_WAIT_MS=500 client token)" == synthetic-kernel-lock-token ]] \
+    || fail "an unusable flock did not fall back or could not recover an empty lock directory"
+  [[ ! -e "$lock_dir" ]] || fail "the fallback command did not remove the lock directory"
+  ok "ChatGPT falls back when flock rejects its flags and recovers an empty lock directory"
 fi
 
 # 20. A sign-in that overlaps a refresh is not overwritten by it.

@@ -1317,19 +1317,26 @@ disables locking for filesystems where `mkdir` atomicity is unreliable
 (some NFS mounts).
 
 ChatGPT credential commands (`login`, `reauth`, `refresh`, `logout`, `token`)
-use an OS-held exclusive lock. Refresh, logout and token commands lock their
-credential reads, use and writes; login and reauthorization lock only the final
-credential save, not the browser callback. Status remains unlocked. Linux uses
-util-linux `flock` to acquire a lock on an inherited file descriptor that Node
-keeps open for the critical section; macOS/BSD uses `open(2)` with
-`O_EXLOCK | O_NONBLOCK`. If the required primitive is
-unavailable, the command fails rather than proceeding unlocked. The private
-`credentials.lock` file beside the credential file stays on disk with mode
-0600: its age never permits another command to enter. The kernel releases the
-lock when its holder exits, including after a crash or forced termination.
-Do not remove or replace this file while commands may be running.
-`LMLINE_CHATGPT_LOCK_WAIT_MS` bounds acquisition only, not command duration;
-there is no stale-lock threshold or heartbeat.
+use an exclusive lock. Refresh, logout and token commands lock their credential
+reads, use and writes; login and reauthorization lock only the final credential
+save, not the browser callback. Status remains unlocked.
+
+On Linux, lmline uses util-linux or compatible BusyBox `flock` when available;
+`flock` is optional. On macOS/BSD it uses native `O_EXLOCK`. These kernel locks
+use a persistent, private `credentials.lock` file beside the credential file.
+The kernel releases the lock when its holder exits; the file's age is irrelevant.
+Do not remove or replace it while commands may be running.
+
+Without a usable kernel backend, Node locks a private `credentials.lock.dir`
+beside the credential file. Commands using a kernel backend also take this
+directory lock, so commands with different `PATH` settings still serialize.
+A live PID blocks other callers; a dead PID or an empty lock directory can be
+recovered. The directory and PID marker are created with modes 0700 and 0600
+respectively, where the filesystem supports POSIX permissions. The lock is
+for local callers in the same PID namespace; it is not a distributed lock.
+`lmline doctor` reports the detected backend as `credential_lock`.
+`LMLINE_CHATGPT_LOCK_WAIT_MS` bounds the wait for the lock, not how long the
+command may hold it.
 
 ## Debugging
 
@@ -1395,7 +1402,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_ALLOW_INSECURE_HTTP` | `0` | allow API-key route requests (including prompt context and any credentials) over explicit `http://` only when exactly `1`; otherwise explicit `https://` is required; use only for trusted endpoints |
 | `LMLINE_AUTH_MODE` | `api-key` | authentication path: `api-key` reads the endpoint secret, `chatgpt` uses a ChatGPT subscription sign-in and the Responses format on the OpenAI API |
 | `LMLINE_CHATGPT_CLIENT` | installed client | the ChatGPT client executable; every path of the subscription route uses it, so the sign-in, the account catalog and the requests belong to the same client |
-| `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | maximum milliseconds a ChatGPT command waits to acquire the OS-held credential lock |
+| `LMLINE_CHATGPT_LOCK_WAIT_MS` | `180000` | maximum milliseconds a ChatGPT command waits to acquire the credential lock |
 | `LMLINE_CHATGPT_CREDENTIALS_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/credentials.json` | credential file the ChatGPT client reads and writes |
 | `LMLINE_CHATGPT_HOST_ID_FILE` | `$LMLINE_CONFIG_DIR/chatgpt/host-id` | host identifier file the ChatGPT client reads and writes |
 | `LMLINE_CHATGPT_AUTH_URL` | `https://auth.openai.com` | authorization endpoint of the ChatGPT sign-in |

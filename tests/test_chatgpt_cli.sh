@@ -51,6 +51,8 @@ ok "the current report defaults to the api-key auth mode"
 # 6. The doctor report names the authentication path and the search state.
 doctor_out=$(lmline doctor) || fail "doctor"
 grep -q '^auth_mode=chatgpt$' <<<"$doctor_out" || fail "doctor shows the chatgpt auth mode"
+grep -Eq '^credential_lock=(flock-util-linux|flock-busybox|o-exlock|node-directory)$' <<<"$doctor_out" \
+  || fail "doctor shows the detected credential lock backend"
 grep -q '^enabled=0$' <<<"$doctor_out" || fail "doctor shows the web search state"
 grep -q '^format=supported$' <<<"$doctor_out" || fail "doctor shows the plan route's responses format"
 lmline model add plain gpt-5 >/dev/null || fail "model add for the api-key endpoint"
