@@ -611,6 +611,9 @@ __lmline_load_candidates_from_file() {
 __lmline_history_dir_ready() {
   local dir=${LMLINE_HISTORY_DIR:-}
   [[ -n "$dir" ]] || return 1
+  # Directory utilities parse a leading dash as an option; use an equivalent
+  # relative spelling, as the trace directory guard does.
+  [[ "$dir" != -* ]] || dir=./$dir
   # A trailing slash resolves a symlink before [[ -L ]] can see it. Use the
   # normalized path for every check and for the append after this returns.
   while [[ $dir == */ && $dir != / ]]; do

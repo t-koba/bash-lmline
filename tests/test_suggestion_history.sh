@@ -194,6 +194,19 @@ for shell in bash zsh; do
     fail "$shell left the suggestion log world-writable"
   ok "$shell tightens a loose suggestion log before recording"
 
+  # A legitimate relative directory beginning with a dash must not be parsed
+  # as an option by the directory utilities in either shell.
+  dash_dir="-history-$shell"
+  (cd "$tmp" && private_record "$shell" "$dash_dir") || {
+    cat "$tmp/private-$shell.out" >&2
+    fail "$shell private writer failed in dash-leading history directory"
+  }
+  grep -q '^candidate=candidate-private$' "$tmp/$dash_dir/suggestions.log" ||
+    fail "$shell did not record in a dash-leading history directory"
+  [[ $(private_mode "$tmp/$dash_dir") == 700 ]] ||
+    fail "$shell left a dash-leading history directory non-private"
+  ok "$shell records in a dash-leading relative history directory"
+
   history_dir="$tmp/private-symlink-$shell"
   mkdir -m 700 "$history_dir"
   canary="$tmp/private-canary-$shell"
