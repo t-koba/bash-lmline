@@ -78,7 +78,7 @@ lmline config set LMLINE_API_KEY_FILE ~/.config/lmline/secrets/manual-api-key.se
 
 Do not put raw API keys in `settings.bash`, project config, shell history, or trace files.
 
-API keys are passed to `curl` through `-H @file` header files created with user-only permissions, not on the `curl` command line, so credentials do not appear in process listings (`ps`). Trace directories and the secrets directory are created with mode `0700`.
+API keys are passed to `curl` through `-H @file` header files created with user-only permissions, not on the `curl` command line, so credentials do not appear in process listings (`ps`). Trace directories and the secrets directory are created with mode `0700`. `endpoint set-secret` refuses to store a credential unless the secrets directory is a user-owned, non-symlink directory with mode `0700`.
 
 A ChatGPT subscription sign-in stores a different kind of credential: an OAuth refresh token that grants access to the ChatGPT plan.
 
