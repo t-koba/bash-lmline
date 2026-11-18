@@ -1029,6 +1029,17 @@ eof_secret_mode=$(stat -c %a "$eof_secret_path" 2>/dev/null || stat -f %Lp "$eof
 [[ -z $(find "$eof_secret_tmp/config/secrets" -name '*.secret.*' -print) ]] || fail "set-secret left temporary secret files"
 ! grep -Fq "$eof_secret" "$eof_secret_tmp/stdout" "$eof_secret_tmp/stderr" || fail "EOF-delimited secret leaked to output"
 rm -rf "$eof_secret_tmp"
+# A symlinked secrets directory must never receive a credential.
+symlink_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-symlink-secret.XXXXXX")
+LMLINE_CONFIG_DIR="$symlink_secret_tmp/config" "$repo_dir/lmline/lmline" endpoint add symlinked https://example.invalid/v1 >/dev/null
+mkdir -p "$symlink_secret_tmp/outside"
+ln -s "$symlink_secret_tmp/outside" "$symlink_secret_tmp/config/secrets"
+if printf '%s' 'symlink-secret-sentinel' | LMLINE_CONFIG_DIR="$symlink_secret_tmp/config" "$repo_dir/lmline/lmline" endpoint set-secret symlinked >"$symlink_secret_tmp/out" 2>"$symlink_secret_tmp/err"; then
+  fail "set-secret accepted a symlinked secrets directory"
+fi
+grep -q 'secrets directory is unsafe' "$symlink_secret_tmp/err" || fail "set-secret did not report the unsafe secrets directory"
+[[ -z $(find "$symlink_secret_tmp/outside" -type f -print) ]] || fail "credential was written through the symlinked secrets directory"
+rm -rf "$symlink_secret_tmp"
 # Distinct endpoint names must never share a credential file.
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a/b" https://a-b.invalid/v1
 LMLINE_CONFIG_DIR="$profiles_dir" "$repo_dir/lmline/lmline" endpoint add "a_b" https://aub.invalid/v1

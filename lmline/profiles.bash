@@ -292,6 +292,23 @@ profile_restore_echo() {
   stty echo 2>/dev/null || true
 }
 
+# Credentials are long-lived, so never write them through a symlinked or
+# loosely owned secrets directory. Establish and verify its privacy first.
+__lmline_secrets_dir_ready() {
+  local dir=$config_dir/secrets permissions previous_umask mkdir_status=0
+  if builtin declare -F mkdir >/dev/null 2>&1 || [[ ! -d "$dir" ]]; then
+    previous_umask=$(umask) || return 1
+    umask 077
+    mkdir -p "$dir" 2>/dev/null || mkdir_status=1
+    umask "$previous_umask"
+    (( mkdir_status == 0 )) || return 1
+  fi
+  [[ -d "$dir" && ! -L "$dir" && -O "$dir" ]] || return 1
+  chmod 700 "$dir" 2>/dev/null || return 1
+  permissions=$(stat -c %a "$dir/." 2>/dev/null || stat -f %Lp "$dir/." 2>/dev/null) || return 1
+  [[ $permissions =~ ^0?700$ ]]
+}
+
 profile_endpoint_set_secret() {
   local name=${1-} value=${2-} line base auth_header auth_scheme _ old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode secret_file safe_name quoted_name tmp
   [[ -n "$name" ]] || { usage; exit 2; }
@@ -317,8 +334,10 @@ profile_endpoint_set_secret() {
     printf '\n' >&2
   fi
   [[ -n "$value" ]] || { printf 'lmline: empty secret not stored\n' >&2; exit 2; }
-  mkdir -p "$config_dir/secrets"
-  chmod 700 "$config_dir/secrets" 2>/dev/null || true
+  __lmline_secrets_dir_ready || {
+    printf 'lmline: secrets directory is unsafe; refusing to store the credential: %s\n' "$config_dir/secrets" >&2
+    exit 2
+  }
   # Injective encoding of the full endpoint name: escape % first, then /,
   # so distinct names (e.g. a/b and a_b) never share a credential file.
   safe_name=${name//%/%%}
