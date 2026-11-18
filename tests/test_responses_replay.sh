@@ -14,6 +14,7 @@ cat >"$cfg_tmp/response.json" <<'RESP_EOF'
 {"id":"resp_1","object":"response","model":"gpt-5-mini","status":"completed",
  "output":[
   {"type":"reasoning","id":"rs_1","encrypted_content":"placeholder-encrypted"},
+  {"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"awk"}},
   {"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"checking"}]},
   {"type":"function_call","id":"fc_1","call_id":"call_1","name":"command_exists","arguments":"{\"commands\":\"awk\"}"}
  ],
@@ -35,6 +36,14 @@ __lmline_payload_for_format responses "$cfg_tmp/source.json" "$cfg_tmp/next.json
 
 [[ $(jq '[.input[]? | select(.type=="reasoning")] | length' "$cfg_tmp/next.json") == 1 ]] || fail "replayed reasoning count"
 [[ $(jq -r '[.input[]? | select(.type=="reasoning")][0] | "\(.id) \(.encrypted_content)"' "$cfg_tmp/next.json") == "rs_1 placeholder-encrypted" ]] || fail "replayed reasoning verbatim"
+# Opaque web-search events are re-sent verbatim with their provider item ids.
+[[ $(jq '[.input[]? | select(.type=="web_search_call")] | length' "$cfg_tmp/next.json") == 1 ]] \
+  || fail "replayed web search count"
+expected_ws=$(jq -S -nc '{type:"web_search_call",id:"ws_1",status:"completed",action:{type:"search",query:"awk"}}')
+[[ $(jq -S -c '.input[] | select(.type=="web_search_call")' "$cfg_tmp/next.json") == "$expected_ws" ]] \
+  || fail "replayed web search verbatim"
+[[ $(jq '[.input | to_entries[] | select(.value.type=="reasoning" or .value.type=="web_search_call" or .value.type=="function_call") | .key] | .[0] < .[1] and .[1] < .[2]' "$cfg_tmp/next.json") == "true" ]] \
+  || fail "web search replay order"
 [[ $(jq '[.input | to_entries[] | select(.value.type=="reasoning" or .value.type=="function_call" or .value.type=="function_call_output") | .key] | .[0] < .[1] and .[1] < .[2]' "$cfg_tmp/next.json") == "true" ]] || fail "replay order"
 [[ $(jq -r '[.input[]? | select(.type=="function_call") | .call_id] | join(" ")' "$cfg_tmp/next.json") == "call_1" ]] || fail "replayed call id"
 [[ $(jq -r '[.input[]? | select(.type=="function_call_output") | .call_id] | join(" ")' "$cfg_tmp/next.json") == "call_1" ]] || fail "replayed output id"
