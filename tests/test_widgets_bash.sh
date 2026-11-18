@@ -1969,6 +1969,9 @@ LMLINE_TEST_AVAILABILITY_DIR="$widget_tmp/availability" LMLINE_CONFIG_DIR="$widg
   [[ "$key" != "$(__lmline_suggested_commands_key)" ]]
   __lmline_generate_widget >/dev/null 2>&1
   second=$__LMLINE_ASYNC_PID
+  # Cancellation is asynchronous: the engine writes its marker from a TERM
+  # trap, so wait for it the same way the other cancellation checks do.
+  for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.stopped" ]] && break; sleep 0.05; done
   [[ "$second" != "$first" && "$__LMLINE_ASYNC_KEY" != "$first_key" && "$READLINE_LINE" == "# availability" && -s "$LMLINE_TEST_AVAILABILITY_DIR/absent.stopped" ]]
   for i in {1..200}; do [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]] && break; sleep 0.05; done
   [[ -s "$LMLINE_TEST_AVAILABILITY_DIR/external.ready" ]]
