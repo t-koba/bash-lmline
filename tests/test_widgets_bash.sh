@@ -45,7 +45,9 @@ source "$1/lmline/context.bash" >/dev/null 2>&1
 __lmline_hash_fd_supported 4 3 || exit 1
 __lmline_hash_fd_supported 5 0 || exit 1
 for helper in __lmline_suggested_commands_key __lmline_project_markers_key; do
-  declare -f "$helper" | grep -Fq '__lmline_hash_fd_supported' || exit 1
+  # A pipeline with grep -q can fail under pipefail when declare -f gets SIGPIPE.
+  body=$(declare -f "$helper") || exit 1
+  [[ $body == *__lmline_hash_fd_supported* ]] || exit 1
 done
 GUARDCHECK
 bash "$widget_tmp/descriptor-guard-check.bash" "$repo_dir" ||
