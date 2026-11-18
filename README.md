@@ -747,9 +747,11 @@ not a complete shell interpreter or sandbox.
 
 Each accepted candidate is classified with the configured `risk_patterns.tsv`
 and structural pipe-to-shell, interactive history expansion, unresolved
-variable, capped brace, and recursive remove recognition. High-risk candidates are inserted as comments prefixed with
-`# REVIEW REQUIRED:`. Medium-risk candidates are inserted with a warning.
-Low-risk candidates are inserted directly. Structural levels are
+variable, capped brace, and recursive remove recognition. High-risk candidates
+are inserted as comments prefixed with `# REVIEW REQUIRED:`. The marker follows
+the candidate's stored risk on every application, including async completion
+and cycling with the candidate widgets. Medium-risk candidates are inserted
+with a warning. Low-risk candidates are inserted directly. Structural levels are
 configuration (`LMLINE_RISK_PIPED_SHELL_LEVEL` default `high`,
 `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` default `high`,
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` default `medium`,

@@ -48,7 +48,8 @@ lmline-candidate: <risk>\t<reason>\t<flags>\t<candidate>
   potentially active default-character interactive history references as
   structural risk (`LMLINE_RISK_HISTORY_EXPANSION_LEVEL`, default `high`);
   replacement engines should preserve that policy. Frontends render `high`
-  candidates as `# REVIEW REQUIRED:` comments and must not re-classify.
+  candidates as `# REVIEW REQUIRED:` comments on every application, including
+  async completion and candidate cycling, and must not re-classify.
 - `reason`: human-readable rule reason; tabs are replaced by spaces; `-` when
   not applicable.
 - `flags`: comma-separated markers, `-` when empty. Defined flags:
