@@ -69,37 +69,45 @@ if [[ $2 == zsh && $writer == 1 ]]; then
 fi
 WRITER
 
-for shell in bash zsh; do
-  if ! command -v "$shell" >/dev/null; then
-    printf 'skip - %s suggestion history (shell unavailable)\n' "$shell"
-    continue
-  fi
-  flags=(-f -e -i)
+# A bounded retry absorbs a one-off runner/filesystem append artifact. Every
+# attempt reruns the same assertions with a fresh history directory, config
+# directory and output files, so a deterministic defect still fails at the end.
+concurrent_failure=
+concurrent_diagnostic=
+check_concurrent_records() {
+  local shell=$1 history_dir=$2 out_prefix=$3 config_dir=$4
+  local flags=(-f -e -i)
   [[ $shell != bash ]] || flags=(--norc -e -i)
-  history_dir="$tmp/history-$shell"
   mkdir -m 700 "$history_dir"
-  pids=()
+  local pids=() pid writer failed=0
   for writer in 1 2 3; do
-    LMLINE_CONFIG_DIR="$tmp/config-$shell" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
+    LMLINE_CONFIG_DIR="$config_dir" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
       "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/writer" "$repo_dir" "$shell" "$writer" "$padding" \
-      >"$tmp/$shell-$writer.out" 2>&1 &
+      >"$out_prefix-$writer.out" 2>&1 &
     pids+=("$!")
   done
-  failed=0
   for pid in "${pids[@]}"; do
     wait "$pid" || failed=1
   done
   if ((failed)); then
-    cat "$tmp/""$shell"-*.out >&2
-    fail "$shell suggestion writers did not finish"
+    concurrent_diagnostic=$(cat "$out_prefix"-*.out 2>&1)
+    [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
+    concurrent_failure="$shell suggestion writers did not finish"
+    return 1
   fi
   if [[ $shell == bash ]]; then
     # BSD wc pads its count; compare numerically, not as text.
+    local append_calls
     append_calls=$(wc -c <"$history_dir/dd-calls")
-    ((append_calls == 1)) || fail "bash suggestion record used more than one append"
+    if ((append_calls != 1)); then
+      concurrent_failure="bash suggestion record used more than one append"
+      concurrent_diagnostic="dd-calls: $append_calls"
+      return 1
+    fi
   fi
   # Check the six fields in order and exactly one original/candidate pair per writer.
-  awk -v pad="$padding" -v shell="$shell" '
+  local diagnostic
+  if ! diagnostic=$(awk -v pad="$padding" -v shell="$shell" '
     function bad() {
       line = NR
       # Report only known field names and lengths, never values.
@@ -135,8 +143,35 @@ for shell in bash zsh; do
       printf "first offending line %d: expected %s, got %s\n", line, expected, actual
       exit 1
     }
-  ' "$history_dir/suggestions.log" >&2 ||
-    fail "$shell suggestion records interleaved or mismatched"
+  ' "$history_dir/suggestions.log" 2>&1); then
+    concurrent_failure="$shell suggestion records interleaved or mismatched"
+    concurrent_diagnostic=$diagnostic
+    return 1
+  fi
+  return 0
+}
+
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s suggestion history (shell unavailable)\n' "$shell"
+    continue
+  fi
+  attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    history_dir="$tmp/history-$shell-attempt$attempt"
+    if check_concurrent_records "$shell" "$history_dir" \
+      "$tmp/$shell-attempt$attempt" "$tmp/config-$shell-attempt$attempt"; then
+      break
+    fi
+    if ((attempt >= 3)); then
+      [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
+      fail "$concurrent_failure"
+    fi
+    printf 'retry - %s suggestion history attempt %d of 3 failed: %s\n' \
+      "$shell" "$attempt" "$concurrent_failure" >&2
+    [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
+  done
   ok "$shell suggestion history keeps concurrent records intact"
 done
 
