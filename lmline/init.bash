@@ -670,13 +670,9 @@ __lmline_record_suggestion() {
     "$__LMLINE_LAST_SUGGESTION_ID" "$timestamp" "$PWD" "$mode" "$original" "$candidate"
   __lmline_history_dir_ready || return 0
   __lmline_history_log_ready || return 0
-  # A here-string is a pipe, so dd can read it in short pieces. Buffer the record
-  # in a private regular file first: one full-block read becomes one append.
+  # Buffer the whole record in one dd output block: shell output can split at newlines.
   bytes=$(command wc -c 2>/dev/null <<<"$record") || return 0
-  local record_file=$LMLINE_HISTORY_DIR/.suggestions.$$
-  (umask 077; builtin printf '%s\n' "$record" >"$record_file") || return 0
-  command dd "if=$record_file" "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null || true
-  command rm -f -- "$record_file" 2>/dev/null || true
+  command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
 }
 
 # Applies the candidate at the given index using the engine's risk/flag
