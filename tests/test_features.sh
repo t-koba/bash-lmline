@@ -623,8 +623,8 @@ for shell in bash zsh; do
   shell_flags=(-f -e -i)
   [[ $shell != bash ]] || shell_flags=(--norc -e -i)
   workspace="$cfg_tmp/workspace-$shell"
-  mkdir -p -- "$workspace/-tmp" "$workspace/nested/-tmp"
-  chmod 700 -- "$workspace/-tmp" "$workspace/nested/-tmp"
+  mkdir -p "$workspace/-tmp" "$workspace/nested/-tmp"
+  chmod 700 "$workspace/-tmp" "$workspace/nested/-tmp"
   : >"$cfg_tmp/mktemp.log"
   shell_state=$(
     cd "$workspace" || exit 1
