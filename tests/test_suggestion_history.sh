@@ -192,11 +192,12 @@ private_mode() {
 }
 
 private_record() {
-  local shell=$1 history_dir=$2
+  local shell=$1 history_dir=$2 record_suggestions=${3-1}
   local flags=(-f -e -i)
   [[ $shell != bash ]] || flags=(--norc -e -i)
   LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
     LMLINE_CONFIG_DIR="$tmp/config-private-$shell" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
+    LMLINE_RECORD_SUGGESTIONS="$record_suggestions" \
     "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
     >"$tmp/private-$shell.out" 2>&1 || {
       cat "$tmp/private-$shell.out" >&2
@@ -311,4 +312,29 @@ for shell in bash zsh; do
   private_record "$shell" "$history_dir"
   [[ ! -e "$history_dir/suggestions.log" ]] || fail "$shell recorded into an unwritable parent"
   ok "$shell writes no record when the history directory cannot be established"
+done
+
+# Opt-out must be exact: only 0 stops recording. Empty or other non-0 values
+# must keep today's behavior.
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s suggestion history opt-out (shell unavailable)\n' "$shell"
+    continue
+  fi
+
+  history_dir="$tmp/opt-out-$shell"
+  mkdir -m 700 "$history_dir"
+  private_record "$shell" "$history_dir" 0
+  [[ ! -e "$history_dir/suggestions.log" ]] ||
+    fail "$shell recorded a suggestion with LMLINE_RECORD_SUGGESTIONS=0"
+  ok "$shell skips suggestion history when recording is disabled"
+
+  for value in '' false 00; do
+    history_dir="$tmp/keep-recording-$shell-${value:-empty}"
+    mkdir -m 700 "$history_dir"
+    private_record "$shell" "$history_dir" "$value"
+    grep -q '^candidate=candidate-private$' "$history_dir/suggestions.log" ||
+      fail "$shell stopped recording for LMLINE_RECORD_SUGGESTIONS='$value'"
+  done
+  ok "$shell keeps recording unless the opt-out is exactly 0"
 done

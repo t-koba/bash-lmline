@@ -646,6 +646,8 @@ __lmline_history_log_ready() {
 }
 
 __lmline_record_suggestion() {
+  # Only an exact 0 disables recording; empty and other values keep it on.
+  [[ ${LMLINE_RECORD_SUGGESTIONS:-1} == 0 ]] && return 0
   local mode=$1 original=$2 candidate=$3 date_id timestamp tz_declaration tz_attributes record bytes
   # Bash 4.2+ printf %T avoids two external date processes. Keep the normal
   # command path when either utility is overridden by a shell function.

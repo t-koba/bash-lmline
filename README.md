@@ -1205,6 +1205,17 @@ and captured output from `Ctrl-x Ctrl-f`.
 The trace directory must belong to you and stay private: lmline creates it with
 mode `0700` and writes no traces if it cannot make an existing directory private.
 
+Accepted suggestions are recorded locally to
+`$LMLINE_HISTORY_DIR/suggestions.log` (by default
+`~/.config/lmline/history/suggestions.log`) with an id, a UTC timestamp, the
+working directory, the mode, and the original and candidate fields. The history
+directory must be a real, user-owned mode `0700` directory and the log a
+user-owned mode `0600` regular file; symlinks are refused, and records are
+skipped when these checks fail. `lmline history show` and `lmline history
+tendencies` read this log. Set `LMLINE_RECORD_SUGGESTIONS=0` to stop recording;
+no other value disables it. An empty `LMLINE_HISTORY_DIR` is replaced by the
+default path and does not disable recording.
+
 ## Advanced Settings
 
 ```bash
@@ -1386,6 +1397,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CONFIG_DIR` | `~/.config/lmline` | config, installed support files, profiles, secrets, cache, traces |
 | `LMLINE_BIN_DIR` | `~/.local/bin` | install target for the `lmline` symlink |
 | `LMLINE_HISTORY_DIR` | `$LMLINE_CONFIG_DIR/history` | recorded suggestion log directory; must be a real, user-owned mode `0700` directory that is not itself a symlink, or records are skipped (a trailing slash or `.`/`..` component does not hide a final symlink; linked ancestor directories are allowed) |
+| `LMLINE_RECORD_SUGGESTIONS` | `1` | record accepted suggestions in the suggestion history log; only exactly `0` disables recording (unset, empty, or any other value keeps it enabled) |
 | `LMLINE_DEFAULTS_DIR` | installed defaults | packaged data-file defaults |
 | `LMLINE_USER_RULES_DIR` | `$LMLINE_CONFIG_DIR` | user override directory for data files |
 

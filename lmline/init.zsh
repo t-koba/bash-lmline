@@ -1105,6 +1105,8 @@ __lmline_zsh_history_log_ready() {
 }
 
 __lmline_zsh_record_suggestion() {
+  # Only an exact 0 disables recording; empty and other values keep it on.
+  [[ ${LMLINE_RECORD_SUGGESTIONS:-1} == 0 ]] && return 0
   local mode=$1 original=$2 candidate=$3 id timestamp record bytes
   id=$(date -u +%Y%m%d%H%M%S 2>/dev/null || print '0')-$$
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || print 'unknown')
