@@ -127,7 +127,14 @@ else
   fi
 fi
 
-BIN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/shellcheck-bin.XXXXXX") || exit 1
+# A dash-leading TMPDIR must not be parsed as mktemp options; keep the
+# script's own operand local instead of rewriting the caller's environment.
+tmp_root=${TMPDIR:-/tmp}
+case $tmp_root in
+  /*) : ;;
+  *) tmp_root=./$tmp_root ;;
+esac
+BIN_DIR=$(mktemp -d "$tmp_root/shellcheck-bin.XXXXXX") || exit 1
 trap 'rm -rf "$BIN_DIR"' 0
 ARCHIVE="${BIN_DIR}/shellcheck.tar.xz"
 CACHED="/pinned/sha256/${MATCH_SHA}/${MATCH_FILENAME}"

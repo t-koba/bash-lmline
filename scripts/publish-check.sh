@@ -3,8 +3,10 @@ set -euo pipefail
 
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_dir"
+# shellcheck source=lmline/config.bash
+source "$repo_dir/lmline/config.bash"
 
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-publish.XXXXXX")
+work_dir=$(mktemp -d "$(__lmline_tmp_root)/lmline-publish.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT
 
 if [[ -e request.md ]]; then

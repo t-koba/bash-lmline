@@ -42,7 +42,7 @@ install_config_set_if_unset() {
   local key=$1 value=$2 tmp
   install_config_has "$key" && return 1
   touch "$config_file"
-  tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-cfg.XXXXXX")
+  tmp=$(mktemp "$(__lmline_tmp_root)/lmline-cfg.XXXXXX")
   grep -v -E "^export ${key}=" "$config_file" >"$tmp" || true
   printf 'export %s=%s\n' "$key" "$(__lmline_quote_single "$value")" >>"$tmp"
   mv "$tmp" "$config_file"
