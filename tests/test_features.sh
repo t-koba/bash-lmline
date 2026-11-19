@@ -4,6 +4,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: protocol metadata, retries, cache, streaming, endpoint CRUD, and risk contracts remain consistent.
 
 cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-features-test.XXXXXX")
+cfg_tmp=$(cd -- "$cfg_tmp" && pwd -P) || exit 1
 trap 'rm -rf "$cfg_tmp"' EXIT
 fake_bin="$cfg_tmp/bin"
 mkdir -p "$fake_bin" "$cfg_tmp/config"
@@ -589,17 +590,7 @@ mkdir -m 700 -- "$cfg_tmp/-tmp"
 )
 cut -f1 "$cfg_tmp/mktemp.log" | grep -q '^\./-tmp/lmline-' ||
   fail "engine did not pass a safe mktemp operand"
-cfg_tmp_phys=$(cd -- "$cfg_tmp" && pwd -P)
-used_configured_tmpdir=0
-while IFS=$'\t' read -r _ actual_tmp; do
-  [[ ${actual_tmp##*/} == lmline-* ]] || continue
-  actual_root=$(cd -- "${actual_tmp%/*}" 2>/dev/null && pwd -P) || continue
-  if [[ $actual_root == "$cfg_tmp_phys/-tmp" ]]; then
-    used_configured_tmpdir=1
-    break
-  fi
-done <"$cfg_tmp/mktemp.log"
-((used_configured_tmpdir)) ||
+cut -f2 "$cfg_tmp/mktemp.log" | grep -q "^$cfg_tmp/-tmp/lmline-" ||
   fail "engine did not use the configured dash-leading TMPDIR"
 ! cut -f1 "$cfg_tmp/mktemp.log" | grep -q '^-' ||
   fail "mktemp reinterpreted a dash-leading TMPDIR as options"
@@ -632,8 +623,8 @@ for shell in bash zsh; do
   shell_flags=(-f -e -i)
   [[ $shell != bash ]] || shell_flags=(--norc -e -i)
   workspace="$cfg_tmp/workspace-$shell"
-  mkdir -p -m 700 -- "$workspace/-tmp"
-  mkdir -p -m 700 -- "$workspace/nested/-tmp"
+  mkdir -p -- "$workspace/-tmp" "$workspace/nested/-tmp"
+  chmod 700 -- "$workspace/-tmp" "$workspace/nested/-tmp"
   : >"$cfg_tmp/mktemp.log"
   shell_state=$(
     cd "$workspace" || exit 1
