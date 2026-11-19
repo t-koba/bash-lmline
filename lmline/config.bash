@@ -2,6 +2,16 @@
 
 # Minimal config loading helpers for lmline. This file is meant to be sourced.
 
+# mktemp reads a dash-leading template as options and a bare relative template
+# as a path below the current directory. Return a safe operand root without
+# changing the caller's TMPDIR: absolute values stay as they are, relative ones
+# (including dash-leading names) get an explicit "./" prefix.
+__lmline_tmp_root() {
+  local root=${TMPDIR:-/tmp}
+  [[ $root == /* ]] || root=./$root
+  printf '%s\n' "$root"
+}
+
 # Body-free residual-transport guard for hash boundaries. Fails closed when
 # modern BASH_FUNC_*%% or exact legacy "() {" records remain in the environment
 # inherited by the next hash child, including malformed names and protected

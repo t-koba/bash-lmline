@@ -147,7 +147,7 @@ profile_split_tsv() {
 profile_filter_out_key() {
   local file=$1 key_fields=$2 tmp
   shift 2
-  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
+  __lmline_mktemp tmp "$(__lmline_tmp_root)/lmline-profile.XXXXXX"
   # The keys travel through the environment, which keeps the bytes the user
   # gave, where an awk assignment decodes the escape sequences they carry.
   LM_PROFILE_KEY_1=${1-} LM_PROFILE_KEY_2=${2-} \
@@ -185,8 +185,8 @@ profile_upsert_line() {
   local file=$1 key_fields=$2 line=$3 tmp newfile
   mkdir -p "${file%/*}"
   touch "$file"
-  __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-profile.XXXXXX"
-  __lmline_mktemp newfile "${TMPDIR:-/tmp}/lmline-profile-row.XXXXXX"
+  __lmline_mktemp tmp "$(__lmline_tmp_root)/lmline-profile.XXXXXX"
+  __lmline_mktemp newfile "$(__lmline_tmp_root)/lmline-profile-row.XXXXXX"
   # The row travels through a file, not through an awk assignment: an
   # assignment decodes the escape sequences its value carries, and the row
   # must be stored byte for byte.
@@ -559,7 +559,7 @@ profile_model_refresh() {
   # Import filtering must not narrow removal membership: a plan row that is
   # hidden but still advertised stays selectable if it was added manually.
   membership_jq=${models_jq:-$(profile_default_model_catalog_jq)}
-  __lmline_mktemp header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
+  __lmline_mktemp header_tmp "$(__lmline_tmp_root)/lmline-hdr.XXXXXX"
   if [[ "$auth_mode" == chatgpt ]]; then
     # A plan endpoint has no endpoint secret: the account catalog is served
     # with the plan token. The token spends the user's ChatGPT plan, so the
@@ -567,7 +567,7 @@ profile_model_refresh() {
     # after that decision.
     __lmline_chatgpt_require_allowed_url "$base" || exit $?
     __lmline_chatgpt_require_allowed_url "$catalog_url" || exit $?
-    __lmline_mktemp token_file "${TMPDIR:-/tmp}/lmline-chatgpt-token.XXXXXX"
+    __lmline_mktemp token_file "$(__lmline_tmp_root)/lmline-chatgpt-token.XXXXXX"
     __lmline_chatgpt_access_token "$token_file" || exit 1
     __lmline_http_build_headers "$token_file" "Authorization" "Bearer" "$header_tmp"
   else
@@ -586,7 +586,7 @@ profile_model_refresh() {
     # The plan route speaks the Responses API, whatever the model id suggests.
     records=$(printf '%s\n' "$records" | awk -F '\t' -v OFS='\t' 'NF { $2="responses" } 1')
   fi
-  __lmline_mktemp records_file "${TMPDIR:-/tmp}/lmline-model-records.XXXXXX"
+  __lmline_mktemp records_file "$(__lmline_tmp_root)/lmline-model-records.XXXXXX"
   while IFS=$'\t' read -r id api_format; do
     [[ -n "$id" ]] || continue
     profile_require_name model "$id"
@@ -597,7 +597,7 @@ profile_model_refresh() {
   # before prefix/include/exclude filtering. The plan import filter does not
   # narrow membership: a manually added row that is hidden but still advertised
   # is kept as-is.
-  __lmline_mktemp catalog_file "${TMPDIR:-/tmp}/lmline-model-catalog.XXXXXX"
+  __lmline_mktemp catalog_file "$(__lmline_tmp_root)/lmline-model-catalog.XXXXXX"
   catalog_raw=$(profile_extract_model_candidates "$membership_jq" <<<"$body") || {
     printf 'lmline: model refresh response did not contain model IDs\n' >&2
     exit 1
@@ -612,13 +612,13 @@ profile_model_refresh() {
   touch "$models_file"
   # De-duplicate filtered records, keeping the first api_format per ID so the
   # endpoint/model key stays unique in models.tsv.
-  __lmline_mktemp dedup_tmp "${TMPDIR:-/tmp}/lmline-model-dedup.XXXXXX"
+  __lmline_mktemp dedup_tmp "$(__lmline_tmp_root)/lmline-model-dedup.XXXXXX"
   awk -F '\t' '!seen[$1]++' "$records_file" >"$dedup_tmp" || {
     printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
     exit 1
   }
   mv "$dedup_tmp" "$records_file"
-  __lmline_mktemp merge_tmp "${TMPDIR:-/tmp}/lmline-models-merge.XXXXXX"
+  __lmline_mktemp merge_tmp "$(__lmline_tmp_root)/lmline-models-merge.XXXXXX"
   awk -F '\t' -v OFS='\t' -v endpoint="$endpoint" '
     FILENAME == ARGV[1] {
       if ($1 == "") next

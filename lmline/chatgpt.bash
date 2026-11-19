@@ -16,6 +16,13 @@
 # same way: the client that holds the session, the host policy that keeps
 # the plan token on an allowed host, and the token itself.
 
+# Standalone sources (including the zsh bridge's Bash hint subprocess) need
+# the shared temp-path helper before the token wrapper runs.
+if ! declare -F __lmline_tmp_root >/dev/null 2>&1; then
+  # shellcheck source=lmline/config.bash
+  source "${BASH_SOURCE[0]%/*}/config.bash"
+fi
+
 # A paid route repeats a provider request only when the user asked for it: a
 # repeat on the ChatGPT plan route spends the plan, and a repeat on a
 # search-enabled route can bill another provider search. The engine and
@@ -158,7 +165,7 @@ __lmline_chatgpt_access_token() {
   # The client names the reason a sign-in failed in its own stderr. It goes
   # to a private temporary file that this function removes, so the place is
   # the function's business and not a name that only one caller defines.
-  err_file=$(mktemp "${TMPDIR:-/tmp}/lmline-chatgpt-token.XXXXXX") || return 1
+  err_file=$(mktemp "$(__lmline_tmp_root)/lmline-chatgpt-token.XXXXXX") || return 1
   node "$client" token >"$out" 2>"$err_file" || status=$?
   if (( status != 0 )); then
     case "$status" in

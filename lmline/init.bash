@@ -23,8 +23,6 @@ fi
 __LMLINE_DIR=$(cd -- "$__LMLINE_DIR" && pwd -P)
 
 __LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
-# mktemp parses a dash-leading TMPDIR template as options.
-[[ ${TMPDIR:-} != -* ]] || TMPDIR=$PWD/$TMPDIR
 # shellcheck source=lmline/config.bash
 source "$__LMLINE_DIR/config.bash"
 # Prime before loading; the post-load check still catches startup changes.
@@ -305,7 +303,7 @@ __lmline_call_engine_raw() {
     __lmline_copilot_candidates "$line" "$point" bash "$mode" || status=$?
     return "$status"
   fi
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-gen.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-gen.XXXXXX") || return 1
   if [[ "${4-}" == async ]]; then
     # This invocation runs in the private async worker, never the caller shell.
     trap 'rm -rf -- "${tmp:-}"; exit 143' TERM
@@ -338,7 +336,7 @@ __lmline_call_engine() {
   __LMLINE_ENGINE_ERROR=""
   __LMLINE_ENGINE_OUTPUT=""
   __LMLINE_ENGINE_STATUS_LINE=""
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-call.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-call.XXXXXX") || return 1
   # The caller's umask may deny writes in a fresh directory; the internal job
   # needs that directory for its private output file.
   chmod 700 "$tmp" 2>/dev/null || { rm -rf "$tmp"; return 1; }
@@ -366,7 +364,7 @@ __lmline_call_engine() {
 __lmline_run_explain_engine() {
   local engine=$1 shell_name=$2 point=$3 line_file=$4 context_file=$5
   local tmp output_file status
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-expl.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-expl.XXXXXX") || return 1
   output_file=$tmp/output
   status=0
   __lmline_run_internal_job "explaining" "$output_file" "$engine" --mode explain --shell "$shell_name" --cwd "$PWD" --point "$point" --line-file "$line_file" --context-file "$context_file" --n 1 || status=$?
@@ -839,7 +837,7 @@ __lmline_generate_async_widget() {
 
   __lmline_async_cleanup
   local dir
-  spool_base=${TMPDIR:-/tmp}
+  spool_base=$(__lmline_tmp_root)
   [[ $spool_base == /* ]] || spool_base=$PWD/$spool_base
   dir=$(mktemp -d "$spool_base/lmline-async.XXXXXX") || dir=
   if [[ -n "$dir" ]] && ! command chmod 0700 "$dir"; then
@@ -892,7 +890,7 @@ __lmline_fix_widget() {
     __lmline_hint final "${LMLINE_PS0}no command to fix"
     return 0
   }
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-fix.XXXXXX") || return 1
   __LMLINE_LAST_ORIGINAL=$original
   __LMLINE_LAST_MODE=fix
   __LMLINE_INDEX=0

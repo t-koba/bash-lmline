@@ -68,7 +68,6 @@ fi
 config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 # Directory utilities parse a leading dash as an option.
 [[ $config_dir != -* ]] || config_dir=./$config_dir
-[[ ${TMPDIR:-} != -* ]] || TMPDIR=$PWD/$TMPDIR
 history_dir=${LMLINE_HISTORY_DIR:-$config_dir/history}
 config_file=$config_dir/settings.bash
 endpoints_file=$config_dir/endpoints.tsv
@@ -981,7 +980,7 @@ __lmline_config_file_op() {
       }
       mkdir -p "${file%/*}"
       touch "$file"
-      __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-cfg.XXXXXX"
+      __lmline_mktemp tmp "$(__lmline_tmp_root)/lmline-cfg.XXXXXX"
       grep -v -E "^export ${key}=" "$file" >"$tmp" || true
       printf 'export %s=%s\n' "$key" "$(quote_bash "$value")" >>"$tmp"
       grep -qxF "export ${key}=$(quote_bash "$value")" "$tmp" || {
@@ -994,7 +993,7 @@ __lmline_config_file_op() {
       ;;
     unset)
       [[ -f "$file" ]] || return 0
-      __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-cfg.XXXXXX"
+      __lmline_mktemp tmp "$(__lmline_tmp_root)/lmline-cfg.XXXXXX"
       grep -v -E "^export ${key}=" "$file" >"$tmp" || true
       ! grep -qE "^export ${key}=" "$tmp" || {
         printf 'lmline: failed to remove %s\n' "$key" >&2
@@ -1169,7 +1168,7 @@ run_sandbox_command() {
   (($# > 0)) || { printf 'lmline: sandbox run requires COMMAND\n' >&2; return 2; }
   command_line=$*
   source_support_files
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-sandbox-run.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-sandbox-run.XXXXXX") || return 1
   [[ -n "$name" ]] && LMLINE_MICROSANDBOX_NAME=$name
   [[ -n "$image" ]] && LMLINE_MICROSANDBOX_IMAGE=$image
   if ! __lmline_microsandbox_available; then
@@ -1451,7 +1450,7 @@ case "$cmd" in
       printf '\napi_check\n'
       api_base=${LMLINE_BASE_URL:-}
       api_url=$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")
-      __lmline_mktemp api_header_tmp "${TMPDIR:-/tmp}/lmline-hdr.XXXXXX"
+      __lmline_mktemp api_header_tmp "$(__lmline_tmp_root)/lmline-hdr.XXXXXX"
       # ${VAR-default} (no colon): an explicitly empty scheme means raw key.
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \
         "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp" "$api_url" || exit $?
@@ -1491,7 +1490,7 @@ case "$cmd" in
     shift || true
     [[ "${1-}" == -h || "${1-}" == --help ]] && { print_cli_help context; exit 0; }
     source_support_files
-    __lmline_mktemp tmp "${TMPDIR:-/tmp}/lmline-ctx.XXXXXX"
+    __lmline_mktemp tmp "$(__lmline_tmp_root)/lmline-ctx.XXXXXX"
     __lmline_context_file "$tmp" "$*"
     cat "$tmp"
     ;;
@@ -1529,7 +1528,7 @@ case "$cmd" in
     esac
     line=$*
     source_support_files
-    __lmline_mktemp_dir tmp "${TMPDIR:-/tmp}/lmline-payload.XXXXXX"
+    __lmline_mktemp_dir tmp "$(__lmline_tmp_root)/lmline-payload.XXXXXX"
     printf '%s' "$line" >"$tmp/line"
     __lmline_context_file "$tmp/context" "$line" "$mode"
     LMLINE_SHELL_FUNCTIONS="$__LMLINE_CALLER_FUNCTIONS" LMLINE_EXPORTED_FUNCTIONS="$__LMLINE_EXPORTED_FUNCTIONS" "$(engine_path)" --dry-run-payload --mode "$mode" --shell bash --cwd "$PWD" --point "${#line}" --line-file "$tmp/line" --context-file "$tmp/context" --n "$LMLINE_CANDIDATE_COUNT"

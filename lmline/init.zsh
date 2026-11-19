@@ -6,8 +6,13 @@ setopt interactivecomments
 
 typeset -g LMLINE_DIR=${0:A:h}
 typeset -g LMLINE_CONFIG_DIR=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
-# mktemp parses a dash-leading TMPDIR template as options.
-[[ ${TMPDIR:-} != -* ]] || TMPDIR=$PWD/$TMPDIR
+# zsh keeps the caller's TMPDIR; build a safe mktemp operand root instead.
+# Absolute values stay as they are; relative ones get an explicit "./" prefix.
+__lmline_zsh_tmp_root() {
+  local root=${TMPDIR:-/tmp}
+  [[ $root == /* ]] || root=./$root
+  print -r -- "$root"
+}
 
 if ! command -v bash >/dev/null 2>&1; then
   print -ru2 -- 'lmline: zsh integration requires bash 4.2 or newer for the bridge.'
@@ -118,7 +123,7 @@ __lmline_zsh_load_all_config() {
       fi
     done
     if (( sysopen_available )); then
-      export_path="${TMPDIR:-/tmp}/lmline-zsh-config.$$"
+      export_path="$(__lmline_zsh_tmp_root)/lmline-zsh-config.$$"
       if builtin sysopen -r -w -o creat -o excl -m 600 -u export_fd "$export_path" 2>/dev/null; then
         export_file=$export_path
         anonymous_export=1
@@ -513,7 +518,7 @@ __lmline_zsh_mode() {
 
 __lmline_zsh_run_bridge() {
   local label=$1 action=$2 mode=$3 line=$4 point=$5 tmp output_file pid had_monitor=0
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_zsh_tmp_root)/lmline-zsh.XXXXXX") || return 1
   command chmod 0700 "$tmp" || { command rmdir -- "$tmp"; return 1; }
   output_file=$tmp/output
   if [[ -o monitor ]]; then
@@ -637,7 +642,7 @@ __lmline_zsh_bridge() {
           mode=$2
           line=$3
           point=$4
-          tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh.XXXXXX") || exit 1
+          tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-zsh.XXXXXX") || exit 1
           command chmod 0700 "$tmp" || { command rmdir -- "$tmp"; exit 1; }
           trap "rm -rf \"$tmp\"" EXIT
           engine_file="$tmp/engine"
@@ -1003,7 +1008,7 @@ __lmline_zsh_generate_async() {
   # async starter calls cleanup again before it takes ownership.
   __lmline_zsh_async_cleanup
   local async_dir
-  spool_base=${TMPDIR:-/tmp}
+  spool_base=$(__lmline_zsh_tmp_root)
   [[ $spool_base == /* ]] || spool_base=$PWD/$spool_base
   async_dir=$(mktemp -d "$spool_base/lmline-zsh-async.XXXXXX") || async_dir=
   if [[ -n "$async_dir" ]] && ! command chmod 0700 "$async_dir"; then

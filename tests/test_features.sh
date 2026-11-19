@@ -537,8 +537,20 @@ for path in /tmp/link/. /tmp/link/./ /tmp/link/../target ./link/../target; do
   __lmline_path_has_traversal_after_component "$path" || fail "shared helper accepted a dot component: $path"
 done
 
-# A dash-leading relative TMPDIR must not be reinterpreted as mktemp options:
-# the engine's private workspace has to land under the configured directory.
+# The shared helper returns a safe mktemp operand without owning TMPDIR.
+[[ $(TMPDIR=/var/tmp __lmline_tmp_root) == /var/tmp ]] ||
+  fail "temp root changed an absolute TMPDIR"
+original_tmpdir=${TMPDIR-}
+[[ $(TMPDIR=-tmp __lmline_tmp_root) == ./-tmp ]] ||
+  fail "temp root did not prefix a dash-leading TMPDIR"
+[[ ${TMPDIR-} == "$original_tmpdir" ]] || fail "temp root rewrote the caller TMPDIR"
+[[ $(TMPDIR=relative __lmline_tmp_root) == ./relative ]] ||
+  fail "temp root did not prefix a relative TMPDIR"
+[[ $(TMPDIR= __lmline_tmp_root) == /tmp ]] ||
+  fail "temp root lost the default directory"
+
+# A dash-leading relative TMPDIR stays the caller's own value; lmline turns it
+# into a safe, cwd-relative mktemp operand instead of rewriting the variable.
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 out=
@@ -546,20 +558,28 @@ while (($#)); do case "$1" in -o) out=$2; shift 2 ;; *) shift ;; esac; done
 printf '%s' '{"model":"m","choices":[{"message":{"content":"echo tmpdir-ok"},"finish_reason":"stop"}]}' >"$out"
 printf '200\tapplication/json'
 EOF
+# Log both the operand and the absolute path it resolves to. The real mktemp
+# must stay explicit: calling "mktemp" here would recurse through this shim.
 cat >"$fake_bin/mktemp" <<'EOF'
 #!/usr/bin/env bash
 for last do :; done
-printf '%s\n' "$last" >>"$LMLINE_MKTEMP_LOG"
+case $last in
+  /*) abs=$last ;;
+  */*) abs=$(cd -- "${last%/*}" && printf '%s/%s\n' "$PWD" "${last##*/}") ;;
+  *) abs=$PWD/$last ;;
+esac
+printf '%s\t%s\n' "$last" "$abs" >>"$LMLINE_MKTEMP_LOG"
 exec "$LMLINE_REAL_MKTEMP" "$@"
 EOF
 chmod +x "$fake_bin/mktemp"
+real_mktemp=$(command -v mktemp)
 mkdir -m 700 -- "$cfg_tmp/-tmp"
 : >"$cfg_tmp/mktemp.log"
 (
   cd "$cfg_tmp" || exit 1
   if run_engine LMLINE_TOOL_MODE=none \
     TMPDIR=-tmp LMLINE_MKTEMP_LOG="$cfg_tmp/mktemp.log" \
-    LMLINE_REAL_MKTEMP=$(command -v mktemp) >"$cfg_tmp/tmpdir.out" 2>"$cfg_tmp/tmpdir.err"
+    LMLINE_REAL_MKTEMP="$real_mktemp" >"$cfg_tmp/tmpdir.out" 2>"$cfg_tmp/tmpdir.err"
   then
     :
   else
@@ -567,14 +587,15 @@ mkdir -m 700 -- "$cfg_tmp/-tmp"
     fail "engine run with dash-leading TMPDIR"
   fi
 )
-grep -q "^$cfg_tmp/-tmp/lmline-" "$cfg_tmp/mktemp.log" ||
+cut -f1 "$cfg_tmp/mktemp.log" | grep -q '^\./-tmp/lmline-' ||
+  fail "engine did not pass a safe mktemp operand"
+cut -f2 "$cfg_tmp/mktemp.log" | grep -q "^$cfg_tmp/-tmp/lmline-" ||
   fail "engine did not use the configured dash-leading TMPDIR"
-! grep -q '^-tmp/' "$cfg_tmp/mktemp.log" ||
+! cut -f1 "$cfg_tmp/mktemp.log" | grep -q '^-' ||
   fail "mktemp reinterpreted a dash-leading TMPDIR as options"
 ok "engine uses a dash-leading relative TMPDIR"
 
 : >"$cfg_tmp/mktemp.log"
-real_mktemp=$(command -v mktemp)
 (
   cd "$cfg_tmp" || exit 1
   PATH="$fake_bin:$PATH" TMPDIR=-tmp \
@@ -583,22 +604,45 @@ real_mktemp=$(command -v mktemp)
     LMLINE_CONFIG_DIR="$crud_dir" "$repo_dir/lmline/lmline" \
     config set LMLINE_DEBUG 1 >/dev/null 2>&1 || fail "CLI run with dash-leading TMPDIR"
 )
-grep -q "^$cfg_tmp/-tmp/lmline-cfg" "$cfg_tmp/mktemp.log" ||
+cut -f1 "$cfg_tmp/mktemp.log" | grep -q '^\./-tmp/lmline-cfg' ||
+  fail "CLI did not pass a safe mktemp operand"
+cut -f2 "$cfg_tmp/mktemp.log" | grep -q "^$cfg_tmp/-tmp/lmline-cfg" ||
   fail "CLI did not use the configured dash-leading TMPDIR"
 ok "CLI uses a dash-leading relative TMPDIR"
 
+# Mirrors the Bash subprocess the zsh bridge starts with context/actions sourced.
+cat >"$cfg_tmp/probe_helper.sh" <<'EOF'
+#!/usr/bin/env bash
+source "$1/context.bash"
+source "$1/actions.bash"
+__lmline_probe_command echo --version >/dev/null
+EOF
+chmod +x "$cfg_tmp/probe_helper.sh"
 for shell in bash zsh; do
   shell_flags=(-f -e -i)
   [[ $shell != bash ]] || shell_flags=(--norc -e -i)
-  shell_tmpdir=$(
-    cd "$cfg_tmp" || exit 1
-    TMPDIR=-tmp LMLINE_BIND_KEYS=0 "$shell" "${shell_flags[@]}" \
-      -c 'source "$@"; printf "%s\n" "$TMPDIR"' _ \
-      "$repo_dir/lmline/init.$shell" 2>/dev/null
+  workspace="$cfg_tmp/workspace-$shell"
+  mkdir -m 700 -p "$workspace/-tmp" "$workspace/nested/-tmp"
+  : >"$cfg_tmp/mktemp.log"
+  shell_state=$(
+    cd "$workspace" || exit 1
+    PATH="$fake_bin:$PATH" TMPDIR=-tmp LMLINE_BIND_KEYS=0 \
+      LMLINE_MKTEMP_LOG="$cfg_tmp/mktemp.log" \
+      LMLINE_REAL_MKTEMP="$real_mktemp" \
+      "$shell" "${shell_flags[@]}" -c '
+        source "$1" || exit 1
+        printf "TMPDIR=%s\n" "$TMPDIR"
+        cd nested || exit 1
+        "$2" "$3" || exit 1
+      ' _ "$repo_dir/lmline/init.$shell" "$cfg_tmp/probe_helper.sh" "$repo_dir/lmline" 2>/dev/null
   ) || fail "$shell integration failed with dash-leading TMPDIR"
-  [[ $shell_tmpdir == "$cfg_tmp/-tmp" ]] ||
-    fail "$shell integration did not normalize dash-leading TMPDIR"
-  ok "$shell integration normalizes a dash-leading relative TMPDIR"
+  [[ $shell_state == 'TMPDIR=-tmp' ]] ||
+    fail "$shell integration rewrote the caller's TMPDIR: $shell_state"
+  cut -f1 "$cfg_tmp/mktemp.log" | grep -q '^\./-tmp/lmline-probe' ||
+    fail "$shell temp path is not a safe mktemp operand after cd"
+  cut -f2 "$cfg_tmp/mktemp.log" | grep -q "^$workspace/nested/-tmp/lmline-probe" ||
+    fail "$shell temp file did not land under the workspace -tmp directory after cd"
+  ok "$shell integration keeps TMPDIR and lands temp files in the workspace dir"
 done
 
 ok "features (protocol, retry, cache, stream, crud, risk)"

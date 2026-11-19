@@ -8,6 +8,10 @@ __LMLINE_ACTIONS_DIR=${BASH_SOURCE[0]%/*}
 if [[ ${__LMLINE_DIR-} != "$__LMLINE_ACTIONS_DIR" ]]; then
   __LMLINE_ACTIONS_DIR=$(cd -- "$__LMLINE_ACTIONS_DIR" && pwd -P)
 fi
+if ! declare -F __lmline_tmp_root >/dev/null 2>&1; then
+  # shellcheck source=lmline/config.bash
+  source "$__LMLINE_ACTIONS_DIR/config.bash"
+fi
 if ! declare -F __lmline_engine_error_message >/dev/null 2>&1; then
   # shellcheck source=lmline/http.bash
   source "$__LMLINE_ACTIONS_DIR/http.bash"
@@ -267,7 +271,7 @@ EOF
 __lmline_print_clip() {
   local engine=$1 shell_name=$2 question=$3 prefix=$4
   local tmp clipboard clip_input engine_output engine_status error had_errexit=0 max_output output_bytes meta_status provider display_status
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-clip.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-clip.XXXXXX") || return 1
   __lmline_clipboard_read >"$tmp/clipboard" || {
     rm -rf "$tmp"
     return 1
@@ -336,7 +340,7 @@ __lmline_print_explanation() {
     printf '%sno command to explain\n' "$prefix"
     return 0
   }
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-expl.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-expl.XXXXXX") || return 1
   printf '%s' "$line" >"$tmp/line"
   __lmline_context_file "$tmp/context" "$line" explain || {
     rm -rf "$tmp"
@@ -417,7 +421,7 @@ __lmline_fix_run() {
     return 3
   fi
 
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-fix.XXXXXX") || return 1
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-fix.XXXXXX") || return 1
   if ! backend=$(__lmline_select_exec_backend); then
     rm -rf "$tmp"
     case "$backend" in

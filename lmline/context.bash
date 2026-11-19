@@ -25,7 +25,8 @@ __LMLINE_CONTEXT_DIR=${BASH_SOURCE[0]%/*}
 if [[ ${__LMLINE_DIR-} != "$__LMLINE_CONTEXT_DIR" ]]; then
   __LMLINE_CONTEXT_DIR=$(cd -- "$__LMLINE_CONTEXT_DIR" && pwd -P)
 fi
-if ! declare -F __lmline_resolve_data_file >/dev/null 2>&1; then
+if ! declare -F __lmline_resolve_data_file >/dev/null 2>&1 ||
+   ! declare -F __lmline_tmp_root >/dev/null 2>&1; then
   # shellcheck source=lmline/config.bash
   source "$__LMLINE_CONTEXT_DIR/config.bash"
 fi
@@ -510,7 +511,7 @@ __lmline_probe_command() {
   __lmline_validate_tool_info_timeout || return $?
   __lmline_validate_tool_info_limits || return $?
   local tmp status=0
-  tmp=$(mktemp "${TMPDIR:-/tmp}/lmline-probe.XXXXXX") || return 1
+  tmp=$(mktemp "$(__lmline_tmp_root)/lmline-probe.XXXXXX") || return 1
   __lmline_timeout_run "$timeout_s" "$cmd" "$flag" </dev/null >"$tmp" 2>&1 || status=$?
   if (( status == 124 || status == 143 || status == 137 )); then
     printf 'probe=%s timed_out_after=%ss\n' "$flag" "$timeout_s"
@@ -905,7 +906,7 @@ __lmline_tool_command_run() {
     printf 'reason=%s\n' "$rejection"
     return 0
   fi
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-command-run.XXXXXX") || {
+  tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-command-run.XXXXXX") || {
     printf 'allowed=0\nreason=tempdir_failed\n'
     return 0
   }

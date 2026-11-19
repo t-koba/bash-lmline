@@ -335,7 +335,7 @@ __lmline_microsandbox_setup() {
     created=1
   fi
 
-  manifest_file=$(mktemp "${TMPDIR:-/tmp}/lmline-sandbox-env.XXXXXX") || return 1
+  manifest_file=$(mktemp "$(__lmline_tmp_root)/lmline-sandbox-env.XXXXXX") || return 1
   if __lmline_env_manifest_for_sandbox "$root" "$name" >"$manifest_file"; then
     "$msb" --error copy "$manifest_file" "$manifest_target" >/dev/null || {
       status=$?
