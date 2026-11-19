@@ -116,7 +116,8 @@ check_concurrent_records() {
       actual = actual " (" length($0) " bytes; markers id=" n_id " ts=" n_ts " orig=" n_orig " cand=" n_cand ")"
     }
     BEGIN {
-      sep = (shell == "bash" ? "\\ " : " ")
+      # Both shells shell-quote the space in the padded field.
+      sep = "\\ "
       original = "original=original" sep
       candidate = "candidate=candidate" sep
       split("id= timestamp= cwd= mode=generate original= candidate=", fields)
@@ -174,6 +175,28 @@ for shell in bash zsh; do
   done
   ok "$shell suggestion history keeps concurrent records intact"
 done
+
+# Zsh must keep shell-quoted newlines and backslashes escaped in the record;
+# reinterpreting them would add a stray physical line to the history log.
+if command -v zsh >/dev/null; then
+  escapes_dir=$tmp/escapes-zsh
+  mkdir -m 700 "$escapes_dir"
+  original=$'line1\nline2\\tail'
+  escaped=$(zsh -f -c 'print -r -- ${(q)1}' _ "$original") ||
+    fail "zsh quoting helper failed"
+  LMLINE_CONFIG_DIR=$tmp/config-escapes-zsh LMLINE_HISTORY_DIR=$escapes_dir LMLINE_BIND_KEYS=0 \
+    zsh -f -e -i -c 'source "$1/lmline/init.zsh"; __lmline_zsh_record_suggestion generate "$2" "$3"' \
+    _ "$repo_dir" "$original" candidate-plain >"$tmp/escapes-zsh.out" 2>&1 ||
+    { cat "$tmp/escapes-zsh.out" >&2; fail "zsh escaped suggestion writer failed"; }
+  mapfile -t escaped_lines <"$escapes_dir/suggestions.log"
+  [[ ${#escaped_lines[@]} == 6 ]] ||
+    fail "zsh suggestion record has ${#escaped_lines[@]} lines, expected 6"
+  [[ ${escaped_lines[4]} == "original=$escaped" ]] ||
+    fail "zsh suggestion record lost its escaped newline or backslash"
+  [[ ${escaped_lines[5]} == candidate=candidate-plain ]] ||
+    fail "zsh suggestion record misplaced the candidate"
+  ok "zsh keeps escaped newlines and backslashes in one suggestion record"
+fi
 
 # Privacy helpers must establish the mode before the append. The fake dd
 # checks the log mode at append time, so a record can only appear if the

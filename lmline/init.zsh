@@ -1111,7 +1111,7 @@ __lmline_zsh_record_suggestion() {
   id=$(date -u +%Y%m%d%H%M%S 2>/dev/null || print '0')-$$
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || print 'unknown')
   __LMLINE_ZSH_LAST_SUGGESTION_ID=$id
-  print -v record "id=${(q)id}
+  print -r -v record "id=${(q)id}
 timestamp=${(q)timestamp}
 cwd=${(q)PWD}
 mode=${(q)mode}
