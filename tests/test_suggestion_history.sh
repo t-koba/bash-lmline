@@ -207,6 +207,19 @@ for shell in bash zsh; do
     fail "$shell left a dash-leading history directory non-private"
   ok "$shell records in a dash-leading relative history directory"
 
+  # A linked ancestor is allowed (macOS /tmp relies on this); only the final
+  # component must be a real private directory.
+  ancestor_real="$tmp/private-ancestor-$shell"
+  ancestor_link="$tmp/private-ancestor-link-$shell"
+  mkdir -m 700 "$ancestor_real"
+  ln -s "$ancestor_real" "$ancestor_link"
+  private_record "$shell" "$ancestor_link/history"
+  grep -q '^candidate=candidate-private$' "$ancestor_real/history/suggestions.log" ||
+    fail "$shell did not record through a linked ancestor"
+  [[ $(private_mode "$ancestor_real/history") == 700 ]] ||
+    fail "$shell left a directory under a linked ancestor non-private"
+  ok "$shell records through a linked ancestor with a private final directory"
+
   history_dir="$tmp/private-symlink-$shell"
   mkdir -m 700 "$history_dir"
   canary="$tmp/private-canary-$shell"
