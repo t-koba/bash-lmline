@@ -145,6 +145,10 @@ check_concurrent_records() {
       exit 1
     }
   ' "$history_dir/suggestions.log" 2>&1); then
+    local bytes newlines
+    bytes=$(wc -c <"$history_dir/suggestions.log")
+    newlines=$(wc -l <"$history_dir/suggestions.log")
+    diagnostic+=$'\n'"log bytes/newlines: $((bytes))/$((newlines))"
     concurrent_failure="$shell suggestion records interleaved or mismatched"
     concurrent_diagnostic=$diagnostic
     return 1
