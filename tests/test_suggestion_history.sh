@@ -48,14 +48,6 @@ if [[ $2 == bash ]]; then
   fi
   record_suggestion=__lmline_record_suggestion
 else
-  print() {
-    builtin print "$@" || return
-    # A split append must let writer 2 finish between writer 1's fields.
-    if [[ $writer == 1 && $# == 1 && $1 == id=* && $1 != *$'\n'* ]]; then
-      : >"$LMLINE_HISTORY_DIR/start-peers"
-      await done-2
-    fi
-  }
   record_suggestion=__lmline_zsh_record_suggestion
 fi
 if [[ $writer != 1 ]]; then
@@ -63,7 +55,7 @@ if [[ $writer != 1 ]]; then
 fi
 "$record_suggestion" generate "original $writer-$padding" "candidate $writer-$padding"
 : >"$LMLINE_HISTORY_DIR/done-$writer"
-# With a full-record zsh append, no standalone id print releases the peers.
+# A full-record zsh append has no per-field hook; release the peers here.
 if [[ $2 == zsh && $writer == 1 ]]; then
   : >"$LMLINE_HISTORY_DIR/start-peers"
 fi
