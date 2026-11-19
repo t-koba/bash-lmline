@@ -105,7 +105,15 @@ check_concurrent_records() {
       # Report only known field names and lengths, never values.
       actual = "(unrecognized field)"
       if (match($0, /^(id|timestamp|cwd|mode|original|candidate)=/)) actual = substr($0, 1, RLENGTH)
-      actual = actual " (" length($0) " bytes)"
+      copy = $0
+      n_id = gsub(/id=/, "", copy)
+      copy = $0
+      n_ts = gsub(/timestamp=/, "", copy)
+      copy = $0
+      n_orig = gsub(/original=/, "", copy)
+      copy = $0
+      n_cand = gsub(/candidate=/, "", copy)
+      actual = actual " (" length($0) " bytes; markers id=" n_id " ts=" n_ts " orig=" n_orig " cand=" n_cand ")"
     }
     BEGIN {
       sep = (shell == "bash" ? "\\ " : " ")
