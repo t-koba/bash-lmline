@@ -435,6 +435,9 @@ if ((provision_only)); then
 fi
 
 __lmline_shellcheck_monitor_self_test
+# The ratchet is independent of ShellCheck availability: check the repository
+# config before the skip path below can exit.
+__lmline_shellcheck_check_suppression_ratchet "$repo_dir/.shellcheckrc"
 
 # init.zsh is excluded: shellcheck does not support zsh; zsh -n covers it in
 # test_syntax.sh. LMLINE_REQUIRE_SHELLCHECK=1 (set in CI)
@@ -524,5 +527,4 @@ else
     shellcheck -s bash "${shellcheck_inputs[@]}" \
     || fail "shellcheck findings"
 fi
-__lmline_shellcheck_check_suppression_ratchet "$repo_dir/.shellcheckrc"
 ok "shellcheck"
