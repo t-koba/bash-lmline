@@ -13,6 +13,17 @@ tendencies=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$tmp/tendencies
 [[ $tendencies == $'fix=1\ngenerate=1\ntotal=2' ]] || fail "unexpected history tendencies: $tendencies"
 ok "history tendencies count only nonempty modes"
 
+mkdir "$tmp/history=sample"
+printf '%s\n' 'mode=generate' 'mode=fix' 'mode=generate' >"$tmp/history=sample/suggestions.log"
+equals_tendencies=$(
+  cd -- "$tmp" &&
+    LMLINE_CONFIG_DIR="$tmp/config-equals" LMLINE_HISTORY_DIR='history=sample' \
+      "$repo_dir/lmline/lmline" history tendencies </dev/null | sort
+) || fail "history tendencies failed for an equals-bearing relative path"
+[[ $equals_tendencies == $'fix=1\ngenerate=2\ntotal=3' ]] ||
+  fail "unexpected history tendencies for equals-bearing relative path: $equals_tendencies"
+ok "history tendencies reads equals-bearing relative paths with closed stdin"
+
 # Exceed common shell stdio buffer sizes; one print call need not be one write.
 printf -v padding '%8192s' ''
 padding=${padding// /x}

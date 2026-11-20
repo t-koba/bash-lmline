@@ -1770,7 +1770,7 @@ case "$cmd" in
               printf "total=%d\n", total
               for (mode in counts) printf "%s=%d\n", mode, counts[mode]
             }
-          ' "$suggestions"
+          ' <"$suggestions"
         fi
         ;;
       *) usage; exit 2 ;;
