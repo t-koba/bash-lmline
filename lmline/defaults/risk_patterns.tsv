@@ -16,15 +16,16 @@ high	*find *-exec*rm*	find exec remove action
 high	*find *-exec*unlink*	find exec unlink action
 high	*git *clean -*f*	force git clean deletes untracked files
 high	*git rm -r*	recursive git remove of tracked files
+high	*git rm *--recursive*	recursive git remove of tracked files
 high	*xargs *rm*	bulk remove through xargs
 high	* dd *	raw disk/file overwrite command
 high	* mkfs*	filesystem formatting command
 high	* shutdown*	system power operation
 high	* reboot*	system power operation
-high	* chmod -R*	recursive permission or ownership change
-high	*chmod --recursive*	recursive permission or ownership change
-high	* chown -R*	recursive permission or ownership change
-high	*chown --recursive*	recursive permission or ownership change
+high	* chmod *-R*	recursive permission or ownership change
+high	* chmod *--recursive*	recursive permission or ownership change
+high	* chown *-R*	recursive permission or ownership change
+high	* chown *--recursive*	recursive permission or ownership change
 high	* sudo *	privileged execution
 high	*curl *| eval*	downloaded code execution
 high	*< curl *http*	downloaded code execution

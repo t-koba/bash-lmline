@@ -20,6 +20,16 @@ bash -c '
   [[ $(__lmline_risk_level "rm -r -f build") == high ]]
   [[ $(__lmline_risk_level "rm --force --recursive build") == high ]]
   [[ $(__lmline_risk_reason "rm -fr build") == "recursive remove" ]]
+  # A recursive flag keeps its meaning wherever it appears among the options.
+  [[ $(__lmline_risk_level "chmod 777 -R /tmp/x") == high ]]
+  [[ $(__lmline_risk_level "chmod 0777 --recursive /tmp/x") == high ]]
+  [[ $(__lmline_risk_level "chown user:user -R /tmp/x") == high ]]
+  [[ $(__lmline_risk_level "chown user:user --recursive /tmp/x") == high ]]
+  [[ $(__lmline_risk_level "git rm --force --recursive file") == high ]]
+  [[ $(__lmline_risk_reason "chmod 777 -R /tmp/x") == "recursive permission or ownership change" ]]
+  [[ $(__lmline_risk_level "chmod 777 /tmp/x") == low ]]
+  [[ $(__lmline_risk_level "chown user:user /tmp/x") == low ]]
+  [[ $(__lmline_risk_level "git rm --dry-run file") == low ]]
   # A short-flag cluster rm owns counts whatever letters it carries.
   [[ $(__lmline_risk_level "rm -ir build") == high ]]
   [[ $(__lmline_risk_level "rm -nr build") == high ]]
