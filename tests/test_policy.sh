@@ -730,6 +730,15 @@ bash -c '
   [[ -z $lone_bt_stderr ]]
   [[ $(__lmline_risk_basename_command_words "$lone_bt") == "$lone_bt" ]]
   [[ $(__lmline_risk_level "$lone_bt") == low ]]
+  # Quoting or escaping a runner does not change its option semantics.
+  quoted_env=$(printf "\047env\047")
+  double_quoted_env=$(printf '\"env\"')
+  escaped_env=$(printf "\134env")
+  [[ $(__lmline_risk_level "$quoted_env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
+  [[ $(__lmline_risk_level "$double_quoted_env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
+  [[ $(__lmline_risk_level "$escaped_env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
+  [[ $(__lmline_risk_level "$quoted_env --chdir /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
+  [[ $(__lmline_risk_basename_command_words "$quoted_env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == "$quoted_env -C /tmp dd if=/dev/zero of=/dev/sda" ]]
   # Option meaning belongs to the runner: -f is boolean for these runners.
   [[ $(__lmline_risk_level "setsid -f /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "unshare -f /usr/bin/shutdown -h now") == high ]]

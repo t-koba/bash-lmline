@@ -62,7 +62,10 @@ __lmline_word_is_shell() {
 # family and the pipe-to-shell gate both ask it. The sh family runs a command
 # string and is named in shell_words.txt.
 __lmline_risk_runner_operands() {
-  case "${1##*/}" in
+  local -a decoded=()
+  mapfile -t decoded < <(__lmline_risk_split_words "$1")
+  local runner=${decoded[0]:-$1}
+  case "${runner##*/}" in
     chroot|flock|su) printf '1\n' ;;
     '!'|busybox|builtin|command|doas|env|exec|ionice|nice|nohup|screen|script|setsid|stdbuf|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) printf '0\n' ;;
   esac
@@ -953,8 +956,11 @@ __lmline_risk_word_is_remove_command() {
 # boolean. A path-like word after any other option is the command the runner
 # runs, not that option's value.
 __lmline_risk_option_takes_path_value() {
-  local runner=${1##*/} option=${2##*/}
-  case $runner in
+  local -a decoded=()
+  mapfile -t decoded < <(__lmline_risk_split_words "$1")
+  local runner=${decoded[0]:-$1}
+  local option=${2##*/}
+  case ${runner##*/} in
     env)
       case $option in
         -C|--chdir) return 0 ;;
