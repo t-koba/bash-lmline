@@ -194,6 +194,64 @@ __lmline_shellcheck_run_monitored() {
   return "$status"
 }
 
+# Global suppressions are a ratchet: new findings belong at their site, not
+# here. Parse the config strictly: one well-formed disable code at most, no
+# enable directives, and fail closed on malformed or unreadable input.
+__lmline_shellcheck_check_suppression_ratchet() {
+  local rc_file=$1 line value count=0
+  [[ -r "$rc_file" ]] || fail "ShellCheck configuration is unreadable: $rc_file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    case "$line" in
+      enable*)
+        fail "global ShellCheck suppressions enabled: $line"
+        ;;
+      disable*)
+        count=$((count + 1))
+        ((count == 1)) || fail "global ShellCheck suppressions grew: $count disable directives"
+        value=${line#disable}
+        value=${value#"${value%%[![:space:]]*}"}
+        [[ "$value" == =* ]] || fail "global ShellCheck suppression is malformed: $line"
+        value=${value#=}
+        value=${value#"${value%%[![:space:]]*}"}
+        value=${value%"${value##*[![:space:]]}"}
+        [[ "$value" != *,* ]] || fail "global ShellCheck suppressions grew: $value"
+        [[ "$value" =~ ^SC[0-9]+$ ]] || fail "global ShellCheck suppression is malformed: $value"
+        ;;
+    esac
+  done < "$rc_file"
+}
+
+__lmline_shellcheck_suppression_self_test() {
+  local fixture_dir rc_file case_name expected actual output
+  fixture_dir=$(mktemp -d) || fail "could not create ShellCheck suppression test directory"
+  rc_file="$fixture_dir/.shellcheckrc"
+  for case_name in one zero two comma enable empty malformed; do
+    case "$case_name" in
+      one) printf 'disable=SC2016\n' > "$rc_file"; expected=0 ;;
+      zero) printf '# no global suppressions\n' > "$rc_file"; expected=0 ;;
+      two) printf 'disable=SC2016\ndisable=SC2086\n' > "$rc_file"; expected=1 ;;
+      comma) printf 'disable=SC2016,SC2086\n' > "$rc_file"; expected=1 ;;
+      enable) printf 'disable=SC2016\nenable=SC2086\n' > "$rc_file"; expected=1 ;;
+      empty) printf 'disable=\n' > "$rc_file"; expected=1 ;;
+      malformed) printf 'disable=not-a-code\n' > "$rc_file"; expected=1 ;;
+    esac
+    if output=$(__lmline_shellcheck_check_suppression_ratchet "$rc_file" 2>&1); then
+      actual=0
+    else
+      actual=1
+    fi
+    if [[ "$actual" != "$expected" || ( "$expected" == 0 && -n "$output" ) ]]; then
+      rm -rf "$fixture_dir"
+      fail "ShellCheck suppression ratchet self-test failed: $case_name"
+    fi
+  done
+  rm -rf "$fixture_dir"
+  ok "shellcheck suppression ratchet"
+}
+
 __lmline_shellcheck_monitor_self_test() {
   local test_dir output_file diagnostics_file pid_file fake_shellcheck status progress_count attempt monitor_pid monitored_pid saw_cap=0 procfs_available=0
   test_dir=$(mktemp -d) || fail "could not create ShellCheck monitor test directory"
@@ -279,6 +337,7 @@ __lmline_shellcheck_monitor_self_test() {
     fail "ShellCheck monitor did not record manifest input count"
   fi
   rm -rf "$test_dir"
+  __lmline_shellcheck_suppression_self_test
   ok "shellcheck resource monitor"
 }
 
@@ -465,8 +524,5 @@ else
     shellcheck -s bash "${shellcheck_inputs[@]}" \
     || fail "shellcheck findings"
 fi
-# Global suppressions are a ratchet: new findings belong at their site, not
-# here. Allow the list to shrink to zero but never to grow again.
-global_disable=$(sed -n 's/^disable=//p' "$repo_dir/.shellcheckrc")
-[[ "$global_disable" != *,* ]] || fail "global ShellCheck suppressions grew: $global_disable"
+__lmline_shellcheck_check_suppression_ratchet "$repo_dir/.shellcheckrc"
 ok "shellcheck"
