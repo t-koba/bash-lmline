@@ -857,7 +857,7 @@ __lmline_risk_split_words() {
   for ((i = 0; i < n; i++)); do
     ch=${str:i:1}
     if [[ -n "$quote" ]]; then
-      if [[ "$quote" == '"' && "$ch" == "\\\\" ]]; then
+      if [[ "$quote" == '"' && "$ch" == "\\" ]]; then
         i=$((i + 1))
         word+=${str:i:1}
         continue
@@ -873,7 +873,7 @@ __lmline_risk_split_words() {
       "'"|'"'|'`')
         quote=$ch
         ;;
-      "\\\\")
+      "\\")
         i=$((i + 1))
         word+=${str:i:1}
         ;;
