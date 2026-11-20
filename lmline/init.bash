@@ -2,10 +2,14 @@
 
 if [[ -z "${BASH_VERSION-}" ]]; then
   printf 'lmline: init.bash requires interactive bash/readline; start bash before sourcing it.\n' >&2
+  # SC2317: return ends a sourced file; exit is the executed-script path.
+  # shellcheck disable=SC2317
   return 0 2>/dev/null || exit 0
 fi
 if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 2) )); then
   printf 'lmline: init.bash requires bash 4.2 or newer; current version is %s.\n' "$BASH_VERSION" >&2
+  # SC2317: return ends a sourced file; exit is the executed-script path.
+  # shellcheck disable=SC2317
   return 0 2>/dev/null || exit 0
 fi
 

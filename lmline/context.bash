@@ -143,6 +143,8 @@ __lmline_suggested_commands_key() (
   [[ -f "$file" && -r "$file" ]] || return 1
   for name in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_SUGGESTED_COMMANDS_FILE LMLINE_INCLUDE_SUGGESTED_COMMANDS; do
     if [[ -v $name ]]; then
+      # SC2163: export -n clears the attribute of a dynamic name.
+      # shellcheck disable=SC2163
       export -n -- "$name" 2>/dev/null || return 1
     fi
   done
@@ -978,6 +980,8 @@ __lmline_project_markers_key() (
   [[ -f "$file" && -r "$file" ]] || return 1
   for name in LMLINE_CONFIG_DIR LMLINE_USER_RULES_DIR LMLINE_DEFAULTS_DIR LMLINE_PROJECT_MARKERS_FILE LMLINE_INCLUDE_PROJECT_CONTEXT; do
     if [[ -v $name ]]; then
+      # SC2163: export -n clears the attribute of a dynamic name.
+      # shellcheck disable=SC2163
       export -n -- "$name" 2>/dev/null || return 1
     fi
   done

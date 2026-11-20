@@ -179,6 +179,8 @@ __lmline_load_export_file() {
     [[ "$key" =~ ^LMLINE_[A-Z0-9_]+$ && "$line" == *=* ]] || continue
     __lmline_parse_export_value "$raw" value || continue
     printf -v "$key" '%s' "$value"
+    # SC2163: the name is set dynamically by printf -v above.
+    # shellcheck disable=SC2163
     export "$key"
     __LMLINE_LOAD_KEYS+="$key"$'\n'
   done <"$file"
@@ -270,6 +272,8 @@ __lmline_reconcile_config_load() {
       if __lmline_key_in_list "$__LMLINE_ENV_BASELINE_KEYS" "$k"; then
         base=__LMLINE_ENV_BASELINE_$k
         printf -v "$k" '%s' "${!base}"
+        # SC2163: the name comes from the reload loop.
+        # shellcheck disable=SC2163
         export "$k"
       else
         unset "$k"
