@@ -20,15 +20,24 @@ bash -c '
   [[ $(__lmline_risk_level "rm -r -f build") == high ]]
   [[ $(__lmline_risk_level "rm --force --recursive build") == high ]]
   [[ $(__lmline_risk_reason "rm -fr build") == "recursive remove" ]]
-  # A recursive flag keeps its meaning wherever it appears among the options.
+  # A recursive flag keeps its meaning as a separate option in any position.
+  [[ $(__lmline_risk_level "chmod -R 777 /tmp/x") == high ]]
   [[ $(__lmline_risk_level "chmod 777 -R /tmp/x") == high ]]
   [[ $(__lmline_risk_level "chmod 0777 --recursive /tmp/x") == high ]]
+  [[ $(__lmline_risk_level "chown -R user:user /tmp/x") == high ]]
   [[ $(__lmline_risk_level "chown user:user -R /tmp/x") == high ]]
   [[ $(__lmline_risk_level "chown user:user --recursive /tmp/x") == high ]]
-  [[ $(__lmline_risk_level "git rm --force --recursive file") == high ]]
+  [[ $(__lmline_risk_level "git rm -r file") == high ]]
+  [[ $(__lmline_risk_level "git rm --force -r file") == high ]]
+  [[ $(__lmline_risk_level "git rm --cached -r file") == high ]]
   [[ $(__lmline_risk_reason "chmod 777 -R /tmp/x") == "recursive permission or ownership change" ]]
+  # Text inside a pathname is not a flag.
+  [[ $(__lmline_risk_level "chmod 755 /tmp/-Rfoo") == low ]]
+  [[ $(__lmline_risk_level "chown user /tmp/--recursive-dir") == low ]]
   [[ $(__lmline_risk_level "chmod 777 /tmp/x") == low ]]
   [[ $(__lmline_risk_level "chown user:user /tmp/x") == low ]]
+  # git rm has no long recursive option, and a dry run does not delete.
+  [[ $(__lmline_risk_level "git rm --recursive file") == low ]]
   [[ $(__lmline_risk_level "git rm --dry-run file") == low ]]
   # A short-flag cluster rm owns counts whatever letters it carries.
   [[ $(__lmline_risk_level "rm -ir build") == high ]]

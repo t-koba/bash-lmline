@@ -775,9 +775,9 @@ command. A word that merely carries the name of a remove is not the family:
 by a subcommand of its own is that program, so `git rm -r dir` is named by the
 pattern file. Only the remove family is read this way, so an ordinary recursive
 copy or search stays as the pattern file states it. Pattern-file rules also
-recognize a recursive flag wherever it appears among the options, so
-`chmod 777 -R dir` and `git rm --force --recursive dir` read like their
-leading-flag forms.
+recognize a recursive flag written as a separate option, so
+`chmod 777 -R dir` and `git rm --force -r dir` read like their leading-flag
+forms.
 
 The same rule decides whether a pipeline reaches a shell: the shell the piped
 input reaches is the command the segment runs, so `find . | xargs sh` is a piped
