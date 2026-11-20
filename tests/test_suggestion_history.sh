@@ -396,13 +396,13 @@ for shell in bash zsh; do
   ok "$shell keeps recording unless the opt-out is exactly 0"
 done
 
-# history show must not follow a symlinked log: the writer refuses to create
+# No history reader may follow a symlinked log: the writer refuses to create
 # one, so its target can only be an unrelated file.
 symlink_dir="$tmp/history-show-symlink"
 mkdir -m 700 "$symlink_dir"
 symlink_target="$tmp/history-show-symlink-target"
 symlink_marker="unrelated-symlink-target"
-printf '%s\n' "$symlink_marker" >"$symlink_target"
+printf '%s\n' "$symlink_marker" 'mode=generate' >"$symlink_target"
 ln -s "$symlink_target" "$symlink_dir/suggestions.log"
 show_out=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$symlink_dir" \
   "$repo_dir/lmline/lmline" history show 2>"$tmp/show-symlink.err") ||
@@ -413,3 +413,12 @@ show_out=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$symlink_dir" \
   fail "history show wrote to stderr with a symlinked log"
 }
 ok "history show ignores a symlinked suggestion log"
+tendencies_out=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$symlink_dir" \
+  "$repo_dir/lmline/lmline" history tendencies 2>"$tmp/tendencies-symlink.err") ||
+  fail "history tendencies failed with a symlinked suggestion log"
+[[ -z "$tendencies_out" ]] || fail "history tendencies followed a symlinked suggestion log"
+[[ ! -s "$tmp/tendencies-symlink.err" ]] || {
+  cat "$tmp/tendencies-symlink.err" >&2
+  fail "history tendencies wrote to stderr with a symlinked log"
+}
+ok "history tendencies ignores a symlinked suggestion log"
