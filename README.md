@@ -798,6 +798,8 @@ closing double quote, are not event references. All structural settings accept
 
 This is a lexical risk check, not a shell/history parser: other unescaped
 `!` prefixes are conservatively flagged, even if the event does not exist.
+Pattern matching is lexical too, so a dangerous spelling in quoted search text
+such as `grep -R 'kill -9' docs/` is flagged like the command itself.
 It assumes conventional default history characters and interactive Bash/zsh
 options. Custom `histchars`, disabled history expansion, Bash POSIX mode,
 quick `^old^new^` substitution, and full parsing of nested shell constructs
