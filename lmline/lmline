@@ -1751,7 +1751,9 @@ case "$cmd" in
       log_dir=${log_dir%/}
     done
     suggestions=$log_dir/suggestions.log
-    [[ ! -L "$log_dir" ]] || suggestions=
+    if __lmline_path_has_traversal_after_component "$log_dir" || [[ -L "$log_dir" ]]; then
+      suggestions=
+    fi
     case "${2-}" in
       show)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help history show; exit 0; }

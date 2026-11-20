@@ -430,7 +430,7 @@ reader_link="$tmp/history-reader-link"
 mkdir -m 700 "$reader_real"
 printf '%s\n' 'final-dir-marker' >"$reader_real/suggestions.log"
 ln -s "$reader_real" "$reader_link"
-for dir in "$reader_link" "$reader_link/"; do
+for dir in "$reader_link" "$reader_link/" "$reader_link/." "$reader_link/./" "$reader_link/../history-reader-real"; do
   for command in show tendencies; do
     reader_out=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$dir" \
       "$repo_dir/lmline/lmline" history "$command" 2>"$tmp/reader-link.err") ||
