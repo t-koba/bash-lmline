@@ -1206,8 +1206,9 @@ __lmline_risk_basename_word() {
 # segment loses its directory prefix; path operands keep their text, so a
 # harmless path containing a dangerous name is not turned into that command.
 __lmline_risk_basename_command_words() {
-  local cmd=$1 segment word out=$1 index prefix_base cmd_index replacement j inner target
-  local -a words sub_words
+  local cmd=$1 segment word out=$1 index prefix_base cmd_index replacement j k start close_index target
+  local inner base scan closer
+  local -a words sub_words clean_parts
   [[ $cmd == */* ]] || { printf '%s' "$out"; return 0; }
   while IFS= read -r segment || [[ -n $segment ]]; do
     words=()
@@ -1222,46 +1223,94 @@ __lmline_risk_basename_command_words() {
     ((index < ${#words[@]})) || continue
     # A runner hands its command word to the program it runs; a shell syntax
     # prefix also stands before that command. The shared carried-command
-    # parser knows both from one vocabulary.
-    mapfile -t clean_parts < <(__lmline_risk_split_words "${words[index]}")
-    ((${#clean_parts[@]})) || continue
-    prefix_base=${clean_parts[0]##*/}
-    if __lmline_risk_is_runner "$prefix_base" ||
-      __lmline_word_is_command_prefix "$prefix_base"; then
-      cmd_index=$(__lmline_risk_carried_command_index "${words[@]:index}") || continue
-      index=$((index + cmd_index))
-    fi
+    # parser knows both from one vocabulary. A substitution is read below:
+    # its runner stops at the closing delimiter, not at the end of the line.
+    case ${words[index]} in
+      '$('*|'<('*|'`'*) ;;
+      *)
+        mapfile -t clean_parts < <(__lmline_risk_split_words "${words[index]}")
+        ((${#clean_parts[@]})) || continue
+        prefix_base=${clean_parts[0]##*/}
+        if __lmline_risk_is_runner "$prefix_base" ||
+          __lmline_word_is_command_prefix "$prefix_base"; then
+          cmd_index=$(__lmline_risk_carried_command_index "${words[@]:index}") || continue
+          index=$((index + cmd_index))
+        fi
+        ;;
+    esac
     word=${words[index]}
     replacement=$(__lmline_risk_basename_word "$word")
     [[ $replacement == "$word" ]] || out=${out//"$word"/"$replacement"}
     # A command substitution opens its own command position wherever it
-    # appears in the segment, not only at the start of a pipeline segment.
+    # appears in the segment, including as the command word of the segment.
+    # Its words are read as data, so quoting around a runner does not hide it.
     for ((j = 0; j < ${#words[@]}; j++)); do
-      (( j == index )) && continue
       word=${words[j]}
       case $word in
-        '$('*|'<('*|'`'*)
-          replacement=$(__lmline_risk_basename_word "$word")
-          if [[ $replacement != "$word" ]]; then
-            out=${out//"$word"/"$replacement"}
-            continue
-          fi
-          inner=${word#\$'('}
-          inner=${inner#'<('}
-          inner=${inner#\`}
-          inner=${inner%%')'*}
-          if __lmline_risk_is_runner "${inner##*/}" ||
-            __lmline_word_is_command_prefix "${inner##*/}"; then
-            sub_words=("$inner" "${words[@]:j+1}")
-            cmd_index=$(__lmline_risk_carried_command_index "${sub_words[@]}") || continue
-            target=$((j + cmd_index))
-            ((target < ${#words[@]})) || continue
-            word=${words[target]}
-            replacement=$(__lmline_risk_basename_word "$word")
-            [[ $replacement == "$word" ]] || out=${out//"$word"/"$replacement"}
-          fi
-          ;;
+        '$('*|'<('*|'`'*) ;;
+        *) continue ;;
       esac
+      mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
+      inner=${clean_parts[0]:-}
+      case $inner in
+        '$('*) inner=${inner#\$'('} ;;
+        '<('*) inner=${inner#'<('} ;;
+      esac
+      closer=')'
+      [[ $word == '`'* ]] && closer='`'
+      # A path after the closing delimiter is an operand of the outer
+      # command. An opener without a delimiter runs no command at all.
+      close_index=-1
+      for ((k = j; k < ${#words[@]}; k++)); do
+        scan=${words[k]}
+        if (( k == j )); then
+          scan=${scan#\$'('}
+          scan=${scan#'<('}
+          scan=${scan#'`'}
+        fi
+        if [[ $scan == *"$closer"* ]]; then
+          close_index=$k
+          break
+        fi
+      done
+      (( close_index >= 0 )) || continue
+      # A path glued to the opener is the command the substitution runs,
+      # even when the delimiter is written in the same word.
+      replacement=$(__lmline_risk_basename_word "$word")
+      if [[ $replacement != "$word" ]]; then
+        out=${out//"$word"/"$replacement"}
+        continue
+      fi
+      (( close_index > j )) || continue
+      start=$j
+      if [[ -z $inner ]]; then
+        # The opener stands alone, so the command is the next word.
+        start=$((j + 1))
+        (( start <= close_index )) || continue
+        word=${words[start]}
+        replacement=$(__lmline_risk_basename_word "$word")
+        if [[ $replacement != "$word" ]]; then
+          out=${out//"$word"/"$replacement"}
+          continue
+        fi
+        mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
+        ((${#clean_parts[@]})) || continue
+        inner=${clean_parts[0]}
+      fi
+      inner=${inner%)}
+      inner=${inner#'`'}
+      base=${inner##*/}
+      if __lmline_risk_is_runner "$base" ||
+        __lmline_word_is_command_prefix "$base"; then
+        (( close_index > start )) || continue
+        sub_words=("$base" "${words[@]:start+1:close_index-start}")
+        cmd_index=$(__lmline_risk_carried_command_index "${sub_words[@]}") || continue
+        target=$((start + cmd_index))
+        (( target <= close_index )) || continue
+        word=${words[target]}
+        replacement=$(__lmline_risk_basename_word "$word")
+        [[ $replacement == "$word" ]] || out=${out//"$word"/"$replacement"}
+      fi
     done
   done < <(__lmline_split_pipeline "$cmd" 1)
   printf '%s' "$out"

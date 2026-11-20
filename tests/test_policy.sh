@@ -707,6 +707,29 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "diff <(/usr/bin/dd if=/dev/zero) f") == high ]]
   [[ $(__lmline_risk_level "echo \$(ls -l /usr/bin/dd)") == low ]]
+  # An opener separated from its command still opens a command position, in
+  # an argument or as the command word of a pipeline segment.
+  [[ $(__lmline_risk_level "echo \$( /usr/bin/dd if=/dev/zero of=/dev/sda )") == high ]]
+  [[ $(__lmline_risk_basename_command_words "echo \$( /usr/bin/dd if=/dev/zero of=/dev/sda )") == "echo \$( dd if=/dev/zero of=/dev/sda )" ]]
+  [[ $(__lmline_risk_level "diff <( /usr/bin/dd if=/dev/zero ) f") == high ]]
+  [[ $(__lmline_risk_level "\$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  [[ $(__lmline_risk_level "echo hi | \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  # A quoted runner inside the substitution is still the runner.
+  quoted_env=$(printf "\047env\047")
+  [[ $(__lmline_risk_level "echo \$($quoted_env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  # The runner stops at the closing delimiter; a path after it is an operand.
+  [[ $(__lmline_risk_level "echo \$(env) /usr/bin/dd") == low ]]
+  [[ $(__lmline_risk_basename_command_words "echo \$(env) /usr/bin/dd") == "echo \$(env) /usr/bin/dd" ]]
+  [[ $(__lmline_risk_level "echo \$(ls -l /usr/bin/dd)") == low ]]
+  bt=$(printf "\140")
+  [[ $(__lmline_risk_level "echo ${bt} /usr/bin/dd if=/dev/zero of=/dev/sda ${bt}") == high ]]
+  [[ $(__lmline_risk_level "echo ${bt}env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda${bt}") == high ]]
+  # A lone backtick is not a complete substitution: it runs no command.
+  lone_bt="echo ${bt} /usr/bin/dd if=/dev/zero of=/dev/sda"
+  lone_bt_stderr=$(__lmline_risk_basename_command_words "$lone_bt" 2>&1 >/dev/null)
+  [[ -z $lone_bt_stderr ]]
+  [[ $(__lmline_risk_basename_command_words "$lone_bt") == "$lone_bt" ]]
+  [[ $(__lmline_risk_level "$lone_bt") == low ]]
   # Option meaning belongs to the runner: -f is boolean for these runners.
   [[ $(__lmline_risk_level "setsid -f /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "unshare -f /usr/bin/shutdown -h now") == high ]]
