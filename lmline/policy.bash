@@ -948,12 +948,18 @@ __lmline_risk_word_is_remove_command() {
   return 1
 }
 
-# Options whose value is a path. A path-like word after any other option is
-# the command a runner runs, not that option's value; a boolean option such
-# as env -i has no value at all.
+# An option whose value is a path, named by the runner that owns it. Option
+# meaning is runner-specific: env -C takes a directory while setsid -f is a
+# boolean. A path-like word after any other option is the command the runner
+# runs, not that option's value.
 __lmline_risk_option_takes_path_value() {
-  case ${1##*/} in
-    -C|--chdir|-f|--file|-F) return 0 ;;
+  local runner=${1##*/} option=${2##*/}
+  case $runner in
+    env)
+      case $option in
+        -C|--chdir) return 0 ;;
+      esac
+      ;;
   esac
   return 1
 }
@@ -983,7 +989,8 @@ __lmline_risk_carried_command_index() {
     fi
     if (( expect_value )); then
       expect_value=0
-      if [[ "$word" != */* ]] || __lmline_risk_option_takes_path_value "$last_option"; then
+      if [[ "$word" != */* ]] ||
+        __lmline_risk_option_takes_path_value "${words[0]}" "$last_option"; then
         continue
       fi
     fi
@@ -1243,7 +1250,7 @@ __lmline_risk_basename_command_words() {
           inner=${inner%%')'*}
           if __lmline_risk_is_runner "${inner##*/}" ||
             __lmline_word_is_command_prefix "${inner##*/}"; then
-            sub_words=("${words[@]:j}")
+            sub_words=("$inner" "${words[@]:j+1}")
             cmd_index=$(__lmline_risk_carried_command_index "${sub_words[@]}") || continue
             target=$((j + cmd_index))
             ((target < ${#words[@]})) || continue
