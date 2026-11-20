@@ -465,4 +465,8 @@ else
     shellcheck -s bash "${shellcheck_inputs[@]}" \
     || fail "shellcheck findings"
 fi
+# Global suppressions are a ratchet: new findings belong at their site, not
+# here. Allow the list to shrink to zero but never to grow again.
+global_disable=$(sed -n 's/^disable=//p' "$repo_dir/.shellcheckrc")
+[[ "$global_disable" != *,* ]] || fail "global ShellCheck suppressions grew: $global_disable"
 ok "shellcheck"

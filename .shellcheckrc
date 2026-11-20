@@ -1,6 +1,6 @@
-# Pinned baseline for the existing codebase: single quotes around awk/jq
-# programs are intentional and keep provider data literal. The policy-rule glob
-# match, dynamic exports, sourced/executed guards, compgen word splitting and
-# caller-provided globals are suppressed at their sites. Ratchet this list down
-# over time instead of growing it.
+# The one remaining global suppression: single-quoted awk/jq programs and test
+# fixtures deliberately pass `$` to a child interpreter as literal data, so
+# ShellCheck's missed-expansion warning is always a false positive here. Every
+# other code was narrowed to its site or fixed structurally. A test keeps this
+# list from growing; add a site directive instead of a code.
 disable=SC2016
