@@ -48,7 +48,7 @@ __lmline_http_get() {
 __lmline_engine_error_message() {
   local prefix=$1 error=$2 display_error
   case "$error" in
-    *timed\ out*|*timeout*|*Operation\ timed\ out*|*"status 124"*)
+    *timed\ out*|*timeout*|*"status 124"*)
       printf '%srequest timed out (%ss; set LMLINE_ENGINE_TIMEOUT to increase)\n' "$prefix" "${LMLINE_ENGINE_TIMEOUT:-60}"
       ;;
     lmline-engine:\ no\ valid\ candidate:*)

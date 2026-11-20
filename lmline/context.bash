@@ -739,9 +739,9 @@ __lmline_local_literal_rejection_reason() {
       if [[ "$ch" == "'" ]]; then quote=""; else word+=$ch; fi
       continue
     fi
-    if [[ "$ch" == '\' ]]; then
+    if [[ "$ch" == "\\" ]]; then
       next=${line:i+1:1}
-      if [[ "$quote" != '"' || "$next" == '\' || "$next" == '"' || "$next" == '$' || "$next" == '`' ]]; then
+      if [[ "$quote" != '"' || "$next" == "\\" || "$next" == '"' || "$next" == '$' || "$next" == '`' ]]; then
         word+=$next
         i=$((i + 1))
       else
@@ -806,11 +806,7 @@ __lmline_command_run_local_rejection_reason() {
   [[ "$common" == ok ]] || { printf '%s\n' "$common"; return 0; }
   __lmline_require_policy_support || { printf 'policy_unavailable\n'; return 0; }
   case "$command_line" in
-    *'`'*|*'$('*|*'${'*|*'<('*|*'>('*|*'<'*|*'>'*|*';'*|*'&'*|*'('*|*')'*|*'{'*|*'}'*)
-      printf 'unsupported_shell_syntax\n'
-      return 0
-      ;;
-    *'||'*|*'|&'*)
+    *'`'*|*'$('*|*'${'*|*'<('*|*'>('*|*'<'*|*'>'*|*';'*|*'&'*|*'||'*|*'('*|*')'*|*'{'*|*'}'*)
       printf 'unsupported_shell_syntax\n'
       return 0
       ;;
@@ -1437,11 +1433,11 @@ __lmline_split_inline_comment() {
     ch=${line:i:1}
     if [[ -n "$quote" ]]; then
       before+=$ch
-      if [[ "$quote" == '"' && "$ch" == '\' && "$prev" != '\' ]]; then
+      if [[ "$quote" == '"' && "$ch" == "\\" && "$prev" != "\\" ]]; then
         prev=$ch
         continue
       fi
-      if [[ "$ch" == "$quote" && "$prev" != '\' ]]; then
+      if [[ "$ch" == "$quote" && "$prev" != "\\" ]]; then
         quote=
       fi
       prev=$ch

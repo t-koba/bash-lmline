@@ -309,12 +309,12 @@ __lmline_split_pipeline() {
     prior_zsh_qualifier_close=$zsh_qualifier_just_closed
     zsh_qualifier_just_closed=0
     if [[ -n "$quote" ]]; then
-      if [[ "$quote" == '"' && "$ch" == '\' && "$prev" != '\' ]]; then
+      if [[ "$quote" == '"' && "$ch" == "\\" && "$prev" != "\\" ]]; then
         prev=$ch
         (( keep_quoted )) && stripped+=$ch
         continue
       fi
-      if [[ "$ch" == "$quote" && "$prev" != '\' ]]; then
+      if [[ "$ch" == "$quote" && "$prev" != "\\" ]]; then
         quote=
       fi
       # Availability's opt-in view keeps a quoted word in one whitespace
@@ -339,7 +339,7 @@ __lmline_split_pipeline() {
         prev=$'\n'
         continue
       fi
-      if [[ "$ch" == '\' ]]; then
+      if [[ "$ch" == "\\" ]]; then
         stripped+=$'\001'
         i=$((i + 1))
         prev=$'\001'
@@ -592,7 +592,7 @@ __lmline_decode_ansi_c_for_risk() {
         esc=0
         continue
       fi
-      if [[ $ch == '\\' ]]; then
+      if [[ $ch == "\\\\" ]]; then
         esc=1
         continue
       fi
@@ -793,7 +793,7 @@ __lmline_risk_history_expansion() {
     ch=${cmd:i:1}
     next=${cmd:i+1:1}
     if [[ $quote == "'" ]]; then
-      if (( ansi )) && [[ $ch == '\' ]]; then
+      if (( ansi )) && [[ $ch == "\\" ]]; then
         i=$((i + 1))
       elif [[ $ch == "'" ]]; then
         quote=""
@@ -802,7 +802,7 @@ __lmline_risk_history_expansion() {
       continue
     fi
     case "$ch" in
-      '\') i=$((i + 1)) ;;
+      "\\") i=$((i + 1)) ;;
       '$')
         if [[ -z $quote && $next == "'" ]]; then
           quote="'"
@@ -815,7 +815,7 @@ __lmline_risk_history_expansion() {
         if [[ -z $quote ]]; then quote='"'; else quote=""; fi
         ;;
       '!')
-        (( i == 0 )) || [[ ${cmd:i-1:1} != '\' ]] || continue
+        (( i == 0 )) || [[ ${cmd:i-1:1} != "\\" ]] || continue
         case "$next" in
           ""|[[:space:]]|'=') continue ;;
           '"') [[ $quote == '"' ]] && continue ;;
@@ -857,7 +857,7 @@ __lmline_risk_split_words() {
   for ((i = 0; i < n; i++)); do
     ch=${str:i:1}
     if [[ -n "$quote" ]]; then
-      if [[ "$quote" == '"' && "$ch" == '\\' ]]; then
+      if [[ "$quote" == '"' && "$ch" == "\\\\" ]]; then
         i=$((i + 1))
         word+=${str:i:1}
         continue
@@ -873,7 +873,7 @@ __lmline_risk_split_words() {
       "'"|'"'|'`')
         quote=$ch
         ;;
-      '\\')
+      "\\\\")
         i=$((i + 1))
         word+=${str:i:1}
         ;;

@@ -150,7 +150,7 @@ __lmline_case_command_copy() {
         while (( i < ${#cmd} )); do
           ch=${cmd:i:1}
           next=${cmd:i+1:1}
-          if [[ "$quote" != "'" && "$ch" == '\' ]]; then
+          if [[ "$quote" != "'" && "$ch" == "\\" ]]; then
             i=$((i + 2))
             continue
           fi
@@ -788,7 +788,7 @@ __lmline_case_command_copy() {
                 "$zsh_for_words" == *'&'* || "$zsh_for_words" == *'+'* ||
                 "$zsh_for_words" == *'#'* || "$zsh_for_words" == *'!'* ||
                 "$zsh_for_words" == *'{'* || "$zsh_for_words" == *'}'* ||
-                "$zsh_for_words" == *'\\'* || "$zsh_for_words" == *'"'* ||
+                "$zsh_for_words" == *"\\\\"* || "$zsh_for_words" == *'"'* ||
                 "$zsh_for_words" == *"'"* ]]; then
             out+=$token
             command_start=0
