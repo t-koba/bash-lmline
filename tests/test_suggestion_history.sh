@@ -270,6 +270,28 @@ for shell in bash zsh; do
     fail "$shell left a dash-leading history directory non-private"
   ok "$shell records in a dash-leading relative history directory"
 
+  # history show must read only the suggestion log, even when the history
+  # directory is relative and begins with a dash.
+  sibling_marker="sibling-marker-$shell"
+  printf '%s\n' "$sibling_marker" >"$tmp/$dash_dir/unrelated.log"
+  run_engine_at() {
+    (cd "$tmp" && LMLINE_CONFIG_DIR="$tmp/config-private-$shell" \
+      LMLINE_HISTORY_DIR="$1" "$repo_dir/lmline/lmline" history show)
+  }
+  if ! run_engine_at "$dash_dir" >"$tmp/show-$shell.out" 2>"$tmp/show-$shell.err"; then
+    cat "$tmp/show-$shell.err" >&2
+    fail "$shell history show failed in a dash-leading history directory"
+  fi
+  grep -q '^candidate=candidate-private$' "$tmp/show-$shell.out" ||
+    fail "$shell history show omitted the recorded candidate"
+  ! grep -q "$sibling_marker" "$tmp/show-$shell.out" ||
+    fail "$shell history show printed an unrelated sibling file"
+  [[ ! -s "$tmp/show-$shell.err" ]] || {
+    cat "$tmp/show-$shell.err" >&2
+    fail "$shell history show wrote to stderr"
+  }
+  ok "$shell history show reads only the log in a dash-leading relative history directory"
+
   # A linked ancestor is allowed (macOS /tmp relies on this); only the final
   # component must be a real private directory.
   ancestor_real="$tmp/private-ancestor-$shell"

@@ -1745,8 +1745,8 @@ case "$cmd" in
     case "${2-}" in
       show)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help history show; exit 0; }
-        if [[ -d "$history_dir" ]]; then
-          find "$history_dir" -maxdepth 1 -type f -print -exec tail -n 40 {} \;
+        if [[ -f "$history_dir/suggestions.log" ]]; then
+          tail -n 40 <"$history_dir/suggestions.log"
         fi
         ;;
       tendencies)
