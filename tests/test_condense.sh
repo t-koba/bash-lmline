@@ -62,7 +62,6 @@ cap_default_bytes=$(wc -c <"$cond_tmp/tool-default" | tr -d ' ')
 (( cap_default_bytes <= 8000 )) || fail "default tool-result cap bounds output (got $cap_default_bytes bytes)"
 grep -q '\.\.\.\[omitted [0-9]* lines' <<<"$cap_default_out" || fail "default tool-result cap omission marker"
 printf '%s\n' "$cap_in" | __lmline_condense_text 1000 "$patterns" >"$cond_tmp/tool-small"
-cap_small_out=$(cat "$cond_tmp/tool-small")
 cap_small_bytes=$(wc -c <"$cond_tmp/tool-small" | tr -d ' ')
 (( cap_small_bytes <= 1000 )) || fail "small tool-result cap bounds output (got $cap_small_bytes bytes)"
 (( cap_small_bytes < cap_default_bytes )) || fail "smaller cap keeps less output"

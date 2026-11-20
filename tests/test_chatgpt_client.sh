@@ -336,8 +336,7 @@ logout_race_pid=$!
 wait_for_refresh_request "$chatgpt_tmp/mock-logout-race.log"
 client logout >"$chatgpt_tmp/logout-race.out" 2>"$chatgpt_tmp/logout-race.err" \
   || fail "ChatGPT logout during a refresh"
-logout_race_rc=0
-wait "$logout_race_pid" || logout_race_rc=$?
+wait "$logout_race_pid" || true
 logout_race_status=$(client status) || fail "ChatGPT status after the logout race"
 grep -q '^status=signed-out$' <<<"$logout_race_status" || fail "the logout race left a signed-in session"
 grep -q '^plan_usage=disabled$' <<<"$logout_race_status" || fail "the logout race left a plan grant"
@@ -557,8 +556,7 @@ signin_race_pid=$!
 wait_for_refresh_request "$chatgpt_tmp/mock-signin-race.log"
 client login >"$chatgpt_tmp/signin-race-login.out" 2>"$chatgpt_tmp/signin-race-login.err" \
   || fail "ChatGPT login during a refresh: $(sed -n '1p' "$chatgpt_tmp/signin-race-login.err")"
-signin_race_rc=0
-wait "$signin_race_pid" || signin_race_rc=$?
+wait "$signin_race_pid" || true
 login_token=$(grep '^issued_token=authorization_code:' "$chatgpt_tmp/mock-signin-race.log" | tail -n 1 | cut -d: -f2)
 stored_token=$(json_field "$credentials_file" access_token)
 [[ -n "$login_token" ]] || fail "the sign-in race issued no sign-in token"

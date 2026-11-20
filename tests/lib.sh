@@ -17,6 +17,8 @@ export LC_ALL=C
 # unless a test explicitly re-enables it.
 export LMLINE_CACHE_TTL=0
 
+# Sourcing test scripts use this path; it is intentionally not consumed here.
+# shellcheck disable=SC2034
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 fail() {

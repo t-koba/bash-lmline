@@ -83,8 +83,8 @@ elif test_hash_real=$(builtin command -p -v shasum 2>/dev/null); then
   test_hash_mode=shasum
 else
   test_hash_real=$(builtin command -p -v cksum 2>/dev/null) || fail "system cksum for stdin-wrapper test"
-  test_hash_name=cksum
-  test_hash_mode=cksum
+  test_hash_name='cksum'
+  test_hash_mode='cksum'
 fi
 cat >"$widget_tmp/stdin-hash-bin/$test_hash_name" <<'EOF'
 #!/bin/sh

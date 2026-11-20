@@ -1551,7 +1551,7 @@ __lmline_cache_emit_status() {
 # risk metadata and is served verbatim. Returns non-zero when no cached
 # candidate remains valid under the current policy, so the caller refetches.
 __lmline_cache_emit() {
-  local cached_line body risk_old reason_old flags candidate rejection risk_match risk reason
+  local cached_line body flags candidate rejection risk_match risk reason
   local valid_count=0 valid_output='' line plain_output=''
   if [[ "$output_format" != annotated ]]; then
     if [[ "$mode" != explain && "$mode" != clip ]]; then
@@ -1577,7 +1577,7 @@ __lmline_cache_emit() {
   while IFS= read -r cached_line || [[ -n "$cached_line" ]]; do
     [[ "$cached_line" == 'lmline-candidate: '* ]] || continue
     body=${cached_line#'lmline-candidate: '}
-    IFS=$'\t' read -r risk_old reason_old flags candidate <<<"$body"
+    IFS=$'\t' read -r _ _ flags candidate <<<"$body"
     [[ -n "$candidate" ]] || continue
     [[ -n "$flags" ]] || flags='-'
     rejection=$(__lmline_candidate_rejection_reason "$candidate" "$mode" "${shell_name:-bash}")

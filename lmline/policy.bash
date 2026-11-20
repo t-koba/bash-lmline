@@ -738,7 +738,7 @@ __lmline_expand_braces_for_risk() {
 # call whose option value is literally named sh (exec -a sh echo) scores high,
 # which is the fail-closed direction.
 __lmline_risk_piped_shell() {
-  local cmd=$1 stripped segment token word base first_base cmd_index
+  local cmd=$1 stripped segment token word base cmd_index
   local -a words subs
   stripped=$(__lmline_split_pipeline "$cmd" 1)
   local idx=0

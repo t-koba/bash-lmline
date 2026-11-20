@@ -541,7 +541,7 @@ __lmline_tool_command_info() {
     fi
     printf 'exists=found\npath=%s\n' "$path"
     if alias "$clean" >/dev/null 2>&1; then
-      kind=alias
+      kind='alias'
     elif declare -F "$clean" >/dev/null 2>&1; then
       kind=function
     elif help "$clean" >/dev/null 2>&1; then

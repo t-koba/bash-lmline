@@ -7,9 +7,9 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # diagnostics in JSONL and emits only sanitized progress; local unpinned lint
 # keeps ShellCheck's stdout/stderr attached.
 __lmline_shellcheck_proc_rss() {
-  local pid=$1 key value unit rss=na peak=na
+  local pid=$1 key value rss=na peak=na
   if [[ -r "/proc/$pid/status" ]]; then
-    while read -r key value unit; do
+    while read -r key value _; do
       case "$key" in
         VmRSS:) if [[ "$value" =~ ^[0-9]+$ ]]; then rss=$value; fi ;;
         VmHWM:) if [[ "$value" =~ ^[0-9]+$ ]]; then peak=$value; fi ;;
@@ -66,9 +66,9 @@ __lmline_shellcheck_tree_rss() {
 }
 
 __lmline_shellcheck_memory_kib() {
-  local key value unit available=na total=na
+  local key value available=na total=na
   if [[ -r /proc/meminfo ]]; then
-    while read -r key value unit; do
+    while read -r key value _; do
       case "$key" in
         MemAvailable:) if [[ "$value" =~ ^[0-9]+$ ]]; then available=$value; fi ;;
         MemTotal:) if [[ "$value" =~ ^[0-9]+$ ]]; then total=$value; fi ;;

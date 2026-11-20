@@ -5,4 +5,4 @@
 # are suppressed at their exact sites; caller-provided globals are suppressed
 # only in the five engine-boundary modules. Ratchet this list down over time
 # instead of growing it.
-disable=SC1003,SC2016,SC2034,SC2209,SC2221,SC2222
+disable=SC1003,SC2016,SC2221,SC2222

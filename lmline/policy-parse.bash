@@ -1234,7 +1234,7 @@ __lmline_extract_command_words() {
       fi
       if [[ "$lookup_context" != external ]]; then
         case "$token" in
-          command) lookup_context=command; command_options=1; continue ;;
+          command) lookup_context='command'; command_options=1; continue ;;
           env) lookup_context=external; continue ;;
         esac
       fi
@@ -1663,7 +1663,7 @@ __lmline_has_relative_cwd_risk() {
       fi
       if [[ "$lookup_context" != external ]]; then
         case "$token" in
-          command) lookup_context=command; command_options=1; continue ;;
+          command) lookup_context='command'; command_options=1; continue ;;
           env) lookup_context=external; continue ;;
         esac
         case "${token##*/}" in
