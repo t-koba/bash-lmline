@@ -1155,7 +1155,7 @@ __lmline_risk_recursive_remove() {
 # segment loses its directory prefix; path operands keep their text, so a
 # harmless path containing a dangerous name is not turned into that command.
 __lmline_risk_basename_command_words() {
-  local cmd=$1 segment word base out=$1 index
+  local cmd=$1 segment word base out=$1 index j prefix_base operands_left expect_value
   local -a words
   [[ $cmd == */* ]] || { printf '%s' "$out"; return 0; }
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -1169,6 +1169,34 @@ __lmline_risk_basename_command_words() {
       break
     done
     ((index < ${#words[@]})) || continue
+    # A program that runs another program hands it the command word: follow
+    # the configured prefix past its own options to the command it runs.
+    prefix_base=${words[index]##*/}
+    if __lmline_word_is_command_prefix "$prefix_base"; then
+      operands_left=$(__lmline_risk_runner_operands "$prefix_base")
+      expect_value=0
+      for ((j = index + 1; j < ${#words[@]}; j++)); do
+        word=${words[j]}
+        [[ $word == *=* ]] && continue
+        if [[ $word == -* ]]; then
+          expect_value=1
+          continue
+        fi
+        if ((expect_value)); then
+          expect_value=0
+          # A boolean prefix option such as env -i has no value; a path-like
+          # word after it is the carried command, not that option's value.
+          [[ $word == */* ]] || continue
+        fi
+        [[ $word == [0-9]* ]] && continue
+        if ((operands_left > 0)); then
+          operands_left=0
+          continue
+        fi
+        index=$j
+        break
+      done
+    fi
     word=${words[index]}
     case $word in *[!A-Za-z0-9_./-]*) continue ;; esac
     base=${word##*/}
