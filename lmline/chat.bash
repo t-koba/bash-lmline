@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Caller-provided globals are set at runtime before this module is sourced;
+# ShellCheck cannot see those assignments. Suppress only in this module.
+# shellcheck disable=SC2154
+
+
 # Chat-completion core for the lmline engine. This file is meant to be sourced
 # by the engine entry script after config.bash, http.bash, policy.bash, and
 # context.bash. The engine sets these globals before calling __lmline_chat_run:

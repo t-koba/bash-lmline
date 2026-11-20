@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Caller-provided globals are set at runtime before this module is sourced;
+# ShellCheck cannot see those assignments. Suppress only in this module.
+# shellcheck disable=SC2154
+
+
 # Minimal config loading helpers for lmline. This file is meant to be sourced.
 
 # mktemp reads a dash-leading template as options and a bare relative template

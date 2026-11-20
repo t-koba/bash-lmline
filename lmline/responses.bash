@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Caller-provided globals are set at runtime before this module is sourced;
+# ShellCheck cannot see those assignments. Suppress only in this module.
+# shellcheck disable=SC2154
+
+
 # Responses API request handling for the lmline engine. This file is meant to
 # be sourced by the engine entry script after chat.bash.
 #

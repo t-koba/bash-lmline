@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Caller-provided globals are set at runtime before this module is sourced;
+# ShellCheck cannot see those assignments. Suppress only in this module.
+# shellcheck disable=SC2154
+
+
 # Endpoint/model profile management for the lmline CLI. This file is meant to
 # be sourced by the lmline entry script, which provides:
 #   config_dir, endpoints_file, models_file   - profile storage paths

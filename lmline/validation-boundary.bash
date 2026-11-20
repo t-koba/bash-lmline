@@ -1,3 +1,7 @@
+# Protected-shell locals are introduced with `command builtin local`, which
+# ShellCheck cannot recognize as an assignment. Suppress only here.
+# shellcheck disable=SC2154
+
 # Names-only transport and clean Bash launch. Sourced by entry points/policy.
 __LMLINE_BOUNDARY_DIR=${BASH_SOURCE[0]%/*}
 
