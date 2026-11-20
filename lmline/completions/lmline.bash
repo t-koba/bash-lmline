@@ -68,6 +68,14 @@ __lmline_complete_names_bash() {
   (( quoted_context )) || compopt -o noquote 2>/dev/null || true
 }
 
+# compgen emits an IFS-delimited candidate list; splitting it into COMPREPLY is
+# the Readline contract. Keep one owner of that idiom for every word-list case.
+__lmline_compgen_bash() {
+  # SC2207: compgen output is word-split into COMPREPLY by design.
+  # shellcheck disable=SC2207
+  COMPREPLY=( $(compgen -W "$1" -- "$2") )
+}
+
 __lmline_cli_complete() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   local prev=${COMP_WORDS[COMP_CWORD-1]}
@@ -90,81 +98,81 @@ __lmline_cli_complete() {
   local command=${COMP_WORDS[1]-}
   local sub=${COMP_WORDS[2]-}
   if (( COMP_CWORD == 1 )); then
-    COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
+    __lmline_compgen_bash "$subcommands" "$cur"
   elif [[ $command == use && $COMP_CWORD == 2 ]]; then
     __lmline_complete_names_bash endpoints "" "$cur"
   elif [[ $command == use && $COMP_CWORD == 3 ]]; then
     __lmline_complete_names_bash models "${COMP_WORDS[2]}" "$cur"
   elif [[ $command == payload && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "generate rewrite explain fix clip" -- "$cur") )
+    __lmline_compgen_bash "generate rewrite explain fix clip" "$cur"
   elif [[ $command == help && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete commands 2>/dev/null)" -- "$cur") )
+    __lmline_compgen_bash "$(lmline complete commands 2>/dev/null)" "$cur"
   elif [[ $command == help && $COMP_CWORD == 3 ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete subcommands "${COMP_WORDS[2]}" 2>/dev/null)" -- "$cur") )
+    __lmline_compgen_bash "$(lmline complete subcommands "${COMP_WORDS[2]}" 2>/dev/null)" "$cur"
   elif [[ $command == sandbox && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "setup run check" -- "$cur") )
+    __lmline_compgen_bash "setup run check" "$cur"
   elif [[ $command == sandbox && $sub == setup && $prev == --workspace ]]; then
-    COMPREPLY=( $(compgen -W "readonly writable none" -- "$cur") )
+    __lmline_compgen_bash "readonly writable none" "$cur"
   elif [[ $command == sandbox && $sub == setup && $COMP_CWORD -ge 3 ]]; then
-    COMPREPLY=( $(compgen -W "--name --image --workspace --root --workdir --timeout --help" -- "$cur") )
+    __lmline_compgen_bash "--name --image --workspace --root --workdir --timeout --help" "$cur"
   elif [[ $command == sandbox && $sub == run && $COMP_CWORD -ge 3 ]]; then
-    COMPREPLY=( $(compgen -W "--name --image --timeout --max-output --help --" -- "$cur") )
+    __lmline_compgen_bash "--name --image --timeout --max-output --help --" "$cur"
   elif [[ $command == copilot && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "setup update login status logout restart remove" -- "$cur") )
+    __lmline_compgen_bash "setup update login status logout restart remove" "$cur"
   elif [[ $command == chatgpt && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "login status refresh reauth logout" -- "$cur") )
+    __lmline_compgen_bash "login status refresh reauth logout" "$cur"
   elif [[ $command == clip && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "--status --providers --use --provider" -- "$cur") )
+    __lmline_compgen_bash "--status --providers --use --provider" "$cur"
   elif [[ $command == clip && $COMP_CWORD == 3 && ${prev} =~ ^(--use|--provider)$ ]]; then
     __lmline_complete_names_bash clipboard-providers "" "$cur"
   elif [[ $command == endpoint && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "add list set-secret remove" -- "$cur") )
+    __lmline_compgen_bash "add list set-secret remove" "$cur"
   elif [[ $command == endpoint && $COMP_CWORD == 3 && ${sub} =~ ^(set-secret|remove)$ ]]; then
     __lmline_complete_names_bash endpoints "" "$cur"
   elif [[ $command == endpoint && $sub == add && $COMP_CWORD -ge 5 ]]; then
     if [[ $prev == --tool-mode ]]; then
-      COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
+      __lmline_compgen_bash "auto openai text none" "$cur"
     elif [[ $prev == --auth-mode ]]; then
-      COMPREPLY=( $(compgen -W "api-key chatgpt" -- "$cur") )
+      __lmline_compgen_bash "api-key chatgpt" "$cur"
     else
-      COMPREPLY=( $(compgen -W "--auth-header --auth-scheme --auth-mode --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help" -- "$cur") )
+      __lmline_compgen_bash "--auth-header --auth-scheme --auth-mode --temperature --max-tokens --tool-mode --models-url --models-jq --models-prefix --models-include --models-exclude --help" "$cur"
     fi
   elif [[ $command == endpoint && $sub == remove && $COMP_CWORD -ge 4 ]]; then
-    COMPREPLY=( $(compgen -W "--keep-secret --help" -- "$cur") )
+    __lmline_compgen_bash "--keep-secret --help" "$cur"
   elif [[ $command == model && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "add list refresh remove" -- "$cur") )
+    __lmline_compgen_bash "add list refresh remove" "$cur"
   elif [[ $command == model && $COMP_CWORD == 3 && ${sub} =~ ^(add|list|refresh|remove)$ ]]; then
     __lmline_complete_names_bash endpoints "" "$cur"
   elif [[ $command == model && $COMP_CWORD == 4 && ${sub} == remove ]]; then
     __lmline_complete_names_bash models "${COMP_WORDS[3]}" "$cur"
   elif [[ $command == model && $sub == add && $COMP_CWORD -ge 5 ]]; then
     if [[ $prev == --tool-mode ]]; then
-      COMPREPLY=( $(compgen -W "auto openai text none" -- "$cur") )
+      __lmline_compgen_bash "auto openai text none" "$cur"
     elif [[ $prev == --api-format ]]; then
-      COMPREPLY=( $(compgen -W "chat responses messages" -- "$cur") )
+      __lmline_compgen_bash "chat responses messages" "$cur"
     else
-      COMPREPLY=( $(compgen -W "--temperature --max-tokens --tool-mode --api-format --help" -- "$cur") )
+      __lmline_compgen_bash "--temperature --max-tokens --tool-mode --api-format --help" "$cur"
     fi
   elif [[ $command == config && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "get defaults effective describe set unset project-get project-set project-unset" -- "$cur") )
+    __lmline_compgen_bash "get defaults effective describe set unset project-get project-set project-unset" "$cur"
   elif [[ $command == config && $COMP_CWORD == 3 && ${sub} =~ ^(describe|set|unset|project-set|project-unset)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
+    __lmline_compgen_bash "$(lmline complete settings 2>/dev/null)" "$cur"
   elif [[ $command == config && $COMP_CWORD == 4 && ${sub} =~ ^(set|project-set)$ ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete setting-values "${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )
+    __lmline_compgen_bash "$(lmline complete setting-values "${COMP_WORDS[3]}" 2>/dev/null)" "$cur"
   elif [[ $command == complete && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "commands subcommands settings setting-values endpoints models clipboard-providers" -- "$cur") )
+    __lmline_compgen_bash "commands subcommands settings setting-values endpoints models clipboard-providers" "$cur"
   elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == subcommands ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete commands 2>/dev/null)" -- "$cur") )
+    __lmline_compgen_bash "$(lmline complete commands 2>/dev/null)" "$cur"
   elif [[ $command == complete && $COMP_CWORD == 3 && ${sub} == setting-values ]]; then
-    COMPREPLY=( $(compgen -W "$(lmline complete settings 2>/dev/null)" -- "$cur") )
+    __lmline_compgen_bash "$(lmline complete settings 2>/dev/null)" "$cur"
   elif [[ $command == history && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "show tendencies" -- "$cur") )
+    __lmline_compgen_bash "show tendencies" "$cur"
   elif [[ $command == debug && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "bindings on off trace" -- "$cur") )
+    __lmline_compgen_bash "bindings on off trace" "$cur"
   elif [[ $command == debug && $COMP_CWORD == 3 && $sub == trace ]]; then
-    COMPREPLY=( $(compgen -W "on off" -- "$cur") )
+    __lmline_compgen_bash "on off" "$cur"
   elif [[ $command == doctor && $COMP_CWORD == 2 ]]; then
-    COMPREPLY=( $(compgen -W "--check-api --help" -- "$cur") )
+    __lmline_compgen_bash "--check-api --help" "$cur"
   fi
 }
 

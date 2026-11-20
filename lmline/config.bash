@@ -230,6 +230,8 @@ __lmline_capture_env_baseline() {
   if [[ ${IFS-} == $' \t\n' ]]; then
     baseline_keys=( "${!LMLINE_@}" )
   else
+    # SC2207: compgen -v yields an IFS-delimited variable-name list.
+    # shellcheck disable=SC2207
     baseline_keys=( $(compgen -v LMLINE_ 2>/dev/null) )
   fi
   for k in "${baseline_keys[@]}"; do

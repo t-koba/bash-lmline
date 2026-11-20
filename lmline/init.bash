@@ -955,6 +955,8 @@ __lmline_default_completion() {
   local cur=${COMP_WORDS[COMP_CWORD]}
   COMPREPLY=()
   [[ -n "$cur" ]] || return 0
+  # SC2207: compgen emits an IFS-delimited command-name list.
+  # shellcheck disable=SC2207
   COMPREPLY=( $(compgen -A command -- "$cur") )
 }
 
