@@ -1155,8 +1155,8 @@ __lmline_risk_recursive_remove() {
 # segment loses its directory prefix; path operands keep their text, so a
 # harmless path containing a dangerous name is not turned into that command.
 __lmline_risk_basename_command_words() {
-  local cmd=$1 segment word base out=$1 index j prefix_base operands_left expect_value
-  local -a words
+  local cmd=$1 segment word clean_word base out=$1 index j prefix_base operands_left expect_value
+  local -a words clean_parts
   [[ $cmd == */* ]] || { printf '%s' "$out"; return 0; }
   while IFS= read -r segment || [[ -n $segment ]]; do
     words=()
@@ -1171,7 +1171,8 @@ __lmline_risk_basename_command_words() {
     ((index < ${#words[@]})) || continue
     # A program that runs another program hands it the command word: follow
     # the configured prefix past its own options to the command it runs.
-    prefix_base=${words[index]##*/}
+    mapfile -t clean_parts < <(__lmline_risk_split_words "${words[index]}")
+    prefix_base=${clean_parts[0]##*/}
     if __lmline_word_is_command_prefix "$prefix_base"; then
       operands_left=$(__lmline_risk_runner_operands "$prefix_base")
       expect_value=0
@@ -1198,9 +1199,11 @@ __lmline_risk_basename_command_words() {
       done
     fi
     word=${words[index]}
-    case $word in *[!A-Za-z0-9_./-]*) continue ;; esac
-    base=${word##*/}
-    [[ $base != "$word" ]] || continue
+    mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
+    clean_word=${clean_parts[0]}
+    case $clean_word in *[!A-Za-z0-9_./-]*) continue ;; esac
+    base=${clean_word##*/}
+    [[ $base != "$clean_word" ]] || continue
     # Replace only complete word text, leaving separators and path operands
     # exactly as written. A word changed here is a command somewhere in the
     # candidate, so its bare name is already part of the judged command.
