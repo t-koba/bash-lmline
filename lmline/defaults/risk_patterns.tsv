@@ -11,7 +11,8 @@
 # this file names no removal spelling: a word that merely carries the name of
 # a remove is not a remove. A program that removes files by a subcommand of
 # its own is named here instead, because that program is the command.
-high	*find *-delete*	find delete action
+high	*find -delete*	find delete action
+high	*find * -delete *	find delete action
 high	*find *-exec*rm*	find exec remove action
 high	*find *-exec*unlink*	find exec unlink action
 high	*git *clean -*f*	force git clean deletes untracked files

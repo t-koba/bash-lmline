@@ -117,6 +117,11 @@ bash -c '
   # An ordinary recursive copy or search is not a destructive remove.
   [[ $(__lmline_risk_level "cp -r build copy") == medium ]]
   [[ $(__lmline_risk_level "find . -type f") == low ]]
+  # A delete action must be a separate option, not part of a pathname.
+  [[ $(__lmline_risk_level "find . -delete") == high ]]
+  [[ $(__lmline_risk_level "find -delete") == high ]]
+  [[ $(__lmline_risk_level "find . -type f -delete") == high ]]
+  [[ $(__lmline_risk_level "find /tmp/-delete-me -type f") == low ]]
   [[ $(__lmline_risk_level "rm build") == low ]]
   [[ $(__lmline_risk_level "rm -v build") == low ]]
   # The end of the options ends the flags.
