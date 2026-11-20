@@ -665,7 +665,7 @@ __lmline_expand_braces_for_risk() {
   while [[ $current == *'${'* ]]; do
     pre=${current%%'${'*}
     rest=${current#*'${'}
-    [[ $rest == *}* ]] || break
+    [[ $rest == *'}'* ]] || break
     mid=${rest%%\}*}
     post=${rest#*\}}
     current="${pre}\$${ob}${mid}${cb}${post}"
@@ -1210,6 +1210,8 @@ __lmline_risk_match() {
       IFS=$'\t' read -r level pattern reason <<<"$line"
       [[ -n "$level" && -n "$pattern" ]] || continue
       case "$level" in high|medium|low) ;; *) continue ;; esac
+      # SC2053: a policy rule pattern is a glob and must stay unquoted.
+      # shellcheck disable=SC2053
       if [[ "$canon" == $pattern ]]; then
         case "$level" in
           high)
