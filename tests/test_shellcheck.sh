@@ -224,6 +224,33 @@ __lmline_shellcheck_check_suppression_ratchet() {
   done < "$rc_file"
 }
 
+# The repository ratchet must run before the no-ShellCheck skip. Exercise that
+# ordering in a subprocess: a fixture repo with two global disables and no
+# ShellCheck on PATH must fail before reporting the skip. A later move of the
+# repository check back below the skip makes this regression fail.
+__lmline_shellcheck_skip_path_ratchet_test() {
+  local fixture_dir output status child_pid watchdog_pid
+  # The fixture runs the same suite; do not recurse into another fixture.
+  [[ ${LMLINE_SHELLCHECK_SKIP_PATH_TEST:-0} == 1 ]] && return 0
+  fixture_dir=$(mktemp -d) || fail "could not create ShellCheck skip-path fixture"
+  mkdir -p "$fixture_dir/tests" || fail "could not create fixture test directory"
+  cp "$repo_dir/tests/test_shellcheck.sh" "$fixture_dir/tests/" || fail "could not copy test into fixture"
+  cp "$repo_dir/tests/lib.sh" "$fixture_dir/tests/" || fail "could not copy harness into fixture"
+  printf 'disable=SC2016\ndisable=SC2086\n' > "$fixture_dir/.shellcheckrc"
+  env -u LMLINE_REQUIRE_SHELLCHECK LMLINE_SHELLCHECK_SKIP_PATH_TEST=1 PATH=/usr/bin:/bin \
+    bash "$fixture_dir/tests/test_shellcheck.sh" > "$fixture_dir/output" 2>&1 &
+  child_pid=$!
+  ( sleep 60; kill -TERM "$child_pid" 2>/dev/null || true ) &
+  watchdog_pid=$!
+  if wait "$child_pid"; then status=0; else status=$?; fi
+  kill -TERM "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+  output=$(cat "$fixture_dir/output")
+  rm -rf "$fixture_dir"
+  (( status == 1 )) || fail "skip-path ratchet did not reject a grown suppression (status $status)"
+  [[ $output == *'global ShellCheck suppressions grew'* ]] || fail "skip-path ratchet did not report the grown suppression"
+}
+
 __lmline_shellcheck_suppression_self_test() {
   local fixture_dir rc_file case_name expected actual output
   fixture_dir=$(mktemp -d) || fail "could not create ShellCheck suppression test directory"
@@ -249,6 +276,7 @@ __lmline_shellcheck_suppression_self_test() {
     fi
   done
   rm -rf "$fixture_dir"
+  __lmline_shellcheck_skip_path_ratchet_test
   ok "shellcheck suppression ratchet"
 }
 
