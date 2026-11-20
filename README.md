@@ -757,11 +757,12 @@ configuration (`LMLINE_RISK_PIPED_SHELL_LEVEL` default `high`,
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` default `medium`,
 `LMLINE_RISK_BRACE_CAPPED_LEVEL` default `medium`,
 `LMLINE_RISK_RECURSIVE_REMOVE_LEVEL` default `high`); the highest applicable
-structural level wins. With the shipped defaults the highest level across
-patterns and structural wins, so a generic medium rule never shadows a
+structural level wins. Within the pattern file the first matching rule decides
+the pattern level. With the shipped defaults the higher of that level and the
+highest structural level wins, so a generic medium rule never shadows a
 structural high. A replacement `risk_patterns.tsv` overrides shipped
-patterns and structural defaults: a matching rule wins and structural
-fallbacks apply only when no rule matched.
+patterns: a matching rule wins and structural fallbacks apply only when no
+rule matched.
 
 A recursive remove is recognised by the word in the position a command occupies
 and by the flags written with it, so the family reads the same way in every
@@ -1030,9 +1031,9 @@ leading and trailing space. Structural fallbacks use
 `LMLINE_RISK_BRACE_CAPPED_LEVEL` (default `medium`), and
 `LMLINE_RISK_RECURSIVE_REMOVE_LEVEL` (default `high`), highest wins; unknown
 or empty levels fall back to their defaults. With the shipped defaults the
-highest level across patterns and structural wins. A replacement file
-overrides shipped patterns and structural defaults: a matching rule wins
-and structural fallbacks apply only when no rule matched.
+higher of the matched rule and the highest structural level wins. A
+replacement file overrides shipped patterns: a matching rule wins and
+structural fallbacks apply only when no rule matched.
 
 `local_commands.txt` lists command names allowed by `command_run` when the
 selected execution backend is `local`. The local backend also requires a low

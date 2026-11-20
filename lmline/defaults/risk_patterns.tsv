@@ -2,10 +2,11 @@
 # Patterns are matched against the command with whitespace squeezed and the
 # whole line wrapped in single spaces, so "* dd *" matches "dd if=...",
 # "x | dd of=...", and a bare "dd".
-# With these defaults the highest level across patterns and structural
-# fallbacks wins (pipe-to-shell/history expansion/recursive remove high,
-# unresolved variable and capped brace medium via LMLINE_RISK_*_LEVEL); a
-# replacement file overrides.
+# The first matching pattern decides the pattern level. With these defaults
+# the higher of that level and the highest structural fallback wins
+# (pipe-to-shell/history expansion/recursive remove high, unresolved variable
+# and capped brace medium via LMLINE_RISK_*_LEVEL); a replacement file's match
+# overrides the fallbacks.
 # The recursive remove family is read by the mechanism, which recognises the
 # word in the position a command occupies and the flags written with it, so
 # this file names no removal spelling: a word that merely carries the name of
