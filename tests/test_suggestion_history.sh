@@ -422,3 +422,41 @@ tendencies_out=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$symlink_di
   fail "history tendencies wrote to stderr with a symlinked log"
 }
 ok "history tendencies ignores a symlinked suggestion log"
+
+# A symlink at the final history-directory component is not a valid record
+# destination; an allowed linked ancestor must still be readable.
+reader_real="$tmp/history-reader-real"
+reader_link="$tmp/history-reader-link"
+mkdir -m 700 "$reader_real"
+printf '%s\n' 'final-dir-marker' >"$reader_real/suggestions.log"
+ln -s "$reader_real" "$reader_link"
+for dir in "$reader_link" "$reader_link/"; do
+  for command in show tendencies; do
+    reader_out=$(LMLINE_CONFIG_DIR="$tmp/config" LMLINE_HISTORY_DIR="$dir" \
+      "$repo_dir/lmline/lmline" history "$command" 2>"$tmp/reader-link.err") ||
+      fail "history $command failed with a symlinked history directory"
+    [[ -z "$reader_out" ]] ||
+      fail "history $command followed a symlinked history directory"
+  done
+done
+ok "history readers refuse a symlinked final history directory"
+
+reader_ancestor="$tmp/history-reader-ancestor"
+reader_ancestor_link="$tmp/history-reader-ancestor-link"
+reader_history="$reader_ancestor/history"
+mkdir -m 700 "$reader_ancestor" "$reader_history"
+printf '%s\n' 'mode=generate' >"$reader_history/suggestions.log"
+ln -s "$reader_ancestor" "$reader_ancestor_link"
+reader_show=$(LMLINE_CONFIG_DIR="$tmp/config" \
+  LMLINE_HISTORY_DIR="$reader_ancestor_link/history" \
+  "$repo_dir/lmline/lmline" history show 2>"$tmp/reader-ancestor.err") ||
+  fail "history show failed with a linked ancestor"
+grep -q '^mode=generate$' <<<"$reader_show" ||
+  fail "history show ignored a real directory under a linked ancestor"
+reader_tendencies=$(LMLINE_CONFIG_DIR="$tmp/config" \
+  LMLINE_HISTORY_DIR="$reader_ancestor_link/history" \
+  "$repo_dir/lmline/lmline" history tendencies 2>"$tmp/reader-ancestor.err") ||
+  fail "history tendencies failed with a linked ancestor"
+grep -q '^generate=1$' <<<"$reader_tendencies" ||
+  fail "history tendencies ignored a real directory under a linked ancestor"
+ok "history readers allow a linked ancestor"

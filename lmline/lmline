@@ -1742,7 +1742,16 @@ case "$cmd" in
     ;;
   history)
     case "${2-}" in -h|--help|'') print_cli_help history; [[ -n "${2-}" ]] && exit 0 || exit 2 ;; esac
-    suggestions=$history_dir/suggestions.log
+    log_dir=$history_dir
+    # Match the writer's final-directory boundary: normalize a leading dash
+    # and trailing slashes before testing the final component, but allow a
+    # symlinked ancestor.
+    [[ $log_dir != -* ]] || log_dir=./$log_dir
+    while [[ $log_dir == */ && $log_dir != / ]]; do
+      log_dir=${log_dir%/}
+    done
+    suggestions=$log_dir/suggestions.log
+    [[ ! -L "$log_dir" ]] || suggestions=
     case "${2-}" in
       show)
         [[ "${3-}" == -h || "${3-}" == --help ]] && { print_cli_help history show; exit 0; }
