@@ -1150,6 +1150,37 @@ __lmline_risk_recursive_remove() {
   return 1
 }
 
+# Judge a command written by absolute or relative path by its program name,
+# as the bare spelling is judged. Only the command word of each pipeline
+# segment loses its directory prefix; path operands keep their text, so a
+# harmless path containing a dangerous name is not turned into that command.
+__lmline_risk_basename_command_words() {
+  local cmd=$1 segment word base out=$1 index
+  local -a words
+  [[ $cmd == */* ]] || { printf '%s' "$out"; return 0; }
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    words=()
+    read -r -a words <<<"$segment" || true
+    ((${#words[@]} > 0)) || continue
+    index=0
+    while ((index < ${#words[@]})); do
+      word=${words[index]}
+      [[ $word == *=* || $word == -* ]] && { index=$((index + 1)); continue; }
+      break
+    done
+    ((index < ${#words[@]})) || continue
+    word=${words[index]}
+    case $word in *[!A-Za-z0-9_./-]*) continue ;; esac
+    base=${word##*/}
+    [[ $base != "$word" ]] || continue
+    # Replace only complete word text, leaving separators and path operands
+    # exactly as written. A word changed here is a command somewhere in the
+    # candidate, so its bare name is already part of the judged command.
+    out=${out//"$word"/"$base"}
+  done < <(__lmline_split_pipeline "$cmd" 1)
+  printf '%s' "$out"
+}
+
 # Risk precedence: structural recognition (piped shell, interactive history,
 # unresolved variable command, capped brace expansion, recursive remove) is
 # mechanism only; its levels are configuration (LMLINE_RISK_*_LEVEL, defaults
@@ -1162,7 +1193,7 @@ __lmline_risk_recursive_remove() {
 # high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
 # stay protective.
 __lmline_risk_match() {
-  local cmd=$1 expanded file line level pattern reason alt canon alts_str
+  local cmd=$1 expanded file line level pattern reason alt bare_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
@@ -1201,7 +1232,8 @@ __lmline_risk_match() {
     if __lmline_risk_recursive_remove "$alt"; then
       removal_found=1
     fi
-    canon=$(__lmline_canonicalize_for_risk <<<"$alt" | tr -s '[:space:]' ' ')
+    bare_alt=$(__lmline_risk_basename_command_words "$alt")
+    canon=$(__lmline_canonicalize_for_risk <<<"$bare_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
     canon=${canon% }
     canon=" $canon "

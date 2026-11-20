@@ -761,7 +761,8 @@ structural level wins. Within the pattern file the first matching rule decides
 the pattern level. With the shipped defaults the higher of that level and the
 highest structural level wins, so a generic medium rule never shadows a
 structural high. At an equal level the structural reason is reported. A
-replacement `risk_patterns.tsv` overrides shipped
+command written with an absolute path is judged by its program name; path
+operands keep their own text. A replacement `risk_patterns.tsv` overrides shipped
 patterns: a matching rule wins and structural fallbacks apply only when no
 rule matched.
 
