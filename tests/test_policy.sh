@@ -850,6 +850,9 @@ for level in low medium high bogus HIGH ''; do
   [[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=$level __lmline_risk_level "$candidate") == "$expected" ]]
 done
 # Shipped pattern levels compete with the history fallback, never mask it.
+# At an equal level the structural reason is reported, not the pattern reason.
+[[ $(__lmline_risk_reason '$X cp dest') == 'unresolved variable command' ]]
+[[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=medium __lmline_risk_reason 'cp !! copy') == 'interactive history expansion' ]]
 [[ $(__lmline_risk_level 'cp !! copy') == high ]]
 [[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=low __lmline_risk_level 'cp !! copy') == medium ]]
 [[ $(LMLINE_RISK_HISTORY_EXPANSION_LEVEL=low __lmline_risk_level 'rm -rf !!') == high ]]
