@@ -948,6 +948,16 @@ __lmline_risk_word_is_remove_command() {
   return 1
 }
 
+# Options whose value is a path. A path-like word after any other option is
+# the command a runner runs, not that option's value; a boolean option such
+# as env -i has no value at all.
+__lmline_risk_option_takes_path_value() {
+  case ${1##*/} in
+    -C|--chdir|-f|--file|-F) return 0 ;;
+  esac
+  return 1
+}
+
 # The command a program that runs another program runs: the first word that
 # is not one of the program's own options, not the value one of those
 # options takes, and not an operand the program names for itself. A remove
@@ -955,13 +965,14 @@ __lmline_risk_word_is_remove_command() {
 # option before it names.
 __lmline_risk_carried_command_index() {
   local -a words=("$@")
-  local index word base expect_value=0
+  local index word base expect_value=0 last_option=""
   local operands_left
   operands_left=$(__lmline_risk_runner_operands "${words[0]}")
   for (( index = 1; index < ${#words[@]}; index++ )); do
     word=${words[index]}
     [[ "$word" == *=* ]] && continue
     if [[ "$word" == -* ]]; then
+      last_option=$word
       expect_value=1
       continue
     fi
@@ -972,7 +983,9 @@ __lmline_risk_carried_command_index() {
     fi
     if (( expect_value )); then
       expect_value=0
-      continue
+      if [[ "$word" != */* ]] || __lmline_risk_option_takes_path_value "$last_option"; then
+        continue
+      fi
     fi
     case "$word" in
       [0-9]*) continue ;;
@@ -1155,7 +1168,7 @@ __lmline_risk_recursive_remove() {
 # segment loses its directory prefix; path operands keep their text, so a
 # harmless path containing a dangerous name is not turned into that command.
 __lmline_risk_basename_command_words() {
-  local cmd=$1 segment word clean_word base out=$1 index j prefix_base operands_left expect_value
+  local cmd=$1 segment word clean_word base out=$1 index prefix_base cmd_index
   local -a words clean_parts
   [[ $cmd == */* ]] || { printf '%s' "$out"; return 0; }
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -1170,36 +1183,14 @@ __lmline_risk_basename_command_words() {
     done
     ((index < ${#words[@]})) || continue
     # A runner hands its command word to the program it runs; a shell syntax
-    # prefix also stands before that command. Follow either past its own
-    # options, using the product's shared vocabularies.
+    # prefix also stands before that command. The shared carried-command
+    # parser knows both from one vocabulary.
     mapfile -t clean_parts < <(__lmline_risk_split_words "${words[index]}")
     prefix_base=${clean_parts[0]##*/}
     if __lmline_risk_is_runner "$prefix_base" ||
       __lmline_word_is_command_prefix "$prefix_base"; then
-      operands_left=$(__lmline_risk_runner_operands "$prefix_base")
-      operands_left=${operands_left:-0}
-      expect_value=0
-      for ((j = index + 1; j < ${#words[@]}; j++)); do
-        word=${words[j]}
-        [[ $word == *=* ]] && continue
-        if [[ $word == -* ]]; then
-          expect_value=1
-          continue
-        fi
-        if ((expect_value)); then
-          expect_value=0
-          # A boolean prefix option such as env -i has no value; a path-like
-          # word after it is the carried command, not that option's value.
-          [[ $word == */* ]] || continue
-        fi
-        [[ $word == [0-9]* ]] && continue
-        if ((operands_left > 0)); then
-          operands_left=0
-          continue
-        fi
-        index=$j
-        break
-      done
+      cmd_index=$(__lmline_risk_carried_command_index "${words[@]:index}") || continue
+      index=$((index + cmd_index))
     fi
     word=${words[index]}
     mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
