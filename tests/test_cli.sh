@@ -22,6 +22,29 @@ dash_cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dash-config.XXXXXX")
   fail "dash-leading relative config directory did not store the secret"
 rm -rf "$dash_cfg_tmp"
 ok "dash-leading relative config directory stores secrets"
+# A relative config directory containing '=' must be read as a filename, not
+# as an awk NAME=VALUE assignment; with stdin closed a silent empty read is a
+# wrong answer, so assert the exact rows.
+equals_cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-equals-config.XXXXXX")
+(
+  cd "$equals_cfg_tmp" || exit 1
+  LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint add eq https://eq.example.invalid/v1 >/dev/null || exit 1
+  LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" model add eq eq-model >/dev/null || exit 1
+) || fail "equals-bearing relative config directory setup failed"
+equals_endpoints=$(
+  cd "$equals_cfg_tmp" &&
+    LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint list </dev/null
+) || fail "endpoint list with equals-bearing relative config dir failed"
+[[ $(cut -f1 <<<"$equals_endpoints") == eq ]] ||
+  fail "endpoint list read no rows from equals-bearing relative config dir: $equals_endpoints"
+equals_models=$(
+  cd "$equals_cfg_tmp" &&
+    LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" model list eq </dev/null
+) || fail "model list with equals-bearing relative config dir failed"
+[[ $(cut -f2 <<<"$equals_models") == eq-model ]] ||
+  fail "model list read no rows from equals-bearing relative config dir: $equals_models"
+rm -rf "$equals_cfg_tmp"
+ok "config reads accept an equals-bearing relative directory"
 grep -q "LMLINE_MODEL=.*test-model" <<<"$config_out" || fail "endpoint use model"
 grep -q "LMLINE_API_KEY_FILE=" <<<"$config_out" || fail "secret file reference"
 LMLINE_CONFIG_DIR="$cfg_tmp/config-mixed-case" "$repo_dir/lmline/lmline" endpoint add mixed-case hTtPs://api.example.invalid/v1 --models-url HtTpS://catalog.example.invalid/models >/dev/null || fail "case-insensitive HTTP(S) schemes accepted"

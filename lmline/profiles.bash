@@ -273,7 +273,7 @@ profile_endpoint_add() {
 
 profile_endpoint_list() {
   [[ -f "$endpoints_file" ]] || return 0
-  awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8,$9,$10,$11,$12,$13,($14 ? $14 : "api-key") }' "$endpoints_file"
+  awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,($5 ? "configured" : ""),$6,$7,$8,$9,$10,$11,$12,$13,($14 ? $14 : "api-key") }' <"$endpoints_file"
 }
 
 # Keep the raw profile adapter available to machine callers.
@@ -428,7 +428,7 @@ profile_model_list() {
   local endpoint=${1-}
   [[ -f "$models_file" ]] || return 0
   if [[ -z "$endpoint" ]]; then
-    awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }' "$models_file"
+    awk -F '\t' 'NF && $1 !~ /^#/ { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }' <"$models_file"
     return 0
   fi
   # The endpoint name travels through the environment, which keeps the bytes
@@ -438,7 +438,7 @@ profile_model_list() {
     awk -F '\t' '
       BEGIN { k1=ENVIRON["LM_PROFILE_KEY_1"] }
       NF && $1 !~ /^#/ && $1 == k1 { printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1,$2,$3,$4,$5,$6 }
-    ' "$models_file"
+    ' <"$models_file"
 }
 
 # Human-readable model rows are separate from the raw list used by matching,
@@ -550,9 +550,13 @@ profile_extract_model_records() {
 }
 
 profile_model_refresh() {
-  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp merge_tmp records_file catalog_file catalog_raw dedup_tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq membership_jq final_count added_count updated_count removed_count removed_names removed_display old_ids removed_labels_text removed_index
+  local endpoint=${1-} line base auth_header auth_scheme api_key_file body tmp merge_tmp records_file catalog_file catalog_raw dedup_tmp records id api_format header_tmp models_url models_jq models_prefix models_include models_exclude catalog_url catalog_jq membership_jq final_count added_count updated_count removed_count removed_names removed_display old_ids removed_labels_text removed_index awk_models_file
   local -a removed_ids=() removed_labels=()
   [[ -n "$endpoint" ]] || { usage; exit 2; }
+  # awk reads an operand shaped NAME=VALUE as a variable assignment, so a
+  # relative models path containing '=' needs a ./ spelling as a filename.
+  awk_models_file=$models_file
+  [[ $awk_models_file == /* ]] || awk_models_file=./$awk_models_file
   profile_require_name endpoint "$endpoint"
   line=$(profile_find_line "$endpoints_file" "$endpoint") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$endpoint" )" >&2; exit 2; }
   profile_split_tsv "$line" _ base auth_header auth_scheme api_key_file _ _ _ models_url models_jq models_prefix models_include models_exclude auth_mode
@@ -645,7 +649,7 @@ profile_model_refresh() {
         print endpoint, id, old_temp[id], old_tokens[id], old_tool[id], new_format[id]
       }
     }
-  ' "$records_file" "$models_file" >"$merge_tmp" || {
+  ' "$records_file" "$awk_models_file" >"$merge_tmp" || {
     printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
     exit 1
   }
@@ -653,7 +657,7 @@ profile_model_refresh() {
   # from the unfiltered catalog, keep filtered-out but still-served rows as-is,
   # and leave other endpoints untouched. TSV schema is unchanged.
   # Keep the replacement beside models.tsv so mv is a same-filesystem atomic rename.
-  __lmline_mktemp tmp "${models_file}.XXXXXX"
+  __lmline_mktemp tmp "${awk_models_file}.XXXXXX"
   awk -F '\t' -v endpoint="$endpoint" '
     FILENAME == ARGV[1] { catalog[$1] = 1; next }
     $1 == endpoint && !($2 in catalog) { next }
@@ -679,14 +683,14 @@ profile_model_refresh() {
       for (id in expected) if (!(id in found)) invalid = 1
       exit invalid
     }
-  ' "$catalog_file" "$records_file" "$models_file" "$tmp"; then
+  ' "$catalog_file" "$records_file" "$awk_models_file" "$tmp"; then
     printf 'lmline: model refresh merge changed expected IDs; keeping existing models\n' >&2
     exit 1
   fi
   # Counts: added = filtered IDs not previously stored; updated = filtered IDs
   # already stored (settings preserved, api_format synced); removed = stored
   # IDs absent from the unfiltered catalog.
-  if ! old_ids=$(awk -F '\t' -v endpoint="$endpoint" '$1 == endpoint { print $2 }' "$models_file" | sort -u); then
+  if ! old_ids=$(awk -F '\t' -v endpoint="$endpoint" '$1 == endpoint { print $2 }' <"$models_file" | sort -u); then
     printf 'lmline: model refresh merge failed; keeping existing models\n' >&2
     exit 1
   fi

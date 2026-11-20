@@ -1355,8 +1355,8 @@ case "$cmd" in
     printf '\nprofiles\n'
     endpoint_count=0
     model_count=0
-    [[ -f "$endpoints_file" ]] && endpoint_count=$(awk -F '\t' 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' "$endpoints_file")
-    [[ -f "$models_file" ]] && model_count=$(awk -F '\t' 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' "$models_file")
+    [[ -f "$endpoints_file" ]] && endpoint_count=$(awk -F '\t' 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' <"$endpoints_file")
+    [[ -f "$models_file" ]] && model_count=$(awk -F '\t' 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' <"$models_file")
     printf 'endpoints=%s\nmodels=%s\n' "$endpoint_count" "$model_count"
     profile_current | sed 's/^/active_/'
     printf '\ncopilot\n'
