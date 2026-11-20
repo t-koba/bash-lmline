@@ -84,6 +84,8 @@ bash -c '
   [[ $(__lmline_risk_level "timeout 5 rm build") == low ]]
   # A delete option after other rsync flags still deletes destination files;
   # the text must be a separate option, not part of a pathname.
+  [[ $(__lmline_risk_level "rsync --delete -a /empty/ /data/") == medium ]]
+  [[ $(__lmline_risk_level "rsync --delete-excluded -a /empty/ /data/") == medium ]]
   [[ $(__lmline_risk_level "rsync -a --delete /empty/ /data/") == medium ]]
   [[ $(__lmline_risk_level "rsync -avz --delete-after /empty/ /data/") == medium ]]
   [[ $(__lmline_risk_level "rsync -a --delete-excluded /empty/ /data/") == medium ]]
