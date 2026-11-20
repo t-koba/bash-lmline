@@ -59,7 +59,7 @@ medium	*>*	writes to a file or descriptor
 medium	*git reset*	git reset changes repository state
 medium	*docker rm*	container deletion
 medium	*kill *	process signal
-medium	*rsync --delete*	deletes files at destination
+medium	*rsync *--delete*	deletes files at destination
 medium	*npm publish*	publishes package
 medium	*pip install*	installs packages
 medium	*brew install*	installs packages

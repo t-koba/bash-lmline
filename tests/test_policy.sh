@@ -63,6 +63,12 @@ bash -c '
   # A wrapper that carries no recursive remove is not a destructive remove.
   [[ $(__lmline_risk_level "nice -n 5 rm build") == low ]]
   [[ $(__lmline_risk_level "timeout 5 rm build") == low ]]
+  # A delete flag after other rsync options still deletes destination files;
+  # the shipped pattern must not require --delete to be the first flag.
+  [[ $(__lmline_risk_level "rsync -a --delete /empty/ /data/") == medium ]]
+  [[ $(__lmline_risk_level "rsync -avz --delete-after /empty/ /data/") == medium ]]
+  [[ $(__lmline_risk_reason "rsync -a --delete /empty/ /data/") == "deletes files at destination" ]]
+  [[ $(__lmline_risk_level "rsync -a /empty/ /data/") == low ]]
   # A word that is only an argument is not the remove command.
   [[ $(__lmline_risk_level "find . -name rm -print") == low ]]
   # A word that merely carries the name of a remove is not the remove command.
