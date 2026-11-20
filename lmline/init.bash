@@ -702,6 +702,7 @@ __lmline_apply_candidate() {
       __lmline_hint clear
     fi
     __LMLINE_SHOW_CANDIDATE_COUNT=0
+    __lmline_record_suggestion "${__LMLINE_LAST_MODE:-unknown}" "${__LMLINE_LAST_ORIGINAL:-}" "$cmd"
     return 0
   fi
   case "$risk" in

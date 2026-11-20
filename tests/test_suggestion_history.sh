@@ -232,6 +232,30 @@ else
   __lmline_zsh_record_suggestion generate original-private candidate-private
 fi
 PRIVATE_WRITER
+cat >"$tmp/original-writer" <<'ORIGINAL_WRITER'
+source "$1/lmline/init.$2"
+if [[ $2 == bash ]]; then
+  __LMLINE_CANDIDATES=("candidate-original")
+  __LMLINE_CANDIDATE_RISKS=(low)
+  __LMLINE_CANDIDATE_REASONS=(-)
+  __LMLINE_CANDIDATE_FLAGS=(-)
+  __LMLINE_LAST_MODE=rewrite
+  __LMLINE_LAST_ORIGINAL="candidate-original"
+  __LMLINE_SHOW_CANDIDATE_COUNT=0
+  __lmline_apply_candidate 0
+  [[ $READLINE_LINE == candidate-original ]] || exit 9
+else
+  __LMLINE_ZSH_CANDIDATES=("candidate-original")
+  __LMLINE_ZSH_RISKS=(low)
+  __LMLINE_ZSH_REASONS=(-)
+  __LMLINE_ZSH_FLAGS=(-)
+  __LMLINE_ZSH_LAST_MODE=rewrite
+  __LMLINE_ZSH_LAST_ORIGINAL="candidate-original"
+  __LMLINE_ZSH_SHOW_CANDIDATE_COUNT=0
+  __lmline_zsh_apply_index 1
+  [[ $BUFFER == candidate-original ]] || exit 9
+fi
+ORIGINAL_WRITER
 
 private_mode() {
   stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
@@ -251,6 +275,19 @@ private_record() {
     }
 }
 
+original_apply_record() {
+  local shell=$1 history_dir=$2
+  local flags=(-f -e -i)
+  [[ $shell != bash ]] || flags=(--norc -e -i)
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-original-$shell" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/original-writer" "$repo_dir" "$shell" \
+    >"$tmp/original-$shell.out" 2>&1 || {
+      cat "$tmp/original-$shell.out" >&2
+      fail "$shell kept-original rewrite writer failed"
+    }
+}
+
 for shell in bash zsh; do
   if ! command -v "$shell" >/dev/null; then
     printf 'skip - %s private suggestion history (shell unavailable)\n' "$shell"
@@ -267,6 +304,20 @@ for shell in bash zsh; do
   [[ $(private_mode "$history_dir/suggestions.log") == 600 ]] ||
     fail "$shell left the suggestion log world-writable"
   ok "$shell tightens a loose suggestion log before recording"
+
+  # Keeping the original in rewrite mode still accepts a candidate, so both
+  # frontends must record it. Bash used to return early without recording.
+  original_dir="$tmp/original-log-$shell"
+  mkdir -m 700 "$original_dir"
+  original_apply_record "$shell" "$original_dir"
+  original_log="$original_dir/suggestions.log"
+  grep -q '^candidate=candidate-original$' "$original_log" ||
+    fail "$shell did not record a kept-original rewrite"
+  grep -q '^mode=rewrite$' "$original_log" ||
+    fail "$shell recorded a kept-original rewrite with the wrong mode"
+  [[ $(grep -c '^id=' "$original_log") == 1 ]] ||
+    fail "$shell recorded a duplicate or missing kept-original rewrite"
+  ok "$shell records a kept-original rewrite"
 
   # A legitimate relative directory beginning with a dash must not be parsed
   # as an option by the directory utilities in either shell.
