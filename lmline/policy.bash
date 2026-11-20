@@ -1169,12 +1169,15 @@ __lmline_risk_basename_command_words() {
       break
     done
     ((index < ${#words[@]})) || continue
-    # A program that runs another program hands it the command word: follow
-    # the configured prefix past its own options to the command it runs.
+    # A runner hands its command word to the program it runs; a shell syntax
+    # prefix also stands before that command. Follow either past its own
+    # options, using the product's shared vocabularies.
     mapfile -t clean_parts < <(__lmline_risk_split_words "${words[index]}")
     prefix_base=${clean_parts[0]##*/}
-    if __lmline_word_is_command_prefix "$prefix_base"; then
+    if __lmline_risk_is_runner "$prefix_base" ||
+      __lmline_word_is_command_prefix "$prefix_base"; then
       operands_left=$(__lmline_risk_runner_operands "$prefix_base")
+      operands_left=${operands_left:-0}
       expect_value=0
       for ((j = index + 1; j < ${#words[@]}; j++)); do
         word=${words[j]}
