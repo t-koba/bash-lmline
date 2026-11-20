@@ -1177,6 +1177,7 @@ __lmline_risk_basename_word() {
   local word=$1 inner clean_word base opener="" closer=""
   local -a clean_parts
   mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
+  ((${#clean_parts[@]})) || { printf '%s' "$word"; return 0; }
   clean_word=${clean_parts[0]}
   inner=$clean_word
   while :; do
@@ -1223,6 +1224,7 @@ __lmline_risk_basename_command_words() {
     # prefix also stands before that command. The shared carried-command
     # parser knows both from one vocabulary.
     mapfile -t clean_parts < <(__lmline_risk_split_words "${words[index]}")
+    ((${#clean_parts[@]})) || continue
     prefix_base=${clean_parts[0]##*/}
     if __lmline_risk_is_runner "$prefix_base" ||
       __lmline_word_is_command_prefix "$prefix_base"; then
