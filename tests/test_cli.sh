@@ -31,6 +31,14 @@ equals_cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-equals-config.XXXXXX")
   LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint add eq https://eq.example.invalid/v1 >/dev/null || exit 1
   LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" model add eq eq-model >/dev/null || exit 1
 ) || fail "equals-bearing relative config directory setup failed"
+equals_doctor=$(
+  cd "$equals_cfg_tmp" &&
+    LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" doctor </dev/null 2>/dev/null
+) || fail "doctor with equals-bearing relative config dir failed"
+[[ $(grep -c '^endpoints=1$' <<<"$equals_doctor") == 1 ]] ||
+  fail "doctor endpoint count from equals-bearing relative config dir: $equals_doctor"
+[[ $(grep -c '^models=1$' <<<"$equals_doctor") == 1 ]] ||
+  fail "doctor model count from equals-bearing relative config dir: $equals_doctor"
 equals_endpoints=$(
   cd "$equals_cfg_tmp" &&
     LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint list </dev/null
@@ -43,6 +51,30 @@ equals_models=$(
 ) || fail "model list with equals-bearing relative config dir failed"
 [[ $(cut -f2 <<<"$equals_models") == eq-model ]] ||
   fail "model list read no rows from equals-bearing relative config dir: $equals_models"
+# The multi-file awk operands in model refresh must also treat the path as a
+# filename; a reverted ./ prefix fails the merge guard rather than refreshing.
+equals_bin="$equals_cfg_tmp/bin"
+mkdir -p "$equals_bin"
+cat >"$equals_bin/curl" <<'CURL'
+#!/usr/bin/env bash
+printf '%s\n' '{"data":[{"id":"refreshed-model"}]}'
+CURL
+chmod +x "$equals_bin/curl"
+(
+  cd "$equals_cfg_tmp" || exit 1
+  LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint add eqrefresh \
+    https://eqrefresh.example.invalid/v1 \
+    --models-url https://eqrefresh.example.invalid/v1/models \
+    --models-jq '.data[].id' >/dev/null || exit 1
+  PATH="$equals_bin:$PATH" LMLINE_CONFIG_DIR='cfg=x' \
+    "$repo_dir/lmline/lmline" model refresh eqrefresh </dev/null || exit 1
+) || fail "model refresh with equals-bearing relative config dir failed"
+equals_refreshed=$(
+  cd "$equals_cfg_tmp" &&
+    LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" model list eqrefresh </dev/null
+) || fail "model list after refresh with equals-bearing relative config dir failed"
+[[ $(cut -f2 <<<"$equals_refreshed") == refreshed-model ]] ||
+  fail "refresh read no rows from equals-bearing relative config dir: $equals_refreshed"
 rm -rf "$equals_cfg_tmp"
 ok "config reads accept an equals-bearing relative directory"
 grep -q "LMLINE_MODEL=.*test-model" <<<"$config_out" || fail "endpoint use model"
