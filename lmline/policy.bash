@@ -1163,13 +1163,43 @@ __lmline_risk_recursive_remove() {
   return 1
 }
 
+# One word judged as a command position: strip shell substitution syntax
+# around it, then lose its directory prefix. Other words are returned as
+# written, so a path that is only an argument keeps its own text.
+__lmline_risk_basename_word() {
+  local word=$1 inner clean_word base opener="" closer=""
+  local -a clean_parts
+  mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
+  clean_word=${clean_parts[0]}
+  inner=$clean_word
+  while :; do
+    case $inner in
+      '$('*) opener+='$('; inner=${inner#\$'('} ;;
+      '<('*) opener+='<('; inner=${inner#'<('} ;;
+      '`'*) opener+='`'; inner=${inner#\`} ;;
+      *) break ;;
+    esac
+  done
+  while :; do
+    case $inner in
+      *')') closer=")$closer"; inner=${inner%\)} ;;
+      *'`') closer="\`$closer"; inner=${inner%\`} ;;
+      *) break ;;
+    esac
+  done
+  case $inner in '' | *[!A-Za-z0-9_./-]*) printf '%s' "$word"; return 0 ;; esac
+  base=${inner##*/}
+  [[ $base != "$inner" ]] || { printf '%s' "$word"; return 0; }
+  printf '%s' "$opener$base$closer"
+}
+
 # Judge a command written by absolute or relative path by its program name,
 # as the bare spelling is judged. Only the command word of each pipeline
 # segment loses its directory prefix; path operands keep their text, so a
 # harmless path containing a dangerous name is not turned into that command.
 __lmline_risk_basename_command_words() {
-  local cmd=$1 segment word clean_word base out=$1 index prefix_base cmd_index
-  local -a words clean_parts
+  local cmd=$1 segment word out=$1 index prefix_base cmd_index replacement j inner target
+  local -a words sub_words
   [[ $cmd == */* ]] || { printf '%s' "$out"; return 0; }
   while IFS= read -r segment || [[ -n $segment ]]; do
     words=()
@@ -1193,15 +1223,37 @@ __lmline_risk_basename_command_words() {
       index=$((index + cmd_index))
     fi
     word=${words[index]}
-    mapfile -t clean_parts < <(__lmline_risk_split_words "$word")
-    clean_word=${clean_parts[0]}
-    case $clean_word in *[!A-Za-z0-9_./-]*) continue ;; esac
-    base=${clean_word##*/}
-    [[ $base != "$clean_word" ]] || continue
-    # Replace only complete word text, leaving separators and path operands
-    # exactly as written. A word changed here is a command somewhere in the
-    # candidate, so its bare name is already part of the judged command.
-    out=${out//"$word"/"$base"}
+    replacement=$(__lmline_risk_basename_word "$word")
+    [[ $replacement == "$word" ]] || out=${out//"$word"/"$replacement"}
+    # A command substitution opens its own command position wherever it
+    # appears in the segment, not only at the start of a pipeline segment.
+    for ((j = 0; j < ${#words[@]}; j++)); do
+      (( j == index )) && continue
+      word=${words[j]}
+      case $word in
+        '$('*|'<('*|'`'*)
+          replacement=$(__lmline_risk_basename_word "$word")
+          if [[ $replacement != "$word" ]]; then
+            out=${out//"$word"/"$replacement"}
+            continue
+          fi
+          inner=${word#\$'('}
+          inner=${inner#'<('}
+          inner=${inner#\`}
+          inner=${inner%%')'*}
+          if __lmline_risk_is_runner "${inner##*/}" ||
+            __lmline_word_is_command_prefix "${inner##*/}"; then
+            sub_words=("${words[@]:j}")
+            cmd_index=$(__lmline_risk_carried_command_index "${sub_words[@]}") || continue
+            target=$((j + cmd_index))
+            ((target < ${#words[@]})) || continue
+            word=${words[target]}
+            replacement=$(__lmline_risk_basename_word "$word")
+            [[ $replacement == "$word" ]] || out=${out//"$word"/"$replacement"}
+          fi
+          ;;
+      esac
+    done
   done < <(__lmline_split_pipeline "$cmd" 1)
   printf '%s' "$out"
 }
