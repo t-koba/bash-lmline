@@ -178,8 +178,8 @@ defaults_output=$(
     __LMLINE_EXEC_STATUS=0
   }
   LMLINE_EXEC_BACKEND=local \
-    LMLINE_TOOL_COMMAND_RUN_TIMEOUT= \
-    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT= \
+    LMLINE_TOOL_COMMAND_RUN_TIMEOUT='' \
+    LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT='' \
     __lmline_tool_command_run 'printf hi'
 )
 grep -q '^allowed=1$' <<<"$defaults_output" \
@@ -301,10 +301,13 @@ for command_line in 'cat inside.txt' "cat 'inside.txt'" 'cat "inside space.txt"'
   grep -Eq '(INSIDE|SPACE)_MARKER' <<<"$out" || fail "the relative operand was not read"
 done
 out=$(tool_command "cat 'inside|pipe.txt' | cat") || fail "tool dispatch failed"
-grep -q '^allowed=1$' <<<"$out" && grep -q PIPE_MARKER <<<"$out" || fail "a quoted pipe was misparsed"
+if ! grep -q '^allowed=1$' <<<"$out" || ! grep -q PIPE_MARKER <<<"$out"; then
+  fail "a quoted pipe was misparsed"
+fi
 out=$(tool_command "printf '%s:%s' '' --file='inside space.txt'") || fail "tool dispatch failed"
-grep -q '^allowed=1$' <<<"$out" && grep -q ':--file=inside space.txt' <<<"$out" \
-  || fail "empty or assignment-style relative operands were misparsed"
+if ! grep -q '^allowed=1$' <<<"$out" || ! grep -q ':--file=inside space.txt' <<<"$out"; then
+  fail "empty or assignment-style relative operands were misparsed"
+fi
 cd "$repo_dir" || fail "the repository directory is missing"
 ok "the tool preserves literal relative words and pipelines"
 

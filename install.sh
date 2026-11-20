@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-src_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+src_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 config_dir=${LMLINE_CONFIG_DIR:-$HOME/.config/lmline}
 bin_dir=${LMLINE_BIN_DIR:-$HOME/.local/bin}
 
 mkdir -p "$config_dir" "$config_dir/history" "$bin_dir"
-config_dir=$(CDPATH= cd -- "$config_dir" && pwd)
-bin_dir=$(CDPATH= cd -- "$bin_dir" && pwd)
+config_dir=$(CDPATH='' cd -- "$config_dir" && pwd)
+bin_dir=$(CDPATH='' cd -- "$bin_dir" && pwd)
 config_file=$config_dir/settings.bash
 
 for path in init.bash init.zsh config.bash context.bash policy.bash policy-parse.bash validation-boundary.bash validate sandbox.bash actions.bash http.bash profiles.bash chat.bash responses.bash websearch.bash chatgpt.bash engine lmline copilot-client.js chatgpt-client.js; do

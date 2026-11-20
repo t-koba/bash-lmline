@@ -547,7 +547,7 @@ original_tmpdir=${TMPDIR-}
 [[ ${TMPDIR-} == "$original_tmpdir" ]] || fail "temp root rewrote the caller TMPDIR"
 [[ $(TMPDIR=relative __lmline_tmp_root) == ./relative ]] ||
   fail "temp root did not prefix a relative TMPDIR"
-[[ $(TMPDIR= __lmline_tmp_root) == /tmp ]] ||
+[[ $(TMPDIR='' __lmline_tmp_root) == /tmp ]] ||
   fail "temp root lost the default directory"
 
 # A dash-leading relative TMPDIR stays the caller's own value; lmline turns it

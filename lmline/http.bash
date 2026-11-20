@@ -11,7 +11,7 @@
 # every destination URL after header_file, checked even without a key to
 # protect prompt context; subscription callers keep their separate route policy.
 __lmline_http_build_headers() {
-  local api_key_file=$1 auth_header=$2 auth_scheme=$3 header_file=$4 api_key= url
+  local api_key_file=$1 auth_header=$2 auth_scheme=$3 header_file=$4 api_key='' url
   shift 4
   __LMLINE_HTTP_HEADERS=(-H 'Content-Type: application/json')
   for url in "$@"; do

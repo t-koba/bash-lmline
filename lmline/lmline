@@ -1132,7 +1132,7 @@ print_sandbox_check() {
 }
 
 run_sandbox_command() {
-  local image= name= timeout=${LMLINE_TOOL_COMMAND_RUN_TIMEOUT:-3} max_output=${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT:-12000}
+  local image='' name='' timeout=${LMLINE_TOOL_COMMAND_RUN_TIMEOUT:-3} max_output=${LMLINE_TOOL_COMMAND_RUN_MAX_OUTPUT:-12000}
   local tmp status command_line
   while (($#)); do
     case "$1" in
@@ -1198,7 +1198,7 @@ run_sandbox_command() {
 setup_sandbox() {
   local name=${LMLINE_MICROSANDBOX_NAME:-} image=${LMLINE_MICROSANDBOX_IMAGE:-debian}
   local workspace_mode=${LMLINE_MICROSANDBOX_WORKSPACE_MODE:-readonly}
-  local root= root_arg= workdir=${LMLINE_MICROSANDBOX_WORKDIR:-/workspace} timeout=${LMLINE_MICROSANDBOX_SETUP_TIMEOUT:-30}
+  local root='' root_arg='' workdir=${LMLINE_MICROSANDBOX_WORKDIR:-/workspace} timeout=${LMLINE_MICROSANDBOX_SETUP_TIMEOUT:-30}
   while (($#)); do
     case "$1" in
       --name)

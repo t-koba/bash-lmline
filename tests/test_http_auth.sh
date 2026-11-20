@@ -48,7 +48,7 @@ canary=SYNTHETIC-HTTP-AUTH-TEST
 run_route() {
   case "$route" in
     generate) "$repo_dir/lmline/engine" "${engine_args[@]}" ;;
-    discover) LMLINE_MODEL= "$repo_dir/lmline/engine" "${engine_args[@]}" ;;
+    discover) LMLINE_MODEL='' "$repo_dir/lmline/engine" "${engine_args[@]}" ;;
     refresh) "$cli" model refresh "$endpoint" ;;
     doctor) "$cli" doctor --check-api ;;
     boundary)

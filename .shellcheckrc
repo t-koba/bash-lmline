@@ -1,8 +1,8 @@
 # Pinned baseline for the existing codebase. These classes are either
-# intentional idioms here (single quotes around awk/jq programs, A && B || C
-# chains) or benign duplicates (case alternatives that share a branch). The
-# policy-rule glob match, dynamic exports, sourced/executed guards and compgen
-# word splitting are suppressed at their exact sites; caller-provided globals
-# are suppressed only in the five engine-boundary modules. Ratchet this list
-# down over time instead of growing it.
-disable=SC1003,SC1007,SC2015,SC2016,SC2034,SC2209,SC2221,SC2222
+# intentional idioms here (single quotes around awk/jq programs) or benign
+# duplicates (case alternatives that share a branch). The policy-rule glob
+# match, dynamic exports, sourced/executed guards and compgen word splitting
+# are suppressed at their exact sites; caller-provided globals are suppressed
+# only in the five engine-boundary modules. Ratchet this list down over time
+# instead of growing it.
+disable=SC1003,SC2016,SC2034,SC2209,SC2221,SC2222

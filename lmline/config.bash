@@ -251,7 +251,7 @@ __lmline_capture_env_baseline() {
 # but only while it still holds the value the files set, so intentional user
 # changes made meanwhile are never cleared.
 __lmline_reconcile_config_load() {
-  local old_keys=$__LMLINE_FILE_KEYS new_keys= k cur stamp ref base
+  local old_keys=$__LMLINE_FILE_KEYS new_keys='' k cur stamp ref base
   local IFS=$'\n'
   if [[ -n "$__LMLINE_LOAD_KEYS" ]]; then
     local -A seen_keys=()

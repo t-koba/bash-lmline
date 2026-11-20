@@ -480,7 +480,7 @@ __lmline_chatgpt_failure_hint() {
 }
 
 __lmline_report_request_failure() {
-  local http_code=$1 content_type=${2-} response=$3 detail display_detail hint= detail_lower=
+  local http_code=$1 content_type=${2-} response=$3 detail display_detail hint='' detail_lower=''
   detail=$(__lmline_response_error_detail "$response" "$content_type")
   if [[ "${LMLINE_AUTH_MODE:-api-key}" == chatgpt ]]; then
     hint=$(__lmline_chatgpt_failure_hint "$http_code" "$detail")
@@ -522,7 +522,7 @@ __lmline_report_request_failure() {
 # such as a Responses stream that ends with response.failed. The HTTP status
 # cannot classify these, so the provider error code drives the recovery hint.
 __lmline_report_provider_failure() {
-  local response=$1 detail display_detail hint= display_response_id= response_suffix=
+  local response=$1 detail display_detail hint='' display_response_id='' response_suffix=''
   detail=$(__lmline_response_error_detail "$response" application/json)
   # Response IDs are provider data too: bound/collapse them, then render
   # through the same fail-closed terminal boundary as error detail.
@@ -549,7 +549,7 @@ __lmline_report_provider_failure() {
 
 __lmline_accept_response() {
   local response=$1 label=$2 api_format=${3:-${LMLINE_API_FORMAT:-chat}}
-  local finish_status finish_status_from_flags=0 incomplete_reason_is_stream_ended=0 display_reason= display_reason_needed=0 provider_failed=0
+  local finish_status finish_status_from_flags=0 incomplete_reason_is_stream_ended=0 display_reason='' display_reason_needed=0 provider_failed=0
   local response_flags flags_provider_failed flags_stream_ended flags_reason_present flags_finish_status max_tokens_advice=
   # jq normally processes successive documents independently. Validate the
   # whole body before any provider fields or normalized output are consumed.
@@ -1552,7 +1552,7 @@ __lmline_cache_emit_status() {
 # candidate remains valid under the current policy, so the caller refetches.
 __lmline_cache_emit() {
   local cached_line body risk_old reason_old flags candidate rejection risk_match risk reason
-  local valid_count=0 valid_output= line plain_output=
+  local valid_count=0 valid_output='' line plain_output=''
   if [[ "$output_format" != annotated ]]; then
     if [[ "$mode" != explain && "$mode" != clip ]]; then
       # The plain format of a command mode stores the candidate text alone,

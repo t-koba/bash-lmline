@@ -214,8 +214,8 @@ profile_upsert_line() {
 }
 
 profile_endpoint_add() {
-  local name=${1-} base_url=${2-} auth_header= auth_scheme= api_key_file= temperature= max_tokens= tool_mode= auth_mode=
-  local models_url= models_jq= models_prefix= models_include= models_exclude=
+  local name=${1-} base_url=${2-} auth_header='' auth_scheme='' api_key_file='' temperature='' max_tokens='' tool_mode='' auth_mode=''
+  local models_url='' models_jq='' models_prefix='' models_include='' models_exclude=''
   local line old_header old_scheme old_temp old_tokens old_tool old_models_url old_models_jq old_models_prefix old_models_include old_models_exclude old_auth_mode
   local header_set=0 scheme_set=0 models_url_set=0 models_jq_set=0 models_prefix_set=0 models_include_set=0 models_exclude_set=0 auth_mode_set=0
   [[ -n "$name" && -n "$base_url" ]] || { usage; exit 2; }
@@ -394,7 +394,7 @@ profile_model_remove() {
 }
 
 profile_model_add() {
-  local endpoint=${1-} model=${2-} temperature= max_tokens= tool_mode= api_format= endpoint_line auth_mode
+  local endpoint=${1-} model=${2-} temperature='' max_tokens='' tool_mode='' api_format='' endpoint_line auth_mode
   [[ -n "$endpoint" && -n "$model" ]] || { usage; exit 2; }
   profile_require_name endpoint "$endpoint"
   profile_require_name model "$model"
@@ -782,10 +782,26 @@ profile_use() {
   write_config_value LMLINE_MODEL "$model"
   write_config_value LMLINE_AUTH_HEADER "$auth_header"
   write_config_value LMLINE_AUTH_SCHEME "$auth_scheme"
-  [[ -n "$api_key_file" ]] && write_config_value LMLINE_API_KEY_FILE "$api_key_file" || unset_config_value LMLINE_API_KEY_FILE
-  [[ -n "${m_temp:-$e_temp}" ]] && write_config_value LMLINE_TEMPERATURE "${m_temp:-$e_temp}" || unset_config_value LMLINE_TEMPERATURE
-  [[ -n "${m_tokens:-$e_tokens}" ]] && write_config_value LMLINE_MAX_TOKENS "${m_tokens:-$e_tokens}" || unset_config_value LMLINE_MAX_TOKENS
-  [[ -n "${m_tool:-$e_tool}" ]] && write_config_value LMLINE_TOOL_MODE "${m_tool:-$e_tool}" || unset_config_value LMLINE_TOOL_MODE
+  if [[ -n "$api_key_file" ]]; then
+    write_config_value LMLINE_API_KEY_FILE "$api_key_file"
+  else
+    unset_config_value LMLINE_API_KEY_FILE
+  fi
+  if [[ -n "${m_temp:-$e_temp}" ]]; then
+    write_config_value LMLINE_TEMPERATURE "${m_temp:-$e_temp}"
+  else
+    unset_config_value LMLINE_TEMPERATURE
+  fi
+  if [[ -n "${m_tokens:-$e_tokens}" ]]; then
+    write_config_value LMLINE_MAX_TOKENS "${m_tokens:-$e_tokens}"
+  else
+    unset_config_value LMLINE_MAX_TOKENS
+  fi
+  if [[ -n "${m_tool:-$e_tool}" ]]; then
+    write_config_value LMLINE_TOOL_MODE "${m_tool:-$e_tool}"
+  else
+    unset_config_value LMLINE_TOOL_MODE
+  fi
   if [[ -n "$m_api_format" ]]; then
     write_config_value LMLINE_API_FORMAT "$m_api_format"
   elif [[ "$e_auth_mode" == chatgpt ]]; then
@@ -795,12 +811,36 @@ profile_use() {
   else
     unset_config_value LMLINE_API_FORMAT
   fi
-  [[ -n "$e_models_url" ]] && write_config_value LMLINE_MODELS_URL "$e_models_url" || unset_config_value LMLINE_MODELS_URL
-  [[ -n "$e_models_jq" ]] && write_config_value LMLINE_MODELS_JQ "$e_models_jq" || unset_config_value LMLINE_MODELS_JQ
-  [[ -n "$e_models_prefix" ]] && write_config_value LMLINE_MODELS_PREFIX "$e_models_prefix" || unset_config_value LMLINE_MODELS_PREFIX
-  [[ -n "$e_models_include" ]] && write_config_value LMLINE_MODELS_INCLUDE "$e_models_include" || unset_config_value LMLINE_MODELS_INCLUDE
-  [[ -n "$e_models_exclude" ]] && write_config_value LMLINE_MODELS_EXCLUDE "$e_models_exclude" || unset_config_value LMLINE_MODELS_EXCLUDE
-  [[ -n "$e_auth_mode" ]] && write_config_value LMLINE_AUTH_MODE "$e_auth_mode" || unset_config_value LMLINE_AUTH_MODE
+  if [[ -n "$e_models_url" ]]; then
+    write_config_value LMLINE_MODELS_URL "$e_models_url"
+  else
+    unset_config_value LMLINE_MODELS_URL
+  fi
+  if [[ -n "$e_models_jq" ]]; then
+    write_config_value LMLINE_MODELS_JQ "$e_models_jq"
+  else
+    unset_config_value LMLINE_MODELS_JQ
+  fi
+  if [[ -n "$e_models_prefix" ]]; then
+    write_config_value LMLINE_MODELS_PREFIX "$e_models_prefix"
+  else
+    unset_config_value LMLINE_MODELS_PREFIX
+  fi
+  if [[ -n "$e_models_include" ]]; then
+    write_config_value LMLINE_MODELS_INCLUDE "$e_models_include"
+  else
+    unset_config_value LMLINE_MODELS_INCLUDE
+  fi
+  if [[ -n "$e_models_exclude" ]]; then
+    write_config_value LMLINE_MODELS_EXCLUDE "$e_models_exclude"
+  else
+    unset_config_value LMLINE_MODELS_EXCLUDE
+  fi
+  if [[ -n "$e_auth_mode" ]]; then
+    write_config_value LMLINE_AUTH_MODE "$e_auth_mode"
+  else
+    unset_config_value LMLINE_AUTH_MODE
+  fi
   write_config_value LMLINE_ACTIVE_ENDPOINT "$endpoint"
 }
 

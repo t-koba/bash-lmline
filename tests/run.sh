@@ -20,7 +20,7 @@ elif (($# == 1)); then
   fi
 fi
 
-tests_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+tests_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 failed=()
 # Bash SECONDS keeps per-file timings portable across the Linux and macOS runners.
 suite_started=$SECONDS

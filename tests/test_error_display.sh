@@ -37,8 +37,9 @@ for chmod_status in 1 0; do
   LMLINE_TRACE_DIR="$work/public-trace" PATH="$work/trace-bin:$PATH" LMLINE_TEST_CHMOD_STATUS=$chmod_status \
     trace_preview >"$work/trace.out" 2>"$work/trace.err" || fail 'blocked trace changed engine exit status'
   [[ -z $(ls -A "$work/public-trace") ]] || fail "trace was written to a public directory with chmod status $chmod_status"
-  cmp -s "$work/trace-off.out" "$work/trace.out" && cmp -s "$work/trace-off.err" "$work/trace.err" \
-    || fail 'blocked trace changed engine output or diagnostics'
+  if ! cmp -s "$work/trace-off.out" "$work/trace.out" || ! cmp -s "$work/trace-off.err" "$work/trace.err"; then
+    fail 'blocked trace changed engine output or diagnostics'
+  fi
 done
 # A new destination must be private even without chmod actually changing it.
 private_trace="$work/private/trace"
@@ -47,8 +48,9 @@ LMLINE_TRACE_DIR="$private_trace" PATH="$work/trace-bin:$PATH" LMLINE_TEST_CHMOD
 [[ $(stat -c %a "$private_trace" 2>/dev/null || stat -f %Lp "$private_trace") == 700 ]] || fail 'new trace directory is not mode 0700'
 jq . "$private_trace"/*.request.json | cmp -s "$work/trace-off.out" - || fail 'private request trace does not match payload'
 grep -Fq 'synthetic-trace-prompt' "$private_trace"/*.meta || fail 'private metadata trace is missing the synthetic prompt'
-cmp -s "$work/trace-off.out" "$work/trace.out" && cmp -s "$work/trace-off.err" "$work/trace.err" \
-  || fail 'private trace changed engine output or diagnostics'
+if ! cmp -s "$work/trace-off.out" "$work/trace.out" || ! cmp -s "$work/trace-off.err" "$work/trace.err"; then
+  fail 'private trace changed engine output or diagnostics'
+fi
 
 # A symlink must never be chmodded or written through, even when its real
 # target is already private; trailing slashes must not hide the symlink.
@@ -68,8 +70,9 @@ for trace_dir in "$trace_symlink" "$trace_symlink/" "$trace_symlink///" \
   [[ -z $(ls -A "$trace_target") ]] || fail "trace was written through a symlinked directory: $trace_dir"
   [[ $(stat -c %a "$trace_target" 2>/dev/null || stat -f %Lp "$trace_target") == "$target_mode" ]] \
     || fail "symlink target mode changed: $trace_dir"
-  cmp -s "$work/trace-off.out" "$work/trace.out" && cmp -s "$work/trace-off.err" "$work/trace.err" \
-    || fail "symlinked trace changed engine output or diagnostics: $trace_dir"
+  if ! cmp -s "$work/trace-off.out" "$work/trace.out" || ! cmp -s "$work/trace-off.err" "$work/trace.err"; then
+    fail "symlinked trace changed engine output or diagnostics: $trace_dir"
+  fi
 done
 ok 'symlinked trace directories are refused'
 

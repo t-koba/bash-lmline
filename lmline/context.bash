@@ -78,7 +78,7 @@ __lmline_suggested_commands_file() {
 # Select the current PATH tool unless an explicit cached wrapper is the
 # effective choice. Caller locals receive the selected paths and function flag.
 __lmline_resolve_hash_tool() {
-  local tool=$1 path_hash_path= cached_hash_path path_entry remaining candidate more
+  local tool=$1 path_hash_path='' cached_hash_path path_entry remaining candidate more
   cached_hash_path=$(builtin hash -t "$tool" 2>/dev/null) || cached_hash_path=
   # Search PATH directly instead of trusting Bash's command cache or type output;
   # empty entries retain their standard current-directory meaning.
@@ -1702,7 +1702,7 @@ __lmline_path_key() (
 
 __lmline_request_key() (
   set -o pipefail
-  local request_mode=$1 line=$2 physical_cwd_key= uname_key= exported_functions=
+  local request_mode=$1 line=$2 physical_cwd_key='' uname_key='' exported_functions=''
   # Keep exported bodies out of hash subprocesses without changing caller
   # definitions or lookup semantics; unexported functions cannot reach them.
   # Use the hardened exported-names collector, which never dispatches caller

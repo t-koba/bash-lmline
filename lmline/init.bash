@@ -213,7 +213,7 @@ __lmline_append_original_candidate() {
 
 __lmline_wait_with_spinner() {
   local pid=$1 label=$2 progress_file=${3:-} frame_index=0 tick=0 elapsed=0 interval=${LMLINE_SPINNER_INTERVAL:-0.2} current_label status=0
-  local progress_fd= guard_fd= line partial= last_label= progress_prefix='lmline-progress: '
+  local progress_fd='' guard_fd='' line partial='' last_label='' progress_prefix='lmline-progress: '
   local -a frames=('.  ' '.. ' '...')
   if ! __lmline_spinner_enabled; then
     wait "$pid" || status=$?
