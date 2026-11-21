@@ -742,6 +742,14 @@ bash -c '
   [[ $(__lmline_risk_level "diff <(env -C \"/tmp/)\" /usr/bin/dd if=/dev/zero) f") == high ]]
   quoted_bt="echo ${bt}env -C ${sq}/tmp/${bt}x${sq} /usr/bin/dd if=/dev/zero of=/dev/sda${bt}"
   [[ $(__lmline_risk_level "$quoted_bt") == high ]]
+  # Backslash runs follow shell quote rules: an even pair closes a double
+  # quote, while a backslash is literal inside single quotes.
+  dq=$(printf "\042")
+  bs=$(printf "\134")
+  escaped_quote_case="echo \$(/usr/bin/dd if=/dev/zero of=/dev/sda ${dq}a${bs}${bs}${dq})"
+  single_quote_case="echo \$(/usr/bin/dd if=/dev/zero of=/dev/sda ${sq}a${bs}${sq})"
+  [[ $(__lmline_risk_level "$escaped_quote_case") == high ]]
+  [[ $(__lmline_risk_level "$single_quote_case") == high ]]
   # An unquoted delimiter really does close the substitution.
   [[ $(__lmline_risk_level "echo \$(env -C /tmp/)x /usr/bin/dd if=/dev/zero of=/dev/sda)") == low ]]
   [[ $(__lmline_risk_level "echo ${bt} /usr/bin/dd if=/dev/zero of=/dev/sda ${bt}") == high ]]

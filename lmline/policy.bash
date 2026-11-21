@@ -1210,30 +1210,39 @@ __lmline_risk_basename_word() {
 # Whether a word contains the delimiter outside quotes and escapes. A
 # delimiter written inside quotes is data, not the end of a substitution.
 __lmline_risk_word_has_unquoted_char() {
-  local text=$1 target=$2 i ch quote="" prev=""
+  local text=$1 target=$2 i ch quote="" escaped=0
   for ((i = 0; i < ${#text}; i++)); do
     ch=${text:i:1}
     if [[ -n $quote ]]; then
-      if [[ $quote == '"' && $ch == "\\" && $prev != "\\" ]]; then
-        prev=$ch
+      # A backslash is literal inside single quotes but escapes the next
+      # character in double quotes and backticks, even runs of backslashes.
+      if [[ $quote == "'" ]]; then
+        [[ $ch == "'" ]] && quote=
         continue
       fi
-      if [[ $ch == "$quote" && $prev != "\\" ]]; then
-        quote=
+      if (( escaped )); then
+        escaped=0
+        continue
       fi
-      prev=$ch
+      if [[ $ch == "\\" ]]; then
+        escaped=1
+        continue
+      fi
+      [[ $ch == "$quote" ]] && quote=
+      continue
+    fi
+    if (( escaped )); then
+      escaped=0
       continue
     fi
     if [[ $ch == "\\" ]]; then
-      prev=$ch
-      i=$((i + 1))
+      escaped=1
       continue
     fi
     [[ $ch == "$target" ]] && return 0
     case $ch in
-      "'"|'"'|'`') quote=$ch ;;
+      "'"|'"'|"\`") quote=$ch ;;
     esac
-    prev=$ch
   done
   return 1
 }
