@@ -1282,6 +1282,20 @@ __lmline_risk_word_runs_shell() {
   __lmline_word_is_shell "$base"
 }
 
+# Whether a word invokes the shell's source or dot builtin. These read and
+# execute a script file, but are not external shell programs, so they are kept
+# out of the shared shell-word list used by other risk checks.
+__lmline_risk_word_sources_script() {
+  local canonical first
+  local -a canon=()
+  canonical=$(__lmline_canonicalize_for_risk <<<"$1") || return 1
+  [[ -n $canonical ]] || return 1
+  read -r -a canon <<<"$canonical" || true
+  ((${#canon[@]} > 0)) || return 1
+  first=${canon[0]}
+  [[ $first == source || $first == . ]]
+}
+
 # Whether a word stands for the remove command. The word is read as the
 # words it runs, with the quoting removed and the expansions spaced, so a
 # spelling that hides the command (rm${IFS}-rf, `echo rm`) is read as the
@@ -2089,7 +2103,10 @@ __lmline_risk_here_string_payload() {
     read -r -a quoted <<<"$(__lmline_split_pipeline "$segment" 2)"
     ((${#quoted[@]})) || continue
     cmd_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
-    __lmline_risk_word_runs_shell "${quoted[cmd_index]}" || continue
+    if ! __lmline_risk_word_runs_shell "${quoted[cmd_index]}" &&
+       ! __lmline_risk_word_sources_script "${quoted[cmd_index]}"; then
+      continue
+    fi
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
@@ -2203,7 +2220,10 @@ __lmline_risk_generated_script_source() {
     mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0 "" bash structural-substitution 0)")
     ((${#plain[@]})) || continue
     cmd_index=$(__lmline_risk_segment_command_index "${plain[@]}") || continue
-    __lmline_risk_word_runs_shell "${plain[cmd_index]}" || continue
+    if ! __lmline_risk_word_runs_shell "${plain[cmd_index]}" &&
+       ! __lmline_risk_word_sources_script "${plain[cmd_index]}"; then
+      continue
+    fi
     source_index=-1
     for ((index = cmd_index + 1; index < ${#plain[@]}; index++)); do
       if [[ ${plain[index]} == '<('* ]]; then
@@ -2224,7 +2244,10 @@ __lmline_risk_generated_script_source() {
     (( q_source >= 0 )) || continue
     q_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
     (( q_index < q_source )) || continue
-    __lmline_risk_word_runs_shell "${quoted[q_index]}" || continue
+    if ! __lmline_risk_word_runs_shell "${quoted[q_index]}" &&
+       ! __lmline_risk_word_sources_script "${quoted[q_index]}"; then
+      continue
+    fi
     # Only an input redirect immediately before the substitution feeds its
     # script: a bare '<' feeds stdin and '3<' feeds descriptor 3. An earlier
     # redirect with its own target is unrelated to this process substitution.

@@ -63,6 +63,15 @@ bash -c '
   hsq=$(printf "\047")
   [[ $(__lmline_risk_level "bash <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_reason "bash <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]
+  # The source and dot builtins execute a here-string script too.
+  [[ $(__lmline_risk_level "source /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "source /dev/stdin <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level ". /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "source /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level ". /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "source script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level ". script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "source /dev/fd/1 <<< ${hsq}rm -rf /${hsq}") == low ]]
   # The payload can be glued to the operator, and quotes around part of the
   # command word do not keep the shell from running it.
   [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]
@@ -167,6 +176,9 @@ bash -c '
   # A standard-stream alias reads the substituted script, not a stored file.
   [[ $(__lmline_risk_level "bash /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_reason "bash /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "source /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level ". /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_reason "source /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash /proc/self/fd/0 < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/3 3< <(echo ${hsq}rm -rf /${hsq})") == high ]]
