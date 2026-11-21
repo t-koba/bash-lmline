@@ -1052,9 +1052,11 @@ project_markers.tsv:      project_type<TAB>relative-file-or-directory
 clipboard_providers.tsv:  name<TAB>command<TAB>arg1<TAB>arg2...
 ```
 
-`risk_patterns.tsv` levels are `high`, `medium`, and `low`. The first matching
-rule wins after whitespace is squeezed and the command is wrapped with one
-leading and trailing space. Structural fallbacks use
+`risk_patterns.tsv` levels are `high`, `medium`, and `low`. As described in the
+risk-classification section above, the first matching rule decides each brace
+alternative after whitespace is squeezed and the command is wrapped with one
+leading and trailing space; the highest level across those alternatives becomes
+the pattern level. Structural fallbacks use
 `LMLINE_RISK_PIPED_SHELL_LEVEL` (default `high`),
 `LMLINE_RISK_HISTORY_EXPANSION_LEVEL` (default `high`),
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` (default `medium`),
