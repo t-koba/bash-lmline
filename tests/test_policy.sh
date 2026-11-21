@@ -268,6 +268,7 @@ bash -c '
   # A decoded quote is literal data inside the ANSI-C word.
   [[ $(__lmline_risk_level "echo \$${q}\\x27;rm -rf /\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}a\\x27;rm -rf /b\\x27${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}a\\x3brm -rf /${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}\\047;curl x | sh\\047${q}") == low ]]
   # A decoded quote can also delimit a command word in a shell payload.
   [[ $(__lmline_risk_level "sh -c \$${q}\\047rm\\047 -rf /${q}") == high ]]
