@@ -319,7 +319,7 @@ __lmline_candidate_rejection_reason() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
-  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 bt_subst_depth=0 bt_exposed=0 __lmline_bt_trim="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
@@ -328,6 +328,34 @@ __lmline_split_pipeline() {
     prior_zsh_qualifier_close=$zsh_qualifier_just_closed
     zsh_qualifier_just_closed=0
     if [[ -n "$quote" ]]; then
+      # Backticks open a command substitution for structural checks, so its
+      # content and operators are read as commands rather than as one word.
+      if [[ "$split_mode" == structural-substitution && "$quote" == '`' ]] && (( bt_exposed )); then
+        if [[ "$ch" == '(' && ( "$prev" == '$' || "$prev" == '<' ) ]]; then
+          bt_subst_depth=$((bt_subst_depth + 1))
+          stripped+=$'\n'
+          prev=$ch
+          continue
+        fi
+        if (( bt_subst_depth > 0 )) && [[ "$ch" == ')' ]]; then
+          bt_subst_depth=$((bt_subst_depth - 1))
+          stripped+=$'\n'
+          prev=$ch
+          continue
+        fi
+        if [[ "$ch" == '`' ]]; then
+          quote=
+          bt_exposed=0
+          stripped+=$'\n'
+          prev=$ch
+          continue
+        fi
+        if [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
+          stripped+=$'\n'
+          prev=$ch
+          continue
+        fi
+      fi
       # Double quotes do not stop a command substitution from running. Open
       # its content as its own segment for structural checks; single quotes
       # still keep the same text inert.
@@ -399,7 +427,17 @@ __lmline_split_pipeline() {
       "'"|'"'|'`')
         quote=$ch
         [[ "$split_mode" != command-prefix && "$split_mode" != cwd-pipeline ]] || stripped+=$'\001'
-        (( keep_quoted )) && stripped+=$ch
+        if [[ "$split_mode" == structural-substitution && "$ch" == '`' ]]; then
+          __lmline_bt_trim=${stripped%"${stripped##*[![:space:]]}"}
+          if [[ -n "$__lmline_bt_trim" && "$__lmline_bt_trim" != *[\;\&\|\(\)] ]]; then
+            bt_exposed=1
+            stripped+=$'\n'
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
+        else
+          (( keep_quoted )) && stripped+=$ch
+        fi
         ;;
       '|'|';'|'&')
         # Inside an open zsh glob qualifier a separator is part of the word
