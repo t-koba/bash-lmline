@@ -317,9 +317,18 @@ __lmline_candidate_rejection_reason() {
   printf 'ok'
 }
 
+__lmline_backtick_content() {
+  local cmd=$1 start=$2 close=$(( $2 + 1 ))
+  while (( close < ${#cmd} )); do
+    [[ ${cmd:close:1} == '`' && ${cmd:close-1:1} != $'\\' ]] && break
+    close=$((close + 1))
+  done
+  printf '%s' "${cmd:start+1:close-start-1}"
+}
+
 __lmline_split_pipeline() {
-  local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
-  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 __lmline_bt_trim="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all} emit_boundary=${6:-1}
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 bt_content="" dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
@@ -340,20 +349,32 @@ __lmline_split_pipeline() {
         fi
         if [[ "$ch" == '(' && ( "$prev" == '$' || "$prev" == '<' ) ]]; then
           bt_subst_depth=$((bt_subst_depth + 1))
-          stripped+=$'\n'
+          if (( emit_boundary )); then
+            stripped+=$'\n'
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
           prev=$ch
           continue
         fi
         if (( bt_subst_depth > 0 )) && [[ "$ch" == ')' ]]; then
           bt_subst_depth=$((bt_subst_depth - 1))
-          stripped+=$'\n'
+          if (( emit_boundary )); then
+            stripped+=$'\n'
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
           prev=$ch
           continue
         fi
         if [[ "$ch" == '`' ]]; then
           quote=
           bt_exposed=0
-          stripped+=$'\n'
+          if (( emit_boundary )); then
+            stripped+=$'\n'
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
           prev=$ch
           continue
         fi
@@ -367,6 +388,32 @@ __lmline_split_pipeline() {
       # its content as its own segment for structural checks; single quotes
       # still keep the same text inert.
       if [[ "$split_mode" == structural-substitution && "$quote" == '"' ]]; then
+        if [[ "$ch" == '`' ]]; then
+          if (( dq_backtick_depth > 0 )); then
+            dq_backtick_depth=$((dq_backtick_depth - 1))
+            stripped+=$'\n'
+          else
+            bt_content=$(__lmline_backtick_content "$cmd" "$i")
+            bt_risky=0
+            if [[ "$bt_content" == *'|'* || "$bt_content" == *';'* || "$bt_content" == *'&'* || "$bt_content" == *'$('* || "$bt_content" == *'<('* ]]; then
+              bt_risky=1
+            elif (( emit_boundary )) && [[ "$bt_content" != *'`'* ]] && __lmline_risk_recursive_remove "$bt_content"; then
+              bt_risky=1
+            fi
+            if (( bt_risky )); then
+              dq_backtick_depth=$((dq_backtick_depth + 1))
+              if (( emit_boundary )); then
+                stripped+=$'\n'
+              else
+                (( keep_quoted )) && stripped+=$ch
+              fi
+            else
+              (( keep_quoted )) && stripped+=$ch
+            fi
+          fi
+          prev=$ch
+          continue
+        fi
         if [[ "$ch" == '(' && "$prev" == '$' ]] && (( ! dq_escaped_dollar )); then
           dq_subst_depth=$((dq_subst_depth + 1))
           dq_escaped_dollar=0
@@ -389,7 +436,7 @@ __lmline_split_pipeline() {
           prev=$ch
           continue
         fi
-        if (( dq_subst_depth > 0 )) && [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
+        if (( dq_subst_depth > 0 || dq_backtick_depth > 0 )) && [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
           dq_escaped_dollar=0
           stripped+=$'\n'
           prev=$ch
@@ -455,10 +502,20 @@ __lmline_split_pipeline() {
         quote=$ch
         [[ "$split_mode" != command-prefix && "$split_mode" != cwd-pipeline ]] || stripped+=$'\001'
         if [[ "$split_mode" == structural-substitution && "$ch" == '`' ]]; then
-          __lmline_bt_trim=${stripped%"${stripped##*[![:space:]]}"}
-          if [[ -n "$__lmline_bt_trim" && "$__lmline_bt_trim" != *[\;\&\|\(\)] ]]; then
+          bt_content=$(__lmline_backtick_content "$cmd" "$i")
+          bt_risky=0
+          if [[ "$bt_content" == *'|'* || "$bt_content" == *';'* || "$bt_content" == *'&'* || "$bt_content" == *'$('* || "$bt_content" == *'<('* ]]; then
+            bt_risky=1
+          elif (( emit_boundary )) && [[ "$bt_content" != *'`'* ]] && __lmline_risk_recursive_remove "$bt_content"; then
+            bt_risky=1
+          fi
+          if [[ "$bt_content" == *[[:space:]\;\&\|\(\)\`]* ]] && (( bt_risky )); then
             bt_exposed=1
-            stripped+=$'\n'
+            if (( emit_boundary )); then
+              stripped+=$'\n'
+            else
+              (( keep_quoted )) && stripped+=$ch
+            fi
           else
             (( keep_quoted )) && stripped+=$ch
           fi
@@ -854,7 +911,7 @@ __lmline_expand_braces_for_risk() {
 __lmline_risk_piped_shell() {
   local cmd=$1 stripped segment token word base cmd_index
   local -a words subs
-  stripped=$(__lmline_split_pipeline "$cmd" 1 "" bash structural-substitution)
+  stripped=$(__lmline_split_pipeline "$cmd" 1 "" bash structural-substitution 0)
   local idx=0
   while IFS= read -r segment || [[ -n $segment ]]; do
     idx=$((idx + 1))

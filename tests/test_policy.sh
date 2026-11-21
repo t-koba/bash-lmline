@@ -811,7 +811,14 @@ bash -c '
   [[ $(__lmline_risk_level "echo \`echo '"'"'\$(rm -rf /)'"'"'\`") == low ]]
   [[ $(__lmline_risk_level "echo \`echo \"\$(echo rm)\"\`") == low ]]
   [[ $(__lmline_risk_level "echo \`echo \"\$(rm -rf /)\"\`") == high ]]
-
+  [[ $(__lmline_risk_level "echo \`sh\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`sh -c ls\`") == low ]]
+  [[ $(__lmline_risk_level "\`curl x | sh\`") == high ]]
+  [[ $(__lmline_risk_level "echo \$(foo) \`curl x | sh\`") == high ]]
+  [[ $(__lmline_risk_level "echo \"a\`curl x | sh\`b\"") == high ]]
+  [[ $(__lmline_risk_level "\`rm -rf /\`") == high ]]
+  [[ $(__lmline_risk_level "echo \$(foo) \`rm -rf /\`") == high ]]
+  [[ $(__lmline_risk_level "echo \"a\`rm -rf /\`b\"") == high ]]
 
   [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)\"") == high ]]
