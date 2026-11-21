@@ -268,6 +268,13 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}\\x27;rm -rf /\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}a\\x27;rm -rf /b\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}\\047;curl x | sh\\047${q}") == low ]]
+  # Decoded substitution markers are inert as echoed data and active as a
+  # shell payload, just like their literal spellings.
+  [[ $(__lmline_risk_level "echo \$${q}\\x24(rm -rf /)${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\x60rm -rf /\\x60${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\x27\$(rm -rf /)\\x27${q}") == low ]]
+  [[ $(__lmline_risk_level "bash -c \$${q}\\x24(rm -rf /)${q}") == high ]]
+  [[ $(__lmline_risk_level "bash -c \$${q}\\x60rm -rf /\\x60${q}") == high ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
