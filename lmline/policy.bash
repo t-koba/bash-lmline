@@ -864,6 +864,10 @@ __lmline_decode_ansi_c_for_risk() {
       break
     fi
     printf -v decoded '%b' "$inner" 2>/dev/null || decoded="$inner"
+    # A decoded newline would be read as an alternative boundary by the
+    # classifier. Show it as a command separator inside the quoted word: a
+    # shell that receives the word still runs the commands it separates.
+    decoded=${decoded//$'\n'/';'}
     # Keep the decoded text one quoted word: operators inside $'...' are
     # literal data, not commands. The decoded spelling still reaches pattern
     # matching once canonicalization strips the quoting, so hex/octal hides

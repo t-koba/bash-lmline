@@ -247,6 +247,17 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}a;rm -rf /${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}a;curl x | sh${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}a\\${q}b;rm -rf /${q}") == low ]]
+  # A decoded newline inside $'...' is data in a quoted word, not a new
+  # alternative or command; a shell that receives the word still reads it as
+  # a separator when the word is its -c payload.
+  [[ $(__lmline_risk_level "echo \$${q}\\n;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}x\\ny;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\n;curl x | sh${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\x0a;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\012;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "printf \$${q}\\n;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\nrm -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}echo hi\\nrm -rf /${q}") == high ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
