@@ -196,6 +196,7 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"kill -Kill 123\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo -- x && kill -Kill 123\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo -- x | kill -Kill 123\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo -- x & kill -Kill 123\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"kill\${IFS}-09 123\"") == high ]]
   [[ $(__lmline_risk_level "kill -01 123") == medium ]]
   [[ $(__lmline_risk_level "kill -s TERM 123") == medium ]]

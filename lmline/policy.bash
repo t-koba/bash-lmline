@@ -1360,6 +1360,7 @@ __lmline_risk_decode_segment_for_risk() {
   # them as pipe boundaries before decoding so end-of-options stays local to
   # the command that wrote it.
   segment=${segment//&&/ | }
+  segment=${segment//&/ | }
   segment=${segment//||/ | }
   segment=${segment//;/ | }
   __lmline_canonicalize_for_risk <<<"$segment" | tr -s '[:space:]' ' '
