@@ -1420,6 +1420,9 @@ __lmline_risk_neutralize_find_delete_operand_segment() {
   for ((index = 0; index < ${#words[@]}; index++)); do
     word=${words[index]}
     plain=$(__lmline_unquote_simple_word "$word")
+    # The pattern view decodes backslashes later; decode them here too so an
+    # escaped operand cannot masquerade as find's delete action.
+    plain=${plain//\\/}
     if (( index > cmd_index )); then
       if (( operand )); then
         [[ $plain == -delete* ]] && word=--literal-operand--
