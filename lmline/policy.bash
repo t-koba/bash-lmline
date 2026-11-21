@@ -319,7 +319,7 @@ __lmline_candidate_rejection_reason() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
-  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 bt_subst_depth=0 bt_exposed=0 __lmline_bt_trim="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 __lmline_bt_trim="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
@@ -360,8 +360,9 @@ __lmline_split_pipeline() {
       # its content as its own segment for structural checks; single quotes
       # still keep the same text inert.
       if [[ "$split_mode" == structural-substitution && "$quote" == '"' ]]; then
-        if [[ "$ch" == '(' && ( "$prev" == '$' || "$prev" == '<' ) ]]; then
+        if [[ "$ch" == '(' && "$prev" == '$' ]] && (( ! dq_escaped_dollar )); then
           dq_subst_depth=$((dq_subst_depth + 1))
+          dq_escaped_dollar=0
           if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
             stripped+=$'\n'
           else
@@ -372,6 +373,7 @@ __lmline_split_pipeline() {
         fi
         if (( dq_subst_depth > 0 )) && [[ "$ch" == ')' ]]; then
           dq_subst_depth=$((dq_subst_depth - 1))
+          dq_escaped_dollar=0
           if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
             stripped+=$'\n'
           else
@@ -381,9 +383,22 @@ __lmline_split_pipeline() {
           continue
         fi
         if (( dq_subst_depth > 0 )) && [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
+          dq_escaped_dollar=0
           stripped+=$'\n'
           prev=$ch
           continue
+        fi
+      fi
+      if [[ "$split_mode" == structural-substitution && "$quote" == '"' ]]; then
+        if [[ "$ch" == $'\\' ]]; then
+          (( dq_backslash_odd = 1 - dq_backslash_odd ))
+        else
+          if [[ "$ch" == '$' ]] && (( dq_backslash_odd )); then
+            dq_escaped_dollar=1
+          else
+            dq_escaped_dollar=0
+          fi
+          dq_backslash_odd=0
         fi
       fi
       if [[ "$quote" == '"' && "$ch" == "\\" && "$prev" != "\\" ]]; then
