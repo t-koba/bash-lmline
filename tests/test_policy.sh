@@ -85,6 +85,13 @@ bash -c '
   [[ $(__lmline_risk_reason "bash < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "bash <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_reason "bash <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  # Redirection targets and shell option values are not script files.
+  [[ $(__lmline_risk_level "bash > /dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash 2>/dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash -i > out <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash --rcfile rc < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_reason "bash --rcfile rc < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "bash --init-file rc < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "cat < <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash script.sh <(echo ${hsq}rm -rf /${hsq})") == low ]]

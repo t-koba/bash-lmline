@@ -1989,15 +1989,21 @@ __lmline_risk_generated_script_source() {
     script_word=0
     for ((index = q_index + 1; index < q_source; index++)); do
       word=${quoted[index]}
-      [[ $word == '<'* || $word == '>'* ]] && continue
-      if [[ $word == -[oO] ]]; then
-        index=$((index + 1))
-        continue
-      fi
-      if [[ $word != -* || ( $word == -* && $word != --* && $word == *c* ) ]]; then
-        script_word=1
-        break
-      fi
+      # A standalone redirection operator consumes the next word as its
+      # target; a descriptor-prefixed form is one word. The process
+      # substitution itself is the script source, not a redirection.
+      case $word in
+        '<('*) continue ;;
+        '<'|'>'|'>>'|'<&'|'>&') index=$((index + 1)); continue ;;
+        '<'*|'>'*|[0-9]'<'*|[0-9]'>'*) continue ;;
+      esac
+      case $word in
+        -o|-O|--rcfile|--init-file) index=$((index + 1)) ;;
+        --*) ;;
+        -*c*) script_word=1; break ;;
+        -*) ;;
+        *) script_word=1; break ;;
+      esac
     done
     if (( script_word )); then continue; fi
     return 0
