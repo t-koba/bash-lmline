@@ -838,7 +838,12 @@ __lmline_decode_ansi_c_for_risk() {
       break
     fi
     printf -v decoded '%b' "$inner" 2>/dev/null || decoded="$inner"
-    out+="$pre$decoded"
+    # Keep the decoded text one quoted word: operators inside $'...' are
+    # literal data, not commands. The decoded spelling still reaches pattern
+    # matching once canonicalization strips the quoting, so hex/octal hides
+    # of a command name remain visible.
+    decoded=${decoded//\'/\'\\\'\'}
+    out+="$pre'$decoded'"
     str=${rest:$((j + 1))}
   done
   out+="$str"

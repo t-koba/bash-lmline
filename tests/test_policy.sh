@@ -242,6 +242,12 @@ bash -c '
   q=$(printf "\047")
   [[ $(__lmline_risk_level "\$${q}\\x72\\x6d -rf build${q}") == high ]]
   [[ $(__lmline_risk_level "\$${q}\\x72\\x6d -rf /tmp/x${q}") == high ]]
+  # Decoded ANSI-C quoting is still one literal word: operators inside it
+  # are data, not commands, while a decoded command name stays recognizable.
+  [[ $(__lmline_risk_level "echo \$${q}a;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}a;curl x | sh${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}a\\${q}b;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\"\$X\" -rf build") == medium ]]
