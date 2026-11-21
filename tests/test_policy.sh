@@ -140,6 +140,11 @@ bash -c '
   # -- ends options only for its own command, not for later commands.
   [[ $(__lmline_risk_level "echo hi -- y | chmod -R 755 dir") == high ]]
   [[ $(__lmline_risk_level "echo -- x && chmod -R 755 dir") == high ]]
+  # Nested shell payloads keep the same command boundary.
+  [[ $(__lmline_risk_level "bash -c \"chmod 755 -- -R sample\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"echo -- x && chmod -R 755 dir\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo hi; chmod -R 755 dir\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo hi | chmod -R 755 dir\"") == high ]]
   [[ $(__lmline_risk_level "echo -- x; chown -R user dir") == high ]]
   [[ $(__lmline_risk_level "echo -- x | git clean -fdx") == high ]]
   [[ $(__lmline_risk_level "grep -- pat file | kill -9 123") == high ]]
@@ -192,7 +197,6 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"echo -- x && kill -Kill 123\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo -- x | kill -Kill 123\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"kill\${IFS}-09 123\"") == high ]]
-  [[ $(__lmline_risk_level "bash -c \"chmod 755 -- -R sample\"") == low ]]
   [[ $(__lmline_risk_level "kill -01 123") == medium ]]
   [[ $(__lmline_risk_level "kill -s TERM 123") == medium ]]
   [[ $(__lmline_risk_level "kill -n 15 123") == medium ]]
@@ -757,6 +761,7 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$(/usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
   [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)\"") == high ]]
   [[ $(__lmline_risk_level "diff <(/usr/bin/dd if=/dev/zero) f") == high ]]
   [[ $(__lmline_risk_level "echo \$(ls -l /usr/bin/dd)") == low ]]
   # An opener separated from its command still opens a command position, in
