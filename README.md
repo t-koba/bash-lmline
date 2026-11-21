@@ -795,7 +795,9 @@ recursive, while `echo -- x && chmod -R 755 dir` is. In structural splitting,
 a backslash outside quotes makes the next character literal data, so an escaped
 separator or quote does not split a command; backslashes inside single quotes
 remain literal data, and nested quote spellings can still be classified
-conservatively. These remain lexical rules, not a shell parser.
+conservatively. Option values are likewise not interpreted by their runner, so
+a shell-named operand after an option can be conservatively flagged. These
+remain lexical rules, not a shell parser.
 
 The same rule decides whether a pipeline reaches a shell: the shell the piped
 input reaches is the command the segment runs, so `find . | xargs sh` is a piped
