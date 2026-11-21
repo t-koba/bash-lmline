@@ -1517,7 +1517,9 @@ __lmline_risk_shell_carries_remove() {
           # it for the inner scan, so a quote closes around a separator and
           # the semicolon stays literal data.
           carried=${carried//$qmark/$apostrophe}
-          if [[ $carried == *'$('* || $carried == *'`'* ]]; then
+          # An embedded substitution is expanded as data before the shell
+          # runs the command string; only a leading substitution supplies it.
+          if [[ $carried == '$('* || $carried == '`'* ]]; then
             __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) && return 0
           fi
           if (( subst_body )); then

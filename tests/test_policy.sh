@@ -85,6 +85,13 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\$(printf %s ${hsq}rm -rf /${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat script.sh <<< ${hsq}rm -rf /${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} \`cat <<< ${hsq}rm -rf /${hsq}\`") == low ]]
+  # A substitution embedded in the command string only supplies data.
+  [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}rm -rf /${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"printf %s \$(cat <<< ${hsq}rm -rf /${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"x=\$(cat <<< ${hsq}rm -rf /${hsq}); echo hi\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \$(cat /dev/stdin <<< ${hsq}rm -rf /${hsq})\"") == low ]]
+  # A leading substitution still supplies the command string when text follows.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}rm -rf /${hsq}); echo hi\"") == high ]]
   # The payload can be glued to the operator, and quotes around part of the
   # command word do not keep the shell from running it.
   [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]
