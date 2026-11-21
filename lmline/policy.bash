@@ -1886,6 +1886,55 @@ __lmline_risk_basename_command_words() {
   printf '%s' "$out${cmd:cursor}"
 }
 
+# The script a shell reads from an active here-string operator. The structural
+# splitter's unquoted view drops quoted words, leaving only a real operator;
+# its quote-preserving view keeps the script word around that operator. Both
+# views are read without executing anything. One payload per line.
+__lmline_risk_here_string_payload() {
+  local cmd=$1 segment index j cmd_index payload marker active
+  local -a plain=() quoted=() words=()
+  local IFS=$' \t\n'
+  printf -v marker '\002'
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0)")
+    read -r -a quoted <<<"$(__lmline_split_pipeline "$segment" 2)"
+    ((${#plain[@]})) || continue
+    cmd_index=$(__lmline_risk_segment_command_index "${plain[@]}") || continue
+    __lmline_risk_word_runs_shell "${plain[cmd_index]}" || continue
+    # A quoted or escaped operator is data: it is absent from the unquoted
+    # view or spelled with quotes in the quote-preserving view.
+    active=0
+    for ((index = cmd_index + 1; index < ${#plain[@]}; index++)); do
+      if [[ ${plain[index]} == '<<<' ]]; then
+        # A command string or script file already gives the shell its input,
+        # so the here-string is data to that program, not a script it reads.
+        local k script_word=0
+        for ((k = cmd_index + 1; k < index; k++)); do
+          if [[ ${plain[k]} == -[oO] ]]; then
+            k=$((k + 1))
+            continue
+          fi
+          # The unquoted view drops a quoted -c string, so the option itself
+          # still says the shell already has its script.
+          [[ ${plain[k]} == -*c* ]] && script_word=1
+          [[ ${plain[k]} == -* ]] || script_word=1
+        done
+        (( script_word )) || active=1
+        break
+      fi
+    done
+    (( active )) || continue
+    for ((j = 0; j + 1 < ${#quoted[@]}; j++)); do
+      [[ ${quoted[j]} == '<<<' ]] || continue
+      words=()
+      mapfile -t words < <(__lmline_risk_split_words "${quoted[j+1]//"$marker"/ }")
+      ((${#words[@]})) || continue
+      payload=${words[*]}
+      [[ -n $payload ]] && printf '%s\n' "$payload"
+    done
+  done <<<"$(__lmline_split_pipeline "$cmd" 1)"
+}
+
 # Risk precedence: structural recognition (piped shell, interactive history,
 # unresolved variable command, capped brace expansion, recursive remove) is
 # mechanism only; its levels are configuration (LMLINE_RISK_*_LEVEL, defaults
@@ -1898,15 +1947,33 @@ __lmline_risk_basename_command_words() {
 # high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
 # stay protective.
 __lmline_risk_match() {
-  local cmd=$1 expanded file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
+  local cmd=$1 depth=${2:-0} expanded file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
   local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
+  local nested_payload nested_match nested_level
   # History is judged on raw quoting/escaping, never decoded/canonical text.
   if __lmline_risk_history_expansion "$cmd"; then history_found=1; fi
   # Decode ANSI-C quoting so hex/octal hides are judged by content.
   expanded=$(__lmline_decode_ansi_c_for_risk "$cmd")
+  # A here-string handed to a shell command word is a nested script. Judge it
+  # with these same rules at a bounded depth; its level competes with the
+  # other structural signals below under the usual precedence.
+  if (( depth < 3 )) && [[ $expanded == *'<<<'* ]]; then
+    while IFS= read -r nested_payload || [[ -n $nested_payload ]]; do
+      [[ -n $nested_payload ]] || continue
+      nested_match=$(__lmline_risk_match "$nested_payload" $((depth + 1))) || return 1
+      [[ -n $nested_match ]] || continue
+      nested_level=${nested_match%%$'\t'*}
+      rank=$(__lmline_risk_level_rank "$nested_level")
+      if (( rank > struct_rank )); then
+        struct_rank=$rank
+        struct_level=$nested_level
+        struct_reason=${nested_match#*$'\t'}
+      fi
+    done < <(__lmline_risk_here_string_payload "$expanded")
+  fi
   if alts_str=$(__lmline_expand_braces_for_risk "$expanded"); then
     brace_capped=0
   else

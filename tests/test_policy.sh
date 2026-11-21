@@ -59,6 +59,15 @@ bash -c '
   [[ $(__lmline_risk_level "sh -xc\"rm -fr /\"") == high ]]
   [[ $(__lmline_risk_level "sh -c\$'"'"'rm -fr /'"'"'") == high ]]
   [[ $(__lmline_risk_reason "sh -c\"rm -fr /\"") == "recursive remove" ]]
+  # A here-string payload given to a shell command word is a nested script.
+  hsq=$(printf "\047")
+  [[ $(__lmline_risk_level "bash <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "zsh <<< ${hsq}echo hi | sh${hsq}") == high ]]
+  [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
+  [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <<< ${hsq}rm -rf /${hsq}") == low ]]
   # A shell option and its value stand between the shell and its command string.
   [[ $(__lmline_risk_level "bash -o pipefail -c \"rm -fr x\"") == high ]]
   [[ $(__lmline_risk_level "sh --rcfile /etc/x -c \"rm -fr x\"") == high ]]
