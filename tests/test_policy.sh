@@ -188,6 +188,9 @@ bash -c '
   [[ $(__lmline_risk_level "kill -n09 123") == high ]]
   [[ $(__lmline_risk_level "kill -s09 123") == medium ]]
   [[ $(__lmline_risk_level "kill -nKILL 123") == medium ]]
+  # Shell-rejected uppercase attached option letters stay ordinary.
+  [[ $(__lmline_risk_level "kill -SKILL 123") == medium ]]
+  [[ $(__lmline_risk_level "kill -N9 123") == medium ]]
   [[ $(__lmline_risk_reason "kill -SigKill 123") == "force kill signal" ]]
   # Decoding quotes, IFS and escapes must not hide the uncatchable signal.
   [[ $(__lmline_risk_level "kill\${IFS}-09 123") == high ]]

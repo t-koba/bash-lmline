@@ -1282,13 +1282,21 @@ __lmline_risk_canonicalize_kill_signals_in_view() {
           normalized[j + 1]=$canonical
           ((j++))
           ;;
-        -[sS]*)
+        -[SN]*)
+          # An uppercase letter can start a signal name, not an option.
+          # Keep only spellings that name SIGKILL as a signal.
+          signal=${word#-}
+          canonical=$(__lmline_risk_canonical_signal "$signal") || break
+          [[ $canonical == 9 || $canonical == kill ]] || break
+          normalized[j]="-$canonical"
+          ;;
+        -s*)
           signal=${word:2}
           [[ -n $signal ]] || break
           canonical=$(__lmline_risk_canonical_signal "$signal") || break
           normalized[j]="-s$canonical"
           ;;
-        -[nN]*)
+        -n*)
           signal=${word:2}
           [[ $signal =~ ^[0-9]+$ ]] || break
           canonical=$(__lmline_risk_canonical_signal "$signal") || break
