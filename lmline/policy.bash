@@ -1975,7 +1975,7 @@ __lmline_risk_here_string_payload() {
 # including a script word the unquoted view drops. No input is executed here.
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
-  local index cmd_index q_index source_index q_source script_word=0
+  local index cmd_index q_index source_index q_source script_word=0 prefix
   local -a plain=() quoted=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2026,7 +2026,13 @@ __lmline_risk_generated_script_source() {
       # source, not a redirection.
       case $word in
         '<('*) continue ;;
-        *'<'*|*'>'*)
+      esac
+      # Only an operator at the start of a word (after an optional file
+      # descriptor) is an active redirection. A script name or argument with
+      # a glued operator stays a script word.
+      prefix=${word%%[!0-9]*}
+      case ${word:${#prefix}:1} in
+        '<'|'>'|'|')
           case $word in
             *'<'|*'>'|*'|') index=$((index + 1)) ;;
           esac

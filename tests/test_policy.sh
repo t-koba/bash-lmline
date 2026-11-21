@@ -118,6 +118,11 @@ bash -c '
   [[ $(__lmline_risk_level "bash &> out <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash &>> out <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_reason "bash &>> out <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  # A glued target belongs to the script file word, so the process
+  # substitution is only an argument to that script, not its script source.
+  [[ $(__lmline_risk_level "bash build>log <(echo ${hsq}rm -rf /${hsq})") == medium ]]
+  [[ $(__lmline_risk_reason "bash build>log <(echo ${hsq}rm -rf /${hsq})") == "writes to a file or descriptor" ]]
+  [[ $(__lmline_risk_level "bash foo>bar <(echo hi)") == medium ]]
   [[ $(__lmline_risk_level "cat < <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash script.sh <(echo ${hsq}rm -rf /${hsq})") == low ]]
