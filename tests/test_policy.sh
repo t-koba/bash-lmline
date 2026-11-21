@@ -891,6 +891,9 @@ bash -c '
   single_quote_case="echo \$(/usr/bin/dd if=/dev/zero of=/dev/sda ${sq}a${bs}${sq})"
   [[ $(__lmline_risk_level "$escaped_quote_case") == high ]]
   [[ $(__lmline_risk_level "$single_quote_case") == high ]]
+  escaped_quote_stderr=$(__lmline_risk_level "$escaped_quote_case" 2>&1 >/dev/null)
+  single_quote_stderr=$(__lmline_risk_level "$single_quote_case" 2>&1 >/dev/null)
+  [[ -z $escaped_quote_stderr && -z $single_quote_stderr ]]
   # An unquoted delimiter really does close the substitution.
   [[ $(__lmline_risk_level "echo \$(env -C /tmp/)x /usr/bin/dd if=/dev/zero of=/dev/sda)") == low ]]
   [[ $(__lmline_risk_level "echo ${bt} /usr/bin/dd if=/dev/zero of=/dev/sda ${bt}") == high ]]
