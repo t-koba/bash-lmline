@@ -345,7 +345,7 @@ __lmline_split_pipeline() {
   local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_opener=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   local subst_boundary=$'\n'
   local quote_was_exposed=0
-  local dq_subst_quote=0 dq_subst_escape=0
+  local dq_subst_quote=0 dq_subst_escape=0 dq_subst_dquote=0 dq_quote_stack=""
   (( emit_boundary )) || subst_boundary=
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
@@ -430,7 +430,13 @@ __lmline_split_pipeline() {
             prev=$ch
             continue
           fi
-          if [[ "$ch" == "'" ]]; then
+          if [[ "$ch" == '"' ]]; then
+            (( dq_subst_dquote = 1 - dq_subst_dquote ))
+            (( keep_quoted )) && stripped+=$ch
+            prev=$ch
+            continue
+          fi
+          if [[ "$ch" == "'" ]] && (( ! dq_subst_dquote )); then
             dq_subst_quote=1
             (( keep_quoted )) && stripped+=$ch
             prev=$ch
@@ -460,10 +466,12 @@ __lmline_split_pipeline() {
         dq_opener=0
         if [[ "$ch" == '(' && "$prev" == '$' ]] && (( ! dq_escaped_dollar )); then
           dq_opener=1
-        elif [[ "$ch" == '(' && "$prev" == '<' ]] && (( dq_subst_depth > 0 )); then
+        elif [[ "$ch" == '(' && "$prev" == '<' ]] && (( dq_subst_depth > 0 )) && (( ! dq_subst_dquote )); then
           dq_opener=1
         fi
         if (( dq_opener )); then
+          dq_quote_stack+="${dq_subst_dquote}"
+          dq_subst_dquote=0
           dq_subst_depth=$((dq_subst_depth + 1))
           dq_escaped_dollar=0
           if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
@@ -479,6 +487,12 @@ __lmline_split_pipeline() {
           dq_escaped_dollar=0
           dq_subst_quote=0
           dq_subst_escape=0
+          if [[ -n "$dq_quote_stack" ]]; then
+            dq_subst_dquote=${dq_quote_stack:${#dq_quote_stack}-1}
+            dq_quote_stack=${dq_quote_stack%?}
+          else
+            dq_subst_dquote=0
+          fi
           if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
             stripped+=$'\n'
           else
@@ -487,7 +501,7 @@ __lmline_split_pipeline() {
           prev=$ch
           continue
         fi
-        if (( dq_subst_depth > 0 || dq_backtick_depth > 0 )) && [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
+        if (( dq_subst_depth > 0 || dq_backtick_depth > 0 )) && (( ! dq_subst_dquote )) && [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
           dq_escaped_dollar=0
           stripped+=$'\n'
           prev=$ch

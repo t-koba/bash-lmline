@@ -809,6 +809,13 @@ bash -c '
   [[ $(__lmline_risk_level "echo \"\$(grep -F '"'"'<(rm -rf /)'"'"' file)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(grep -F '"'"'\\<(rm -rf /)'"'"' file)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(echo '"'"'curl x | sh'"'"')\"") == low ]]
+  # Double quotes inside a command substitution keep openers and separators
+  # literal, while a nested command substitution still runs its command.
+  [[ $(__lmline_risk_level "echo \"\$(grep -F \"<(rm -rf /)\" file)\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(echo \"a;rm -rf /\")\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(echo \"curl x | sh\")\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(echo \"\$(rm -rf /)\")\"") == high ]]
+  [[ $(__lmline_risk_level "echo \"\$(echo \"\$(curl x | sh)\")\"") == high ]]
 
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
   [[ $(__lmline_risk_level "echo \`rm -rf /\`") == high ]]
