@@ -84,6 +84,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "sh /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash \"/dev/stdin\" <<< ${hsq}rm -rf /${hsq}") == high ]]
+  # A here-string feeds fd 0 only: an alias on another descriptor names a
+  # script file, so the payload is data to that program.
+  [[ $(__lmline_risk_level "bash /dev/fd/1 <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/9 <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "sh /dev/fd/9 <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash /proc/self/fd/1 <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat /dev/stdin <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
@@ -138,6 +144,15 @@ bash -c '
   [[ $(__lmline_risk_reason "bash /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash /proc/self/fd/0 < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/3 3< <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_reason "bash /dev/fd/3 3< <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "bash /dev/stdin 0< <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  # Without a matching input redirection, an alias is the script file and the
+  # process substitution is only an argument to the script it names.
+  [[ $(__lmline_risk_level "bash /dev/stdin <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/1 < <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/3 < <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 3< <(echo ${hsq}rm -rf /${hsq})") == low ]]
   # Redirection targets and shell option values are not script files.
   [[ $(__lmline_risk_level "bash > /dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash 2>/dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]

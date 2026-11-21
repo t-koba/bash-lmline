@@ -1997,14 +1997,23 @@ __lmline_risk_basename_command_words() {
 
 # A standard-stream path names the descriptor a shell reads its script from,
 # not a stored script file. Quotes are removed before the path is read: the
-# quote-preserving view keeps them in a word such as "/dev/stdin".
-__lmline_risk_word_is_stream_script_alias() {
+# quote-preserving view keeps them in a word such as "/dev/stdin". The
+# descriptor decides which input can actually carry that script.
+__lmline_risk_stream_script_alias_descriptor() {
   local -a parts=()
   mapfile -t parts < <(__lmline_risk_split_words "$1")
   ((${#parts[@]} == 1)) || return 1
-  local word=${parts[0]}
-  [[ $word == /dev/stdin || $word =~ ^/dev/fd/[0-9]+$ ||
-    $word =~ ^/proc/(self|[0-9]+)/fd/[0-9]+$ ]]
+  local word=${parts[0]} fd
+  if [[ $word == /dev/stdin ]]; then
+    fd=0
+  elif [[ $word =~ ^/dev/fd/([0-9]+)$ ]]; then
+    fd=$((10#${BASH_REMATCH[1]}))
+  elif [[ $word =~ ^/proc/(self|[0-9]+)/fd/([0-9]+)$ ]]; then
+    fd=$((10#${BASH_REMATCH[2]}))
+  else
+    return 1
+  fi
+  printf '%s\n' "$fd"
 }
 
 # The one active-redirect check for the quote-preserving word view: an operator
@@ -2039,7 +2048,7 @@ __lmline_risk_redirect_word() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 segment marker word payload
-  local index cmd_index op_index script_word=0 active
+  local index cmd_index op_index script_word=0 active fd
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2079,7 +2088,10 @@ __lmline_risk_here_string_payload() {
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
-        if __lmline_risk_word_is_stream_script_alias "$word"; then
+        # A here-string feeds descriptor 0, so only an alias on that
+        # descriptor reads it; any other alias names a script file.
+        fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || fd=
+        if [[ $fd == 0 ]]; then
           continue
         fi
         if [[ $word == -[oO] ]]; then
@@ -2115,6 +2127,7 @@ __lmline_risk_here_string_payload() {
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
+  local alias_fd numbered='^([0-9]+)<$' fed_fds
   local -a plain=() quoted=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2151,12 +2164,24 @@ __lmline_risk_generated_script_source() {
     q_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
     (( q_index < q_source )) || continue
     __lmline_risk_word_runs_shell "${quoted[q_index]}" || continue
+    # Record the descriptors that input redirects before the substitution
+    # actually feed: a bare '<' feeds stdin and '3<' feeds descriptor 3.
+    fed_fds=''
+    for ((index = q_index + 1; index < q_source; index++)); do
+      word=${quoted[index]}
+      if [[ $word == '<' ]]; then
+        fed_fds+=' 0 '
+      elif [[ $word =~ $numbered ]]; then
+        fed_fds+=" $((10#${BASH_REMATCH[1]})) "
+      fi
+    done
     # A command string or script file already gives the shell its script, so
     # the process substitution is only an argument to that program.
     script_word=0
     for ((index = q_index + 1; index < q_source; index++)); do
       word=${quoted[index]}
-      if __lmline_risk_word_is_stream_script_alias "$word"; then
+      alias_fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || alias_fd=
+      if [[ -n $alias_fd && $fed_fds == *" $alias_fd "* ]]; then
         continue
       fi
       # The process substitution itself is the script source, not a redirect
