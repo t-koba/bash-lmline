@@ -240,6 +240,7 @@ bash -c '
   [[ $(__lmline_risk_level "\`date\`") == low ]]
   [[ $(__lmline_risk_level "\$(date)") == low ]]
   q=$(printf "\047")
+  dq=$(printf "\042")
   [[ $(__lmline_risk_level "\$${q}\\x72\\x6d -rf build${q}") == high ]]
   [[ $(__lmline_risk_level "\$${q}\\x72\\x6d -rf /tmp/x${q}") == high ]]
   # Decoded ANSI-C quoting is still one literal word: operators inside it
@@ -275,6 +276,10 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}\\x27\$(rm -rf /)\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "bash -c \$${q}\\x24(rm -rf /)${q}") == high ]]
   [[ $(__lmline_risk_level "bash -c \$${q}\\x60rm -rf /\\x60${q}") == high ]]
+  # Quote-escape spellings that really end a word before a separator.
+  [[ $(__lmline_risk_level "echo ${q}\\${q}${q};rm -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "echo ${q}\\${q}${q};curl x | sh${q}") == high ]]
+  [[ $(__lmline_risk_level "echo ${dq}\\${dq};rm -rf /${dq}") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
