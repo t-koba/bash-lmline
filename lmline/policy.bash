@@ -1921,6 +1921,12 @@ __lmline_risk_here_string_payload() {
       script_word=0
       for ((index = cmd_index + 1; index < op_index; index++)); do
         word=${quoted[index]}
+        # A standalone earlier here-string consumes its payload word, so that
+        # word is not a script file given to the shell.
+        if [[ $word == '<<<' ]]; then
+          index=$((index + 1))
+          continue
+        fi
         [[ $word == '<'* || $word == '>'* ]] && continue
         if [[ $word == -[oO] ]]; then
           index=$((index + 1))

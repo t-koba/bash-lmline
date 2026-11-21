@@ -72,6 +72,13 @@ bash -c '
   [[ $(__lmline_risk_level "ba\"sh\" <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "\\bash <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "zsh <<< ${hsq}echo hi | sh${hsq}") == high ]]
+  # An earlier here-string feeds no script file to the shell; the last payload
+  # is the script the shell reads, whether or not it is glued to its operator.
+  [[ $(__lmline_risk_level "bash <<< ${hsq}echo${hsq} <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash <<< ${hsq}echo${hsq} <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "bash <<< echo <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash <<< ${hsq}x${hsq} <<< ${hsq}echo hi | sh${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash <<<${hsq}echo${hsq} <<<${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
   [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
