@@ -298,6 +298,8 @@ bash -c '
   [[ $(__lmline_risk_level "echo a\\|rm -rf /") == low ]]
   [[ $(__lmline_risk_level "echo a\\&rm -rf /") == low ]]
   [[ $(__lmline_risk_level "echo a\\;rm -rf /;rm -rf /") == high ]]
+  [[ $(__lmline_risk_level "echo \\#rm -rf /") == low ]]
+  [[ $(__lmline_risk_level "echo \\#;rm -rf /") == high ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
