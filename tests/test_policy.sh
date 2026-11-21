@@ -106,6 +106,15 @@ bash -c '
   [[ $(__lmline_risk_reason "bash 2>&1 <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
   [[ $(__lmline_risk_level "bash >| out <<< ${hsq}rm -rf build${hsq}") == high ]]
   [[ $(__lmline_risk_reason "bash >| out <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
+  # Input duplication is a redirect too: the here-string still supplies the
+  # the shell script, even when an earlier redirect duplicates a descriptor.
+  [[ $(__lmline_risk_level "bash <&2 <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash <&2 <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "sh <&2 <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash 0<&2 <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash 2<&1 <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash <&- <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash <&2 >&1 <<< ${hsq}rm -rf build${hsq}") == high ]]
   # A real & or | boundary still ends the command before the here-string, and
   # a quoted operator stays data rather than becoming a redirect.
   [[ $(__lmline_risk_level "bash & echo <<< ${hsq}rm -rf build${hsq}") == low ]]

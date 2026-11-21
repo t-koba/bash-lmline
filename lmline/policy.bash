@@ -701,11 +701,12 @@ __lmline_split_pipeline() {
               fi
               ;;
           esac
-        elif [[ "$ch" == '&' && ( "$next" == '>' || "$prev" == '>' ) ]] ||
+        elif [[ "$ch" == '&' && ( "$next" == '>' || "$prev" == '>' || "$prev" == '<' ) ]] ||
              [[ "$ch" == '|' && "$prev" == '>' ]]; then
-          # &>, >& and >| are one output-redirect operator, not a command
-          # boundary: the redirect consumer needs to see its target so a
-          # following here-string can still be judged as shell input.
+          # &>, >&, <&, >| and their descriptor-prefixed forms are one
+          # redirect operator, not a command boundary: the redirect consumer
+          # needs to see its target so a following here-string can still be
+          # judged as shell input. A bare & after a command still splits.
           stripped+=$ch
         else
           stripped+=$'\n'
