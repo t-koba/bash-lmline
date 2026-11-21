@@ -79,6 +79,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash <<< echo <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash <<< ${hsq}x${hsq} <<< ${hsq}echo hi | sh${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash <<<${hsq}echo${hsq} <<<${hsq}rm -rf /${hsq}") == high ]]
+  # A standard-stream alias reads the here-string, not a stored script file.
+  [[ $(__lmline_risk_level "bash /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "sh /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash \"/dev/stdin\" <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "cat /dev/stdin <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
   [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
@@ -92,6 +98,11 @@ bash -c '
   [[ $(__lmline_risk_reason "bash < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "bash <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_reason "bash <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  # A standard-stream alias reads the substituted script, not a stored file.
+  [[ $(__lmline_risk_level "bash /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_reason "bash /dev/stdin < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash /proc/self/fd/0 < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   # Redirection targets and shell option values are not script files.
   [[ $(__lmline_risk_level "bash > /dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash 2>/dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]

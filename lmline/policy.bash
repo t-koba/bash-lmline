@@ -1886,6 +1886,18 @@ __lmline_risk_basename_command_words() {
   printf '%s' "$out${cmd:cursor}"
 }
 
+# A standard-stream path names the descriptor a shell reads its script from,
+# not a stored script file. Quotes are removed before the path is read: the
+# quote-preserving view keeps them in a word such as "/dev/stdin".
+__lmline_risk_word_is_stream_script_alias() {
+  local -a parts=()
+  mapfile -t parts < <(__lmline_risk_split_words "$1")
+  ((${#parts[@]} == 1)) || return 1
+  local word=${parts[0]}
+  [[ $word == /dev/stdin || $word =~ ^/dev/fd/[0-9]+$ ||
+    $word =~ ^/proc/(self|[0-9]+)/fd/[0-9]+$ ]]
+}
+
 # The script a shell reads from an active here-string operator. The unquoted
 # view proves an operator is active: a quoted or escaped operator has no
 # standalone token there. That view can drop a quoted command word, so the
@@ -1928,6 +1940,9 @@ __lmline_risk_here_string_payload() {
           continue
         fi
         [[ $word == '<'* || $word == '>'* ]] && continue
+        if __lmline_risk_word_is_stream_script_alias "$word"; then
+          continue
+        fi
         if [[ $word == -[oO] ]]; then
           index=$((index + 1))
           continue
@@ -2002,6 +2017,9 @@ __lmline_risk_generated_script_source() {
     script_word=0
     for ((index = q_index + 1; index < q_source; index++)); do
       word=${quoted[index]}
+      if __lmline_risk_word_is_stream_script_alias "$word"; then
+        continue
+      fi
       # An active redirection consumes its target: a word ending in a
       # redirect marker takes the next word, while a glued target stays
       # inside the one word. The process substitution itself is the script

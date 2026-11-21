@@ -777,7 +777,9 @@ runs another program carries (`env -i rm -fr build`, `timeout 5 rm -fr build`,
 command string (`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one
 command. An active here-string given to a shell (`bash <<< "rm -fr build"`) is
 also the script that shell reads; a here-string given to another program or to
-a shell that already has a command string or script file stays data.
+a shell that already has a command string or script file stays data. A
+standard-stream script alias such as `/dev/stdin` is treated as reading the
+here-string or process-substitution script.
 Process substitution used as a shell's script source (`bash < <(echo ...)` or
 `bash <(echo ...)`) is judged the same way, while non-shell uses and shells that
 already have a script are unchanged.
