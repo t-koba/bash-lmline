@@ -791,8 +791,11 @@ kill inside a shell command string (`bash -c "kill -Kill 123"`) read like
 signal. Quoting, escapes and
 `${IFS}` are decoded before flag and signal recognition, and `--` ends options
 only for the simple command that carries it: `chmod 755 -- -R sample` is not
-recursive, while `echo -- x && chmod -R 755 dir` is. These remain lexical
-rules, not a shell parser.
+recursive, while `echo -- x && chmod -R 755 dir` is. In structural splitting,
+a backslash outside quotes makes the next character literal data, so an escaped
+separator or quote does not split a command; backslashes inside single quotes
+remain literal data, and nested quote spellings can still be classified
+conservatively. These remain lexical rules, not a shell parser.
 
 The same rule decides whether a pipeline reaches a shell: the shell the piped
 input reaches is the command the segment runs, so `find . | xargs sh` is a piped
