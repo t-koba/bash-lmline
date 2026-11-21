@@ -135,6 +135,12 @@ bash -c '
   [[ $(__lmline_risk_level "git rm --force -r sample") == high ]]
   [[ $(__lmline_risk_level "chmod -R 755 dir") == high ]]
   [[ $(__lmline_risk_level "chown --recursive user dir") == high ]]
+  # -- ends options only for its own command, not for later commands.
+  [[ $(__lmline_risk_level "echo hi -- y | chmod -R 755 dir") == high ]]
+  [[ $(__lmline_risk_level "echo -- x && chmod -R 755 dir") == high ]]
+  [[ $(__lmline_risk_level "echo -- x; chown -R user dir") == high ]]
+  [[ $(__lmline_risk_level "echo -- x | git clean -fdx") == high ]]
+  [[ $(__lmline_risk_level "grep -- pat file | kill -9 123") == high ]]
   [[ $(__lmline_risk_level "find . -type f -exec unlink {} +") == high ]]
   [[ $(__lmline_risk_level "echo a | xargs -0 rm") == high ]]
   [[ $(__lmline_risk_level "git -C /tmp clean -fdx") == high ]]

@@ -1320,7 +1320,7 @@ __lmline_risk_canonicalize_kill_signals() {
 # After --, a flag-shaped word is a literal operand. Give the policy view a
 # neutral token for those words so flag patterns cannot mistake them for
 # options, while the operands themselves keep their text.
-__lmline_risk_neutralize_flags_after_double_dash() {
+__lmline_risk_neutralize_segment_flags_after_double_dash() {
   local view=$1 word out="" after=0
   local -a words=()
   read -r -a words <<<"$view" || true
@@ -1332,6 +1332,23 @@ __lmline_risk_neutralize_flags_after_double_dash() {
     out+=" $word"
   done
   printf '%s' "${out# }"
+}
+
+# -- ends options for one simple command, not for the rest of the line. Keep
+# the separators in place while neutralizing each command's own literal flags.
+__lmline_risk_neutralize_flags_after_double_dash() {
+  local view=$1 segment rest prefix out="" cursor=0
+  while IFS= read -r segment; do
+    rest=${view:cursor}
+    if [[ -z $segment || $rest != *"$segment"* ]]; then
+      continue
+    fi
+    prefix=${rest%%"$segment"*}
+    out+=$prefix
+    out+=$(__lmline_risk_neutralize_segment_flags_after_double_dash "$segment")
+    cursor=$((cursor + ${#prefix} + ${#segment}))
+  done < <(__lmline_split_pipeline "$view" 1)
+  printf '%s' "$out${view:cursor}"
 }
 
 __lmline_risk_basename_command_replacements() {
@@ -1505,7 +1522,7 @@ __lmline_risk_basename_command_words() {
 # high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
 # stay protective.
 __lmline_risk_match() {
-  local cmd=$1 expanded file line level pattern reason alt signal_alt bare_alt canon alts_str
+  local cmd=$1 expanded file line level pattern reason alt signal_alt neutral_alt bare_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
@@ -1547,11 +1564,11 @@ __lmline_risk_match() {
     # Signal spelling is canonicalized before the command names are reduced,
     # while separators still mark each simple command.
     signal_alt=$(__lmline_risk_canonicalize_kill_signals "$alt")
-    bare_alt=$(__lmline_risk_basename_command_words "$signal_alt")
+    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$signal_alt")
+    bare_alt=$(__lmline_risk_basename_command_words "$neutral_alt")
     canon=$(__lmline_canonicalize_for_risk <<<"$bare_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
     canon=${canon% }
-    canon=$(__lmline_risk_neutralize_flags_after_double_dash "$canon")
     canon=" $canon "
     while IFS= read -r line || [[ -n "$line" ]]; do
       [[ -z "$line" || "$line" == \#* ]] && continue
