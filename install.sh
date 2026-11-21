@@ -84,6 +84,8 @@ elif clipboard_provider=$(detect_clipboard_provider); then
   fi
 fi
 
+# Print command paths as single-quoted literal words so directories containing
+# spaces or a literal "$" survive copy/paste into Bash or zsh unexpanded.
 cat <<EOF
 Installed lmline to $config_dir
 
@@ -92,21 +94,21 @@ The Bash integration and bundled engine require bash 4.2 or newer.
 
 For a temporary Bash trial:
 
-  bash --rcfile "$config_dir/init.bash" -i
+  bash --rcfile $(__lmline_quote_single "$config_dir/init.bash") -i
 
 For a zsh trial:
 
-  source "$config_dir/init.zsh"
+  source $(__lmline_quote_single "$config_dir/init.zsh")
 
 For permanent Bash use, add this to ~/.bashrc if it is not already present:
 
 if [[ \$- == *i* ]]; then
-  source "$config_dir/init.bash"
+  source $(__lmline_quote_single "$config_dir/init.bash")
 fi
 
 For permanent zsh use, add this to ~/.zshrc if it is not already present:
 
-source "$config_dir/init.zsh"
+source $(__lmline_quote_single "$config_dir/init.zsh")
 
 Optional defaults:
   lmline endpoint add lmstudio http://127.0.0.1:1234/v1
@@ -127,16 +129,16 @@ Equivalent environment variables:
   export LMLINE_API_KEY_FILE=<path-to-api-key-file>
 
 Standalone CLI completions (optional; the init scripts already load them):
-  bash: source "$config_dir/completions/lmline.bash"
-  zsh:  fpath+=("$config_dir/completions") before compinit in ~/.zshrc
+  bash: source $(__lmline_quote_single "$config_dir/completions/lmline.bash")
+  zsh:  fpath+=($(__lmline_quote_single "$config_dir/completions")) before compinit in ~/.zshrc
 
-Make sure $bin_dir is on PATH if you want to run: lmline doctor
+Make sure $(__lmline_quote_single "$bin_dir") is on PATH if you want to run: lmline doctor
 Use "lmline doctor --check-api" to also test provider connectivity.
 
 Editable lists and policy defaults were installed under:
-  $config_dir/defaults
+  $(__lmline_quote_single "$config_dir/defaults")
 
 To override a default without changing installed files, create a file with the
 same name directly under $config_dir, for example:
-  $config_dir/suggested_commands.txt
+  $(__lmline_quote_single "$config_dir/suggested_commands.txt")
 EOF

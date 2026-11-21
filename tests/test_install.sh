@@ -60,3 +60,60 @@ chmod +x "$fake_bin/xclip"
 grep -q '^\./-tmp/lmline-cfg' "$install_tmp/install-mktemp.log" ||
   fail "installer did not use a safe dash-leading TMPDIR operand"
 ok "installer normalizes a dash-leading TMPDIR"
+
+# Printed setup commands must stay pasteable when config_dir contains shell
+# metacharacters: a double-quoted "$edition" would expand when pasted. Parse
+# only the quoted path words from the output; never run the printed commands
+# (two of them start interactive shells).
+dollar_config="$install_tmp/work/lmline \$edition/config"
+dollar_bin="$install_tmp/work/lmline \$edition/bin"
+(
+  cd "$install_tmp/work"
+  HOME="$install_tmp/home" LMLINE_CONFIG_DIR="$dollar_config" LMLINE_BIN_DIR="$dollar_bin" \
+    bash "project dir/install.sh" >"$install_tmp/dollar-install.out"
+) || fail "installer failed with a literal-dollar config directory"
+
+expected_dollar_config=$(CDPATH='' cd -- "$dollar_config" && pwd)
+expected_dollar_bin=$(CDPATH='' cd -- "$dollar_bin" && pwd)
+[[ -f "$expected_dollar_config/init.bash" && -f "$expected_dollar_config/init.zsh" ]] ||
+  fail "literal-dollar config files were not installed"
+
+# No other output line uses single quotes, so the quoted words in order are
+# exactly the command paths. The pattern requires single quotes, so a
+# double-quoted path (the reported bug) cannot satisfy it.
+single_quoted_re="'([^']*)'"
+printed_paths=()
+while IFS= read -r line; do
+  if [[ $line =~ $single_quoted_re ]]; then
+    printed_paths+=("${BASH_REMATCH[1]}")
+  fi
+done <"$install_tmp/dollar-install.out"
+
+example_path="$expected_dollar_config/suggested_commands.txt"
+expected_paths=(
+  "$expected_dollar_config/init.bash"                 # temporary Bash --rcfile
+  "$expected_dollar_config/init.zsh"                  # zsh trial source
+  "$expected_dollar_config/init.bash"                 # ~/.bashrc snippet
+  "$expected_dollar_config/init.zsh"                  # permanent zsh source
+  "$expected_dollar_config/completions/lmline.bash"   # standalone Bash completions
+  "$expected_dollar_config/completions"               # zsh fpath entry
+  "$expected_dollar_bin"                              # PATH instruction
+  "$expected_dollar_config/defaults"                  # editable lists
+  "$example_path"                                     # override example (to be created)
+)
+[[ ${#printed_paths[@]} -eq ${#expected_paths[@]} ]] ||
+  fail "expected ${#expected_paths[@]} quoted command paths, got ${#printed_paths[@]}"
+
+for i in "${!expected_paths[@]}"; do
+  printed=${printed_paths[i]}
+  [[ $printed == "${expected_paths[i]}" ]] ||
+    fail "command path $i: expected ${expected_paths[i]}, got $printed"
+  [[ $printed == *'$edition'* ]] ||
+    fail "command path $i lost its literal dollar sign: $printed"
+  # The example is a file the user is told to create, not one we install.
+  if [[ $printed != "$example_path" ]]; then
+    [[ -e $printed ]] || fail "command path $i does not exist: $printed"
+  fi
+done
+
+ok "printed setup commands are literal words for a dollar-sign config directory"
