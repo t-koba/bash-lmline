@@ -39,6 +39,15 @@ equals_doctor=$(
   fail "doctor endpoint count from equals-bearing relative config dir: $equals_doctor"
 [[ $(grep -c '^models=1$' <<<"$equals_doctor") == 1 ]] ||
   fail "doctor model count from equals-bearing relative config dir: $equals_doctor"
+# The orphan-model check reads both catalogs as files even when the config
+# path contains '='; with stdin closed a silent empty read is a wrong answer.
+printf 'ghost\tghost-model\n' >>"$equals_cfg_tmp/cfg=x/models.tsv"
+equals_orphan_doctor=$(
+  cd "$equals_cfg_tmp" &&
+    LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" doctor </dev/null 2>/dev/null
+) || fail "orphan check with equals-bearing relative config dir failed"
+grep -q 'WARNING: model references unknown endpoint: ghost/ghost-model' <<<"$equals_orphan_doctor" ||
+  fail "doctor missed orphan model in equals-bearing relative config dir: $equals_orphan_doctor"
 equals_endpoints=$(
   cd "$equals_cfg_tmp" &&
     LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint list </dev/null

@@ -1400,7 +1400,7 @@ case "$cmd" in
       done < <(awk -F '\t' '
         NR == FNR { if (NF && $1 !~ /^#/) ep[$1] = 1; next }
         NF && $1 !~ /^#/ && !($1 in ep) { print $1 "/" $2 }
-      ' "$endpoints_file" "$models_file")
+      ' <(cat -- "$endpoints_file") <(cat -- "$models_file"))
     fi
     for secret_file in "$config_dir"/secrets/*.secret; do
       [[ -f "$secret_file" ]] || continue
