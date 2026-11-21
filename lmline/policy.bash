@@ -82,7 +82,10 @@ __lmline_word_is_shell() {
 # family and the pipe-to-shell gate both ask it. The sh family runs a command
 # string and is named in shell_words.txt.
 __lmline_risk_runner_operands() {
-  local -a decoded=()
+  # An optional second argument supplies the quote-preserving source when a
+  # caller joins words that it decoded from a structural segment.
+  local -a decoded=() structural_words=()
+  local structural_source=${2:-$1} structural_line
   mapfile -t decoded < <(__lmline_risk_split_words "$1")
   local runner=${decoded[0]:-$1} i named
   case "${runner##*/}" in
@@ -94,7 +97,14 @@ __lmline_risk_runner_operands() {
       # word is only its argument, not the command whose risk is judged.
       named=0
       if (( ${#decoded[@]} > 2 )) && [[ ${decoded[1]} != -* && ${decoded[1]} != *=* ]]; then
-        case "${decoded[2]}" in
+        # The decoded view strips quotes, so a quoted opener would pass for
+        # syntax. The third word of the quote-preserving view keeps its
+        # quotes (and its \002-marked quoted whitespace), so only an actual
+        # compound opener or keyword stands here as a coproc name boundary.
+        structural_line=$(__lmline_split_pipeline "$structural_source" 2)
+        structural_line=${structural_line%%$'\n'*}
+        IFS=$' \t' read -r -a structural_words <<<"$structural_line"
+        case "${structural_words[2]:-}" in
           '{'|'('*|if|while|until|for|select|case|'[['*)
             named=1
             ;;
@@ -1314,10 +1324,18 @@ __lmline_risk_option_takes_path_value() {
 # or a shell in that position is the command the program runs, whatever the
 # option before it names.
 __lmline_risk_carried_command_index() {
+  __lmline_risk_carried_command_index_with "" "$@"
+}
+
+# The quote-preserving source is passed separately: decoded words alone cannot
+# tell a compound opener from an argument spelled like one.
+__lmline_risk_carried_command_index_with() {
+  local structural_source_text=$1
+  shift
   local -a words=("$@")
   local index word expect_value=0 last_option=""
   local operands_left
-  operands_left=$(__lmline_risk_runner_operands "${words[*]}")
+  operands_left=$(__lmline_risk_runner_operands "${words[*]}" "$structural_source_text")
   for (( index = 1; index < ${#words[@]}; index++ )); do
     word=${words[index]}
     [[ "$word" == *=* ]] && continue
@@ -1356,6 +1374,12 @@ __lmline_risk_carried_command_index() {
 # another program hands the command it runs to the next program, so the chain
 # is followed to the command that runs.
 __lmline_risk_segment_command_index() {
+  __lmline_risk_segment_command_index_with "" "$@"
+}
+
+__lmline_risk_segment_command_index_with() {
+  local structural_source_text=$1
+  shift
   local -a words=("$@")
   local index=0 word base cmd_index
   while :; do
@@ -1383,7 +1407,7 @@ __lmline_risk_segment_command_index() {
       return 0
     fi
     if __lmline_risk_is_runner "$base"; then
-      cmd_index=$(__lmline_risk_carried_command_index "${words[@]:index}") || return 1
+      cmd_index=$(__lmline_risk_carried_command_index_with "$structural_source_text" "${words[@]:index}") || return 1
       index=$((index + cmd_index))
       continue
     fi
@@ -1507,7 +1531,9 @@ __lmline_risk_recursive_remove() {
     # The command the segment runs. A program that runs another program hands
     # the command it runs to the next program, so the chain is followed to
     # the command that runs.
-    cmd_index=$(__lmline_risk_segment_command_index "${words[@]}") || continue
+    # The decoded words lose quoting, so carry the segment itself for the
+    # coproc name check.
+    cmd_index=$(__lmline_risk_segment_command_index_with "$segment" "${words[@]}") || continue
     word=${words[cmd_index]}
     if __lmline_risk_word_runs_shell "$word"; then
       # A shell command word runs the command string it is given after -c.
