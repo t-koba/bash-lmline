@@ -48,6 +48,8 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"rm -fr build\"") == high ]]
   [[ $(__lmline_risk_level "sh -c '"'"'rm -vr build'"'"'") == high ]]
   [[ $(__lmline_risk_level "zsh -c \"rm --force --recursive build\"") == high ]]
+  [[ $(__lmline_risk_level "\\sh -c '"'"'rm -rf /'"'"'") == high ]]
+  [[ $(__lmline_risk_level "bash \\-c '"'"'rm -rf /'"'"'") == high ]]
   [[ $(__lmline_risk_reason "bash -c \"rm -fr build\"") == "recursive remove" ]]
   # The same string glued to the option reads the same way.
   [[ $(__lmline_risk_level "sh -c\"rm -fr /\"") == high ]]
