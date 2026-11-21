@@ -2144,6 +2144,44 @@ __lmline_risk_descriptor_duplication_word() {
   __LMLINE_RISK_DUP_SOURCE=$((10#$source))
 }
 
+# Bounded transitive walk of descriptor duplications after a script-carrying
+# operator. Its arguments are the fd carrying the script, the index of the
+# first word after the operator, then the quote-preserving words to scan.
+# The resulting descriptor set is published in __LMLINE_RISK_CARRIED_FDS for
+# the caller to read immediately after the call. Four passes preserve the
+# policy's bounded chain depth; a word adds a target when its source is
+# carried and its target is not. Nothing is executed here.
+declare -ga __LMLINE_RISK_CARRIED_FDS=()
+__lmline_risk_carry_fds() {
+  local initial_fd=$1 start=$2 index pass changed target source alias_matches carried_fd
+  shift 2
+  local -a words=("$@")
+  __LMLINE_RISK_CARRIED_FDS=()
+  [[ -n $initial_fd ]] || return 0
+  __LMLINE_RISK_CARRIED_FDS=("$initial_fd")
+  for ((pass = 0; pass < 4; pass++)); do
+    changed=0
+    for ((index = start; index < ${#words[@]}; index++)); do
+      __lmline_risk_descriptor_duplication_word "${words[index]}" || continue
+      target=$__LMLINE_RISK_DUP_TARGET
+      source=$__LMLINE_RISK_DUP_SOURCE
+      alias_matches=0
+      for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
+        [[ $source == "$carried_fd" ]] && { alias_matches=1; break; }
+      done
+      (( alias_matches )) || continue
+      alias_matches=0
+      for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
+        [[ $target == "$carried_fd" ]] && { alias_matches=1; break; }
+      done
+      (( alias_matches )) && continue
+      __LMLINE_RISK_CARRIED_FDS+=("$target")
+      changed=1
+    done
+    (( changed )) || break
+  done
+}
+
 # The script a shell reads from an active here-string operator. The unquoted
 # view proves an operator is active: a quoted or escaped operator has no
 # standalone token there. That view can drop a quoted command word, so the
@@ -2151,8 +2189,8 @@ __lmline_risk_descriptor_duplication_word() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} segment marker word payload
-  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches changed pass alias_claimed
-  local -a plain=() quoted=() words=() carried=()
+  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches alias_claimed
+  local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -2180,31 +2218,10 @@ __lmline_risk_here_string_payload() {
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
       # Only duplication after the operator copies the here-string's fd;
       # an earlier one copied the stdin that preceded the operator.
-      carried=("$fd")
-      for ((pass = 0; pass < 4; pass++)); do
-        changed=0
-        for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
-          __lmline_risk_descriptor_duplication_word "${quoted[index]}" || continue
-          target=$__LMLINE_RISK_DUP_TARGET
-          source=$__LMLINE_RISK_DUP_SOURCE
-          alias_matches=0
-          for carried_fd in "${carried[@]}"; do
-            [[ $source == "$carried_fd" ]] && { alias_matches=1; break; }
-          done
-          (( alias_matches )) || continue
-          alias_matches=0
-          for carried_fd in "${carried[@]}"; do
-            [[ $target == "$carried_fd" ]] && { alias_matches=1; break; }
-          done
-          (( alias_matches )) && continue
-          carried+=("$target")
-          changed=1
-        done
-        (( changed )) || break
-      done
+      __lmline_risk_carry_fds "$fd" $((op_index + 1)) "${quoted[@]}"
       reaches=0
       alias_claimed=0
-      for carried_fd in "${carried[@]}"; do
+      for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
         [[ $carried_fd == 0 ]] && { reaches=1; break; }
       done
       # A command string or script file already gives the shell its input, so
@@ -2229,7 +2246,7 @@ __lmline_risk_here_string_payload() {
         fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || fd=
         if [[ -n $fd ]]; then
           alias_matches=0
-          for carried_fd in "${carried[@]}"; do
+          for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
             if [[ $fd == "$carried_fd" ]]; then alias_matches=1; break; fi
           done
           if (( alias_matches )); then
@@ -2274,8 +2291,8 @@ __lmline_risk_here_string_payload() {
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
-  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd dup_target carried_fd pass changed
-  local -a plain=() quoted=() carried=()
+  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd dup_target
+  local -a plain=() quoted=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   # The structural splitter reads & and | as command separators, even inside
@@ -2319,7 +2336,6 @@ __lmline_risk_generated_script_source() {
     # script: a bare '<' feeds stdin and '3<' feeds descriptor 3. An earlier
     # redirect with its own target is unrelated to this process substitution.
     source_fd=''
-    carried=()
     if (( q_source > q_index )); then
       word=${quoted[q_source-1]}
       if [[ $word == '<' ]]; then
@@ -2330,30 +2346,7 @@ __lmline_risk_generated_script_source() {
     fi
     # A duplication after the substitution can also carry its script fd into
     # an alias; one before it copied the earlier input instead.
-    if [[ -n $source_fd ]]; then
-      carried=("$source_fd")
-      for ((pass = 0; pass < 4; pass++)); do
-        changed=0
-        for ((index = q_source + 1; index < ${#quoted[@]}; index++)); do
-          __lmline_risk_descriptor_duplication_word "${quoted[index]}" || continue
-          target=$__LMLINE_RISK_DUP_TARGET
-          source=$__LMLINE_RISK_DUP_SOURCE
-          alias_matches=0
-          for carried_fd in "${carried[@]}"; do
-            [[ $source == "$carried_fd" ]] && { alias_matches=1; break; }
-          done
-          (( alias_matches )) || continue
-          alias_matches=0
-          for carried_fd in "${carried[@]}"; do
-            [[ $target == "$carried_fd" ]] && { alias_matches=1; break; }
-          done
-          (( alias_matches )) && continue
-          carried+=("$target")
-          changed=1
-        done
-        (( changed )) || break
-      done
-    fi
+    __lmline_risk_carry_fds "$source_fd" $((q_source + 1)) "${quoted[@]}"
     # A command string or script file already gives the shell its script, so
     # the process substitution is only an argument to that program.
     script_word=0
@@ -2363,7 +2356,7 @@ __lmline_risk_generated_script_source() {
       if [[ -n $alias_fd ]]; then
         alias_matches=0
         [[ -n $source_fd && $alias_fd == "$source_fd" ]] && alias_matches=1
-        for dup_target in "${carried[@]}"; do
+        for dup_target in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
           [[ $alias_fd == "$dup_target" ]] && { alias_matches=1; break; }
         done
         (( alias_matches )) && continue
