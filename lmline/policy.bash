@@ -1328,6 +1328,18 @@ __lmline_risk_carried_command_index() {
   __lmline_risk_carried_command_index_with "" "$@"
 }
 
+# Keep the quote-preserving source aligned with a word slice: when the index
+# helper steps past a leading wrapper, the coproc check must see the same first
+# word as the decoded operands it is judging.
+__lmline_risk_structural_source_from_word() {
+  local source_text=$1 skip=$2
+  local -a source_words=()
+  (( skip > 0 )) || { printf '%s' "$source_text"; return 0; }
+  [[ -n $source_text ]] || { printf '%s' ""; return 0; }
+  IFS=$' \t' read -r -a source_words <<<"$(__lmline_split_pipeline "$source_text" 2)"
+  printf '%s' "${source_words[*]:skip}"
+}
+
 # The quote-preserving source is passed separately: decoded words alone cannot
 # tell a compound opener from an argument spelled like one.
 __lmline_risk_carried_command_index_with() {
@@ -1382,7 +1394,7 @@ __lmline_risk_segment_command_index_with() {
   local structural_source_text=$1
   shift
   local -a words=("$@")
-  local index=0 word base cmd_index
+  local index=0 word base cmd_index sliced_source
   while :; do
     # The command word of the simple command: the first word that is not an
     # assignment and not an option. A word that can stand before the command
@@ -1408,7 +1420,8 @@ __lmline_risk_segment_command_index_with() {
       return 0
     fi
     if __lmline_risk_is_runner "$base"; then
-      cmd_index=$(__lmline_risk_carried_command_index_with "$structural_source_text" "${words[@]:index}") || return 1
+      sliced_source=$(__lmline_risk_structural_source_from_word "$structural_source_text" "$index")
+      cmd_index=$(__lmline_risk_carried_command_index_with "$sliced_source" "${words[@]:index}") || return 1
       index=$((index + cmd_index))
       continue
     fi

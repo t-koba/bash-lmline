@@ -1002,6 +1002,12 @@ bash -c '
   [[ $(__lmline_risk_level "coproc printf '"'"'('"'"' rm -fr build") == low ]]
   [[ $(__lmline_risk_runner_operands "coproc printf '"'"'{'"'"' rm -fr build") == 0 ]]
   [[ $(__lmline_risk_runner_operands "coproc worker { rm -fr build; }") == 1 ]]
+  # Leading shell prefixes must not misalign the coproc opener check.
+  [[ $(__lmline_risk_level "time coproc worker { rm -fr build; }") == high ]]
+  [[ $(__lmline_risk_level \!\ coproc\ worker\ \{\ rm\ -fr\ build\;\ \}) == high ]]
+  [[ $(__lmline_risk_level "! time coproc worker { rm -fr build; }") == high ]]
+  [[ $(__lmline_risk_level "time ! coproc worker { rm -fr build; }") == high ]]
+  [[ $(__lmline_risk_level "time coproc printf '"'"'{'"'"' rm -fr build") == low ]]
   [[ $(__lmline_risk_level "function cleanup { rm -fr build; }") == high ]]
   # A path-valued option keeps its value; the command after it still counts.
   [[ $(__lmline_risk_level "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
