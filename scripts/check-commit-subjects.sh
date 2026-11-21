@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Check the commit subjects of this project against the rule the project
 # states here: one plain imperative sentence describing the change, with no
-# internal identifier. The rule starts at the commit that added this script,
-# so the commits before it keep the subjects they already have.
+# internal identifier. This lint enforces the structural cases: label prefixes,
+# more than one sentence, and internal identifiers. Imperative wording stays a
+# human review rule. The rule starts at the commit that added this script, so
+# the commits before it keep the subjects they already have.
 #
 # The check reads the history to find that commit, so it needs the whole
 # history: a truncated clone is reported as an error, and a history that
@@ -10,7 +12,7 @@
 #
 # Usage: check-commit-subjects.sh [repo_dir]
 # Without an argument the repository that holds this script is checked.
-# Exit status: 0 when every checked subject follows the rule, 1 when one
+# Exit status: 0 when every checked subject passes this lint, 1 when one
 # does not, 2 for a wrong usage. A directory without a git repository, or
 # one without a commit, is skipped and reported as skipped.
 set -euo pipefail
