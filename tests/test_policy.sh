@@ -174,6 +174,11 @@ bash -c '
   [[ $(__lmline_risk_level "kill -s SigKill 123") == high ]]
   [[ $(__lmline_risk_level "kill -n 09 123") == high ]]
   [[ $(__lmline_risk_reason "kill -SigKill 123") == "force kill signal" ]]
+  # Decoding quotes, IFS and escapes must not hide the uncatchable signal.
+  [[ $(__lmline_risk_level "kill\${IFS}-09 123") == high ]]
+  [[ $(__lmline_risk_level "kill \"-09\" 123") == high ]]
+  [[ $(__lmline_risk_level "kill -0\\9 123") == high ]]
+  [[ $(__lmline_risk_reason "kill \"-09\" 123") == "force kill signal" ]]
   # A later command in a pipeline or list gets the same signal spelling.
   [[ $(__lmline_risk_level "echo x | kill -09 123") == high ]]
   [[ $(__lmline_risk_level "echo x | kill -Kill 123") == high ]]
