@@ -780,9 +780,10 @@ also the script that shell reads; a here-string given to another program or to
 a shell that already has a command string or script file stays data. A
 standard-stream script alias such as `/dev/stdin` carries a payload only when
 its descriptor matches the input: `/dev/stdin` and `/dev/fd/0` match a
-here-string, while `/dev/fd/1` or `/dev/fd/9` name a script file instead. A
-process-substitution argument needs a matching input redirection to supply that
-alias (`<` for fd 0, `3<` for fd 3); without one it is only an argument.
+here-string, while `/dev/fd/1` or `/dev/fd/9` name a script file instead. An
+explicit `0<<<` feeds stdin and `1<<<` does not. A process-substitution argument
+needs an immediately preceding, matching input redirection to supply that alias
+(`<` for fd 0, `3<` for fd 3); with another input target it is only an argument.
 Process substitution used as a shell's script source (`bash < <(echo ...)` or
 `bash <(echo ...)`) is judged the same way, while non-shell uses and shells that
 already have a script are unchanged.

@@ -90,6 +90,11 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/9 <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "sh /dev/fd/9 <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash /proc/self/fd/1 <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # An explicit descriptor on the here-string operator selects its target.
+  [[ $(__lmline_risk_level "bash 0<<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 0<<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash 1<<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/1 0<<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat /dev/stdin <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
@@ -153,6 +158,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/1 < <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/3 < <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 3< <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  # An input redirect with its own target is a shell script source; the
+  # process substitution after it is only an argument.
+  [[ $(__lmline_risk_level "bash < /dev/null <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash 0</dev/null <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 < /dev/null <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 0</dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   # Redirection targets and shell option values are not script files.
   [[ $(__lmline_risk_level "bash > /dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash 2>/dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]

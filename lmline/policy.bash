@@ -1995,6 +1995,16 @@ __lmline_risk_basename_command_words() {
   printf '%s' "$out${cmd:cursor}"
 }
 
+# A here-string operator with no descriptor feeds stdin; an explicit N<<<
+# operator feeds descriptor N. Return the descriptor for an active operator.
+__lmline_risk_here_string_descriptor() {
+  local word=$1 prefix
+  prefix=${word%%[!0-9]*}
+  [[ ${word:${#prefix}:3} == '<<<' ]] || return 1
+  [[ -n $prefix ]] || prefix=0
+  printf '%s\n' "$((10#$prefix))"
+}
+
 # A standard-stream path names the descriptor a shell reads its script from,
 # not a stored script file. Quotes are removed before the path is read: the
 # quote-preserving view keeps them in a word such as "/dev/stdin". The
@@ -2057,7 +2067,8 @@ __lmline_risk_here_string_payload() {
     ((${#plain[@]})) || continue
     active=0
     for ((index = 0; index < ${#plain[@]}; index++)); do
-      if [[ ${plain[index]} == '<<<' ]]; then
+      fd=$(__lmline_risk_here_string_descriptor "${plain[index]}") || continue
+      if [[ $fd == 0 ]]; then
         active=1
         break
       fi
@@ -2070,7 +2081,8 @@ __lmline_risk_here_string_payload() {
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
-      [[ ${quoted[op_index]} == '<<<'* ]] || continue
+      fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
+      [[ $fd == 0 ]] || continue
       # A command string or script file already gives the shell its input, so
       # the here-string is data to that program, not a script it reads.
       script_word=0
@@ -2078,18 +2090,16 @@ __lmline_risk_here_string_payload() {
         word=${quoted[index]}
         # A standalone earlier here-string consumes its payload word, so that
         # word is not a script file given to the shell.
-        if [[ $word == '<<<' ]]; then
+        if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
           index=$((index + 1))
           continue
         fi
-        # A here-string glued to its payload stays in the one word.
-        [[ $word == '<<<'* ]] && continue
         if __lmline_risk_redirect_word "$word"; then
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
-        # A here-string feeds descriptor 0, so only an alias on that
-        # descriptor reads it; any other alias names a script file.
+        # A here-string on descriptor 0 can be read only by an alias on
+        # descriptor 0; any other alias names a script file.
         fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || fd=
         if [[ $fd == 0 ]]; then
           continue
@@ -2104,11 +2114,11 @@ __lmline_risk_here_string_payload() {
         fi
       done
       (( script_word )) && continue
-      if [[ ${quoted[op_index]} == '<<<' ]]; then
+      if [[ ${quoted[op_index]} == *'<<<' ]]; then
         (( op_index + 1 < ${#quoted[@]} )) || continue
         payload=${quoted[op_index+1]}
       else
-        payload=${quoted[op_index]#'<<<'}
+        payload=${quoted[op_index]#*'<<<'}
       fi
       words=()
       mapfile -t words < <(__lmline_risk_split_words "${payload//"$marker"/ }")
@@ -2127,7 +2137,7 @@ __lmline_risk_here_string_payload() {
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
-  local alias_fd numbered='^([0-9]+)<$' fed_fds
+  local alias_fd numbered='^([0-9]+)<$' source_fd prefix
   local -a plain=() quoted=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2164,24 +2174,25 @@ __lmline_risk_generated_script_source() {
     q_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
     (( q_index < q_source )) || continue
     __lmline_risk_word_runs_shell "${quoted[q_index]}" || continue
-    # Record the descriptors that input redirects before the substitution
-    # actually feed: a bare '<' feeds stdin and '3<' feeds descriptor 3.
-    fed_fds=''
-    for ((index = q_index + 1; index < q_source; index++)); do
-      word=${quoted[index]}
+    # Only an input redirect immediately before the substitution feeds its
+    # script: a bare '<' feeds stdin and '3<' feeds descriptor 3. An earlier
+    # redirect with its own target is unrelated to this process substitution.
+    source_fd=''
+    if (( q_source > q_index )); then
+      word=${quoted[q_source-1]}
       if [[ $word == '<' ]]; then
-        fed_fds+=' 0 '
+        source_fd=0
       elif [[ $word =~ $numbered ]]; then
-        fed_fds+=" $((10#${BASH_REMATCH[1]})) "
+        source_fd=$((10#${BASH_REMATCH[1]}))
       fi
-    done
+    fi
     # A command string or script file already gives the shell its script, so
     # the process substitution is only an argument to that program.
     script_word=0
     for ((index = q_index + 1; index < q_source; index++)); do
       word=${quoted[index]}
       alias_fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || alias_fd=
-      if [[ -n $alias_fd && $fed_fds == *" $alias_fd "* ]]; then
+      if [[ -n $alias_fd && -n $source_fd && $alias_fd == "$source_fd" ]]; then
         continue
       fi
       # The process substitution itself is the script source, not a redirect
@@ -2190,6 +2201,15 @@ __lmline_risk_generated_script_source() {
         '<('*) continue ;;
       esac
       if __lmline_risk_redirect_word "$word"; then
+        # Without a redirect feeding the substitution, any earlier input
+        # redirect with a target gives the shell a different script source;
+        # the process substitution is then only an argument.
+        prefix=${word%%[!0-9]*}
+        if [[ -z $source_fd && ${word:${#prefix}:1} == '<' &&
+          ${word:${#prefix}:2} != '<>' ]]; then
+          script_word=1
+          break
+        fi
         (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
         continue
       fi
