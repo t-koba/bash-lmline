@@ -1268,31 +1268,33 @@ __lmline_risk_remove_is_recursive() {
   return 1
 }
 
-# Whether a word runs a shell. The word is read as the words it runs, with
-# the quoting removed and the expansions spaced, so a spelling that hides the
-# command is read as the words it runs.
-__lmline_risk_word_runs_shell() {
-  local canonical base
+# The first shell word a candidate word stands for. Quoting is removed and
+# expansions are spaced, so a spelling that hides a command is read as the
+# words it runs. The command-position predicates share this parsing; each
+# keeps its own policy for what the first word means.
+__lmline_risk_canonical_first_word() {
+  local canonical
   local -a canon=()
-  canonical=$(__lmline_canonicalize_for_risk <<<"$1")
+  canonical=$(__lmline_canonicalize_for_risk <<<"$1") || true
   [[ -n $canonical ]] || return 1
   read -r -a canon <<<"$canonical" || true
   ((${#canon[@]} > 0)) || return 1
-  base=${canon[0]##*/}
-  __lmline_word_is_shell "$base"
+  printf '%s' "${canon[0]}"
+}
+
+# Whether a word runs a shell.
+__lmline_risk_word_runs_shell() {
+  local first
+  first=$(__lmline_risk_canonical_first_word "$1") || return 1
+  __lmline_word_is_shell "${first##*/}"
 }
 
 # Whether a word invokes the shell's source or dot builtin. These read and
 # execute a script file, but are not external shell programs, so they are kept
 # out of the shared shell-word list used by other risk checks.
 __lmline_risk_word_sources_script() {
-  local canonical first
-  local -a canon=()
-  canonical=$(__lmline_canonicalize_for_risk <<<"$1") || return 1
-  [[ -n $canonical ]] || return 1
-  read -r -a canon <<<"$canonical" || true
-  ((${#canon[@]} > 0)) || return 1
-  first=${canon[0]}
+  local first
+  first=$(__lmline_risk_canonical_first_word "$1") || return 1
   [[ $first == source || $first == . ]]
 }
 
