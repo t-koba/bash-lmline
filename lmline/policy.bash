@@ -1886,48 +1886,60 @@ __lmline_risk_basename_command_words() {
   printf '%s' "$out${cmd:cursor}"
 }
 
-# The script a shell reads from an active here-string operator. The structural
-# splitter's unquoted view drops quoted words, leaving only a real operator;
-# its quote-preserving view keeps the script word around that operator. Both
-# views are read without executing anything. One payload per line.
+# The script a shell reads from an active here-string operator. The unquoted
+# view proves an operator is active: a quoted or escaped operator has no
+# standalone token there. That view can drop a quoted command word, so the
+# quote-preserving view supplies the command and the words before the operator.
+# Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
-  local cmd=$1 segment index j cmd_index payload marker active
+  local cmd=$1 segment marker word payload
+  local index cmd_index op_index script_word=0 active
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
     mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0)")
-    read -r -a quoted <<<"$(__lmline_split_pipeline "$segment" 2)"
     ((${#plain[@]})) || continue
-    cmd_index=$(__lmline_risk_segment_command_index "${plain[@]}") || continue
-    __lmline_risk_word_runs_shell "${plain[cmd_index]}" || continue
-    # A quoted or escaped operator is data: it is absent from the unquoted
-    # view or spelled with quotes in the quote-preserving view.
     active=0
-    for ((index = cmd_index + 1; index < ${#plain[@]}; index++)); do
+    for ((index = 0; index < ${#plain[@]}; index++)); do
       if [[ ${plain[index]} == '<<<' ]]; then
-        # A command string or script file already gives the shell its input,
-        # so the here-string is data to that program, not a script it reads.
-        local k script_word=0
-        for ((k = cmd_index + 1; k < index; k++)); do
-          if [[ ${plain[k]} == -[oO] ]]; then
-            k=$((k + 1))
-            continue
-          fi
-          # The unquoted view drops a quoted -c string, so the option itself
-          # still says the shell already has its script.
-          [[ ${plain[k]} == -*c* ]] && script_word=1
-          [[ ${plain[k]} == -* ]] || script_word=1
-        done
-        (( script_word )) || active=1
+        active=1
         break
       fi
     done
     (( active )) || continue
-    for ((j = 0; j + 1 < ${#quoted[@]}; j++)); do
-      [[ ${quoted[j]} == '<<<' ]] || continue
+    read -r -a quoted <<<"$(__lmline_split_pipeline "$segment" 2)"
+    ((${#quoted[@]})) || continue
+    cmd_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
+    __lmline_risk_word_runs_shell "${quoted[cmd_index]}" || continue
+    for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
+      # A payload can be glued to the operator; ANSI-C quoting was already
+      # decoded by the caller, so both spellings start with the operator here.
+      [[ ${quoted[op_index]} == '<<<'* ]] || continue
+      # A command string or script file already gives the shell its input, so
+      # the here-string is data to that program, not a script it reads.
+      script_word=0
+      for ((index = cmd_index + 1; index < op_index; index++)); do
+        word=${quoted[index]}
+        [[ $word == '<'* || $word == '>'* ]] && continue
+        if [[ $word == -[oO] ]]; then
+          index=$((index + 1))
+          continue
+        fi
+        if [[ $word != -* || ( $word == -* && $word != --* && $word == *c* ) ]]; then
+          script_word=1
+          break
+        fi
+      done
+      (( script_word )) && continue
+      if [[ ${quoted[op_index]} == '<<<' ]]; then
+        (( op_index + 1 < ${#quoted[@]} )) || continue
+        payload=${quoted[op_index+1]}
+      else
+        payload=${quoted[op_index]#'<<<'}
+      fi
       words=()
-      mapfile -t words < <(__lmline_risk_split_words "${quoted[j+1]//"$marker"/ }")
+      mapfile -t words < <(__lmline_risk_split_words "${payload//"$marker"/ }")
       ((${#words[@]})) || continue
       payload=${words[*]}
       [[ -n $payload ]] && printf '%s\n' "$payload"

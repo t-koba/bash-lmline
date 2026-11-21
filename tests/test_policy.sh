@@ -63,11 +63,22 @@ bash -c '
   hsq=$(printf "\047")
   [[ $(__lmline_risk_level "bash <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_reason "bash <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]
+  # The payload can be glued to the operator, and quotes around part of the
+  # command word do not keep the shell from running it.
+  [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash <<<\$${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "\"bash\" <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "b\"ash\" <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "ba\"sh\" <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "\\bash <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "zsh <<< ${hsq}echo hi | sh${hsq}") == high ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
   [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash \"<<< ${hsq}rm -rf /${hsq}\"") == low ]]
+  [[ $(__lmline_risk_level "bash \\<<<\\ ${hsq}rm -rf /${hsq}") == low ]]
   # A process substitution supplying a shell script is a generated script,
   # whether it feeds stdin or names the script file; other uses stay unchanged.
   [[ $(__lmline_risk_level "bash < <(echo ${hsq}rm -rf /${hsq})") == high ]]
