@@ -3,9 +3,11 @@
 builtin
 case
 command
+coproc
 do
 done
 else
+elif
 env
 esac
 exec

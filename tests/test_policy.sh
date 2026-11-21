@@ -783,6 +783,8 @@ bash -c '
   [[ $(__lmline_risk_level "nohup /usr/bin/shutdown -h now") == high ]]
   [[ $(__lmline_risk_level "xargs /usr/bin/chmod -R 755 dir < list") == high ]]
   [[ $(__lmline_risk_level "if /usr/bin/dd if=/dev/zero of=/dev/sda; then true; fi") == high ]]
+  [[ $(__lmline_risk_level "elif /usr/bin/dd if=/dev/zero of=/dev/sda; then true; fi") == high ]]
+  [[ $(__lmline_risk_level "coproc /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   # A path-valued option keeps its value; the command after it still counts.
   [[ $(__lmline_risk_level "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "env --chdir /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
