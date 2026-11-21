@@ -1254,7 +1254,7 @@ __lmline_risk_option_takes_path_value() {
 # option before it names.
 __lmline_risk_carried_command_index() {
   local -a words=("$@")
-  local index word base expect_value=0 last_option=""
+  local index word expect_value=0 last_option=""
   local operands_left
   operands_left=$(__lmline_risk_runner_operands "${words[*]}")
   for (( index = 1; index < ${#words[@]}; index++ )); do
@@ -1265,8 +1265,7 @@ __lmline_risk_carried_command_index() {
       expect_value=1
       continue
     fi
-    base=${word##*/}
-    if __lmline_risk_word_is_remove_command "$word" || __lmline_word_is_shell "$base"; then
+    if __lmline_risk_word_is_remove_command "$word" || __lmline_risk_word_runs_shell "$word"; then
       printf '%s\n' "$index"
       return 0
     fi

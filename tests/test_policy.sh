@@ -63,6 +63,9 @@ bash -c '
   # shell, so a shell-named word that is only an argument does not reach it.
   [[ $(__lmline_risk_level "find . -name '*.c' | xargs grep sh") == low ]]
   [[ $(__lmline_risk_level "find . -name '*.c' | xargs sh") == high ]]
+  [[ $(__lmline_risk_level "find . | xargs -0 \\sh") == high ]]
+  [[ $(__lmline_risk_level "find . | xargs -n1 \\sh") == high ]]
+  [[ $(__lmline_risk_level "find . | xargs -0 \\echo") == low ]]
   [[ $(__lmline_risk_level "cat f | xargs grep rm") == high ]]
   # A remove carried by a wrapper reads the same way.
   [[ $(__lmline_risk_level "env -i rm -fr build") == high ]]
