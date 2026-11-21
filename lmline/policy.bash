@@ -16,6 +16,26 @@ __lmline_init_dirs "$__LMLINE_POLICY_DIR"
 # shellcheck source=lmline/validation-boundary.bash
 source "$__LMLINE_POLICY_DIR/validation-boundary.bash"
 
+# Syntax-only zsh probe. Zsh creates process-substitution files in the current
+# directory even under -n, so the probe parses from a writable directory in a
+# subshell; the caller's cwd stays put and candidate text is never executed.
+# Status: 0 valid, 1 syntax rejection, 2 validator unavailable/inconclusive.
+__lmline_zsh_syntax_probe() {
+  command -v zsh >/dev/null 2>&1 || return 2
+  local probe_dir=${TMPDIR:-/tmp} status
+  [[ -d "$probe_dir" && -w "$probe_dir" ]] || probe_dir=/tmp
+  [[ -d "$probe_dir" && -w "$probe_dir" ]] || return 2
+  (
+    cd -- "$probe_dir" 2>/dev/null || exit 2
+    command zsh -f -n -c "$1" >/dev/null 2>&1
+  )
+  status=$?
+  case $status in
+    0|1) return "$status" ;;
+    *) return 2 ;;
+  esac
+}
+
 # Word lists are read once per shell process; candidate validation checks every
 # word of every candidate, so per-word file reads and grep forks add up.
 __lmline_word_is_policy_skip() {
@@ -291,7 +311,7 @@ __lmline_candidate_rejection_reason() {
     __lmline_validation_run candidate "$@"
     return
   fi
-  local cmd=$1 mode=${2:-} shell=${3:-bash}
+  local cmd=$1 mode=${2:-} shell=${3:-bash} syntax_status=0
   [[ -n "$cmd" ]] || return 1
   [[ "$cmd" != *$'\n'* ]] || { printf 'multiline'; return 0; }
   [[ "$cmd" != *$'\r'* ]] || { printf 'carriage-return'; return 0; }
@@ -306,8 +326,12 @@ __lmline_candidate_rejection_reason() {
   fi
   [[ "$cmd" == "# TRUNCATED: "* || "$cmd" == "# REVIEW REQUIRED: "* ]] && { printf 'ok'; return 0; }
   if [[ "$shell" == zsh ]]; then
-    command -v zsh >/dev/null 2>&1 || { printf 'shell-validator-unavailable'; return 0; }
-    command zsh -f -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
+    __lmline_zsh_syntax_probe "$cmd" || syntax_status=$?
+    case $syntax_status in
+      0) ;;
+      1) printf 'shell-syntax'; return 0 ;;
+      *) printf 'shell-validator-unavailable'; return 0 ;;
+    esac
   else
     "$BASH" -p -n -c "$cmd" >/dev/null 2>&1 || { printf 'shell-syntax'; return 0; }
   fi
@@ -2300,7 +2324,7 @@ __lmline_extract_literal_eval_words() {
     return 2
   fi
   if [[ "$shell" == zsh ]]; then
-    command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
+    __lmline_zsh_syntax_probe "$inner" || return 1
   else
     "$BASH" -p -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
@@ -2336,7 +2360,7 @@ __lmline_extract_literal_trap_words() {
     return 0
   fi
   if [[ "$shell" == zsh ]]; then
-    command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
+    __lmline_zsh_syntax_probe "$inner" || return 1
   else
     "$BASH" -p -n -c "$inner" >/dev/null 2>&1 || return 1
   fi
@@ -2385,7 +2409,7 @@ __lmline_extract_literal_trap_words() {
 # exported functions) count as available.
 __lmline_extract_literal_shell_c_words() {
   local token=$1 remaining=$2 functions=${3:-} outer_shell=${4:-bash}
-  local inherited_bindings=${5-$functions} inner inner_shell words word
+  local inherited_bindings=${5-$functions} inner inner_shell words word syntax_status=0
   local inherited_exports=${__lmline_exported_functions-} __lmline_exported_functions="" inner_functions=""
   # The child inherits the cwd at this command position. Carry uncertainty,
   # never a candidate directory value, into its recursive availability scan.
@@ -2429,8 +2453,12 @@ __lmline_extract_literal_shell_c_words() {
     return 2
   fi
   if [[ "$inner_shell" == zsh ]]; then
-    command -v zsh >/dev/null 2>&1 || return 2
-    command zsh -f -n -c "$inner" >/dev/null 2>&1 || return 1
+    __lmline_zsh_syntax_probe "$inner" || syntax_status=$?
+    case $syntax_status in
+      0) ;;
+      1) return 1 ;;
+      *) return 2 ;;
+    esac
   else
     "$BASH" -p -n -c "$inner" >/dev/null 2>&1 || return 1
   fi

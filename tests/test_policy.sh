@@ -548,6 +548,21 @@ bash -c '
     zsh_candidate="cat =(printf hi)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_candidate_rejection_reason "$zsh_candidate" rewrite bash) == shell-syntax ]]
+    # The zsh -n probe still creates process-substitution files in the cwd.
+    # From a read-only directory the candidate stays valid and a malformed
+    # candidate stays a syntax rejection; the cwd change is subshell-local.
+    zsh_readonly_dir=$(mktemp -d "${TMPDIR:-/tmp}/lmline-zsh-readonly.XXXXXX")
+    (
+      readonly_dir=$zsh_readonly_dir
+      trap "chmod 700 \"\$readonly_dir\" 2>/dev/null || :; rm -rf \"\$readonly_dir\"" EXIT
+      cd -- "$readonly_dir"
+      chmod 555 "$readonly_dir"
+      [[ $(__lmline_candidate_rejection_reason "cat =(printf hi)" rewrite zsh) == ok ]]
+      [[ $(__lmline_candidate_rejection_reason "cat ${hsq}" rewrite zsh) == shell-syntax ]]
+      [[ $(__lmline_candidate_rejection_reason "cat /dev/null" rewrite zsh) == ok ]]
+      chmod 755 "$readonly_dir"
+      cd -- "$1"
+    )
     zsh_glob_candidate="printf %s *.txt(N)"
     [[ $(__lmline_candidate_rejection_reason "$zsh_glob_candidate" rewrite zsh) == ok ]]
     [[ $(__lmline_extract_command_words "$zsh_glob_candidate" zsh) == printf ]]

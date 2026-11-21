@@ -162,7 +162,7 @@ __lmline_case_command_copy() {
               if [[ ( "$ch" == '$' && ${cmd:end:1} == ')' ) || ( "$ch" == '`' && ${cmd:end:1} == '`' ) ]]; then
                 fragment=${cmd:i:end-i+1}
                 if [[ "$shell" == zsh ]]; then
-                  command zsh -f -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
+                  __lmline_zsh_syntax_probe ": \"$fragment\"" && break
                 else
                   "$BASH" -p -n -c ": \"$fragment\"" >/dev/null 2>&1 && break
                 fi
