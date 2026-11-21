@@ -94,6 +94,16 @@ bash -c '
   [[ $(__lmline_risk_level "bash 0<<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 0<<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash 1<<< ${hsq}rm -rf /${hsq}") == low ]]
+  # A glued earlier here-string keeps its payload, so a following script file
+  # remains a script file and the later payload stays data.
+  [[ $(__lmline_risk_level "bash <<<foo script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 <<<foo script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # A non-zero-fd here-string reaches stdin through a later duplication, or
+  # directly through a stream alias naming that descriptor.
+  [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} 0<&3") == high ]]
+  [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} <&3") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/3 3<<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash 0<&3 3<<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/1 0<<< ${hsq}rm -rf /${hsq}") == low ]]
   # A later duplication copies the here-string into the alias descriptor.
   [[ $(__lmline_risk_level "bash /dev/fd/3 <<< ${hsq}rm -rf /${hsq} 3>&0") == high ]]
@@ -164,8 +174,11 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/0 3< <(echo ${hsq}rm -rf /${hsq})") == low ]]
   # An input redirect with its own target is a shell script source; the
   # process substitution after it is only an argument.
-  [[ $(__lmline_risk_level "bash < /dev/null <(echo ${hsq}rm -rf /${hsq})") == low ]]
-  [[ $(__lmline_risk_level "bash 0</dev/null <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  # A redirect target alone is not a script file: the process substitution is
+  # still the shell script when no stream alias names a script file.
+  [[ $(__lmline_risk_level "bash < /dev/null <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash 0</dev/null <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "bash 2</dev/null <(echo ${hsq}rm -rf /${hsq})") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 < /dev/null <(echo ${hsq}rm -rf /${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 0</dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]
   # Duplication after the substitution also carries its script to an alias.

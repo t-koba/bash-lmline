@@ -2072,7 +2072,7 @@ __lmline_risk_descriptor_duplication_word() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 segment marker word payload
-  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd
+  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches changed pass
   local -a plain=() quoted=() words=() carried=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2082,10 +2082,8 @@ __lmline_risk_here_string_payload() {
     active=0
     for ((index = 0; index < ${#plain[@]}; index++)); do
       fd=$(__lmline_risk_here_string_descriptor "${plain[index]}") || continue
-      if [[ $fd == 0 ]]; then
-        active=1
-        break
-      fi
+      active=1
+      break
     done
     (( active )) || continue
     read -r -a quoted <<<"$(__lmline_split_pipeline "$segment" 2)"
@@ -2096,15 +2094,33 @@ __lmline_risk_here_string_payload() {
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
-      [[ $fd == 0 ]] || continue
-      # Only a duplication after the operator copies the here-string's fd;
+      # Only duplication after the operator copies the here-string's fd;
       # an earlier one copied the stdin that preceded the operator.
       carried=("$fd")
-      for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
-        if __lmline_risk_descriptor_duplication_word "${quoted[index]}" &&
-          [[ $__LMLINE_RISK_DUP_SOURCE == "$fd" ]]; then
-          carried+=("$__LMLINE_RISK_DUP_TARGET")
-        fi
+      for ((pass = 0; pass < 4; pass++)); do
+        changed=0
+        for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
+          __lmline_risk_descriptor_duplication_word "${quoted[index]}" || continue
+          target=$__LMLINE_RISK_DUP_TARGET
+          source=$__LMLINE_RISK_DUP_SOURCE
+          alias_matches=0
+          for carried_fd in "${carried[@]}"; do
+            [[ $source == "$carried_fd" ]] && { alias_matches=1; break; }
+          done
+          (( alias_matches )) || continue
+          alias_matches=0
+          for carried_fd in "${carried[@]}"; do
+            [[ $target == "$carried_fd" ]] && { alias_matches=1; break; }
+          done
+          (( alias_matches )) && continue
+          carried+=("$target")
+          changed=1
+        done
+        (( changed )) || break
+      done
+      reaches=0
+      for carried_fd in "${carried[@]}"; do
+        [[ $carried_fd == 0 ]] && { reaches=1; break; }
       done
       # A command string or script file already gives the shell its input, so
       # the here-string is data to that program, not a script it reads.
@@ -2114,7 +2130,9 @@ __lmline_risk_here_string_payload() {
         # A standalone earlier here-string consumes its payload word, so that
         # word is not a script file given to the shell.
         if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
-          index=$((index + 1))
+          # A standalone operator consumes the next word; a glued payload is
+          # already in the operator word and leaves the next word visible.
+          [[ $word == *'<<<' ]] && index=$((index + 1))
           continue
         fi
         if __lmline_risk_redirect_word "$word"; then
@@ -2129,7 +2147,10 @@ __lmline_risk_here_string_payload() {
           for carried_fd in "${carried[@]}"; do
             if [[ $fd == "$carried_fd" ]]; then alias_matches=1; break; fi
           done
-          (( alias_matches )) && continue
+          if (( alias_matches )); then
+            reaches=1
+            continue
+          fi
         fi
         if [[ $word == -[oO] ]]; then
           index=$((index + 1))
@@ -2141,6 +2162,7 @@ __lmline_risk_here_string_payload() {
         fi
       done
       (( script_word )) && continue
+      (( reaches )) || continue
       if [[ ${quoted[op_index]} == *'<<<' ]]; then
         (( op_index + 1 < ${#quoted[@]} )) || continue
         payload=${quoted[op_index+1]}
@@ -2164,7 +2186,7 @@ __lmline_risk_here_string_payload() {
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
-  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd prefix dup_target
+  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd dup_target
   local -a plain=() quoted=() carried=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2242,15 +2264,6 @@ __lmline_risk_generated_script_source() {
         '<('*) continue ;;
       esac
       if __lmline_risk_redirect_word "$word"; then
-        # Without a redirect feeding the substitution, any earlier input
-        # redirect with a target gives the shell a different script source;
-        # the process substitution is then only an argument.
-        prefix=${word%%[!0-9]*}
-        if [[ -z $source_fd && ${word:${#prefix}:1} == '<' &&
-          ${word:${#prefix}:2} != '<>' ]]; then
-          script_word=1
-          break
-        fi
         (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
         continue
       fi
