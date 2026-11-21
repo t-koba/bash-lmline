@@ -757,9 +757,11 @@ configuration (`LMLINE_RISK_PIPED_SHELL_LEVEL` default `high`,
 `LMLINE_RISK_UNRESOLVED_VAR_LEVEL` default `medium`,
 `LMLINE_RISK_BRACE_CAPPED_LEVEL` default `medium`,
 `LMLINE_RISK_RECURSIVE_REMOVE_LEVEL` default `high`); the highest applicable
-structural level wins. Within the pattern file the first matching rule decides
-the pattern level. With the shipped defaults the higher of that level and the
-highest structural level wins, so a generic medium rule never shadows a
+structural level wins. A brace expression is expanded into alternatives before
+matching: the first matching rule in the file decides each alternative, and the
+highest level across those alternatives becomes the pattern level (with the
+first reason at that level). With the shipped defaults the higher of that level
+and the highest structural level wins, so a generic medium rule never shadows a
 structural high. At an equal level the structural reason is reported. A
 command written with an absolute path is judged by its program name; path
 operands keep their own text. A replacement `risk_patterns.tsv` overrides shipped

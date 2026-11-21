@@ -1,8 +1,10 @@
-# level<TAB>shell-pattern<TAB>reason. First matching pattern wins.
+# level<TAB>shell-pattern<TAB>reason. First matching pattern wins per alternative.
 # Patterns are matched against the command with whitespace squeezed and the
 # whole line wrapped in single spaces, so "* dd *" matches "dd if=...",
 # "x | dd of=...", and a bare "dd".
-# The first matching pattern decides the pattern level. With these defaults
+# Each brace alternative takes the first matching pattern; the highest level
+# across alternatives becomes the pattern level, keeping that level's first
+# reason. With these defaults
 # the higher of that level and the highest structural fallback wins
 # (pipe-to-shell/history expansion/recursive remove high, unresolved variable
 # and capped brace medium via LMLINE_RISK_*_LEVEL); a replacement file's match
