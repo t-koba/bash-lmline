@@ -1287,7 +1287,7 @@ __lmline_risk_canonicalize_kill_signals_in_view() {
           # Keep only spellings that name SIGKILL as a signal.
           signal=${word#-}
           canonical=$(__lmline_risk_canonical_signal "$signal") || break
-          [[ $canonical == 9 || $canonical == kill ]] || break
+          [[ $canonical == kill ]] || break
           normalized[j]="-$canonical"
           ;;
         -s*)
