@@ -258,6 +258,12 @@ bash -c '
   [[ $(__lmline_risk_level "printf \$${q}\\n;rm -rf /${q}") == low ]]
   [[ $(__lmline_risk_level "sh -c \$${q}\\nrm -rf /${q}") == high ]]
   [[ $(__lmline_risk_level "sh -c \$${q}echo hi\\nrm -rf /${q}") == high ]]
+  # Other decoded controls stay literal in a quoted word; leading whitespace
+  # in a shell payload still exposes its command.
+  [[ $(__lmline_risk_level "echo \$${q}\\r;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\t;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\a;rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\trm -rf /${q}") == high ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
