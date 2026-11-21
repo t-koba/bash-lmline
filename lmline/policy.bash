@@ -568,6 +568,19 @@ __lmline_split_pipeline() {
       prev=$ch
       continue
     fi
+    # A backslash outside quotes makes the next character data. Without
+    # this, an escaped quote would open a false quoted word and hide the
+    # separator that follows it (echo a\';rm -rf /).
+    if [[ $ch == "\\" && $split_mode != command-prefix && $split_mode != cwd-pipeline ]] && (( i + 1 < ${#cmd} )); then
+      if (( keep_quoted == 2 )) && [[ ${cmd:i+1:1} == [[:space:]] ]]; then
+        stripped+=$'\002'
+      elif (( keep_quoted )); then
+        stripped+="$ch${cmd:i+1:1}"
+      fi
+      i=$((i + 1))
+      prev=${cmd:i:1}
+      continue
+    fi
     # Prefix inspection needs opaque quoted/escaped words, not their data:
     # dropping a quoted command would expose its arguments as a false prefix.
     # Keep this view local; other splitter callers retain their existing copy.
