@@ -518,7 +518,15 @@ __lmline_split_pipeline() {
             dq_subst_dquote=0
           fi
           if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
-            stripped+=$'\n'
+            # Restored inside double quotes, the suffix is data in the
+            # enclosing word: no command boundary, but keep a word break so
+            # a literal separator cannot glue a remove to the substitution.
+            if (( dq_subst_dquote )); then
+              (( keep_quoted )) && stripped+=$ch
+              stripped+=' '
+            else
+              stripped+=$'\n'
+            fi
           else
             (( keep_quoted )) && stripped+=$ch
           fi
