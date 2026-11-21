@@ -833,8 +833,9 @@ __lmline_risk_reason() {
 # the same rules as their bare forms. A trailing unbalanced $'... is left
 # as-is for the unresolved-variable fallback in __lmline_risk_match.
 __lmline_decode_ansi_c_for_risk() {
-  local str=$1 out="" pre rest inner ch i j esc decoded
+  local str=$1 out="" pre rest inner ch i j esc decoded qmark
   [[ $str == *"\$'"* ]] || { printf '%s' "$str"; return 0; }
+  printf -v qmark '\035'
   while [[ $str == *"\$'"* ]]; do
     pre=${str%%"\$'"*}
     rest=${str#*"\$'"}
@@ -869,12 +870,11 @@ __lmline_decode_ansi_c_for_risk() {
     # shell that receives the word still runs the commands it separates.
     decoded=${decoded//$'\n'/';'}
     # Keep the decoded text one quoted word: operators inside $'...' are
-    # literal data, not commands. A decoded single quote is shown as inert
-    # hex text rather than shell-style '\'' escaping, which would open new
-    # quote boundaries in the structural checks. Other decoded spellings
-    # still reach pattern matching once canonicalization strips quoting, so
-    # hex/octal hides of a command name remain visible.
-    decoded=${decoded//\'/\\x27}
+    # literal data, not commands. A decoded single quote is held by an
+    # internal marker that cannot occur in a validated candidate: it stays
+    # inert for the structural checks, and canonicalization drops it so a
+    # quote-delimited command name remains recognizable.
+    decoded=${decoded//\'/$qmark}
     out+="$pre'$decoded'"
     str=${rest:$((j + 1))}
   done
@@ -896,7 +896,7 @@ __lmline_decode_ansi_c_for_risk() {
 __lmline_canonicalize_for_risk() {
   sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g' -e 's/`//g' \
     -e 's/\|\|/ /g' -e 's/\|/ | /g' -e 's/[;&()]/ /g' -e 's/[{},]/ /g' \
-    -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g'
+    -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g' | tr -d '\035'
 }
 
 # Expand brace groups for risk matching only (not execution) without eval,

