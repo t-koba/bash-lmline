@@ -778,6 +778,9 @@ command string (`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one
 command. An active here-string given to a shell (`bash <<< "rm -fr build"`) is
 also the script that shell reads; a here-string given to another program or to
 a shell that already has a command string or script file stays data.
+Process substitution used as a shell's script source (`bash < <(echo ...)` or
+`bash <(echo ...)`) is judged the same way, while non-shell uses and shells that
+already have a script are unchanged.
 
 A word that merely carries the name of a remove is not the family:
 `ls rm -r` and `grep rm -rf file` are not removes. A program that removes files

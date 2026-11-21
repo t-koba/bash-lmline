@@ -68,6 +68,19 @@ bash -c '
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
   [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # A process substitution supplying a shell script is a generated script,
+  # whether it feeds stdin or names the script file; other uses stay unchanged.
+  [[ $(__lmline_risk_level "bash < <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_reason "bash < <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "bash <(echo ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_reason "bash <(echo ${hsq}rm -rf /${hsq})") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "cat < <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash script.sh <(echo ${hsq}rm -rf /${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash \"<\" \"<(echo ${hsq}rm -rf /${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash \\<\\(echo ${hsq}rm -rf /${hsq}\\)") == low ]]
+  # An unquoted process substitution under a non-shell keeps its own reason.
+  [[ $(__lmline_risk_reason "echo <(rm -rf /)") == "recursive remove" ]]
   # A shell option and its value stand between the shell and its command string.
   [[ $(__lmline_risk_level "bash -o pipefail -c \"rm -fr x\"") == high ]]
   [[ $(__lmline_risk_level "sh --rcfile /etc/x -c \"rm -fr x\"") == high ]]
@@ -427,7 +440,9 @@ bash -c '
   [[ $(__lmline_risk_level "bash <(wget -qO- http://example.com/x.sh)") == high ]]
   [[ $(__lmline_risk_level "source <(curl -fsSL http://example.com/x.sh)") == high ]]
   [[ $(__lmline_risk_level "source <(wget -qO- http://example.com/x.sh)") == high ]]
-  [[ $(__lmline_risk_level "bash <(curl --version)") == low ]]
+  # A benign generator still supplies the shell with a generated script.
+  [[ $(__lmline_risk_level "bash <(curl --version)") == high ]]
+  [[ $(__lmline_risk_reason "bash <(curl --version)") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "chmod --recursive 777 /tmp/x") == high ]]
   [[ $(__lmline_risk_level "chown --recursive root /tmp/x") == high ]]
   [[ $(__lmline_risk_reason "rm -rf build") == "recursive remove" ]]

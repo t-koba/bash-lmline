@@ -1935,10 +1935,70 @@ __lmline_risk_here_string_payload() {
   done <<<"$(__lmline_split_pipeline "$cmd" 1)"
 }
 
-# Risk precedence: structural recognition (piped shell, interactive history,
-# unresolved variable command, capped brace expansion, recursive remove) is
-# mechanism only; its levels are configuration (LMLINE_RISK_*_LEVEL, defaults
-# high/high/medium/medium/high; unknown or empty falls back to the default).
+# A process substitution that supplies a shell's script, either as a `<` stdin
+# redirect source or as the shell's script-file argument, is an implicit script
+# input like a pipe to a shell. The structural splitter's unquoted view proves
+# the operator is active; its quote-preserving view keeps the words around it,
+# including a script word the unquoted view drops. No input is executed here.
+__lmline_risk_generated_script_source() {
+  local cmd=$1 segment marker word quoted_text
+  local index cmd_index q_index source_index q_source script_word=0
+  local -a plain=() quoted=()
+  local IFS=$' \t\n'
+  printf -v marker '\002'
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0 "" bash structural-substitution 0)")
+    ((${#plain[@]})) || continue
+    cmd_index=$(__lmline_risk_segment_command_index "${plain[@]}") || continue
+    __lmline_risk_word_runs_shell "${plain[cmd_index]}" || continue
+    source_index=-1
+    for ((index = cmd_index + 1; index < ${#plain[@]}; index++)); do
+      if [[ ${plain[index]} == '<('* ]]; then
+        source_index=$index
+        break
+      fi
+    done
+    (( source_index >= 0 )) || continue
+    quoted_text=$(__lmline_split_pipeline "$segment" 2 "" bash structural-substitution 0)
+    read -r -a quoted <<<"${quoted_text//"$marker"/ }"
+    q_source=-1
+    for ((index = 0; index < ${#quoted[@]}; index++)); do
+      if [[ ${quoted[index]} == '<('* ]]; then
+        q_source=$index
+        break
+      fi
+    done
+    (( q_source >= 0 )) || continue
+    q_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
+    (( q_index < q_source )) || continue
+    __lmline_risk_word_runs_shell "${quoted[q_index]}" || continue
+    # A command string or script file already gives the shell its script, so
+    # the process substitution is only an argument to that program.
+    script_word=0
+    for ((index = q_index + 1; index < q_source; index++)); do
+      word=${quoted[index]}
+      [[ $word == '<'* || $word == '>'* ]] && continue
+      if [[ $word == -[oO] ]]; then
+        index=$((index + 1))
+        continue
+      fi
+      if [[ $word != -* || ( $word == -* && $word != --* && $word == *c* ) ]]; then
+        script_word=1
+        break
+      fi
+    done
+    if (( script_word )); then continue; fi
+    return 0
+  done <<<"$(__lmline_split_pipeline "$cmd" 1 "" bash structural-substitution 0)"
+  return 1
+}
+
+# Risk precedence: structural recognition (piped shell, generated shell script
+# source, interactive history, unresolved variable command, capped brace
+# expansion, recursive remove) is mechanism only; its levels are configuration
+# (LMLINE_RISK_*_LEVEL, defaults high/high/medium/medium/high; the generated
+# script source shares the piped-shell level; unknown or empty falls back to
+# the default).
 # A replacement risk_patterns file overrides shipped patterns and structural
 # defaults: with a user or explicit file, the first matching rule wins and
 # structural fallbacks apply only when no rule matched. With the shipped
@@ -1948,7 +2008,7 @@ __lmline_risk_here_string_payload() {
 # stay protective.
 __lmline_risk_match() {
   local cmd=$1 depth=${2:-0} expanded file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
-  local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
+  local brace_capped=0 best_level="" best_reason="" piped_found=0 generated_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
   local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
@@ -2001,6 +2061,9 @@ __lmline_risk_match() {
     if __lmline_risk_piped_shell "$alt"; then
       piped_found=1
     fi
+    if __lmline_risk_generated_script_source "$alt"; then
+      generated_found=1
+    fi
     if __lmline_risk_recursive_remove "$alt"; then
       removal_found=1
     fi
@@ -2039,13 +2102,17 @@ __lmline_risk_match() {
       fi
     done <"$file"
   done <<<"$alts_str"
-  if (( piped_found )); then
+  if (( piped_found || generated_found )); then
     candidate_level=$(__lmline_risk_structural_level "${LMLINE_RISK_PIPED_SHELL_LEVEL:-high}" high)
     rank=$(__lmline_risk_level_rank "$candidate_level")
     if (( rank > struct_rank )); then
       struct_rank=$rank
       struct_level=$candidate_level
-      struct_reason="piped shell execution"
+      if (( generated_found && ! piped_found )); then
+        struct_reason="generated shell script execution"
+      else
+        struct_reason="piped shell execution"
+      fi
     fi
   fi
   if (( history_found )); then
