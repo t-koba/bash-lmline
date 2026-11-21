@@ -698,6 +698,11 @@ bash -c '
   [[ $(__lmline_risk_level "/usr/bin/chmod -R 755 dir") == high ]]
   # Path operands keep their text: a path named after a program is not that program.
   [[ $(__lmline_risk_level "ls -l /usr/bin/dd") == low ]]
+  # Rewriting a command word never rewrites a path operand with the same
+  # text, whether that path is a full word or the start of a longer one.
+  [[ $(__lmline_risk_basename_command_words "/bin/echo /bin/echo") == "echo /bin/echo" ]]
+  [[ $(__lmline_risk_basename_command_words "/bin/echo /bin/echo.log") == "echo /bin/echo.log" ]]
+  [[ $(__lmline_risk_level "ls -l /usr/bin/echo /bin/echo") == low ]]
   # A command prefix hands the command word to the program it runs.
   [[ $(__lmline_risk_level "env -i /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "sudo -u root /usr/bin/chmod -R 755 dir") == high ]]
@@ -715,6 +720,7 @@ bash -c '
   [[ $(__lmline_risk_level "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "env --chdir /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_basename_command_words "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == "env -C /tmp dd if=/dev/zero of=/dev/sda" ]]
+  [[ $(__lmline_risk_basename_command_words "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda /usr/bin/dd") == "env -C /tmp dd if=/dev/zero of=/dev/sda /usr/bin/dd" ]]
   # Command and process substitutions open their own command positions.
   [[ $(__lmline_risk_level "echo \$(/usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
@@ -731,6 +737,10 @@ bash -c '
   # A quoted runner inside the substitution is still the runner.
   quoted_env=$(printf "\047env\047")
   [[ $(__lmline_risk_level "echo \$($quoted_env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  # A runner inside a substitution normalizes only its own command word;
+  # the path after the closing delimiter stays an operand.
+  [[ $(__lmline_risk_basename_command_words "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda) /usr/bin/dd") == "echo \$(env -C /tmp dd if=/dev/zero of=/dev/sda) /usr/bin/dd" ]]
+  [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda) /usr/bin/dd") == high ]]
   # The runner stops at the closing delimiter; a path after it is an operand.
   [[ $(__lmline_risk_level "echo \$(env) /usr/bin/dd") == low ]]
   [[ $(__lmline_risk_basename_command_words "echo \$(env) /usr/bin/dd") == "echo \$(env) /usr/bin/dd" ]]
