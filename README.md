@@ -787,7 +787,8 @@ needs an immediately preceding, matching input redirection to supply that alias
 not name a script file. A later duplication (`N>&0`, `N<&0`) carries a
 here-string or substituted script into descriptor N; chains of duplication
 are followed to the final descriptor. A here-string on fd N is a script when a
-later duplication moves it to fd 0 or an alias names fd N.
+later duplication moves it to fd 0 or an alias names fd N. A stream alias that
+names the script file claims that role; later words are arguments to the script.
 Process substitution used as a shell's script source (`bash < <(echo ...)` or
 `bash <(echo ...)`) is judged the same way, while non-shell uses and shells that
 already have a script are unchanged.

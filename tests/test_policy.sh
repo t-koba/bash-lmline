@@ -97,7 +97,11 @@ bash -c '
   # A glued earlier here-string keeps its payload, so a following script file
   # remains a script file and the later payload stays data.
   [[ $(__lmline_risk_level "bash <<<foo script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
-  [[ $(__lmline_risk_level "bash /dev/fd/0 <<<foo script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # A stream alias claims the script-file role; following words are arguments.
+  [[ $(__lmline_risk_level "bash /dev/fd/0 <<<foo script.sh <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/stdin <<<foo script.sh <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/0 script.sh <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash script.sh /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == low ]]
   # A non-zero-fd here-string reaches stdin through a later duplication, or
   # directly through a stream alias naming that descriptor.
   [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} 0<&3") == high ]]

@@ -2072,7 +2072,7 @@ __lmline_risk_descriptor_duplication_word() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 segment marker word payload
-  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches changed pass
+  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches changed pass alias_claimed
   local -a plain=() quoted=() words=() carried=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2119,6 +2119,7 @@ __lmline_risk_here_string_payload() {
         (( changed )) || break
       done
       reaches=0
+      alias_claimed=0
       for carried_fd in "${carried[@]}"; do
         [[ $carried_fd == 0 ]] && { reaches=1; break; }
       done
@@ -2149,6 +2150,7 @@ __lmline_risk_here_string_payload() {
           done
           if (( alias_matches )); then
             reaches=1
+            alias_claimed=1
             continue
           fi
         fi
@@ -2157,7 +2159,9 @@ __lmline_risk_here_string_payload() {
           continue
         fi
         if [[ $word != -* || ( $word == -* && $word != --* && $word == *c* ) ]]; then
-          script_word=1
+          # A matching alias already names the script file; later words are
+          # arguments to that script, not another script-file operand.
+          (( alias_claimed )) || script_word=1
           break
         fi
       done
