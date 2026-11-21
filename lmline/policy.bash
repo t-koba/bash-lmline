@@ -328,7 +328,7 @@ __lmline_backtick_content() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all} emit_boundary=${6:-1}
-  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 bt_content="" dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_opener=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 bt_content="" dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
@@ -414,7 +414,13 @@ __lmline_split_pipeline() {
           prev=$ch
           continue
         fi
+        dq_opener=0
         if [[ "$ch" == '(' && "$prev" == '$' ]] && (( ! dq_escaped_dollar )); then
+          dq_opener=1
+        elif [[ "$ch" == '(' && "$prev" == '<' ]] && (( dq_subst_depth > 0 )); then
+          dq_opener=1
+        fi
+        if (( dq_opener )); then
           dq_subst_depth=$((dq_subst_depth + 1))
           dq_escaped_dollar=0
           if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then

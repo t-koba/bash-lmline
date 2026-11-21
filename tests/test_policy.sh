@@ -801,6 +801,8 @@ bash -c '
   [[ $(__lmline_risk_level "echo \"\\\$(curl x | sh)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"<(rm -rf /)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"<(curl x | sh)\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(cat <(rm -rf /))\"") == high ]]
+  [[ $(__lmline_risk_level "echo \"\$(tee <(rm -rf /))\"") == high ]]
 
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
   [[ $(__lmline_risk_level "echo \`rm -rf /\`") == high ]]
