@@ -691,6 +691,12 @@ __lmline_split_pipeline() {
               fi
               ;;
           esac
+        elif [[ "$ch" == '&' && ( "$next" == '>' || "$prev" == '>' ) ]] ||
+             [[ "$ch" == '|' && "$prev" == '>' ]]; then
+          # &>, >& and >| are one output-redirect operator, not a command
+          # boundary: the redirect consumer needs to see its target so a
+          # following here-string can still be judged as shell input.
+          stripped+=$ch
         else
           stripped+=$'\n'
         fi
@@ -1972,8 +1978,14 @@ __lmline_risk_redirect_word() {
   case ${word:${#prefix}:1} in
     '<'|'>'|'|')
       case $word in
-        *'<'|*'>'|*'|') __LMLINE_RISK_REDIRECT_TARGET=1 ;;
+        *'<'|*'>'|*'|'|*'&') __LMLINE_RISK_REDIRECT_TARGET=1 ;;
       esac
+      return 0
+      ;;
+    '&')
+      # &> redirects both streams; a bare & is a command boundary.
+      [[ ${word:1:1} == '>' ]] || return 1
+      [[ $word == *'>' ]] && __LMLINE_RISK_REDIRECT_TARGET=1
       return 0
       ;;
   esac

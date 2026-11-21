@@ -96,6 +96,22 @@ bash -c '
   [[ $(__lmline_risk_level "bash >out <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash <<< ${hsq}rm -rf /${hsq} > out") == high ]]
   [[ $(__lmline_risk_level "bash 2> err <<< ${hsq}rm -rf /${hsq}") == high ]]
+  # A multi-character output redirect keeps the shell and its here-string in
+  # one segment: its & or | is an operator, not a command boundary.
+  [[ $(__lmline_risk_level "bash &> out <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash &> out <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "bash >& out <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash >& out <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "bash 2>&1 <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash 2>&1 <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "bash >| out <<< ${hsq}rm -rf build${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash >| out <<< ${hsq}rm -rf build${hsq}") == "recursive remove" ]]
+  # A real & or | boundary still ends the command before the here-string, and
+  # a quoted operator stays data rather than becoming a redirect.
+  [[ $(__lmline_risk_level "bash & echo <<< ${hsq}rm -rf build${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash | echo <<< ${hsq}rm -rf build${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash \"&>\" out <<< ${hsq}rm -rf build${hsq}") == medium ]]
+  [[ $(__lmline_risk_reason "bash \"&>\" out <<< ${hsq}rm -rf build${hsq}") == "writes to a file or descriptor" ]]
   # A real script file still supplies the script when a redirection is present.
   [[ $(__lmline_risk_level "bash build > out <<< ${hsq}rm -rf /${hsq}") == medium ]]
   [[ $(__lmline_risk_reason "bash build > out <<< ${hsq}rm -rf /${hsq}") == "writes to a file or descriptor" ]]
