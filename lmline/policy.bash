@@ -327,9 +327,9 @@ __lmline_backtick_content() {
 }
 
 __lmline_backtick_risky() {
-  local cmd=$1 start=$2 emit=$3 content
+  local cmd=$1 start=$2 emit=$3 require_special=$4 content
   content=$(__lmline_backtick_content "$cmd" "$start")
-  if [[ "$content" != *[[:space:]\;\&\|\(\)\`]* ]]; then
+  if (( require_special )) && [[ "$content" != *[[:space:]\;\&\|\(\)\`]* ]]; then
     printf '0'
   elif [[ "$content" == *'|'* || "$content" == *';'* || "$content" == *'&'* || "$content" == *'$('* || "$content" == *'<('* ]]; then
     printf '1'
@@ -442,7 +442,7 @@ __lmline_split_pipeline() {
             dq_backtick_depth=$((dq_backtick_depth - 1))
             stripped+=' '
           else
-            bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary")
+            bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary" 0)
             if (( bt_risky )); then
               dq_backtick_depth=$((dq_backtick_depth + 1))
               if [[ -n "$subst_boundary" ]]; then
@@ -553,7 +553,7 @@ __lmline_split_pipeline() {
         quote=$ch
         [[ "$split_mode" != command-prefix && "$split_mode" != cwd-pipeline ]] || stripped+=$'\001'
         if [[ "$split_mode" == structural-substitution && "$ch" == '`' ]]; then
-          bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary")
+          bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary" 1)
           if (( bt_risky )); then
             bt_exposed=1
             if [[ -n "$subst_boundary" ]]; then

@@ -827,6 +827,9 @@ bash -c '
   [[ $(__lmline_risk_level "\`rm -rf /\`") == high ]]
   [[ $(__lmline_risk_level "echo \$(foo) \`rm -rf /\`") == high ]]
   [[ $(__lmline_risk_level "echo \"a\`rm -rf /\`b\"") == high ]]
+  # Obfuscated separators inside a double-quoted backtick still run a
+  # recursive remove, even though no literal separator appears in the text.
+  [[ $(__lmline_risk_level "echo \"\`rm\${IFS}-rf\${IFS}/\`\"") == high ]]
   # Literal text after a risky backtick stays in the same segment, while a
   # real pipe to a shell inside it remains detectable with a trailing suffix.
   [[ $(__lmline_risk_level "echo \"prefix \`ls | head\`sh\"") == low ]]
