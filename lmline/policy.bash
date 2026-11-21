@@ -319,7 +319,7 @@ __lmline_candidate_rejection_reason() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
-  local stripped="" i ch next quote="" prev="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
@@ -328,6 +328,36 @@ __lmline_split_pipeline() {
     prior_zsh_qualifier_close=$zsh_qualifier_just_closed
     zsh_qualifier_just_closed=0
     if [[ -n "$quote" ]]; then
+      # Double quotes do not stop a command substitution from running. Open
+      # its content as its own segment for structural checks; single quotes
+      # still keep the same text inert.
+      if [[ "$split_mode" == structural-substitution && "$quote" == '"' ]]; then
+        if [[ "$ch" == '(' && ( "$prev" == '$' || "$prev" == '<' ) ]]; then
+          dq_subst_depth=$((dq_subst_depth + 1))
+          if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
+            stripped+=$'\n'
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
+          prev=$ch
+          continue
+        fi
+        if (( dq_subst_depth > 0 )) && [[ "$ch" == ')' ]]; then
+          dq_subst_depth=$((dq_subst_depth - 1))
+          if [[ -n "$extra_seps" && "$extra_seps" == *'('* ]]; then
+            stripped+=$'\n'
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
+          prev=$ch
+          continue
+        fi
+        if (( dq_subst_depth > 0 )) && [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
+          stripped+=$'\n'
+          prev=$ch
+          continue
+        fi
+      fi
       if [[ "$quote" == '"' && "$ch" == "\\" && "$prev" != "\\" ]]; then
         prev=$ch
         (( keep_quoted )) && stripped+=$ch
@@ -759,7 +789,7 @@ __lmline_expand_braces_for_risk() {
 __lmline_risk_piped_shell() {
   local cmd=$1 stripped segment token word base cmd_index
   local -a words subs
-  stripped=$(__lmline_split_pipeline "$cmd" 1)
+  stripped=$(__lmline_split_pipeline "$cmd" 1 "" bash structural-substitution)
   local idx=0
   while IFS= read -r segment || [[ -n $segment ]]; do
     idx=$((idx + 1))
@@ -1188,7 +1218,7 @@ __lmline_risk_recursive_remove() {
     # The command the segment runs. Its own flags follow it, so the words
     # after it are read as the flags it writes.
     __lmline_risk_remove_word_is_recursive "$word" "${words[@]:cmd_index+1}" && return 0
-  done <<<"$(__lmline_split_pipeline "$cmd" 1 "()")"
+  done <<<"$(__lmline_split_pipeline "$cmd" 1 "()" bash structural-substitution)"
   return 1
 }
 

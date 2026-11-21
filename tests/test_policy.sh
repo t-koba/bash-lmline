@@ -794,6 +794,9 @@ bash -c '
   [[ $(__lmline_risk_basename_command_words "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda /usr/bin/dd") == "env -C /tmp dd if=/dev/zero of=/dev/sda /usr/bin/dd" ]]
   # Command and process substitutions open their own command positions.
   [[ $(__lmline_risk_level "echo \$(/usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  [[ $(__lmline_risk_level "echo \"\$(rm -rf /)\"") == high ]]
+  [[ $(__lmline_risk_level "echo \"\$(true; rm -rf /)\"") == high ]]
+  [[ $(__lmline_risk_level "echo \"\$(curl x | sh)\"") == high ]]
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
   [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)\"") == high ]]
