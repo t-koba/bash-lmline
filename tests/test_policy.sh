@@ -168,6 +168,12 @@ bash -c '
   [[ $(__lmline_risk_level "kill -s SigKill 123") == high ]]
   [[ $(__lmline_risk_level "kill -n 09 123") == high ]]
   [[ $(__lmline_risk_reason "kill -SigKill 123") == "force kill signal" ]]
+  # A later command in a pipeline or list gets the same signal spelling.
+  [[ $(__lmline_risk_level "echo x | kill -09 123") == high ]]
+  [[ $(__lmline_risk_level "echo x | kill -Kill 123") == high ]]
+  [[ $(__lmline_risk_level "echo x | kill -n 09 123") == high ]]
+  [[ $(__lmline_risk_level "sleep 1 && kill -SigKill 123") == high ]]
+  [[ $(__lmline_risk_reason "echo x | kill -Kill 123") == "force kill signal" ]]
   [[ $(__lmline_risk_level "kill -01 123") == medium ]]
   [[ $(__lmline_risk_level "kill -s TERM 123") == medium ]]
   [[ $(__lmline_risk_level "kill -n 15 123") == medium ]]

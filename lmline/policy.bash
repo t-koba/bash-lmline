@@ -1296,6 +1296,24 @@ __lmline_risk_canonicalize_kill_signal() {
   printf '%s' "${normalized[*]}"
 }
 
+# Canonicalize signals in every simple command. The whole view has already
+# been flattened by the time the policy rules see it, so walk the original
+# separators again instead of asking one helper to find the first command.
+__lmline_risk_canonicalize_kill_signals() {
+  local view=$1 segment rest prefix out="" cursor=0
+  while IFS= read -r segment; do
+    rest=${view:cursor}
+    if [[ -z $segment || $rest != *"$segment"* ]]; then
+      continue
+    fi
+    prefix=${rest%%"$segment"*}
+    out+=$prefix
+    out+=$(__lmline_risk_canonicalize_kill_signal "$segment")
+    cursor=$((cursor + ${#prefix} + ${#segment}))
+  done < <(__lmline_split_pipeline "$view" 1)
+  printf '%s' "$out${view:cursor}"
+}
+
 # The command positions of one pipeline segment, as word-index/replacement
 # pairs. The indices count the same whitespace-delimited words the reader
 # below sees, so only those words are rewritten when the view is assembled.
@@ -1487,7 +1505,7 @@ __lmline_risk_basename_command_words() {
 # high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
 # stay protective.
 __lmline_risk_match() {
-  local cmd=$1 expanded file line level pattern reason alt bare_alt canon alts_str
+  local cmd=$1 expanded file line level pattern reason alt signal_alt bare_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
@@ -1526,11 +1544,13 @@ __lmline_risk_match() {
     if __lmline_risk_recursive_remove "$alt"; then
       removal_found=1
     fi
-    bare_alt=$(__lmline_risk_basename_command_words "$alt")
+    # Signal spelling is canonicalized before the command names are reduced,
+    # while separators still mark each simple command.
+    signal_alt=$(__lmline_risk_canonicalize_kill_signals "$alt")
+    bare_alt=$(__lmline_risk_basename_command_words "$signal_alt")
     canon=$(__lmline_canonicalize_for_risk <<<"$bare_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
     canon=${canon% }
-    canon=$(__lmline_risk_canonicalize_kill_signal "$canon")
     canon=$(__lmline_risk_neutralize_flags_after_double_dash "$canon")
     canon=" $canon "
     while IFS= read -r line || [[ -n "$line" ]]; do
