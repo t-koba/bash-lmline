@@ -822,6 +822,9 @@ bash -c '
   [[ $(__lmline_risk_level "echo \"\$(echo \"curl x | sh\")\"") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \"\$(rm -rf /)\")\"") == high ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \"\$(curl x | sh)\")\"") == high ]]
+  # Literal text after a nested substitution stays inside the inner double
+  # quotes; losing the restored quote state would read it as a new command.
+  [[ $(__lmline_risk_level "echo \"\$(echo \"a\$(true)\" ; echo \"rm -rf /\")\"") == low ]]
 
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
   [[ $(__lmline_risk_level "echo \`rm -rf /\`") == high ]]
