@@ -219,6 +219,7 @@ __lmline_shellcheck_check_suppression_ratchet() {
         value=${value%"${value##*[![:space:]]}"}
         [[ "$value" != *,* ]] || fail "global ShellCheck suppressions grew: $value"
         [[ "$value" =~ ^SC[0-9]+$ ]] || fail "global ShellCheck suppression is malformed: $value"
+        [[ "$value" == SC2016 ]] || fail "global ShellCheck suppression changed: $value"
         ;;
     esac
   done < "$rc_file"
@@ -255,7 +256,7 @@ __lmline_shellcheck_suppression_self_test() {
   local fixture_dir rc_file case_name expected actual output
   fixture_dir=$(mktemp -d) || fail "could not create ShellCheck suppression test directory"
   rc_file="$fixture_dir/.shellcheckrc"
-  for case_name in one zero two comma enable empty malformed; do
+  for case_name in one zero two comma enable empty malformed swapped; do
     case "$case_name" in
       one) printf 'disable=SC2016\n' > "$rc_file"; expected=0 ;;
       zero) printf '# no global suppressions\n' > "$rc_file"; expected=0 ;;
@@ -264,6 +265,7 @@ __lmline_shellcheck_suppression_self_test() {
       enable) printf 'disable=SC2016\nenable=SC2086\n' > "$rc_file"; expected=1 ;;
       empty) printf 'disable=\n' > "$rc_file"; expected=1 ;;
       malformed) printf 'disable=not-a-code\n' > "$rc_file"; expected=1 ;;
+      swapped) printf 'disable=SC2086\n' > "$rc_file"; expected=1 ;;
     esac
     if output=$(__lmline_shellcheck_check_suppression_ratchet "$rc_file" 2>&1); then
       actual=0
