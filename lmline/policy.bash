@@ -581,7 +581,10 @@ __lmline_split_pipeline() {
         (( keep_quoted )) && stripped+=$ch
         continue
       fi
-      if [[ "$ch" == "$quote" && "$prev" != "\\" ]]; then
+      # A backslash is literal in ordinary single quotes, so it cannot
+      # keep a closing quote open (the `'\''` spelling is plain data).
+      # Only double quotes and backticks let it escape the delimiter.
+      if [[ "$ch" == "$quote" ]] && [[ "$quote" == "'" || "$prev" != "\\" ]]; then
         if (( bt_quote_return )); then
           quote='`'
           bt_quote_return=0
@@ -894,6 +897,12 @@ __lmline_decode_ansi_c_for_risk() {
         esc=0
         continue
       fi
+      if [[ $ch == "\\" && ${rest:i+1:1} == "'" ]]; then
+        # An escaped apostrophe is data inside $'...', not its closing quote.
+        inner+="\\'"
+        i=$((i + 1))
+        continue
+      fi
       if [[ $ch == "\\\\" ]]; then
         esc=1
         continue
@@ -919,6 +928,9 @@ __lmline_decode_ansi_c_for_risk() {
     # internal marker that cannot occur in a validated candidate: it stays
     # inert for the structural checks, and canonicalization drops it so a
     # quote-delimited command name remains recognizable.
+    # %b leaves an escaped apostrophe as a backslash-quote pair; mark it
+    # before plain decoded quotes so neither looks like a live quote.
+    decoded=${decoded//\\\'/$qmark}
     decoded=${decoded//\'/$qmark}
     out+="$pre'$decoded'"
     str=${rest:$((j + 1))}

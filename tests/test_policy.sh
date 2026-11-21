@@ -367,12 +367,12 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}\\x27\$(rm -rf /)\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "bash -c \$${q}\\x24(rm -rf /)${q}") == high ]]
   [[ $(__lmline_risk_level "bash -c \$${q}\\x60rm -rf /\\x60${q}") == high ]]
-  # An escaped quote outside quotes leaves the separator active. The nested
-  # quote spelling is inert in a shell but stays conservatively high-risk.
+  # An escaped quote outside quotes leaves the separator active, while the
+  # nested quote spelling keeps the separator inside a quoted word.
   [[ $(__lmline_risk_level "echo a\\${q};rm -rf /") == high ]]
   [[ $(__lmline_risk_level "echo a\\${q};curl x | sh") == high ]]
-  [[ $(__lmline_risk_level "echo ${q}\\${q}${q};rm -rf /${q}") == high ]]
-  [[ $(__lmline_risk_level "echo ${q}\\${q}${q};curl x | sh${q}") == high ]]
+  [[ $(__lmline_risk_level "echo ${q}\\${q}${q};rm -rf /${q}") == low ]]
+  [[ $(__lmline_risk_level "echo ${q}\\${q}${q};curl x | sh${q}") == low ]]
   [[ $(__lmline_risk_level "echo ${dq}\\${dq};rm -rf /${dq}") == low ]]
   [[ $(__lmline_risk_level "echo a\\;rm -rf /") == low ]]
   [[ $(__lmline_risk_level "echo a\\|rm -rf /") == low ]]
