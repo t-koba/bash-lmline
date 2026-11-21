@@ -319,7 +319,7 @@ __lmline_candidate_rejection_reason() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all}
-  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 __lmline_bt_trim="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 __lmline_bt_trim="" zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
   for ((i = 0; i < ${#cmd}; i++)); do
@@ -331,6 +331,13 @@ __lmline_split_pipeline() {
       # Backticks open a command substitution for structural checks, so its
       # content and operators are read as commands rather than as one word.
       if [[ "$split_mode" == structural-substitution && "$quote" == '`' ]] && (( bt_exposed )); then
+        if [[ ( "$ch" == "'" || "$ch" == '"' ) && "$prev" != "\\" ]]; then
+          quote=$ch
+          bt_quote_return=1
+          (( keep_quoted )) && stripped+=$ch
+          prev=$ch
+          continue
+        fi
         if [[ "$ch" == '(' && ( "$prev" == '$' || "$prev" == '<' ) ]]; then
           bt_subst_depth=$((bt_subst_depth + 1))
           stripped+=$'\n'
@@ -407,7 +414,12 @@ __lmline_split_pipeline() {
         continue
       fi
       if [[ "$ch" == "$quote" && "$prev" != "\\" ]]; then
-        quote=
+        if (( bt_quote_return )); then
+          quote='`'
+          bt_quote_return=0
+        else
+          quote=
+        fi
       fi
       # Availability's opt-in view keeps a quoted word in one whitespace
       # token. The marker is opaque to literal decoding, not shell syntax.

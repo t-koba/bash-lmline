@@ -808,6 +808,10 @@ bash -c '
   [[ $(__lmline_risk_level "echo \`curl x | sh\`") == high ]]
   [[ $(__lmline_risk_level "echo \`echo \$(rm -rf /)\`") == high ]]
   [[ $(__lmline_risk_level "echo \`echo rm\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo '"'"'\$(rm -rf /)'"'"'\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo \"\$(echo rm)\"\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo \"\$(rm -rf /)\"\`") == high ]]
+
 
   [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)\"") == high ]]
