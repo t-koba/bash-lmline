@@ -867,6 +867,7 @@ bash -c '
   [[ $(__lmline_risk_level "echo \"\$(curl x | sh)\"") == high ]]
   [[ $(__lmline_risk_level "echo \"\\\$(rm -rf /)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"\\\$(curl x | sh)\"") == low ]]
+  [[ $(__lmline_risk_level "cat >(rm -rf /)") == high ]]
   [[ $(__lmline_risk_level "echo \"<(rm -rf /)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"<(curl x | sh)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(cat <(rm -rf /))\"") == high ]]
