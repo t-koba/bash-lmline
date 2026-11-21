@@ -830,6 +830,11 @@ bash -c '
   # Obfuscated separators inside a double-quoted backtick still run a
   # recursive remove, even though no literal separator appears in the text.
   [[ $(__lmline_risk_level "echo \"\`rm\${IFS}-rf\${IFS}/\`\"") == high ]]
+  # IFS expansion is a separator in a bare backtick too; harmless text stays
+  # low even when it contains an IFS expansion.
+  [[ $(__lmline_risk_level "echo \`rm\${IFS}-rf /\`") == high ]]
+  [[ $(__lmline_risk_level "echo \`rm\$IFS-rf /\`") == high ]]
+  [[ $(__lmline_risk_level "echo \`echo \$IFS hi\`") == low ]]
   # Literal text after a risky backtick stays in the same segment, while a
   # real pipe to a shell inside it remains detectable with a trailing suffix.
   [[ $(__lmline_risk_level "echo \"prefix \`ls | head\`sh\"") == low ]]

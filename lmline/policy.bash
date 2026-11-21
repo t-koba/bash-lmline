@@ -329,7 +329,7 @@ __lmline_backtick_content() {
 __lmline_backtick_risky() {
   local cmd=$1 start=$2 emit=$3 require_special=$4 content
   content=$(__lmline_backtick_content "$cmd" "$start")
-  if (( require_special )) && [[ "$content" != *[[:space:]\;\&\|\(\)\`]* ]]; then
+  if (( require_special )) && [[ "$content" != *[[:space:]\;\&\|\(\)\`]* && "$content" != *'${IFS}'* && "$content" != *'$IFS'* ]]; then
     printf '0'
   elif [[ "$content" == *'|'* || "$content" == *';'* || "$content" == *'&'* || "$content" == *'$('* || "$content" == *'<('* ]]; then
     printf '1'
