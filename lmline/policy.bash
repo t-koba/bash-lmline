@@ -1406,6 +1406,37 @@ __lmline_risk_neutralize_segment_flags_after_double_dash() {
   printf '%s' "${out# }"
 }
 
+# A word after a find name test is operand text, and a longer -delete...
+# spelling is not find's delete action. Give the pattern view a neutral token
+# for those words while leaving the real action untouched.
+__lmline_risk_neutralize_find_delete_operand_segment() {
+  local view=$1 word out="" operand=0
+  local -a words=()
+  read -r -a words <<<"$view" || true
+  ((${#words[@]})) || { printf '%s' "$view"; return 0; }
+  [[ ${words[0]##*/} == find ]] || { printf '%s' "$view"; return 0; }
+  for word in "${words[@]}"; do
+    if (( operand )); then
+      [[ $word == -delete* ]] && word=--literal-operand--
+      operand=0
+    elif [[ $word == -delete* && $word != -delete ]]; then
+      word=--literal-operand--
+    else
+      case $word in
+        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname)
+          operand=1
+          ;;
+      esac
+    fi
+    out+=" $word"
+  done
+  printf '%s' "${out# }"
+}
+
+__lmline_risk_neutralize_find_delete_operand() {
+  __lmline_risk_map_segments "$1" __lmline_risk_neutralize_find_delete_operand_segment
+}
+
 # -- ends options for one simple command, not for the rest of the line.
 __lmline_risk_neutralize_flags_after_double_dash() {
   __lmline_risk_map_segments "$1" __lmline_risk_neutralize_segment_flags_after_double_dash
@@ -1582,7 +1613,7 @@ __lmline_risk_basename_command_words() {
 # high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
 # stay protective.
 __lmline_risk_match() {
-  local cmd=$1 expanded file line level pattern reason alt bare_alt decoded_alt neutral_alt signal_alt canon alts_str
+  local cmd=$1 expanded file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
@@ -1625,7 +1656,8 @@ __lmline_risk_match() {
     # the flat view has no separators left to tell commands apart.
     bare_alt=$(__lmline_risk_basename_command_words "$alt")
     decoded_alt=$(__lmline_risk_map_segments "$bare_alt" __lmline_risk_decode_segment_for_risk)
-    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$decoded_alt")
+    operand_alt=$(__lmline_risk_neutralize_find_delete_operand "$decoded_alt")
+    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$operand_alt")
     signal_alt=$(__lmline_risk_map_segments "$neutral_alt" __lmline_risk_canonicalize_kill_signal)
     canon=$(__lmline_canonicalize_for_risk <<<"$signal_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
