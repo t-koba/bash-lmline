@@ -151,6 +151,8 @@ bash -c '
   [[ $(__lmline_risk_level "chown user -- --recursive sample") == low ]]
   [[ $(__lmline_risk_level "git rm --force -r sample") == high ]]
   [[ $(__lmline_risk_level "chmod -R 755 dir") == high ]]
+  [[ $(__lmline_risk_level "\\dd if=/dev/zero of=/dev/null") == high ]]
+  [[ $(__lmline_risk_level "ch\\mod -R 755 dir") == high ]]
   [[ $(__lmline_risk_level "chown --recursive user dir") == high ]]
   # -- ends options only for its own command, not for later commands.
   [[ $(__lmline_risk_level "echo hi -- y | chmod -R 755 dir") == high ]]
