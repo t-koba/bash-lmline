@@ -1408,9 +1408,10 @@ __lmline_risk_neutralize_segment_flags_after_double_dash() {
 
 # A word after a find name test is operand text, and a longer -delete...
 # spelling is not find's delete action. Give the pattern view a neutral token
-# for those words while leaving the real action untouched.
+# for those words while leaving the real action untouched. This runs before
+# decoding so an empty or quoted-away operand is still a visible token.
 __lmline_risk_neutralize_find_delete_operand_segment() {
-  local view=$1 word out="" operand=0 cmd_index index
+  local view=$1 word plain out="" operand=0 cmd_index index
   local -a words=()
   read -r -a words <<<"$view" || true
   ((${#words[@]})) || { printf '%s' "$view"; return 0; }
@@ -1418,14 +1419,15 @@ __lmline_risk_neutralize_find_delete_operand_segment() {
   [[ ${words[cmd_index]##*/} == find ]] || { printf '%s' "$view"; return 0; }
   for ((index = 0; index < ${#words[@]}; index++)); do
     word=${words[index]}
+    plain=$(__lmline_unquote_simple_word "$word")
     if (( index > cmd_index )); then
       if (( operand )); then
-        [[ $word == -delete* ]] && word=--literal-operand--
+        [[ $plain == -delete* ]] && word=--literal-operand--
         operand=0
-      elif [[ $word == -delete* && $word != -delete ]]; then
+      elif [[ $plain == -delete* && $plain != -delete ]]; then
         word=--literal-operand--
       else
-        case $word in
+        case $plain in
           -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname)
             operand=1
             ;;
@@ -1659,9 +1661,9 @@ __lmline_risk_match() {
     # Reduce command names first, then decode and canonicalize each segment:
     # the flat view has no separators left to tell commands apart.
     bare_alt=$(__lmline_risk_basename_command_words "$alt")
-    decoded_alt=$(__lmline_risk_map_segments "$bare_alt" __lmline_risk_decode_segment_for_risk)
-    operand_alt=$(__lmline_risk_neutralize_find_delete_operand "$decoded_alt")
-    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$operand_alt")
+    operand_alt=$(__lmline_risk_neutralize_find_delete_operand "$bare_alt")
+    decoded_alt=$(__lmline_risk_map_segments "$operand_alt" __lmline_risk_decode_segment_for_risk)
+    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$decoded_alt")
     signal_alt=$(__lmline_risk_map_segments "$neutral_alt" __lmline_risk_canonicalize_kill_signal)
     canon=$(__lmline_canonicalize_for_risk <<<"$signal_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
