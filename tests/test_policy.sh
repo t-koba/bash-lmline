@@ -803,6 +803,12 @@ bash -c '
   [[ $(__lmline_risk_level "echo \"<(curl x | sh)\"") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(cat <(rm -rf /))\"") == high ]]
   [[ $(__lmline_risk_level "echo \"\$(tee <(rm -rf /))\"") == high ]]
+  # Quoted and escaped substitution text inside a command substitution is
+  # literal and must not open a process substitution or a command position.
+  [[ $(__lmline_risk_level "echo \"\$(echo '"'"'<(rm -rf /)'"'"')\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(grep -F '"'"'<(rm -rf /)'"'"' file)\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(grep -F '"'"'\\<(rm -rf /)'"'"' file)\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"\$(echo '"'"'curl x | sh'"'"')\"") == low ]]
 
   [[ $(__lmline_risk_level "echo \`/usr/bin/dd if=/dev/zero of=/dev/sda\`") == high ]]
   [[ $(__lmline_risk_level "echo \`rm -rf /\`") == high ]]
