@@ -23,10 +23,12 @@ Requires `bash` 4.2 or newer and `rg` (ripgrep) for the privacy scan in
    ```
 
    The rule is stated at the top of `scripts/check-commit-subjects.sh`, which
-   is where it is enforced. `scripts/publish-check.sh` runs the same check
-   before it packages anything. The check reads the history to find the commit
-   that added it, so it needs the whole history; a truncated clone is reported
-   as an error.
+   is where it is enforced. The script decides the structural cases it can
+   check: label prefixes, more than one sentence, and internal identifiers.
+   Imperative wording remains a human review rule. `scripts/publish-check.sh`
+   runs the same check before it packages anything. The check reads the history
+   to find the commit that added it, so it needs the whole history; a truncated
+   clone is reported as an error.
 
 4. Check that the tree holds no private data: local paths and user names,
    private host names (private network addresses and internal host names),
