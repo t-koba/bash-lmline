@@ -1959,11 +1959,18 @@ __lmline_risk_here_string_payload() {
 # the operator is active; its quote-preserving view keeps the words around it,
 # including a script word the unquoted view drops. No input is executed here.
 __lmline_risk_generated_script_source() {
-  local cmd=$1 segment marker word quoted_text
+  local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
   local -a plain=() quoted=()
   local IFS=$' \t\n'
   printf -v marker '\002'
+  # The structural splitter reads & and | as command separators, even inside
+  # redirection operators. Fold those operators into their base marker so
+  # the shell word and its generated script stay in one structural segment.
+  scan=${cmd//&\>/\>}
+  scan=${scan//\>\&/\>}
+  scan=${scan//\>\|/\>}
+  scan=${scan//\<\&/\<}
   while IFS= read -r segment || [[ -n $segment ]]; do
     mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0 "" bash structural-substitution 0)")
     ((${#plain[@]})) || continue
@@ -1995,13 +2002,18 @@ __lmline_risk_generated_script_source() {
     script_word=0
     for ((index = q_index + 1; index < q_source; index++)); do
       word=${quoted[index]}
-      # A standalone redirection operator consumes the next word as its
-      # target; a descriptor-prefixed form is one word. The process
-      # substitution itself is the script source, not a redirection.
+      # An active redirection consumes its target: a word ending in a
+      # redirect marker takes the next word, while a glued target stays
+      # inside the one word. The process substitution itself is the script
+      # source, not a redirection.
       case $word in
         '<('*) continue ;;
-        '<'|'>'|'>>'|'<&'|'>&') index=$((index + 1)); continue ;;
-        '<'*|'>'*|[0-9]'<'*|[0-9]'>'*) continue ;;
+        *'<'*|*'>'*)
+          case $word in
+            *'<'|*'>'|*'|') index=$((index + 1)) ;;
+          esac
+          continue
+          ;;
       esac
       case $word in
         -o|-O|--rcfile|--init-file) index=$((index + 1)) ;;
@@ -2013,7 +2025,7 @@ __lmline_risk_generated_script_source() {
     done
     if (( script_word )); then continue; fi
     return 0
-  done <<<"$(__lmline_split_pipeline "$cmd" 1 "" bash structural-substitution 0)"
+  done <<<"$(__lmline_split_pipeline "$scan" 1 "" bash structural-substitution 0)"
   return 1
 }
 
