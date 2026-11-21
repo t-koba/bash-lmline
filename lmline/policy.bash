@@ -89,17 +89,16 @@ __lmline_risk_runner_operands() {
     chroot|flock|su) printf '1\n' ;;
     function) printf '1\n' ;;
     coproc)
-      # A named coproc has a name before the command. Only call the first
-      # word a name when a later word is the command whose risk is judged.
+      # Bash permits a coproc name only before a compound command. Without
+      # one, the first word after coproc is the command and a later risky
+      # word is only its argument, not the command whose risk is judged.
       named=0
       if (( ${#decoded[@]} > 2 )) && [[ ${decoded[1]} != -* && ${decoded[1]} != *=* ]]; then
-        for ((i = 2; i < ${#decoded[@]}; i++)); do
-          if __lmline_risk_word_is_remove_command "${decoded[i]}" ||
-            __lmline_word_is_shell "${decoded[i]##*/}"; then
+        case "${decoded[2]}" in
+          '{'|'('*|if|while|until|for|select|case|'[['*)
             named=1
-            break
-          fi
-        done
+            ;;
+        esac
       fi
       (( named )) && printf '1\n' || printf '0\n'
       ;;
@@ -115,6 +114,9 @@ __lmline_risk_is_runner() {
 
 __lmline_word_is_command_prefix() {
   local word=$1 file
+  # A brace group's opener stands before the command the group runs. It is
+  # shell structure, not a user-configurable command vocabulary.
+  [[ $word == '{' ]] && return 0
   if [[ -z "${__LMLINE_COMMAND_PREFIX_WORDS_CACHE_SET:-}" ]]; then
     file=$(__lmline_resolve_data_file command_prefix_words \
       "${LMLINE_COMMAND_PREFIX_WORDS_FILE:-}" \
@@ -1029,7 +1031,15 @@ __lmline_expand_braces_for_risk() {
           fi
           changed=1
         else
-          next+="${pre} ${inner} ${post}"$'\n'
+          # A group without a comma or range is literal, not an expansion:
+          # keep its braces so structural checks can still see a compound
+          # command. The pattern view strips them below as before.
+          if __lmline_brace_at_word_boundary "${pre: -1}" &&
+            __lmline_brace_at_word_boundary "${post:0:1}"; then
+            next+="${pre}${ob}${inner}${cb}${post}"$'\n'
+          else
+            next+="${pre} ${inner} ${post}"$'\n'
+          fi
           changed=1
         fi
       else

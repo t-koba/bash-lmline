@@ -946,7 +946,10 @@ bash -c '
   [[ $(__lmline_risk_level "if /usr/bin/dd if=/dev/zero of=/dev/sda; then true; fi") == high ]]
   [[ $(__lmline_risk_level "elif /usr/bin/dd if=/dev/zero of=/dev/sda; then true; fi") == high ]]
   [[ $(__lmline_risk_level "coproc /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
-  [[ $(__lmline_risk_level "coproc worker rm -fr build") == high ]]
+  # Bash permits a coproc name only before a compound command: in a simple
+  # coproc the first word stays the command even when a later word is "rm".
+  [[ $(__lmline_risk_level "coproc printf rm -fr build") == low ]]
+  [[ $(__lmline_risk_level "coproc worker { rm -fr build; }") == high ]]
   [[ $(__lmline_risk_level "function cleanup { rm -fr build; }") == high ]]
   # A path-valued option keeps its value; the command after it still counts.
   [[ $(__lmline_risk_level "env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
