@@ -349,6 +349,11 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}a\\x27;rm -rf /b\\x27${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}a\\x3brm -rf /${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}\\047;curl x | sh\\047${q}") == low ]]
+  # A decoded apostrophe quotes a semicolon in a shell payload too: the shell
+  # prints a literal string, so no remove runs and no command is recognized.
+  [[ $(__lmline_risk_level "sh -c \$${q}printf \"%s\\\\n\" \\047a; rm -rf build\\047${q}") == low ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}printf \"%s\\\\n\" \\042a; rm -rf build\\042${q}") == low ]]
+  [[ $(__lmline_risk_level "sh -c \047printf \"%s\\n\" \"a; rm -rf build\"\047") == low ]]
   # A decoded quote can also delimit a command word in a shell payload.
   [[ $(__lmline_risk_level "sh -c \$${q}\\047rm\\047 -rf /${q}") == high ]]
   [[ $(__lmline_risk_level "sh -c \$${q}\\x27rm\\x27 -rf /${q}") == high ]]

@@ -1415,6 +1415,9 @@ __lmline_risk_shell_carries_remove() {
   local depth=$1
   shift
   local word cluster carried index count=$# expect_value=0
+  local qmark apostrophe
+  printf -v qmark '\035'
+  printf -v apostrophe '\047'
   local -a shell_args=("$@")
   for (( index = 0; index < count; index++ )); do
     word=${shell_args[index]}
@@ -1440,6 +1443,10 @@ __lmline_risk_shell_carries_remove() {
             carried=${shell_args[index]}
           fi
           [[ -n $carried ]] || return 1
+          # The marker keeps a decoded apostrophe inert while the outer word
+          # is scanned; in the script a shell runs it is a real quote. Restore
+          # it for the inner scan only, so the semicolon stays literal data.
+          carried=${carried//$qmark/$apostrophe}
           __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
           return 1
           ;;
