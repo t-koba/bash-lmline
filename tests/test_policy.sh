@@ -722,6 +722,14 @@ bash -c '
   [[ $(__lmline_risk_basename_command_words "echo \$(env) /usr/bin/dd") == "echo \$(env) /usr/bin/dd" ]]
   [[ $(__lmline_risk_level "echo \$(ls -l /usr/bin/dd)") == low ]]
   bt=$(printf "\140")
+  # A delimiter inside quotes is data, not the end of the substitution.
+  sq=$(printf "\047")
+  [[ $(__lmline_risk_level "echo \$(env -C \"/tmp/)\" /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
+  [[ $(__lmline_risk_level "diff <(env -C \"/tmp/)\" /usr/bin/dd if=/dev/zero) f") == high ]]
+  quoted_bt="echo ${bt}env -C ${sq}/tmp/${bt}x${sq} /usr/bin/dd if=/dev/zero of=/dev/sda${bt}"
+  [[ $(__lmline_risk_level "$quoted_bt") == high ]]
+  # An unquoted delimiter really does close the substitution.
+  [[ $(__lmline_risk_level "echo \$(env -C /tmp/)x /usr/bin/dd if=/dev/zero of=/dev/sda)") == low ]]
   [[ $(__lmline_risk_level "echo ${bt} /usr/bin/dd if=/dev/zero of=/dev/sda ${bt}") == high ]]
   [[ $(__lmline_risk_level "echo ${bt}env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda${bt}") == high ]]
   # A lone backtick is not a complete substitution: it runs no command.

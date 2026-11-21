@@ -1207,6 +1207,37 @@ __lmline_risk_basename_word() {
   printf '%s' "$opener$base$closer"
 }
 
+# Whether a word contains the delimiter outside quotes and escapes. A
+# delimiter written inside quotes is data, not the end of a substitution.
+__lmline_risk_word_has_unquoted_char() {
+  local text=$1 target=$2 i ch quote="" prev=""
+  for ((i = 0; i < ${#text}; i++)); do
+    ch=${text:i:1}
+    if [[ -n $quote ]]; then
+      if [[ $quote == '"' && $ch == "\\" && $prev != "\\" ]]; then
+        prev=$ch
+        continue
+      fi
+      if [[ $ch == "$quote" && $prev != "\\" ]]; then
+        quote=
+      fi
+      prev=$ch
+      continue
+    fi
+    if [[ $ch == "\\" ]]; then
+      prev=$ch
+      i=$((i + 1))
+      continue
+    fi
+    [[ $ch == "$target" ]] && return 0
+    case $ch in
+      "'"|'"'|'`') quote=$ch ;;
+    esac
+    prev=$ch
+  done
+  return 1
+}
+
 # Judge a command written by absolute or relative path by its program name,
 # as the bare spelling is judged. Only the command word of each pipeline
 # segment loses its directory prefix; path operands keep their text, so a
@@ -1274,7 +1305,7 @@ __lmline_risk_basename_command_words() {
           scan=${scan#'<('}
           scan=${scan#'`'}
         fi
-        if [[ $scan == *"$closer"* ]]; then
+        if __lmline_risk_word_has_unquoted_char "$scan" "$closer"; then
           close_index=$k
           break
         fi
