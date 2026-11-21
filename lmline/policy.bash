@@ -1410,23 +1410,27 @@ __lmline_risk_neutralize_segment_flags_after_double_dash() {
 # spelling is not find's delete action. Give the pattern view a neutral token
 # for those words while leaving the real action untouched.
 __lmline_risk_neutralize_find_delete_operand_segment() {
-  local view=$1 word out="" operand=0
+  local view=$1 word out="" operand=0 cmd_index index
   local -a words=()
   read -r -a words <<<"$view" || true
   ((${#words[@]})) || { printf '%s' "$view"; return 0; }
-  [[ ${words[0]##*/} == find ]] || { printf '%s' "$view"; return 0; }
-  for word in "${words[@]}"; do
-    if (( operand )); then
-      [[ $word == -delete* ]] && word=--literal-operand--
-      operand=0
-    elif [[ $word == -delete* && $word != -delete ]]; then
-      word=--literal-operand--
-    else
-      case $word in
-        -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname)
-          operand=1
-          ;;
-      esac
+  cmd_index=$(__lmline_risk_segment_command_index "${words[@]}") || { printf '%s' "$view"; return 0; }
+  [[ ${words[cmd_index]##*/} == find ]] || { printf '%s' "$view"; return 0; }
+  for ((index = 0; index < ${#words[@]}; index++)); do
+    word=${words[index]}
+    if (( index > cmd_index )); then
+      if (( operand )); then
+        [[ $word == -delete* ]] && word=--literal-operand--
+        operand=0
+      elif [[ $word == -delete* && $word != -delete ]]; then
+        word=--literal-operand--
+      else
+        case $word in
+          -name|-iname|-path|-ipath|-wholename|-iwholename|-regex|-iregex|-lname|-ilname)
+            operand=1
+            ;;
+        esac
+      fi
     fi
     out+=" $word"
   done

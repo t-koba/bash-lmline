@@ -126,6 +126,9 @@ bash -c '
   [[ $(__lmline_risk_level "find /tmp/-delete-me -type f") == low ]]
   [[ $(__lmline_risk_level "find . -name \"-delete\"") == low ]]
   [[ $(__lmline_risk_level "find -delete-me -type f") == low ]]
+  [[ $(__lmline_risk_level "command find . -name \"-delete\"") == low ]]
+  [[ $(__lmline_risk_level "env find -delete-me -type f") == low ]]
+  [[ $(__lmline_risk_level "command find . -name x -delete") == high ]]
   [[ $(__lmline_risk_level "rm build") == low ]]
   [[ $(__lmline_risk_level "rm -v build") == low ]]
   # The end of the options ends the flags.
