@@ -131,6 +131,8 @@ bash -c '
   # A flag-shaped word after -- is a literal operand, not a recursion flag.
   [[ $(__lmline_risk_level "git rm -- -r sample") == low ]]
   [[ $(__lmline_risk_level "chmod 755 -- -R sample") == low ]]
+  [[ $(__lmline_risk_level "chmod 755 -- \"-R\" sample") == low ]]
+  [[ $(__lmline_risk_level "git rm -- \"-r\" sample") == low ]]
   [[ $(__lmline_risk_level "chown user -- --recursive sample") == low ]]
   [[ $(__lmline_risk_level "git rm --force -r sample") == high ]]
   [[ $(__lmline_risk_level "chmod -R 755 dir") == high ]]

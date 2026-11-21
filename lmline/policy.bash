@@ -1569,9 +1569,9 @@ __lmline_risk_match() {
     # Reduce command names first, then decode and canonicalize each segment:
     # the flat view has no separators left to tell commands apart.
     bare_alt=$(__lmline_risk_basename_command_words "$alt")
-    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$bare_alt")
-    decoded_alt=$(__lmline_risk_map_segments "$neutral_alt" __lmline_risk_decode_segment_for_risk)
-    signal_alt=$(__lmline_risk_map_segments "$decoded_alt" __lmline_risk_canonicalize_kill_signal)
+    decoded_alt=$(__lmline_risk_map_segments "$bare_alt" __lmline_risk_decode_segment_for_risk)
+    neutral_alt=$(__lmline_risk_neutralize_flags_after_double_dash "$decoded_alt")
+    signal_alt=$(__lmline_risk_map_segments "$neutral_alt" __lmline_risk_canonicalize_kill_signal)
     canon=$(__lmline_canonicalize_for_risk <<<"$signal_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
     canon=${canon% }
