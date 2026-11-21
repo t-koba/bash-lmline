@@ -883,10 +883,9 @@ __lmline_risk_reason() {
 # the same rules as their bare forms. A trailing unbalanced $'... is left
 # as-is for the unresolved-variable fallback in __lmline_risk_match.
 __lmline_decode_ansi_c_for_risk() {
-  local str=$1 out="" pre rest inner ch i j esc decoded qmark qdata
+  local str=$1 out="" pre rest inner ch i j esc decoded qmark
   [[ $str == *"\$'"* ]] || { printf '%s' "$str"; return 0; }
   printf -v qmark '\035'
-  printf -v qdata '\034'
   while [[ $str == *"\$'"* ]]; do
     pre=${str%%"\$'"*}
     rest=${str#*"\$'"}
@@ -901,8 +900,10 @@ __lmline_decode_ansi_c_for_risk() {
         continue
       fi
       if [[ $ch == "\\" && ${rest:i+1:1} == "'" ]]; then
-        # An escaped apostrophe is data inside $'...', not its closing quote.
-        inner+="\\'"
+        # In $'...', a backslash before an apostrophe decodes to a live
+        # apostrophe, not a literal backslash-quote pair. Mark it at
+        # collection time so it cannot end up as inert data after %b.
+        inner+="$qmark"
         i=$((i + 1))
         continue
       fi
@@ -930,13 +931,9 @@ __lmline_decode_ansi_c_for_risk() {
     # literal data, not commands. A decoded single quote is held by an
     # internal marker that cannot occur in a validated candidate: it stays
     # inert for the structural checks, and canonicalization drops it so a
-    # quote-delimited command name remains recognizable. An apostrophe kept
-    # escaped by a backslash is data in the script the shell runs, so it gets
-    # its own marker: unlike a live quote, it must not quote a separator when
-    # the word is handed to a shell.
-    # %b leaves an escaped apostrophe as a backslash-quote pair; mark it
-    # before plain decoded quotes so neither looks like a live quote.
-    decoded=${decoded//\\\'/$qdata}
+    # quote-delimited command name remains recognizable. Both octal-decoded
+    # quotes and backslash-escaped apostrophes use this marker; they are live
+    # quotes in the script a shell runs.
     decoded=${decoded//\'/$qmark}
     out+="$pre'$decoded'"
     str=${rest:$((j + 1))}
@@ -959,7 +956,7 @@ __lmline_decode_ansi_c_for_risk() {
 __lmline_canonicalize_for_risk() {
   sed -E -e 's/\$\{?IFS\}?/ /g' -e 's/\\(.)/\1/g' -e "s/'//g" -e 's/"//g' -e 's/`//g' \
     -e 's/\|\|/ /g' -e 's/\|/ | /g' -e 's/[;&()]/ /g' -e 's/[{},]/ /g' \
-    -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g' | tr -d '\035\034'
+    -e 's#\|[[:space:]]*/[^[:space:]|;()&]*/#| #g' | tr -d '\035'
 }
 
 # Expand brace groups for risk matching only (not execution) without eval,
@@ -1459,10 +1456,8 @@ __lmline_risk_shell_carries_remove() {
           [[ -n $carried ]] || return 1
           # The marker keeps a decoded apostrophe inert while the outer word
           # is scanned; in the script a shell runs it is a real quote. Restore
-          # only that marker for the inner scan, so the semicolon stays
-          # literal data. An escaped apostrophe keeps its own data marker:
-          # its backslash makes it literal in the script too, so a following
-          # separator is still a command separator.
+          # it for the inner scan, so a quote closes around a separator and
+          # the semicolon stays literal data.
           carried=${carried//$qmark/$apostrophe}
           __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
           return 1
