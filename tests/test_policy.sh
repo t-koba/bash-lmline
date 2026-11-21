@@ -905,6 +905,9 @@ bash -c '
   printf "high\t* /bin/echo.log *\tprotected operand\n" >"$risk_tmp/operand.tsv"
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/operand.tsv" __lmline_risk_level "echo /bin/echo.log") == high ]]
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/operand.tsv" __lmline_risk_level "/bin/echo /bin/echo.log") == high ]]
+  # Path-valued options keep their values for the same rule.
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/operand.tsv" __lmline_risk_level "env -C /bin/echo.log echo hi") == high ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/operand.tsv" __lmline_risk_level "git -C /bin/echo.log status") == high ]]
   # Replacement low catch-all overrides pattern and structural defaults alike.
   printf "low\t*\tuser override\n" >"$risk_tmp/override.tsv"
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "echo hi") == low ]]
