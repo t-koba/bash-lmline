@@ -785,8 +785,9 @@ explicit `0<<<` feeds stdin and `1<<<` does not. A process-substitution argument
 needs an immediately preceding, matching input redirection to supply that alias
 (`<` for fd 0, `3<` for fd 3); an input redirect to another target alone does
 not name a script file. A later duplication (`N>&0`, `N<&0`) carries a
-here-string or substituted script into descriptor N, and a here-string on fd N
-is a script when a later duplication moves it to fd 0 or an alias names fd N.
+here-string or substituted script into descriptor N; chains of duplication
+are followed to the final descriptor. A here-string on fd N is a script when a
+later duplication moves it to fd 0 or an alias names fd N.
 Process substitution used as a shell's script source (`bash < <(echo ...)` or
 `bash <(echo ...)`) is judged the same way, while non-shell uses and shells that
 already have a script are unchanged.

@@ -109,6 +109,8 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/3 <<< ${hsq}rm -rf /${hsq} 3>&0") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/3 <<< ${hsq}rm -rf /${hsq} 3<&0") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/9 <<< ${hsq}rm -rf /${hsq} 3>&0") != high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 <<< ${hsq}rm -rf /${hsq} 3>&0 4>&3") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/3 <<< ${hsq}rm -rf /${hsq} 4>&0 3>&4") == high ]]
   [[ $(__lmline_risk_level "cat /dev/stdin <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
@@ -185,6 +187,11 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/3 < <(echo ${hsq}rm -rf /${hsq}) 3>&0") == high ]]
   [[ $(__lmline_risk_reason "bash /dev/fd/3 < <(echo ${hsq}rm -rf /${hsq}) 3>&0") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "bash /dev/fd/9 < <(echo ${hsq}rm -rf /${hsq}) 3>&0") != high ]]
+  # Chained duplication follows the script to the final alias descriptor.
+  [[ $(__lmline_risk_level "bash /dev/fd/4 < <(echo ${hsq}rm -rf /${hsq}) 3>&0 4>&3") == high ]]
+  [[ $(__lmline_risk_reason "bash /dev/fd/4 < <(echo ${hsq}rm -rf /${hsq}) 3>&0 4>&3") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/3 < <(echo ${hsq}rm -rf /${hsq}) 4>&0 3>&4") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/9 < <(echo ${hsq}rm -rf /${hsq}) 3>&0 4>&3") != high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/3 <(echo ${hsq}rm -rf /${hsq}) 3>&0") != high ]]
   # Redirection targets and shell option values are not script files.
   [[ $(__lmline_risk_level "bash > /dev/null < <(echo ${hsq}rm -rf /${hsq})") == high ]]

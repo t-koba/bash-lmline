@@ -2186,7 +2186,7 @@ __lmline_risk_here_string_payload() {
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
-  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd dup_target
+  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd dup_target carried_fd pass changed
   local -a plain=() quoted=() carried=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2237,11 +2237,27 @@ __lmline_risk_generated_script_source() {
     # A duplication after the substitution can also carry its script fd into
     # an alias; one before it copied the earlier input instead.
     if [[ -n $source_fd ]]; then
-      for ((index = q_source + 1; index < ${#quoted[@]}; index++)); do
-        if __lmline_risk_descriptor_duplication_word "${quoted[index]}" &&
-          [[ $__LMLINE_RISK_DUP_SOURCE == "$source_fd" ]]; then
-          carried+=("$__LMLINE_RISK_DUP_TARGET")
-        fi
+      carried=("$source_fd")
+      for ((pass = 0; pass < 4; pass++)); do
+        changed=0
+        for ((index = q_source + 1; index < ${#quoted[@]}; index++)); do
+          __lmline_risk_descriptor_duplication_word "${quoted[index]}" || continue
+          target=$__LMLINE_RISK_DUP_TARGET
+          source=$__LMLINE_RISK_DUP_SOURCE
+          alias_matches=0
+          for carried_fd in "${carried[@]}"; do
+            [[ $source == "$carried_fd" ]] && { alias_matches=1; break; }
+          done
+          (( alias_matches )) || continue
+          alias_matches=0
+          for carried_fd in "${carried[@]}"; do
+            [[ $target == "$carried_fd" ]] && { alias_matches=1; break; }
+          done
+          (( alias_matches )) && continue
+          carried+=("$target")
+          changed=1
+        done
+        (( changed )) || break
       done
     fi
     # A command string or script file already gives the shell its script, so
