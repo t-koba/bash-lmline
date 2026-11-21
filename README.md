@@ -783,7 +783,8 @@ recognize a recursive flag written as a separate option, so
 forms.
 
 Kill signal spellings are canonicalized in the same view: `kill -09 123`,
-`kill -s SIGKILL 123` and a kill inside a shell command string
+`kill -s SIGKILL 123`, the attached `kill -sKILL 123`, and a kill inside a
+shell command string
 (`bash -c "kill -Kill 123"`) read like `kill -9 123`, while an unrecognized
 signal spelling remains an ordinary process signal. Quoting, escapes and
 `${IFS}` are decoded before flag and signal recognition, and `--` ends options

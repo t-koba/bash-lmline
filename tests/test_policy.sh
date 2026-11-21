@@ -180,6 +180,14 @@ bash -c '
   [[ $(__lmline_risk_level "kill -s Kill 123") == high ]]
   [[ $(__lmline_risk_level "kill -s SigKill 123") == high ]]
   [[ $(__lmline_risk_level "kill -n 09 123") == high ]]
+  # Attached signal names and numbers read the same way.
+  [[ $(__lmline_risk_level "kill -sKILL 123") == high ]]
+  [[ $(__lmline_risk_level "kill -sSIGKILL 123") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"kill -sKILL 123\"") == high ]]
+  [[ $(__lmline_risk_level "kill -n9 123") == high ]]
+  [[ $(__lmline_risk_level "kill -n09 123") == high ]]
+  [[ $(__lmline_risk_level "kill -s09 123") == medium ]]
+  [[ $(__lmline_risk_level "kill -nKILL 123") == medium ]]
   [[ $(__lmline_risk_reason "kill -SigKill 123") == "force kill signal" ]]
   # Decoding quotes, IFS and escapes must not hide the uncatchable signal.
   [[ $(__lmline_risk_level "kill\${IFS}-09 123") == high ]]

@@ -1282,6 +1282,18 @@ __lmline_risk_canonicalize_kill_signals_in_view() {
           normalized[j + 1]=$canonical
           ((j++))
           ;;
+        -[sS]*)
+          signal=${word:2}
+          [[ -n $signal ]] || break
+          canonical=$(__lmline_risk_canonical_signal "$signal") || break
+          normalized[j]="-s$canonical"
+          ;;
+        -[nN]*)
+          signal=${word:2}
+          [[ $signal =~ ^[0-9]+$ ]] || break
+          canonical=$(__lmline_risk_canonical_signal "$signal") || break
+          normalized[j]="-n$canonical"
+          ;;
         -*)
           signal=${word#-}
           canonical=$(__lmline_risk_canonical_signal "$signal") || break

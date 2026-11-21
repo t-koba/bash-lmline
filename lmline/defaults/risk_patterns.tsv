@@ -66,6 +66,8 @@ high	*kill -kill *	force kill signal
 high	*kill -sigkill *	force kill signal
 high	*kill -s kill *	force kill signal
 high	*kill -s sigkill *	force kill signal
+high	*kill -skill *	force kill signal
+high	*kill -n9 *	force kill signal
 high	*killall *	bulk process termination
 high	*truncate *	file truncation
 high	*> /dev/sd*	raw device write
