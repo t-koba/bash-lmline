@@ -1265,9 +1265,37 @@ __lmline_risk_canonical_signal() {
 # Canonicalize the signal spec of a kill command in the view the policy rules
 # match. Other commands keep their text; a signal spec that is not recognized
 # is left as written so the ordinary rules still judge it.
-__lmline_risk_canonicalize_kill_signal() {
-  local view=$1 index base word signal canonical
+__lmline_risk_canonicalize_kill_signals_in_view() {
+  local view=$1 i j word signal canonical
   local -a words normalized
+  read -r -a words <<<"$view" || true
+  ((${#words[@]})) || { printf '%s' "$view"; return 0; }
+  normalized=("${words[@]}")
+  for ((i = 0; i < ${#words[@]}; i++)); do
+    [[ ${words[i]##*/} == kill ]] || continue
+    for ((j = i + 1; j < ${#words[@]}; j++)); do
+      word=${words[j]}
+      case $word in
+        -[sSnN])
+          ((j + 1 < ${#words[@]})) || break
+          canonical=$(__lmline_risk_canonical_signal "${words[j+1]}") || break
+          normalized[j + 1]=$canonical
+          ((j++))
+          ;;
+        -*)
+          signal=${word#-}
+          canonical=$(__lmline_risk_canonical_signal "$signal") || break
+          normalized[j]="-$canonical"
+          ;;
+      esac
+    done
+  done
+  printf '%s' "${normalized[*]}"
+}
+
+__lmline_risk_canonicalize_kill_signal() {
+  local view=$1 index base word start=-1 tail
+  local -a words=()
   read -r -a words <<<"$view" || true
   ((${#words[@]})) || { printf '%s' "$view"; return 0; }
   index=$(__lmline_risk_segment_command_index "${words[@]}") || {
@@ -1275,25 +1303,25 @@ __lmline_risk_canonicalize_kill_signal() {
     return 0
   }
   base=${words[index]##*/}
-  [[ ${base,,} == kill ]] || { printf '%s' "$view"; return 0; }
-  normalized=("${words[@]}")
-  for ((index = index + 1; index < ${#words[@]}; index++)); do
-    word=${words[index]}
-    case $word in
-      -[sSnN])
-        ((index + 1 < ${#words[@]})) || break
-        canonical=$(__lmline_risk_canonical_signal "${words[index+1]}") || break
-        normalized[index + 1]=$canonical
-        ((index++))
-        ;;
-      -*)
-        signal=${word#-}
-        canonical=$(__lmline_risk_canonical_signal "$signal") || break
-        normalized[index]="-$canonical"
-        ;;
-    esac
-  done
-  printf '%s' "${normalized[*]}"
+  if [[ ${base,,} == kill ]]; then
+    __lmline_risk_canonicalize_kill_signals_in_view "$view"
+    return 0
+  fi
+  # A shell runs the command string after -c; its kill spells the same signal.
+  if __lmline_word_is_shell "$base"; then
+    for ((index = index + 1; index < ${#words[@]}; index++)); do
+      word=${words[index]}
+      [[ $word == -* && ${word#-} == *c* ]] || continue
+      start=$((index + 1))
+      break
+    done
+    if ((start >= 0 && start < ${#words[@]})); then
+      tail=$(__lmline_risk_canonicalize_kill_signals_in_view "${words[*]:start}")
+      printf '%s %s' "${words[*]:0:start}" "$tail"
+      return 0
+    fi
+  fi
+  printf '%s' "$view"
 }
 
 # Apply a view transform to each simple command, keeping the separators in
@@ -1328,6 +1356,12 @@ __lmline_risk_map_segments() {
 # view is matched.
 __lmline_risk_decode_segment_for_risk() {
   local segment=$1
+  # A shell -c payload keeps list separators inside its quoted word. Show
+  # them as pipe boundaries before decoding so end-of-options stays local to
+  # the command that wrote it.
+  segment=${segment//&&/ | }
+  segment=${segment//||/ | }
+  segment=${segment//;/ | }
   __lmline_canonicalize_for_risk <<<"$segment" | tr -s '[:space:]' ' '
 }
 

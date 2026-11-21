@@ -187,6 +187,12 @@ bash -c '
   [[ $(__lmline_risk_level "echo x | kill -n 09 123") == high ]]
   [[ $(__lmline_risk_level "sleep 1 && kill -SigKill 123") == high ]]
   [[ $(__lmline_risk_reason "echo x | kill -Kill 123") == "force kill signal" ]]
+  # A shell -c string spells the same signal wherever the command sits.
+  [[ $(__lmline_risk_level "bash -c \"kill -Kill 123\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo -- x && kill -Kill 123\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo -- x | kill -Kill 123\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"kill\${IFS}-09 123\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"chmod 755 -- -R sample\"") == low ]]
   [[ $(__lmline_risk_level "kill -01 123") == medium ]]
   [[ $(__lmline_risk_level "kill -s TERM 123") == medium ]]
   [[ $(__lmline_risk_level "kill -n 15 123") == medium ]]
