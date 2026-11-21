@@ -861,6 +861,11 @@ bash -c '
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_reason "\$X -rf build") == "unresolved variable command" ]]
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_level "echo hi | sh") == high ]]
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/empty.tsv" __lmline_risk_reason "echo hi | sh") == "piped shell execution" ]]
+  # Normalizing the command word must not rewrite a path operand that shares
+  # its prefix; both spellings meet the same rule for that operand.
+  printf "high\t* /bin/echo.log *\tprotected operand\n" >"$risk_tmp/operand.tsv"
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/operand.tsv" __lmline_risk_level "echo /bin/echo.log") == high ]]
+  [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/operand.tsv" __lmline_risk_level "/bin/echo /bin/echo.log") == high ]]
   # Replacement low catch-all overrides pattern and structural defaults alike.
   printf "low\t*\tuser override\n" >"$risk_tmp/override.tsv"
   [[ $(LMLINE_RISK_PATTERNS_FILE="$risk_tmp/override.tsv" __lmline_risk_level "echo hi") == low ]]
