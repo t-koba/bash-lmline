@@ -5,6 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 bash -c '
   set -euo pipefail
+  trap "printf \"policy assertion failed: %s\\n\" \"\$BASH_COMMAND\" >&2" ERR
   source "$1/lmline/context.bash"
   source "$1/lmline/actions.bash"
   source "$1/lmline/policy.bash"
