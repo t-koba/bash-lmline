@@ -2051,6 +2051,20 @@ __lmline_risk_redirect_word() {
   return 1
 }
 
+# A descriptor duplication such as 3>&0 or <&0 copies an open descriptor
+# instead of naming a file. Report its target and source descriptors; an
+# omitted target defaults to fd 0 for input and fd 1 for output.
+__lmline_risk_descriptor_duplication_word() {
+  local word=$1 pattern='^([0-9]*)([<>])&([0-9]+)$' operator target source
+  [[ $word =~ $pattern ]] || return 1
+  operator=${BASH_REMATCH[2]}
+  target=${BASH_REMATCH[1]}
+  source=${BASH_REMATCH[3]}
+  [[ -n $target ]] || target=$([[ $operator == '<' ]] && printf '0' || printf '1')
+  __LMLINE_RISK_DUP_TARGET=$((10#$target))
+  __LMLINE_RISK_DUP_SOURCE=$((10#$source))
+}
+
 # The script a shell reads from an active here-string operator. The unquoted
 # view proves an operator is active: a quoted or escaped operator has no
 # standalone token there. That view can drop a quoted command word, so the
@@ -2058,8 +2072,8 @@ __lmline_risk_redirect_word() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 segment marker word payload
-  local index cmd_index op_index script_word=0 active fd
-  local -a plain=() quoted=() words=()
+  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd
+  local -a plain=() quoted=() words=() carried=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -2083,6 +2097,15 @@ __lmline_risk_here_string_payload() {
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
       [[ $fd == 0 ]] || continue
+      # Only a duplication after the operator copies the here-string's fd;
+      # an earlier one copied the stdin that preceded the operator.
+      carried=("$fd")
+      for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
+        if __lmline_risk_descriptor_duplication_word "${quoted[index]}" &&
+          [[ $__LMLINE_RISK_DUP_SOURCE == "$fd" ]]; then
+          carried+=("$__LMLINE_RISK_DUP_TARGET")
+        fi
+      done
       # A command string or script file already gives the shell its input, so
       # the here-string is data to that program, not a script it reads.
       script_word=0
@@ -2098,11 +2121,15 @@ __lmline_risk_here_string_payload() {
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
-        # A here-string on descriptor 0 can be read only by an alias on
-        # descriptor 0; any other alias names a script file.
+        # An alias reads the payload when its descriptor is the here-string's
+        # own or one a later duplication copied it to; otherwise it is a file.
         fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || fd=
-        if [[ $fd == 0 ]]; then
-          continue
+        if [[ -n $fd ]]; then
+          alias_matches=0
+          for carried_fd in "${carried[@]}"; do
+            if [[ $fd == "$carried_fd" ]]; then alias_matches=1; break; fi
+          done
+          (( alias_matches )) && continue
         fi
         if [[ $word == -[oO] ]]; then
           index=$((index + 1))
@@ -2137,17 +2164,15 @@ __lmline_risk_here_string_payload() {
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
   local index cmd_index q_index source_index q_source script_word=0
-  local alias_fd numbered='^([0-9]+)<$' source_fd prefix
-  local -a plain=() quoted=()
+  local alias_fd alias_matches numbered='^([0-9]+)<$' source_fd prefix dup_target
+  local -a plain=() quoted=() carried=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   # The structural splitter reads & and | as command separators, even inside
   # redirection operators. Fold those operators into their base marker so
   # the shell word and its generated script stay in one structural segment.
   scan=${cmd//&\>/\>}
-  scan=${scan//\>\&/\>}
   scan=${scan//\>\|/\>}
-  scan=${scan//\<\&/\<}
   while IFS= read -r segment || [[ -n $segment ]]; do
     mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0 "" bash structural-substitution 0)")
     ((${#plain[@]})) || continue
@@ -2178,6 +2203,7 @@ __lmline_risk_generated_script_source() {
     # script: a bare '<' feeds stdin and '3<' feeds descriptor 3. An earlier
     # redirect with its own target is unrelated to this process substitution.
     source_fd=''
+    carried=()
     if (( q_source > q_index )); then
       word=${quoted[q_source-1]}
       if [[ $word == '<' ]]; then
@@ -2186,14 +2212,29 @@ __lmline_risk_generated_script_source() {
         source_fd=$((10#${BASH_REMATCH[1]}))
       fi
     fi
+    # A duplication after the substitution can also carry its script fd into
+    # an alias; one before it copied the earlier input instead.
+    if [[ -n $source_fd ]]; then
+      for ((index = q_source + 1; index < ${#quoted[@]}; index++)); do
+        if __lmline_risk_descriptor_duplication_word "${quoted[index]}" &&
+          [[ $__LMLINE_RISK_DUP_SOURCE == "$source_fd" ]]; then
+          carried+=("$__LMLINE_RISK_DUP_TARGET")
+        fi
+      done
+    fi
     # A command string or script file already gives the shell its script, so
     # the process substitution is only an argument to that program.
     script_word=0
     for ((index = q_index + 1; index < q_source; index++)); do
       word=${quoted[index]}
       alias_fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || alias_fd=
-      if [[ -n $alias_fd && -n $source_fd && $alias_fd == "$source_fd" ]]; then
-        continue
+      if [[ -n $alias_fd ]]; then
+        alias_matches=0
+        [[ -n $source_fd && $alias_fd == "$source_fd" ]] && alias_matches=1
+        for dup_target in "${carried[@]}"; do
+          [[ $alias_fd == "$dup_target" ]] && { alias_matches=1; break; }
+        done
+        (( alias_matches )) && continue
       fi
       # The process substitution itself is the script source, not a redirect
       # target or a script word.
