@@ -1961,13 +1961,32 @@ __lmline_risk_word_is_stream_script_alias() {
     $word =~ ^/proc/(self|[0-9]+)/fd/[0-9]+$ ]]
 }
 
+# The one active-redirect check for the quote-preserving word view: an operator
+# at the start of a word (after an optional numeric descriptor), which includes
+# a here-string. Set __LMLINE_RISK_REDIRECT_TARGET when the operator ends its
+# word, so the next word is its separated target rather than a glued one.
+__lmline_risk_redirect_word() {
+  local word=$1 prefix
+  __LMLINE_RISK_REDIRECT_TARGET=0
+  prefix=${word%%[!0-9]*}
+  case ${word:${#prefix}:1} in
+    '<'|'>'|'|')
+      case $word in
+        *'<'|*'>'|*'|') __LMLINE_RISK_REDIRECT_TARGET=1 ;;
+      esac
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 # The script a shell reads from an active here-string operator. The unquoted
 # view proves an operator is active: a quoted or escaped operator has no
 # standalone token there. That view can drop a quoted command word, so the
 # quote-preserving view supplies the command and the words before the operator.
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
-  local cmd=$1 segment marker word payload prefix
+  local cmd=$1 segment marker word payload
   local index cmd_index op_index script_word=0 active
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
@@ -2004,19 +2023,10 @@ __lmline_risk_here_string_payload() {
         fi
         # A here-string glued to its payload stays in the one word.
         [[ $word == '<<<'* ]] && continue
-        # Only an operator at the start of a word (after an optional numeric
-        # descriptor) is an active redirection. A word ending in the operator
-        # takes the next word as its target; a glued target stays inside the
-        # one word. A script name with a glued operator stays a script word.
-        prefix=${word%%[!0-9]*}
-        case ${word:${#prefix}:1} in
-          '<'|'>'|'|')
-            case $word in
-              *'<'|*'>'|*'|') index=$((index + 1)) ;;
-            esac
-            continue
-            ;;
-        esac
+        if __lmline_risk_redirect_word "$word"; then
+          (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
+          continue
+        fi
         if __lmline_risk_word_is_stream_script_alias "$word"; then
           continue
         fi
@@ -2052,7 +2062,7 @@ __lmline_risk_here_string_payload() {
 # including a script word the unquoted view drops. No input is executed here.
 __lmline_risk_generated_script_source() {
   local cmd=$1 segment marker word quoted_text scan
-  local index cmd_index q_index source_index q_source script_word=0 prefix
+  local index cmd_index q_index source_index q_source script_word=0
   local -a plain=() quoted=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2097,25 +2107,15 @@ __lmline_risk_generated_script_source() {
       if __lmline_risk_word_is_stream_script_alias "$word"; then
         continue
       fi
-      # An active redirection consumes its target: a word ending in a
-      # redirect marker takes the next word, while a glued target stays
-      # inside the one word. The process substitution itself is the script
-      # source, not a redirection.
+      # The process substitution itself is the script source, not a redirect
+      # target or a script word.
       case $word in
         '<('*) continue ;;
       esac
-      # Only an operator at the start of a word (after an optional file
-      # descriptor) is an active redirection. A script name or argument with
-      # a glued operator stays a script word.
-      prefix=${word%%[!0-9]*}
-      case ${word:${#prefix}:1} in
-        '<'|'>'|'|')
-          case $word in
-            *'<'|*'>'|*'|') index=$((index + 1)) ;;
-          esac
-          continue
-          ;;
-      esac
+      if __lmline_risk_redirect_word "$word"; then
+        (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
+        continue
+      fi
       case $word in
         -o|-O|--rcfile|--init-file) index=$((index + 1)) ;;
         --*) ;;
