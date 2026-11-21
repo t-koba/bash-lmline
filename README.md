@@ -782,6 +782,15 @@ recognize a recursive flag written as a separate option, so
 `chmod 777 -R dir` and `git rm --force -r dir` read like their leading-flag
 forms.
 
+Kill signal spellings are canonicalized in the same view: `kill -09 123`,
+`kill -s SIGKILL 123` and a kill inside a shell command string
+(`bash -c "kill -Kill 123"`) read like `kill -9 123`, while an unrecognized
+signal spelling remains an ordinary process signal. Quoting, escapes and
+`${IFS}` are decoded before flag and signal recognition, and `--` ends options
+only for the simple command that carries it: `chmod 755 -- -R sample` is not
+recursive, while `echo -- x && chmod -R 755 dir` is. These remain lexical
+rules, not a shell parser.
+
 The same rule decides whether a pipeline reaches a shell: the shell the piped
 input reaches is the command the segment runs, so `find . | xargs sh` is a piped
 shell execution while `find . | xargs grep sh` is not, because the command
