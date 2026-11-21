@@ -90,6 +90,16 @@ bash -c '
   [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # A redirection target belongs to the redirect, not to the script file.
+  [[ $(__lmline_risk_level "bash > out <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_reason "bash > out <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "bash >out <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash <<< ${hsq}rm -rf /${hsq} > out") == high ]]
+  [[ $(__lmline_risk_level "bash 2> err <<< ${hsq}rm -rf /${hsq}") == high ]]
+  # A real script file still supplies the script when a redirection is present.
+  [[ $(__lmline_risk_level "bash build > out <<< ${hsq}rm -rf /${hsq}") == medium ]]
+  [[ $(__lmline_risk_reason "bash build > out <<< ${hsq}rm -rf /${hsq}") == "writes to a file or descriptor" ]]
+  [[ $(__lmline_risk_level "bash >out build <<< ${hsq}rm -rf /${hsq}") == medium ]]
   [[ $(__lmline_risk_level "bash \"<<< ${hsq}rm -rf /${hsq}\"") == low ]]
   [[ $(__lmline_risk_level "bash \\<<<\\ ${hsq}rm -rf /${hsq}") == low ]]
   # A process substitution supplying a shell script is a generated script,

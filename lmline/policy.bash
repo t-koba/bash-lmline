@@ -1972,7 +1972,7 @@ __lmline_risk_word_is_stream_script_alias() {
 # quote-preserving view supplies the command and the words before the operator.
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
-  local cmd=$1 segment marker word payload
+  local cmd=$1 segment marker word payload prefix
   local index cmd_index op_index script_word=0 active
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
@@ -2007,7 +2007,21 @@ __lmline_risk_here_string_payload() {
           index=$((index + 1))
           continue
         fi
-        [[ $word == '<'* || $word == '>'* ]] && continue
+        # A here-string glued to its payload stays in the one word.
+        [[ $word == '<<<'* ]] && continue
+        # Only an operator at the start of a word (after an optional numeric
+        # descriptor) is an active redirection. A word ending in the operator
+        # takes the next word as its target; a glued target stays inside the
+        # one word. A script name with a glued operator stays a script word.
+        prefix=${word%%[!0-9]*}
+        case ${word:${#prefix}:1} in
+          '<'|'>'|'|')
+            case $word in
+              *'<'|*'>'|*'|') index=$((index + 1)) ;;
+            esac
+            continue
+            ;;
+        esac
         if __lmline_risk_word_is_stream_script_alias "$word"; then
           continue
         fi
