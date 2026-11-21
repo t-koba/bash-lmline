@@ -84,8 +84,9 @@ elif clipboard_provider=$(detect_clipboard_provider); then
   fi
 fi
 
-# Print command paths as single-quoted literal words so directories containing
-# spaces or a literal "$" survive copy/paste into Bash or zsh unexpanded.
+# Print command paths and the config-dir setup as single-quoted literal words
+# so directories containing spaces or a literal "$" survive copy/paste into
+# Bash or zsh unexpanded. Each setup block carries its own config-dir export.
 cat <<EOF
 Installed lmline to $config_dir
 
@@ -94,20 +95,24 @@ The Bash integration and bundled engine require bash 4.2 or newer.
 
 For a temporary Bash trial:
 
+  export LMLINE_CONFIG_DIR=$(__lmline_quote_single "$config_dir")
   bash --rcfile $(__lmline_quote_single "$config_dir/init.bash") -i
 
 For a zsh trial:
 
+  export LMLINE_CONFIG_DIR=$(__lmline_quote_single "$config_dir")
   source $(__lmline_quote_single "$config_dir/init.zsh")
 
 For permanent Bash use, add this to ~/.bashrc if it is not already present:
 
+export LMLINE_CONFIG_DIR=$(__lmline_quote_single "$config_dir")
 if [[ \$- == *i* ]]; then
   source $(__lmline_quote_single "$config_dir/init.bash")
 fi
 
 For permanent zsh use, add this to ~/.zshrc if it is not already present:
 
+export LMLINE_CONFIG_DIR=$(__lmline_quote_single "$config_dir")
 source $(__lmline_quote_single "$config_dir/init.zsh")
 
 Optional defaults:
@@ -129,8 +134,8 @@ Equivalent environment variables:
   export LMLINE_API_KEY_FILE=<path-to-api-key-file>
 
 Standalone CLI completions (optional; the init scripts already load them):
-  bash: source $(__lmline_quote_single "$config_dir/completions/lmline.bash")
-  zsh:  fpath+=($(__lmline_quote_single "$config_dir/completions")) before compinit in ~/.zshrc
+  bash: export LMLINE_CONFIG_DIR=$(__lmline_quote_single "$config_dir"); source $(__lmline_quote_single "$config_dir/completions/lmline.bash")
+  zsh:  export LMLINE_CONFIG_DIR=$(__lmline_quote_single "$config_dir"); fpath+=($(__lmline_quote_single "$config_dir/completions"))  # before compinit in ~/.zshrc
 
 Make sure $(__lmline_quote_single "$bin_dir") is on PATH if you want to run: lmline doctor
 Use "lmline doctor --check-api" to also test provider connectivity.

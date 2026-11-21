@@ -79,41 +79,92 @@ expected_dollar_bin=$(CDPATH='' cd -- "$dollar_bin" && pwd)
   fail "literal-dollar config files were not installed"
 
 # No other output line uses single quotes, so the quoted words in order are
-# exactly the command paths. The pattern requires single quotes, so a
-# double-quoted path (the reported bug) cannot satisfy it.
+# exactly the exported config dirs and command paths, including the config-dir
+# word printed before each setup command. The pattern requires single quotes,
+# so a double-quoted path (the reported bug) cannot satisfy it.
 single_quoted_re="'([^']*)'"
-printed_paths=()
+printed_words=()
+printed_exports=0
 while IFS= read -r line; do
-  if [[ $line =~ $single_quoted_re ]]; then
-    printed_paths+=("${BASH_REMATCH[1]}")
+  if [[ $line == *"export LMLINE_CONFIG_DIR="* ]]; then
+    export_tail=${line#*export LMLINE_CONFIG_DIR=}
+    [[ $export_tail == "'"* ]] ||
+      fail "config-dir export is not a literal quoted word: $line"
+    printed_exports=$((printed_exports + 1))
   fi
+  rest=$line
+  while [[ $rest =~ $single_quoted_re ]]; do
+    quoted=${BASH_REMATCH[0]}
+    printed_words+=("${BASH_REMATCH[1]}")
+    rest=${rest#*"$quoted"}
+  done
 done <"$install_tmp/dollar-install.out"
+[[ $printed_exports -eq 6 ]] ||
+  fail "expected 6 printed config-dir exports, got $printed_exports"
 
 example_path="$expected_dollar_config/suggested_commands.txt"
-expected_paths=(
+expected_words=(
+  "$expected_dollar_config"                           # temporary Bash trial export
   "$expected_dollar_config/init.bash"                 # temporary Bash --rcfile
+  "$expected_dollar_config"                           # zsh trial export
   "$expected_dollar_config/init.zsh"                  # zsh trial source
+  "$expected_dollar_config"                           # permanent Bash snippet export
   "$expected_dollar_config/init.bash"                 # ~/.bashrc snippet
+  "$expected_dollar_config"                           # permanent zsh snippet export
   "$expected_dollar_config/init.zsh"                  # permanent zsh source
+  "$expected_dollar_config"                           # standalone Bash completions export
   "$expected_dollar_config/completions/lmline.bash"   # standalone Bash completions
+  "$expected_dollar_config"                           # standalone zsh completions export
   "$expected_dollar_config/completions"               # zsh fpath entry
   "$expected_dollar_bin"                              # PATH instruction
   "$expected_dollar_config/defaults"                  # editable lists
   "$example_path"                                     # override example (to be created)
 )
-[[ ${#printed_paths[@]} -eq ${#expected_paths[@]} ]] ||
-  fail "expected ${#expected_paths[@]} quoted command paths, got ${#printed_paths[@]}"
+[[ ${#printed_words[@]} -eq ${#expected_words[@]} ]] ||
+  fail "expected ${#expected_words[@]} quoted words, got ${#printed_words[@]}"
 
-for i in "${!expected_paths[@]}"; do
-  printed=${printed_paths[i]}
-  [[ $printed == "${expected_paths[i]}" ]] ||
-    fail "command path $i: expected ${expected_paths[i]}, got $printed"
+for i in "${!expected_words[@]}"; do
+  printed=${printed_words[i]}
+  [[ $printed == "${expected_words[i]}" ]] ||
+    fail "quoted word $i: expected ${expected_words[i]}, got $printed"
   [[ $printed == *'$edition'* ]] ||
-    fail "command path $i lost its literal dollar sign: $printed"
+    fail "quoted word $i lost its literal dollar sign: $printed"
+  [[ $printed == *' '* ]] ||
+    fail "quoted word $i lost its space: $printed"
   # The example is a file the user is told to create, not one we install.
   if [[ $printed != "$example_path" ]]; then
-    [[ -e $printed ]] || fail "command path $i does not exist: $printed"
+    [[ -e $printed ]] || fail "quoted word $i does not exist: $printed"
   fi
 done
 
 ok "printed setup commands are literal words for a dollar-sign config directory"
+
+# A printed export must make fresh shells load the chosen config directory.
+# The launcher below is built from the installer's own output and our own
+# paths: no pasted or untrusted text is executed. The rcfile is read before
+# -c commands, so the export belongs in the launching shell.
+printf "export LMLINE_INSTALL_MARKER='from-custom-dir'\n" \
+  >>"$expected_dollar_config/settings.bash"
+printed_export=$(grep -m1 '^  export LMLINE_CONFIG_DIR=' "$install_tmp/dollar-install.out")
+[[ -n $printed_export ]] || fail "temporary Bash trial has no printed config-dir export"
+marker_probe='printf "MARKER=%s\n" "${LMLINE_INSTALL_MARKER:-UNSET}"'
+run_marker_shell() {
+  local setup=$1 output=$2
+  {
+    printf '%s\n' "$setup"
+    printf 'exec bash --rcfile %q -ic %q </dev/null\n' \
+      "$expected_dollar_config/init.bash" "$marker_probe"
+  } >"$install_tmp/marker-setup.sh"
+  env -i HOME="$install_tmp/home" PATH="$PATH" \
+    bash "$install_tmp/marker-setup.sh" >"$output" 2>/dev/null
+}
+
+run_marker_shell ':' "$install_tmp/marker-control.out" ||
+  fail "control marker shell failed"
+grep -qx 'MARKER=UNSET' "$install_tmp/marker-control.out" ||
+  fail "marker was set without the config-dir export"
+run_marker_shell "${printed_export#  }" "$install_tmp/marker-export.out" ||
+  fail "marker shell with the printed export failed"
+grep -qx 'MARKER=from-custom-dir' "$install_tmp/marker-export.out" ||
+  fail "printed export did not select the custom config directory"
+ok "printed config-dir export selects custom settings in a fresh Bash shell"
