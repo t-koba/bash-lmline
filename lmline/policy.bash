@@ -331,7 +331,7 @@ __lmline_backtick_risky() {
   content=$(__lmline_backtick_content "$cmd" "$start")
   if (( require_special )) && [[ "$content" != *[[:space:]\;\&\|\(\)\`]* && "$content" != *'${IFS}'* && "$content" != *'$IFS'* ]]; then
     printf '0'
-  elif [[ "$content" == *'|'* || "$content" == *';'* || "$content" == *'&'* || "$content" == *'$('* || "$content" == *'<('* ]]; then
+  elif [[ "$content" == *'|'* || "$content" == *';'* || "$content" == *'&'* || "$content" == *'$('* || "$content" == *'<('* || "$content" == *'\`'* ]]; then
     printf '1'
   elif (( emit )) && [[ "$content" != *'`'* ]] && __lmline_risk_recursive_remove "$content"; then
     printf '1'
@@ -342,7 +342,7 @@ __lmline_backtick_risky() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all} emit_boundary=${6:-1}
-  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_opener=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
+  local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_opener=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 bt_bs_run=0 bt_escaped_sep=0 bt_escaped_bt=0 dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   local subst_boundary=$'\n'
   local quote_was_exposed=0
   local dq_subst_quote=0 dq_subst_escape=0 dq_subst_dquote=0 dq_quote_stack=""
@@ -358,7 +358,19 @@ __lmline_split_pipeline() {
       # Backticks open a command substitution for structural checks, so its
       # content and operators are read as commands rather than as one word.
       if [[ "$split_mode" == structural-substitution && "$quote" == '`' ]] && (( bt_exposed )); then
-        if [[ ( "$ch" == "'" || "$ch" == '"' ) && "$prev" != "\\" ]]; then
+        if [[ "$ch" == "\\" ]]; then
+          # Backslashes are kept through backtick dequoting except when they
+          # pair, so a separator is escaped by one or two of them and a
+          # backtick is escaped by an odd run.
+          bt_bs_run=$(( (bt_bs_run + 1) % 4 ))
+          (( keep_quoted )) && stripped+=$ch
+          prev=$ch
+          continue
+        fi
+        bt_escaped_sep=$(( bt_bs_run == 1 || bt_bs_run == 2 ))
+        bt_escaped_bt=$(( bt_bs_run == 1 || bt_bs_run == 3 ))
+        bt_bs_run=0
+        if [[ "$ch" == "'" || "$ch" == '"' ]] && (( ! bt_escaped_sep )); then
           quote=$ch
           bt_quote_return=1
           (( keep_quoted )) && stripped+=$ch
@@ -385,7 +397,19 @@ __lmline_split_pipeline() {
           prev=$ch
           continue
         fi
-        if [[ "$ch" == '`' ]]; then
+        if [[ "$ch" == '`' ]] && (( bt_escaped_bt )); then
+          # An escaped backtick inside backticks becomes a real backtick
+          # when the outer command string is parsed, so it opens or closes
+          # a nested command substitution.
+          if [[ -n "$subst_boundary" ]]; then
+            stripped+=$subst_boundary
+          else
+            (( keep_quoted )) && stripped+=$ch
+          fi
+          prev=$ch
+          continue
+        fi
+        if [[ "$ch" == '`' ]] && (( ! bt_escaped_bt )); then
           quote=
           quote_was_exposed=$bt_exposed
           bt_exposed=0
@@ -399,7 +423,7 @@ __lmline_split_pipeline() {
           prev=$ch
           continue
         fi
-        if [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]]; then
+        if [[ "$ch" == '|' || "$ch" == ';' || "$ch" == '&' ]] && (( ! bt_escaped_sep )); then
           stripped+=$'\n'
           prev=$ch
           continue
@@ -529,6 +553,7 @@ __lmline_split_pipeline() {
         if (( bt_quote_return )); then
           quote='`'
           bt_quote_return=0
+          bt_bs_run=0
         else
           quote=
         fi
@@ -570,6 +595,7 @@ __lmline_split_pipeline() {
           bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary" 1)
           if (( bt_risky )); then
             bt_exposed=1
+            bt_bs_run=0
             if [[ -n "$subst_boundary" ]]; then
               stripped+=$subst_boundary
             else

@@ -851,6 +851,14 @@ bash -c '
   [[ $(__lmline_risk_level "echo \`rm\${IFS}-rf /\`") == high ]]
   [[ $(__lmline_risk_level "echo \`rm\$IFS-rf /\`") == high ]]
   [[ $(__lmline_risk_level "echo \`echo \$IFS hi\`") == low ]]
+  # An escaped separator inside backticks stays data; paired backslashes
+  # restore it as a separator, and escaped backticks open a nested command.
+  [[ $(__lmline_risk_level "echo \`echo a\\|rm -rf /\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo a\\;rm -rf /\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo a\\&\\&rm -rf /\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo a\\\\;rm -rf /\`") == low ]]
+  [[ $(__lmline_risk_level "echo \`echo a\\\\\\;rm -rf /\`") == high ]]
+  [[ $(__lmline_risk_level "echo \`echo \\\`rm -rf /\\\`\`") == high ]]
   # Literal text after a risky backtick stays in the same segment, while a
   # real pipe to a shell inside it remains detectable with a trailing suffix.
   [[ $(__lmline_risk_level "echo \"prefix \`ls | head\`sh\"") == low ]]
