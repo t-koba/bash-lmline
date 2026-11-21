@@ -149,6 +149,20 @@ bash -c '
   [[ $(__lmline_risk_level "kill -s kill 123") == high ]]
   [[ $(__lmline_risk_level "kill -s sigkill 123") == high ]]
   [[ $(__lmline_risk_reason "kill -n 9 123") == "force kill signal" ]]
+  # Signal names fold case, optional SIG prefixes fold away, and leading
+  # zeros in a number name the same signal.
+  [[ $(__lmline_risk_level "kill -09 123") == high ]]
+  [[ $(__lmline_risk_level "kill -009 123") == high ]]
+  [[ $(__lmline_risk_level "kill -Kill 123") == high ]]
+  [[ $(__lmline_risk_level "kill -kIlL 123") == high ]]
+  [[ $(__lmline_risk_level "kill -SigKill 123") == high ]]
+  [[ $(__lmline_risk_level "kill -s 09 123") == high ]]
+  [[ $(__lmline_risk_level "kill -s Kill 123") == high ]]
+  [[ $(__lmline_risk_level "kill -s SigKill 123") == high ]]
+  [[ $(__lmline_risk_level "kill -n 09 123") == high ]]
+  [[ $(__lmline_risk_reason "kill -SigKill 123") == "force kill signal" ]]
+  [[ $(__lmline_risk_level "kill -01 123") == medium ]]
+  [[ $(__lmline_risk_level "kill -s TERM 123") == medium ]]
   [[ $(__lmline_risk_level "kill -n 15 123") == medium ]]
   [[ $(__lmline_risk_level "kill -l kill") == medium ]]
   # A signal must be a complete token; near misses are ordinary signals.

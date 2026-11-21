@@ -1238,6 +1238,55 @@ __lmline_risk_word_has_unquoted_char() {
   return 1
 }
 
+# One signal spelling as the shipped rules name it: case-folded names, an
+# optional SIG prefix removed, and numeric signals without leading zeros.
+__lmline_risk_canonical_signal() {
+  local signal=${1,,}
+  signal=${signal#sig}
+  if [[ $signal =~ ^[0-9]+$ ]]; then
+    while [[ ${#signal} -gt 1 && $signal == 0* ]]; do
+      signal=${signal#0}
+    done
+    printf '%s\n' "$signal"
+  else
+    printf '%s\n' "$signal"
+  fi
+}
+
+# Canonicalize the signal spec of a kill command in the view the policy rules
+# match. Other commands keep their text; a signal spec that is not recognized
+# is left as written so the ordinary rules still judge it.
+__lmline_risk_canonicalize_kill_signal() {
+  local view=$1 index base word signal canonical
+  local -a words normalized
+  read -r -a words <<<"$view" || true
+  ((${#words[@]})) || { printf '%s' "$view"; return 0; }
+  index=$(__lmline_risk_segment_command_index "${words[@]}") || {
+    printf '%s' "$view"
+    return 0
+  }
+  base=${words[index]##*/}
+  [[ ${base,,} == kill ]] || { printf '%s' "$view"; return 0; }
+  normalized=("${words[@]}")
+  for ((index = index + 1; index < ${#words[@]}; index++)); do
+    word=${words[index]}
+    case $word in
+      -[sSnN])
+        ((index + 1 < ${#words[@]})) || break
+        canonical=$(__lmline_risk_canonical_signal "${words[index+1]}") || break
+        normalized[index + 1]=$canonical
+        ((index++))
+        ;;
+      -*)
+        signal=${word#-}
+        canonical=$(__lmline_risk_canonical_signal "$signal") || break
+        normalized[index]="-$canonical"
+        ;;
+    esac
+  done
+  printf '%s' "${normalized[*]}"
+}
+
 # Judge a command written by absolute or relative path by its program name,
 # as the bare spelling is judged. Only the command word of each pipeline
 # segment loses its directory prefix; path operands keep their text, so a
@@ -1408,6 +1457,7 @@ __lmline_risk_match() {
     canon=$(__lmline_canonicalize_for_risk <<<"$bare_alt" | tr -s '[:space:]' ' ')
     canon=${canon# }
     canon=${canon% }
+    canon=$(__lmline_risk_canonicalize_kill_signal "$canon")
     canon=" $canon "
     while IFS= read -r line || [[ -n "$line" ]]; do
       [[ -z "$line" || "$line" == \#* ]] && continue
