@@ -64,9 +64,25 @@ __lmline_word_is_shell() {
 __lmline_risk_runner_operands() {
   local -a decoded=()
   mapfile -t decoded < <(__lmline_risk_split_words "$1")
-  local runner=${decoded[0]:-$1}
+  local runner=${decoded[0]:-$1} i named
   case "${runner##*/}" in
     chroot|flock|su) printf '1\n' ;;
+    function) printf '1\n' ;;
+    coproc)
+      # A named coproc has a name before the command. Only call the first
+      # word a name when a later word is the command whose risk is judged.
+      named=0
+      if (( ${#decoded[@]} > 2 )) && [[ ${decoded[1]} != -* && ${decoded[1]} != *=* ]]; then
+        for ((i = 2; i < ${#decoded[@]}; i++)); do
+          if __lmline_risk_word_is_remove_command "${decoded[i]}" ||
+            __lmline_word_is_shell "${decoded[i]##*/}"; then
+            named=1
+            break
+          fi
+        done
+      fi
+      (( named )) && printf '1\n' || printf '0\n'
+      ;;
     '!'|busybox|builtin|command|doas|env|exec|ionice|nice|nohup|screen|script|setsid|stdbuf|strace|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) printf '0\n' ;;
   esac
   return 0
@@ -979,7 +995,7 @@ __lmline_risk_carried_command_index() {
   local -a words=("$@")
   local index word base expect_value=0 last_option=""
   local operands_left
-  operands_left=$(__lmline_risk_runner_operands "${words[0]}")
+  operands_left=$(__lmline_risk_runner_operands "${words[*]}")
   for (( index = 1; index < ${#words[@]}; index++ )); do
     word=${words[index]}
     [[ "$word" == *=* ]] && continue
