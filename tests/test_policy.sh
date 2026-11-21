@@ -128,6 +128,13 @@ bash -c '
   [[ $(__lmline_risk_level "rm -v build") == low ]]
   # The end of the options ends the flags.
   [[ $(__lmline_risk_level "rm -- -r") == low ]]
+  # A flag-shaped word after -- is a literal operand, not a recursion flag.
+  [[ $(__lmline_risk_level "git rm -- -r sample") == low ]]
+  [[ $(__lmline_risk_level "chmod 755 -- -R sample") == low ]]
+  [[ $(__lmline_risk_level "chown user -- --recursive sample") == low ]]
+  [[ $(__lmline_risk_level "git rm --force -r sample") == high ]]
+  [[ $(__lmline_risk_level "chmod -R 755 dir") == high ]]
+  [[ $(__lmline_risk_level "chown --recursive user dir") == high ]]
   [[ $(__lmline_risk_level "find . -type f -exec unlink {} +") == high ]]
   [[ $(__lmline_risk_level "echo a | xargs -0 rm") == high ]]
   [[ $(__lmline_risk_level "git -C /tmp clean -fdx") == high ]]

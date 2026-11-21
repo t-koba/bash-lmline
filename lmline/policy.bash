@@ -1299,6 +1299,23 @@ __lmline_risk_canonicalize_kill_signal() {
 # The command positions of one pipeline segment, as word-index/replacement
 # pairs. The indices count the same whitespace-delimited words the reader
 # below sees, so only those words are rewritten when the view is assembled.
+# After --, a flag-shaped word is a literal operand. Give the policy view a
+# neutral token for those words so flag patterns cannot mistake them for
+# options, while the operands themselves keep their text.
+__lmline_risk_neutralize_flags_after_double_dash() {
+  local view=$1 word out="" after=0
+  local -a words=()
+  read -r -a words <<<"$view" || true
+  for word in "${words[@]}"; do
+    if (( after )) && [[ $word == -* ]]; then
+      word=--literal-operand--
+    fi
+    [[ $word == -- ]] && after=1
+    out+=" $word"
+  done
+  printf '%s' "${out# }"
+}
+
 __lmline_risk_basename_command_replacements() {
   local segment=$1 word index prefix_base cmd_index replacement j k start close_index target
   local inner base scan closer
@@ -1514,6 +1531,7 @@ __lmline_risk_match() {
     canon=${canon# }
     canon=${canon% }
     canon=$(__lmline_risk_canonicalize_kill_signal "$canon")
+    canon=$(__lmline_risk_neutralize_flags_after_double_dash "$canon")
     canon=" $canon "
     while IFS= read -r line || [[ -n "$line" ]]; do
       [[ -z "$line" || "$line" == \#* ]] && continue
