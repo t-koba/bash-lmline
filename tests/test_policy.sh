@@ -354,6 +354,11 @@ bash -c '
   [[ $(__lmline_risk_level "sh -c \$${q}printf \"%s\\\\n\" \\047a; rm -rf build\\047${q}") == low ]]
   [[ $(__lmline_risk_level "sh -c \$${q}printf \"%s\\\\n\" \\042a; rm -rf build\\042${q}") == low ]]
   [[ $(__lmline_risk_level "sh -c \047printf \"%s\\n\" \"a; rm -rf build\"\047") == low ]]
+  # An escaped apostrophe inside $'...' is literal data in the script, so a
+  # following separator still runs its command; a single backslash decodes to
+  # a live apostrophe and leaves an unterminated quote (no command runs).
+  [[ $(__lmline_risk_level "sh -c \$${q}echo \\\\\\047; rm -rf /${q}") == high ]]
+  [[ $(__lmline_risk_level "sh -c \$${q}echo \\047; rm -rf /${q}") == low ]]
   # A decoded quote can also delimit a command word in a shell payload.
   [[ $(__lmline_risk_level "sh -c \$${q}\\047rm\\047 -rf /${q}") == high ]]
   [[ $(__lmline_risk_level "sh -c \$${q}\\x27rm\\x27 -rf /${q}") == high ]]
