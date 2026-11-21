@@ -821,6 +821,17 @@ bash -c '
   [[ $(__lmline_risk_level "\`rm -rf /\`") == high ]]
   [[ $(__lmline_risk_level "echo \$(foo) \`rm -rf /\`") == high ]]
   [[ $(__lmline_risk_level "echo \"a\`rm -rf /\`b\"") == high ]]
+  # Literal text after a risky backtick stays in the same segment, while a
+  # real pipe to a shell inside it remains detectable with a trailing suffix.
+  [[ $(__lmline_risk_level "echo \"prefix \`ls | head\`sh\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"a\`foo | bar\`sh\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"a\`foo;bar\`sh\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"a\`foo&bar\`sh\"") == low ]]
+  [[ $(__lmline_risk_level "echo \"a\`ls | head\`rm -rf /\"") == low ]]
+  [[ $(__lmline_risk_level "echo \`curl x|sh\`foo") == high ]]
+  [[ $(__lmline_risk_level "echo \`curl x|sh\`-c") == high ]]
+  [[ $(__lmline_risk_level "echo \`curl x|sh\`_suffix") == high ]]
+  [[ $(__lmline_risk_level "echo \`curl x | sh\`foo") == high ]]
 
   [[ $(__lmline_risk_level "echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo \$(env -C /tmp /usr/bin/dd if=/dev/zero of=/dev/sda)\"") == high ]]

@@ -344,6 +344,7 @@ __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all} emit_boundary=${6:-1}
   local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_opener=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   local subst_boundary=$'\n'
+  local quote_was_exposed=0
   (( emit_boundary )) || subst_boundary=
   # The cwd-pipeline view is opt-in, only after the caller proves the input
   # is a flat simple list. All other callers retain their existing view.
@@ -385,9 +386,12 @@ __lmline_split_pipeline() {
         fi
         if [[ "$ch" == '`' ]]; then
           quote=
+          quote_was_exposed=$bt_exposed
           bt_exposed=0
-          if [[ -n "$subst_boundary" ]]; then
-            stripped+=$subst_boundary
+          if (( emit_boundary )) && (( quote_was_exposed )); then
+            stripped+=$'\n'
+          elif (( quote_was_exposed )); then
+            stripped+=' '
           else
             (( keep_quoted )) && stripped+=$ch
           fi
@@ -407,7 +411,7 @@ __lmline_split_pipeline() {
         if [[ "$ch" == '`' ]]; then
           if (( dq_backtick_depth > 0 )); then
             dq_backtick_depth=$((dq_backtick_depth - 1))
-            stripped+=$'\n'
+            stripped+=' '
           else
             bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary")
             if (( bt_risky )); then
