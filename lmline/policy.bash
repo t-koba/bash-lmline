@@ -869,10 +869,12 @@ __lmline_decode_ansi_c_for_risk() {
     # shell that receives the word still runs the commands it separates.
     decoded=${decoded//$'\n'/';'}
     # Keep the decoded text one quoted word: operators inside $'...' are
-    # literal data, not commands. The decoded spelling still reaches pattern
-    # matching once canonicalization strips the quoting, so hex/octal hides
-    # of a command name remain visible.
-    decoded=${decoded//\'/\'\\\'\'}
+    # literal data, not commands. A decoded single quote is shown as inert
+    # hex text rather than shell-style '\'' escaping, which would open new
+    # quote boundaries in the structural checks. Other decoded spellings
+    # still reach pattern matching once canonicalization strips quoting, so
+    # hex/octal hides of a command name remain visible.
+    decoded=${decoded//\'/\\x27}
     out+="$pre'$decoded'"
     str=${rest:$((j + 1))}
   done

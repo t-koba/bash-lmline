@@ -264,6 +264,10 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$${q}\\t;rm -rf /${q}") == low ]]
   [[ $(__lmline_risk_level "echo \$${q}\\a;rm -rf /${q}") == low ]]
   [[ $(__lmline_risk_level "sh -c \$${q}\\trm -rf /${q}") == high ]]
+  # A decoded quote is literal data inside the ANSI-C word.
+  [[ $(__lmline_risk_level "echo \$${q}\\x27;rm -rf /\\x27${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}a\\x27;rm -rf /b\\x27${q}") == low ]]
+  [[ $(__lmline_risk_level "echo \$${q}\\047;curl x | sh\\047${q}") == low ]]
   [[ $(__lmline_risk_level "echo \"\$(echo \$${q}a;rm -rf /${q})\"") == low ]]
   [[ $(__lmline_risk_level "\${X=rm}; \$X -rf build") == medium ]]
   [[ $(__lmline_risk_level "\$X -rf build") == medium ]]
