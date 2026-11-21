@@ -48,6 +48,19 @@ equals_orphan_doctor=$(
 ) || fail "orphan check with equals-bearing relative config dir failed"
 grep -q 'WARNING: model references unknown endpoint: ghost/ghost-model' <<<"$equals_orphan_doctor" ||
   fail "doctor missed orphan model in equals-bearing relative config dir: $equals_orphan_doctor"
+# A zero-byte endpoint catalog must not make awk read models.tsv as endpoints.
+cp "$equals_cfg_tmp/cfg=x/endpoints.tsv" "$equals_cfg_tmp/endpoints.before" ||
+  fail "could not save equals-bearing endpoint catalog"
+: >"$equals_cfg_tmp/cfg=x/endpoints.tsv" ||
+  fail "could not empty equals-bearing endpoint catalog"
+empty_ep_doctor=$(
+  cd "$equals_cfg_tmp" &&
+    LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" doctor </dev/null 2>/dev/null
+) || fail "orphan check with empty endpoint catalog failed"
+grep -q 'WARNING: model references unknown endpoint: ghost/ghost-model' <<<"$empty_ep_doctor" ||
+  fail "doctor missed orphan model with empty endpoint catalog: $empty_ep_doctor"
+cp "$equals_cfg_tmp/endpoints.before" "$equals_cfg_tmp/cfg=x/endpoints.tsv" ||
+  fail "could not restore equals-bearing endpoint catalog"
 equals_endpoints=$(
   cd "$equals_cfg_tmp" &&
     LMLINE_CONFIG_DIR='cfg=x' "$repo_dir/lmline/lmline" endpoint list </dev/null

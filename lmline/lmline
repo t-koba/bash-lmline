@@ -1397,10 +1397,15 @@ case "$cmd" in
       while IFS= read -r check_line; do
         printf '  WARNING: model references unknown endpoint: %s\n' "$( __lmline_display_catalog_model "$check_line" )"
         profile_issues=$((profile_issues + 1))
-      done < <(awk -F '\t' '
-        NR == FNR { if (NF && $1 !~ /^#/) ep[$1] = 1; next }
-        NF && $1 !~ /^#/ && !($1 in ep) { print $1 "/" $2 }
-      ' <(cat -- "$endpoints_file") <(cat -- "$models_file"))
+      done < <(
+        {
+          awk -F '\t' 'NF && $1 !~ /^#/ { print "E\t" $1 }' <"$endpoints_file"
+          awk -F '\t' 'NF && $1 !~ /^#/ { print "M\t" $1 "\t" $2 }' <"$models_file"
+        } | awk -F '\t' '
+          $1 == "E" { ep[$2] = 1; next }
+          $1 == "M" && !($2 in ep) { print $2 "/" $3 }
+        '
+      )
     fi
     for secret_file in "$config_dir"/secrets/*.secret; do
       [[ -f "$secret_file" ]] || continue
