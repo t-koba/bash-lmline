@@ -1481,8 +1481,8 @@ __lmline_risk_remove_word_is_recursive() {
 # belongs to the shell as well, and a word that is neither is the script the
 # shell runs, which ends the search.
 __lmline_risk_shell_carries_remove() {
-  local depth=$1
-  shift
+  local depth=$1 subst_body=${2:-0}
+  shift 2
   local word cluster carried index count=$# expect_value=0
   local qmark apostrophe
   printf -v qmark '\035'
@@ -1517,6 +1517,15 @@ __lmline_risk_shell_carries_remove() {
           # it for the inner scan, so a quote closes around a separator and
           # the semicolon stays literal data.
           carried=${carried//$qmark/$apostrophe}
+          if [[ $carried == *'$('* || $carried == *'`'* ]]; then
+            __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) && return 0
+          fi
+          if (( subst_body )); then
+            while IFS= read -r nested_payload || [[ -n $nested_payload ]]; do
+              [[ -n $nested_payload ]] || continue
+              __lmline_risk_recursive_remove "$nested_payload" $((depth + 1)) && return 0
+            done < <(__lmline_risk_here_string_payload "$carried" 0)
+          fi
           __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
           return 1
           ;;
@@ -1534,6 +1543,37 @@ __lmline_risk_shell_carries_remove() {
   return 1
 }
 
+# A command substitution can provide the command string a shell runs. Judge
+# literal here-string data inside its body as that command string: the body's
+# program may only copy the data to standard output, which the substitution
+# then hands to -c. Bodies are read, never executed.
+__lmline_risk_substitution_payload_remove() {
+  local text=$1 depth=$2 body payload rest closer
+  (( depth < 4 )) || return 1
+  for closer in ')' '`'; do
+    rest=$text
+    while [[ $rest == *'$('* || ( $closer == '`' && $rest == *'`'* ) ]]; do
+      if [[ $closer == ')' ]]; then
+        [[ $rest == *'$('* ]] || break
+        body=${rest#*'$('}
+      else
+        body=${rest#*'`'}
+      fi
+      [[ $body == *"$closer"* ]] || break
+      body=${body%%"$closer"*}
+      if [[ -n $body ]]; then
+        while IFS= read -r payload || [[ -n $payload ]]; do
+          [[ -n $payload ]] || continue
+          __lmline_risk_recursive_remove "$payload" $((depth + 1)) && return 0
+        done < <(__lmline_risk_here_string_payload "$body" 0)
+        __lmline_risk_recursive_remove "$body" $((depth + 1)) && return 0
+      fi
+      rest=${rest#*"$closer"}
+    done
+  done
+  return 1
+}
+
 # A recursive remove is the same destructive command however its flags are
 # written, so the removal family is recognised by the word in the position a
 # command occupies and by the flags written with it, not by the order of the
@@ -1545,9 +1585,34 @@ __lmline_risk_shell_carries_remove() {
 # the remove it is.
 __lmline_risk_recursive_remove() {
   local cmd=$1 depth=${2:-0} segment word base
-  local count cmd_index
-  local -a words
+  local count cmd_index raw_index index subst_body backtick_body argument
+  local -a words raw_words
   (( depth < 4 )) || return 1
+  # The structural splitter cuts at substitution parentheses, and the rm
+  # itself can land in a later segment than the shell. Read the whole command
+  # once so a command substitution feeding -c stays one argument.
+  if [[ $cmd == *'$('* || $cmd == *'`'* ]]; then
+    raw_words=()
+    mapfile -t raw_words < <(__lmline_risk_split_words "$cmd")
+    raw_index=$(__lmline_risk_segment_command_index "${raw_words[@]}") || raw_index=-1
+    if (( raw_index >= 0 )) && __lmline_risk_word_runs_shell "${raw_words[raw_index]}"; then
+      subst_body=0
+      if [[ $cmd == *'`'* ]]; then
+        backtick_body=${cmd#*'`'}
+        backtick_body=${backtick_body%%'`'*}
+        for ((index = raw_index + 1; index < ${#raw_words[@]}; index++)); do
+          [[ ${raw_words[index]} == -*c* ]] || continue
+          argument=${raw_words[index]#*c}
+          if [[ -z $argument ]] && (( index + 1 < ${#raw_words[@]} )); then
+            argument=${raw_words[index+1]}
+          fi
+          [[ $argument == "$backtick_body" ]] && subst_body=1
+          break
+        done
+      fi
+      __lmline_risk_shell_carries_remove $((depth + 1)) "$subst_body" "${raw_words[@]:raw_index+1}" && return 0
+    fi
+  fi
   while IFS= read -r segment || [[ -n $segment ]]; do
     [[ -n "${segment//[[:space:]]/}" ]] || continue
     [[ "$segment" == *rm* ]] || continue
@@ -1565,7 +1630,7 @@ __lmline_risk_recursive_remove() {
     word=${words[cmd_index]}
     if __lmline_risk_word_runs_shell "$word"; then
       # A shell command word runs the command string it is given after -c.
-      __lmline_risk_shell_carries_remove $((depth + 1)) "${words[@]:cmd_index+1}" && return 0
+      __lmline_risk_shell_carries_remove $((depth + 1)) 0 "${words[@]:cmd_index+1}" && return 0
       continue
     fi
     # The command the segment runs. Its own flags follow it, so the words
@@ -2085,7 +2150,7 @@ __lmline_risk_descriptor_duplication_word() {
 # quote-preserving view supplies the command and the words before the operator.
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
-  local cmd=$1 segment marker word payload
+  local cmd=$1 require_shell=${2:-1} segment marker word payload
   local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches changed pass alias_claimed
   local -a plain=() quoted=() words=() carried=()
   local IFS=$' \t\n'
@@ -2103,9 +2168,11 @@ __lmline_risk_here_string_payload() {
     read -r -a quoted <<<"$(__lmline_split_pipeline "$segment" 2)"
     ((${#quoted[@]})) || continue
     cmd_index=$(__lmline_risk_segment_command_index "${quoted[@]}") || continue
-    if ! __lmline_risk_word_runs_shell "${quoted[cmd_index]}" &&
-       ! __lmline_risk_word_sources_script "${quoted[cmd_index]}"; then
-      continue
+    if (( require_shell )); then
+      if ! __lmline_risk_word_runs_shell "${quoted[cmd_index]}" &&
+         ! __lmline_risk_word_sources_script "${quoted[cmd_index]}"; then
+        continue
+      fi
     fi
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already

@@ -72,6 +72,19 @@ bash -c '
   [[ $(__lmline_risk_level "source script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level ". script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "source /dev/fd/1 <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # A here-string copied through a command substitution into a shell -c
+  # argument is the command string that shell runs.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_reason "bash -c \"\$(cat <<< ${hsq}rm -rf /${hsq})\"") == "recursive remove" ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<<\ ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \`cat <<< ${hsq}rm -rf /${hsq}\`") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat /dev/stdin <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  # Ordinary command substitutions and stored-script bodies are data, and a
+  # substitution outside the -c argument is not the command string.
+  [[ $(__lmline_risk_level "echo \"\$(cat <<< ${hsq}rm -rf /${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(printf %s ${hsq}rm -rf /${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat script.sh <<< ${hsq}rm -rf /${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} \`cat <<< ${hsq}rm -rf /${hsq}\`") == low ]]
   # The payload can be glued to the operator, and quotes around part of the
   # command word do not keep the shell from running it.
   [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]
