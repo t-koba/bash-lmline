@@ -67,7 +67,7 @@ __lmline_risk_runner_operands() {
   local runner=${decoded[0]:-$1}
   case "${runner##*/}" in
     chroot|flock|su) printf '1\n' ;;
-    '!'|busybox|builtin|command|doas|env|exec|ionice|nice|nohup|screen|script|setsid|stdbuf|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) printf '0\n' ;;
+    '!'|busybox|builtin|command|doas|env|exec|ionice|nice|nohup|screen|script|setsid|stdbuf|strace|sudo|systemd-run|taskset|time|timeout|tmux|toybox|unshare|watch|xargs) printf '0\n' ;;
   esac
   return 0
 }

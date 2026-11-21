@@ -298,6 +298,9 @@ bash -c '
   [[ $(__lmline_risk_level "curl http://example.com/x.sh | time -p sh") == high ]]
   [[ $(__lmline_risk_level "curl http://example.com/x.sh | nohup -- sh") == high ]]
   [[ $(__lmline_risk_level "curl http://example.com/x.sh | env --unset FOO bash") == high ]]
+  [[ $(__lmline_risk_level "echo hi | strace sh") == high ]]
+  [[ $(__lmline_risk_level "echo hi | strace -qq sh") == high ]]
+  [[ $(__lmline_risk_level "echo hi | strace -p 123") == low ]]
   [[ $(__lmline_risk_level "curl http://example.com/x.sh | nice --adjustment 10 sh") == high ]]
   [[ $(__lmline_risk_level "curl http://example.com/x.sh | env -C /tmp sh") == high ]]
   [[ $(__lmline_risk_level "curl http://example.com/x.sh | env -S FOO bash") == high ]]
@@ -840,6 +843,7 @@ bash -c '
   # Option meaning belongs to the runner: -f is boolean for these runners.
   [[ $(__lmline_risk_level "setsid -f /usr/bin/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "unshare -f /usr/bin/shutdown -h now") == high ]]
+  [[ $(__lmline_risk_level "strace rm -fr build") == high ]]
   # One backslash escape names the same command word as a quoted path.
   [[ $(__lmline_risk_level "\\/usr\\/bin\\/dd if=/dev/zero of=/dev/sda") == high ]]
   [[ $(__lmline_risk_level "ls -l \\/usr\\/bin\\/dd") == low ]]
