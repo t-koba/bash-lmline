@@ -426,8 +426,9 @@ else:
 PY
 }
 
-# With no arguments lints the full manifest (sequential direct-source groups
-# with the required pin, otherwise the installed ShellCheck batch or skip).
+# With no arguments lints the full manifest (one bounded, mirrored single-file
+# ShellCheck invocation per target with the required pin, otherwise the
+# installed ShellCheck batch or skip).
 # --provision-only verifies the pinned platform asset without linting;
 # --monitor-self-test exercises the bounded
 # telemetry wrapper with controlled child exit and signal cases.

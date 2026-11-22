@@ -87,54 +87,125 @@ class CandidateTests(unittest.TestCase):
         self.file("b.sh", f'#!/bin/bash\n# shellcheck source={d}\n. "$dynamic"\necho $b\n')
         self.file("c.sh", '#!/bin/bash\necho $c\n# shellcheck source=/dev/null\n. "$dynamic"\n')
         # Context before target, mixed path spelling, repeated target occurrence.
-        absolute = [d, b, a, a, "/dev/null"]
+        absolute = [d, b, a, a]
         relative = [os.path.relpath(p, c.ROOT) for p in absolute]
-        baseline = self.combined(absolute)
+        baseline = self.combined([d, b, a])
         self.assertTrue(any(row["code"] == 2086 and row.get("fix") for row in baseline))
         for inputs in (absolute, relative):
             with self.subTest(inputs=inputs):
                 report = self.run_candidate(inputs)
                 self.assertEqual(report["status"], 1)
-                self.assertEqual(len(report["targets"]), 5)
-                self.assertEqual(report["targets"][2]["group"], [b, a])
-                self.assertEqual(report["targets"][3]["group"], [b, a])
-                self.assertEqual(report["targets"][1]["group"], [d, b])
-                self.assertNotIn(d, report["targets"][2]["group"])
-                self.assert_rows(report["target_diagnostics"], baseline)
+                self.assertEqual(len(report["targets"]), 4)
+                for expected, entry in zip(absolute, report["targets"]):
+                    self.assertEqual(entry["group"], [expected])
+                    command = entry["measurement"]["command"]
+                    self.assertEqual(command[-1], expected)
+                    self.assertIn("-x", command)
+                for entry in report["targets"]:
+                    self.assert_rows(entry["target_diagnostics"],
+                                     [row for row in baseline if row["file"] == entry["target"]])
                 a_rows = [row for row in baseline if row["file"] == a]
-                self.assertEqual(len(a_rows), 2 * len(report["targets"][2]["target_diagnostics"]))
-                self.assertEqual(report["targets"][4]["target_diagnostics"], [])
-        # /dev/null annotation must not be added as context if absent from manifest.
+                self.assertEqual(len(a_rows), len(report["targets"][2]["target_diagnostics"]))
+                self.assertEqual(2 * len(a_rows),
+                                 len([row for row in report["target_diagnostics"]
+                                      if row["file"] == a]))
+        # /dev/null is counted as a declaration but never expanded into the tree.
         report = self.run_candidate([d])
         self.assertEqual(report["targets"][0]["group"], [d])
         self.assertEqual(report["source_counts"]["outside_manifest"], 1)
+        self.assertIn("/dev/null", [declaration["source"]
+                                    for declaration in report["targets"][0]["sources"]])
         self.assertNotIn(1091, [r["code"] for r in report["target_diagnostics"]])
 
     def test_non_manifest_sources_are_not_followed(self):
         dependency = self.file("outside.sh", '#!/bin/bash\necho $outside\n')
-        target = self.file("target.sh", f'#!/bin/bash\n# shellcheck source={dependency}\n. "$dynamic"\n')
+        target = self.file("target.sh", f'#!/bin/bash\n'
+                                        f'# shellcheck source={os.path.relpath(dependency, c.ROOT)}\n'
+                                        '. "$dynamic"\n')
         report = self.run_candidate([target])
         self.assertEqual(report["targets"][0]["group"], [target])
         self.assertEqual(report["source_counts"]["outside_manifest"], 1)
-        self.assert_rows(report["target_diagnostics"], self.combined([target]))
-        self.assertIn(1091, [row["code"] for row in report["target_diagnostics"]])
+        codes = [row["code"] for row in report["target_diagnostics"]]
+        self.assertIn(1091, codes)
+        self.assertTrue(all(row["file"] == target for row in report["target_diagnostics"]))
+
+    def test_in_manifest_sources_resolve_without_false_positives(self):
+        dependency = self.file("helper.sh",
+                               "#!/bin/bash\nlmline_fixture_helper() { printf '%s\\n' ok; }\n")
+        relative = os.path.relpath(dependency, c.ROOT)
+        target = self.file("target.sh", f'#!/bin/bash\n# shellcheck source={relative}\n'
+                                        '. /dev/null\nlmline_fixture_helper\n')
+        report = self.run_candidate([target, dependency])
+        self.assertEqual(report["targets"][0]["group"], [target])
+        self.assertEqual(report["source_counts"]["in_manifest"], 1)
+        codes = {row["code"] for row in report["target_diagnostics"]}
+        self.assertFalse({1091, 2034, 2154} & codes, report["target_diagnostics"])
+
+    def test_pinned_invocation_uses_one_mirrored_input(self):
+        dependency = self.file("peer.sh", '#!/bin/bash\n# shellcheck source=/dev/null\n'
+                                           'lmline_fixture() { :; }\n')
+        target = self.file("target.sh", "#!/bin/bash\n"
+                                        f'# shellcheck source={os.path.relpath(dependency, c.ROOT)}\n'
+                                        '. /dev/null\n')
+        calls = self.root / "calls"
+        fake = self.fake(f'''from pathlib import Path
+args = sys.argv[1:]
+cwd = Path.cwd()
+rel_target = Path({target!r}).relative_to(Path({str(c.ROOT)!r}))
+rel_peer = Path({dependency!r}).relative_to(Path({str(c.ROOT)!r}))
+peer = (cwd / rel_peer).read_text().splitlines()
+original = Path({dependency!r}).read_text().splitlines()
+current = Path(sys.argv[-1])
+if current == rel_target:
+ assert (cwd / rel_target).read_bytes() == Path({target!r}).read_bytes()
+ assert len(peer) == len(original)
+ assert sum(line.startswith("# source annotation stubbed") for line in peer) == 1
+ assert not any("shellcheck source=" in line for line in peer)
+else:
+ assert current == rel_peer
+ assert (cwd / rel_peer).read_bytes() == Path({dependency!r}).read_bytes()
+assert (cwd / ".shellcheckrc").read_bytes() == Path({str(c.ROOT / ".shellcheckrc")!r}).read_bytes()
+assert "-x" in args
+inputs = [arg for arg in args if not arg.startswith("-") and arg != "bash"]
+assert inputs == [current.as_posix()], args
+assert [arg for arg in args if arg.startswith("--rcfile=")] == \
+       ["--rcfile=" + str(cwd / ".shellcheckrc")]
+Path({str(calls)!r}).write_text(json.dumps(dict(cwd=str(cwd), args=args)))
+print("[]")
+''')
+        records = []
+        report = c.run([target, dependency], fake, timeout=20, record=records.append)
+        self.assertTrue(report["complete"], report)
+        entry = report["targets"][0]
+        self.assertEqual(entry["group"], [target])
+        command = entry["measurement"]["command"]
+        self.assertIn("-x", command)
+        self.assertEqual(command[-1], target)
+        self.assertIn("--rcfile=" + str(c.ROOT / ".shellcheckrc"), command)
+        inputs = [arg for arg in command[1:] if not arg.startswith("-") and arg != "bash"]
+        self.assertEqual(inputs, [target])
+        call = json.loads(calls.read_text())
+        self.assertNotEqual(call["cwd"], str(c.ROOT))
+        self.assertNotIn(call["cwd"], json.dumps(report, sort_keys=True))
+        self.assertNotIn(call["cwd"], "".join(c.progress_record(r) for r in records))
 
     def test_exact_rc_and_implicit_project_rc(self):
-        path = self.file("rc.sh", '#!/bin/bash\nunused=one\necho $value\n')
+        path = self.file("rc.sh", "#!/bin/bash\nprintf '%s\\n' '$literal'\n")
         report = self.run_candidate([path])
-        self.assertEqual({r["code"] for r in report["target_diagnostics"]}, {2086})
+        self.assertNotIn(2016, [row["code"] for row in report["target_diagnostics"]])
         without_rc = c.measure([self.shellcheck, "--norc", "-s", "bash", "--format=json", path])
-        self.assertIn(2034, [r["code"] for r in json.loads(without_rc["stdout"])])
-        # Existing real input: no rc override at all in the production API path.
+        self.assertIn(2016, [row["code"] for row in json.loads(without_rc["stdout"])])
+        # Implicit production rc and the explicit fixture hook must stay identical.
         files = ["scripts/install-shellcheck.sh"]
         implicit = c.run(files, self.shellcheck, timeout=20)
         explicit = self.run_candidate(files)
         self.assertTrue(implicit["complete"], implicit)
         self.assert_rows(implicit["target_diagnostics"], explicit["target_diagnostics"])
         command = implicit["targets"][0]["measurement"]["command"]
-        self.assertFalse(any(arg.startswith("--rcfile") for arg in command))
-        self.assertNotIn("-x", command)
-        self.assertNotIn("--external-sources", command)
+        self.assertEqual(command[-1], c.canonical(files[0]))
+        self.assertIn("-x", command)
+        self.assertIn("--rcfile=" + str(c.ROOT / ".shellcheckrc"), command)
+        self.assertEqual(len([arg for arg in command[1:] if not arg.startswith("-") and arg != "bash"]), 1)
 
     def test_real_source_context_subset(self):
         files = ["lmline/profiles.bash", "tests/lib.sh", "tests/test_endpoint_display.sh"]
@@ -152,7 +223,7 @@ class CandidateTests(unittest.TestCase):
 
     def test_all_targets_run_after_errors_and_failure_wins(self):
         log = self.root / "calls"
-        fake = self.fake(f'''with open({str(log)!r}, "a") as stream: stream.write(sys.argv[-1] + "\\n")
+        fake = self.fake(f'''with open({str(log)!r}, "a") as stream: stream.write(os.path.join({str(c.ROOT)!r}, sys.argv[-1]) + "\\n")
 name = os.path.basename(sys.argv[-1])
 if name == "exit.sh": print("[]"); sys.exit(3)
 if name == "json.sh": print("not json"); sys.exit(0)
@@ -281,7 +352,7 @@ assert records[-1]["type"] == "target_start"
 records = [r for r in records if r["type"] != "target_start"]
 assert records[0]["type"] == "header"
 assert records[1]["type"] == "version"
-if sys.argv[-1] == {later!r}:
+if os.path.basename(sys.argv[-1]) == {os.path.basename(later)!r}:
  assert [r["type"] for r in records] == ["header", "version", "target"]
  assert records[2]["group_diagnostics"] == {([row] * 2)!r}
  assert json.loads(records[2]["measurement"]["stdout"]) == {([row] * 2)!r}
@@ -436,7 +507,7 @@ class ProgressTests(unittest.TestCase):
                    level="warning", code=2086, message=marker, fix={"replacements": []})
         for status in (0, 1, 2):
             with self.subTest(status=status):
-                fake = self.fake(f'''if sys.argv[4] == {first!r}:
+                fake = self.fake(f'''if os.path.basename(sys.argv[-1]) == {os.path.basename(first)!r}:
  print(json.dumps({[row] if status else []!r})); sys.exit({int(bool(status))})
 if {status} == 2:
  print({marker!r}); print({marker!r}, file=sys.stderr); sys.exit(3)
@@ -448,7 +519,9 @@ print("[]")
                 self.assertEqual(records[0]["manifest"], [first, later])
                 targets = [r for r in records if r["type"] == "target"]
                 self.assertEqual([r["target"] for r in targets], [first, later])
-                self.assertEqual(targets[0]["group"], [first, later])
+                self.assertEqual(targets[0]["group"], [first])
+                self.assertIn("-x", targets[0]["measurement"]["command"])
+                self.assertEqual(targets[0]["measurement"]["command"][-1], first)
                 self.assertEqual(records[-1]["status"], status)
                 self.assertEqual(records[-1]["complete"], status != 2)
                 self.assertEqual(records[0]["limits"], dict(stream_bytes=c.OUTPUT_CAP,
@@ -525,7 +598,7 @@ print("[]")
         marker = "LOCAL_ONLY_DIAGNOSTIC " + str(self.root)
         row = dict(file=first, line=1, column=1, endLine=1, endColumn=2,
                    level="warning", code=2086, message=marker, fix={"replacements": []})
-        fake = self.fake(f'''if sys.argv[4] == {first!r}:
+        fake = self.fake(f'''if os.path.basename(sys.argv[-1]) == {os.path.basename(first)!r}:
  print(json.dumps([{row!r}])); sys.exit(1)
 print("[]")
 ''')
@@ -605,7 +678,7 @@ print("DISTINCTIVE_RAW_DIAGNOSTIC")
             with self.subTest(status=status):
                 fake = self.fake(f'''from pathlib import Path
 import time
-if sys.argv[-1] == {later!r}:
+if os.path.basename(sys.argv[-1]) == {os.path.basename(later)!r}:
  # Both destinations must be live before this CLI invocation can finish.
  deadline = time.monotonic() + 3
  while True:
@@ -672,7 +745,7 @@ print(json.dumps({[row] if status else []!r})); sys.exit({int(bool(status))})
             for progress in (False, True):
                 with self.subTest(bad=bad, progress=progress):
                     output = self.root / f"evidence-{bad}-{progress}.jsonl"
-                    fake = self.fake(f'''if sys.argv[-1] == {later!r}:
+                    fake = self.fake(f'''if os.path.basename(sys.argv[-1]) == {os.path.basename(later)!r}:
  if {bad!r}:
   print({marker!r}); print({marker!r}, file=sys.stderr); sys.exit(3)
  print("[]"); sys.exit(0)
@@ -742,7 +815,7 @@ records = [json.loads(line) for line in Path({str(progress)!r}).read_text().spli
 assert records[-1]["type"] == "target_start"
 records = [r for r in records if r["type"] != "target_start"]
 assert [r["type"] for r in records[:2]] == ["header", "version"]
-if sys.argv[-1] == {later!r}:
+if os.path.basename(sys.argv[-1]) == {os.path.basename(later)!r}:
  assert [r["type"] for r in records] == ["header", "version", "target"]
  assert records[2]["index"] == 0 and records[2]["status"] == 0
  os.kill(os.getppid(), signal.SIGTERM)

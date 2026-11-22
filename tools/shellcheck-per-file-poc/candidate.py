@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import selectors
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -421,6 +422,82 @@ def sources(target, manifest):
     return declarations
 
 
+SOURCE_ANNOTATION = re.compile(r"^\s*#\s*shellcheck\s+source=")
+SOURCE_STUB = "# source annotation stubbed for bounded lint"
+
+
+def stub_source_lines(path):
+    """Replace source hints in place without changing the line count."""
+    path.write_text("".join(
+        SOURCE_STUB + line[len(line.rstrip("\r\n")):]
+        if SOURCE_ANNOTATION.match(line) else line
+        for line in path.read_text().splitlines(keepends=True)))
+
+
+def mirror_sources(target, manifest, rcfile):
+    """Stage one disposable tree with a single unmodified target and stubbed peers.
+
+    Every production input and every input named in this run is copied at its
+    repository-relative path; only the current target keeps its source hints.
+    ShellCheck's ``-x`` therefore sees direct source context without following
+    the recursive source graph of the real repository.
+    """
+    relative = relative_target(ROOT / target)
+    root = Path(tempfile.mkdtemp(prefix="shellcheck-sources-"))
+    rc_source = Path(rcfile) if rcfile is not None else ROOT / ".shellcheckrc"
+    try:
+        names = list(production_manifest())
+        for entry in manifest:
+            try:
+                name = relative_target(ROOT / entry)
+            except ValueError:
+                continue  # Unrepresentable targets fail closed before this point.
+            if name not in names:
+                names.append(name)
+        for name in names:
+            destination = root / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((ROOT / name).read_bytes())
+        (root / ".shellcheckrc").write_bytes(rc_source.read_bytes())
+        for name in names:
+            if name != relative:
+                stub_source_lines(root / name)
+    except Exception as exc:
+        shutil.rmtree(root, ignore_errors=True)
+        # Never let a staging error echo a disposable path into the report.
+        raise ValueError("source mirroring failure: " + type(exc).__name__) from None
+    return root, relative, rc_source, names
+
+
+def real_diagnostic_file(value, root):
+    """Map a diagnostic path from the disposable tree back to the real ROOT."""
+    if not isinstance(value, str):
+        raise ValueError("non-string diagnostic file")
+    path = Path(value)
+    if not path.is_absolute():
+        path = root / path
+    path = path.resolve()
+    try:
+        return str(ROOT / path.relative_to(root))
+    except ValueError:
+        try:
+            path.relative_to(ROOT)
+        except ValueError:
+            raise ValueError("diagnostic outside source tree") from None
+        return str(path)
+
+
+def scrub_stub_paths(value, root):
+    """Replace any disposable root text that leaked into evidence strings."""
+    if isinstance(value, str):
+        return value.replace(str(root), str(ROOT))
+    if isinstance(value, list):
+        return [scrub_stub_paths(item, root) for item in value]
+    if isinstance(value, dict):
+        return {key: scrub_stub_paths(item, root) for key, item in value.items()}
+    return value
+
+
 class EvidenceFailure(Exception):
     pass
 
@@ -482,40 +559,48 @@ def run(files, shellcheck="shellcheck", *, rcfile=None, cap=OUTPUT_CAP, timeout=
                 entry["sources"] = sources(target, members)
             except Exception as exc:
                 entry["errors"].append(f"source resolution failure: {type(exc).__name__}: {exc}")
-            wanted = {target} | {d["resolved"] for d in entry["sources"] if d["in_manifest"]}
-            # Keep manifest order, including when dependencies precede the target.
-            entry["group"] = list(dict.fromkeys(p for p in manifest if p in wanted))
-            command = [shellcheck, "-s", "bash", "--format=json"]
-            if rcfile is not None:
-                command += ["--rcfile=" + str(rcfile)]
-            command += entry["group"]
-            if record is not None:
-                start = dict(index=index, target=relative_target(target), group_count=len(entry["group"]))
-                progress_record(dict(type="target_start", **start))
-                emit("target_start", start)  # Flush evidence and live sink before Popen.
-            measured = measure(command, cap=cap, timeout=timeout, guard=guard,
-                               observe=record, index=index)
-            entry["measurement"] = measured
-            entry["errors"].extend(measured["errors"])
-            if measured["status"] not in (0, 1):
-                entry["errors"].append("tool/resource failure: status is not 0/1")
-            if measured["stderr"]:
-                entry["errors"].append("unexpected stderr")
+            entry["group"] = [target]
+            root, relative, rc_source, names = mirror_sources(target, manifest, rcfile)
+            allowed = {str(ROOT / name) for name in names}
+            command = [shellcheck, "-s", "bash", "--format=json", "-x",
+                       "--rcfile=" + str(root / ".shellcheckrc"), relative]
+            display = [str(shellcheck), "-s", "bash", "--format=json", "-x",
+                       "--rcfile=" + str(rc_source), target]
             try:
-                def reject_constant(value):
-                    raise ValueError("non-JSON constant: " + value)
-                rows = json.loads(measured["stdout"], parse_constant=reject_constant)
-                required = {"file", "line", "column", "endLine", "endColumn", "level", "code", "message"}
-                if not isinstance(rows, list) or any(
-                        not isinstance(row, dict) or not required <= row.keys() or
-                        row["file"] not in entry["group"] for row in rows):
-                    raise ValueError("unexpected diagnostic shape/path")
-                entry["group_diagnostics"] = rows
-                entry["target_diagnostics"] = [row for row in rows if row["file"] == target]
-                if measured["status"] in (0, 1) and measured["status"] != int(bool(rows)):
-                    entry["errors"].append("group status disagrees with diagnostics")
-            except (ValueError, TypeError) as exc:
-                entry["errors"].append(f"invalid JSON diagnostics: {exc}")
+                if record is not None:
+                    start = dict(index=index, target=relative, group_count=len(entry["group"]))
+                    progress_record(dict(type="target_start", **start))
+                    emit("target_start", start)  # Flush evidence and live sink before Popen.
+                measured = measure(command, cwd=root, cap=cap, timeout=timeout, guard=guard,
+                                   observe=record, index=index)
+                measured = scrub_stub_paths(measured, root)
+                measured["command"] = display
+                entry["measurement"] = measured
+                entry["errors"].extend(measured["errors"])
+                if measured["status"] not in (0, 1):
+                    entry["errors"].append("tool/resource failure: status is not 0/1")
+                if measured["stderr"]:
+                    entry["errors"].append("unexpected stderr")
+                try:
+                    def reject_constant(value):
+                        raise ValueError("non-JSON constant: " + value)
+                    rows = json.loads(measured["stdout"], parse_constant=reject_constant)
+                    required = {"file", "line", "column", "endLine", "endColumn", "level", "code", "message"}
+                    if not isinstance(rows, list) or any(
+                            not isinstance(row, dict) or not required <= row.keys() for row in rows):
+                        raise ValueError("unexpected diagnostic shape")
+                    for row in rows:
+                        row["file"] = real_diagnostic_file(row["file"], root)
+                        if row["file"] not in allowed:
+                            raise ValueError("unexpected diagnostic path")
+                    entry["group_diagnostics"] = rows
+                    entry["target_diagnostics"] = [row for row in rows if row["file"] == target]
+                    if measured["status"] in (0, 1) and measured["status"] != int(bool(rows)):
+                        entry["errors"].append("group status disagrees with diagnostics")
+                except (ValueError, TypeError) as exc:
+                    entry["errors"].append(f"invalid JSON diagnostics: {exc}")
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
         except EvidenceFailure:
             raise
         except Exception as exc:
