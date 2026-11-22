@@ -3,11 +3,13 @@
 macOS CI uses this sequential runner for the full manifest in
 `tests/test_shellcheck.sh`; Ubuntu skips only that full lint while retaining the
 bounded monitor regression and all other tests. Every manifest occurrence is
-linted in order with the current `.shellcheckrc` and direct annotated source
-context; inputs and warnings are not dropped. The required ShellCheck 0.11.0 pin
-is version-checked, and the existing installer verifies the platform asset's
-digest. Local runs without the required-pin setting continue to use one batched
-invocation of an installed ShellCheck, or skip when it is unavailable. Python
+linted in order in a disposable mirror with the current `.shellcheckrc`; only the
+current target keeps its literal source annotations, so direct annotated source
+context stays available without recursive expansion. Inputs and warnings are not
+dropped. The required ShellCheck 0.11.0 pin is version-checked, and the existing
+installer verifies the platform asset's digest. Local runs without the required-pin
+setting continue to use one batched invocation of an installed ShellCheck, or skip
+when it is unavailable. Python
 3.9+ is required for the per-file route.
 
 The required route writes sanitized bounded progress to live CI output and
@@ -34,18 +36,21 @@ rm -rf "$bin"
 exit "$status"
 ```
 
-The tests do **not** run the full 83-input lint. They compare complete JSON
-objects as multisets (including `fix` and duplicate occurrences), using the exact
-project `.shellcheckrc` via `--rcfile` only for temporary fixtures in the
-repository (so emitted targets are repository-relative). They also check implicit production rc behavior, non-manifest source
-exclusion, `/dev/null`, relative/absolute input spelling, source chains,
-continuation after errors, output caps, timeouts, report-write failure, and
-per-child rather than cumulative RSS. JSONL tests check lossless reconstruction
-of the in-memory report, header/target visibility from running child processes,
-retention after later tool failure or cancellation, and fail-closed flush errors. The real three-file endpoint subset is a
-bounded regression test. A drift test checks the production argument list/order
-without invoking ShellCheck on that list: currently 83 unique inputs, 150 source
-declarations, 145 unique direct edges, maximum context group size 11.
+The tests do **not** run the full 86-input lint. They compare complete JSON
+objects as multisets (including `fix` and duplicate occurrences). Fixture runs
+select the exact project `.shellcheckrc` through the Python `rcfile` hook; the
+production route copies the current project rc into the mirror and passes that
+copy with `--rcfile`. They also check implicit production rc behavior,
+non-manifest source exclusion, `/dev/null`, relative/absolute input spelling,
+source chains, continuation after errors, output caps, timeouts, report-write
+failure, per-child rather than cumulative RSS, and mirror path normalization.
+JSONL tests check lossless reconstruction of the in-memory report, header/target
+visibility from running child processes, retention after later tool failure or
+cancellation, and fail-closed flush errors. The real three-file endpoint subset
+is a bounded regression test. A drift test checks the production manifest
+path list/order without invoking ShellCheck on that list: currently 86 unique
+inputs and 160 source declarations (154 unique direct edges). Every target is
+its own group, so `source_counts.max_group_size` is always 1.
 
 ## Runner entry points
 
@@ -73,13 +78,17 @@ python3 tools/shellcheck-per-file-poc/run_manifest.py \
 ```
 
 Use a new output filename for every invocation. Output paths are caller-relative;
-input paths and annotated sources are repository-root-relative. All child
-processes use repository-root cwd and absolute canonical input paths, even when
-the runner is invoked elsewhere. No production entry point supplies `--rcfile`,
-`--norc`, `-x`, or `--external-sources`: ShellCheck discovers the current project rc
-normally, just as in the full harness. The Python module's `rcfile` argument is a
-fixture-only hook, not a command-line option. There is no network/provisioning
-inside the candidate itself.
+input paths and annotated sources are repository-root-relative. Each target child
+runs with cwd set to a disposable mirror of all production inputs plus the inputs
+named in this run at repository-relative paths, and receives only the current
+relative target. The project `.shellcheckrc` is copied into that mirror and
+passed with `--rcfile`; ShellCheck discovers the current project rc through the
+mirror. The runner adds `-x` deliberately. No command-line caller supplies
+`--rcfile`, `--norc`, `-x`, or `--external-sources`. The Python module's `rcfile`
+argument is a fixture-only hook, not a command-line option. Every diagnostic
+`file` path is normalized from the mirror to the canonical repository path, so
+emitted commands and reports contain only canonical paths. There is no
+network/provisioning inside the candidate itself.
 
 ## Manual GitHub Actions diagnostic
 
@@ -88,7 +97,7 @@ The separate `.github/workflows/shellcheck-per-file-diagnostic.yml` is a
 pull requests and does not replace the full project test job. It provisions the
 same exact pin, runs the focused selftests, then invokes the full-manifest wrapper
 once and sequentially on Ubuntu 24.04. The optional cgroup guard is disabled in
-this workflow. The regular Linux test path already uses the per-file runner; this
+this workflow. The required-pin macOS test path already uses the per-file runner; this
 workflow produces a dedicated report and summary, but does not run the rest of the project test suite.
 
 The job is bounded to 40 minutes (30 minutes for the measurement). The
@@ -110,17 +119,25 @@ before sharing it outside the workflow artifacts.
 ## Grouping and status
 
 For **each input occurrence**, in manifest order, the runner scans that file's
-literal `# shellcheck source=...` annotations. A group consists of that target
-and only its direct annotated dependencies that are also manifest members,
-in original manifest order, with canonical context paths deduplicated. It runs
-one sequential `shellcheck -s bash --format=json` process per target occurrence
-(plus one version probe). It does not compute a transitive closure, follow
-non-manifest sources, or drop duplicate target occurrences. `/dev/null` is not
-added unless it is an explicit manifest member.
+literal `# shellcheck source=...` annotations for source counts and resolution
+evidence, then lints that file alone: `entry["group"] = [target]`. There are no
+multi-file context groups. It runs one sequential
+`shellcheck -s bash --format=json -x --rcfile=<mirror>/.shellcheckrc
+<relative-target>` process per target occurrence (plus one version probe), with
+cwd set to a disposable tree mirroring all production inputs and run inputs at
+repository-relative paths. The current target keeps its literal source
+annotations; peers have those annotation lines replaced by same-line-count
+comments, cutting off recursive source expansion while preserving direct source
+context. The mirror and its rc copy are removed after each target. It does not
+compute a transitive closure, follow non-manifest sources, or drop duplicate
+target occurrences. `/dev/null` is counted when annotated but never added to the
+mirror; an explicit `/dev/null` target fails closed as unrepresentable.
 
-Group output is filtered by **exact absolute target path**, without transforming
-or deduplicating any diagnostic object. Context-only rows do not determine that
-target's lint status. Final exit statuses:
+The child's diagnostics are filtered by **exact canonical target path** after
+each `file` is mapped from the mirror back to the repository path; apart from
+that path normalization and scrubbing of leaked mirror text, diagnostic objects
+are kept intact and none is deduplicated. Context-only rows do not determine
+that target's lint status. Final exit statuses:
 
 - **0:** complete, no collected target diagnostics;
 - **1:** complete, at least one collected target diagnostic;
@@ -146,21 +163,24 @@ one final JSON document. Records have a `type` and occur in this order:
    repo `cwd`, original `arguments`, canonical occurrence `manifest`, and `limits`.
 2. **`version`**, after the probe: full `version` measurement and setup `errors`.
 3. **`target_start`**, before spawning each target child: only `index`,
-   repository-relative `target`, and `group_count` (plus event `type`). It is
-   validated to fit 1 KiB, written and flushed to retained JSONL, then projected
+   repository-relative `target`, and `group_count` (always `1`, plus event
+   `type`). It is validated to fit 1 KiB, written and flushed to retained JSONL,
+   then projected
    and flushed through the existing `--progress | tee` live `measurement.log`
    route before exec. Invalid/unrepresentable progress paths prevent that exec.
    With the guard, bounded **`resource_sample`** events follow the start and
    precede the completed target; their only fields are `type`, `index`, `sample`,
    and the five numeric-or-`"unavailable"` counters described below.
 4. **`target`**, flushed after each input occurrence, in order: `index`, `target`,
-   source declarations/resolution/membership, deduplicated `group`, full raw
-   `group_diagnostics`, selected `target_diagnostics`, `errors`, computed lint
-   `status`, and `measurement`. Each measurement contains the exact command, raw
-   bounded stdout/stderr, **child** exit status, elapsed seconds, and peak RSS in
+   source declarations/resolution/membership, the single-target `group`, full raw
+   `group_diagnostics` from that child, selected `target_diagnostics`, `errors`,
+   computed lint `status`, and `measurement`. Each measurement contains the exact
+   command, raw bounded stdout/stderr, **child** exit status, elapsed seconds, and
+   peak RSS in
    KiB. Failed targets and duplicate occurrences each retain their own record.
-5. **`summary`**, only after all targets: `status`, `complete`, `source_counts`,
-   setup `errors`, and `total_elapsed_s`. Per-target errors stay in target records.
+5. **`summary`**, only after all targets: `status`, `complete`, `source_counts`
+   (with `max_group_size` always `1`), setup `errors`, and `total_elapsed_s`.
+   Per-target errors stay in target records.
 
 Every record is flushed immediately. If the job is cancelled or killed, completed
 lines remain readable; the interrupted record may be absent or partial. **Missing
@@ -192,8 +212,9 @@ and also fails. No partial/overflow output is silently accepted. The report size
 scales with manifest occurrences and these per-child bounds; it deliberately
 retains both raw output and parsed diagnostic objects for review.
 
-Reports contain absolute local paths and source diagnostics. Keep ad hoc reports
-outside the repository; review/redact before sharing under `PUBLISHING.md`.
+Reports contain canonical absolute repository paths, never disposable mirror
+paths, and source diagnostics. Keep ad hoc reports outside the repository;
+review/redact before sharing under `PUBLISHING.md`.
 
 ## Review constraints
 
@@ -202,12 +223,14 @@ annotations. It is not a shell parser or a general implementation of ShellCheck
 source search: runtime `source` expressions, heredoc/comment context, recursive
 resolution, `source-path` policies, and future rc/source semantics need independent
 review if introduced. Malformed parsed annotations fail rather than claiming
-coverage. The current rc does not enable external sources; changing that policy
-requires revisiting source-resolution tests and revalidating the full manifest.
+coverage. The current rc does not enable external sources; the runner enables
+`-x` deliberately against the mirrored tree, where peer annotations are stubbed.
+Changing that policy requires revisiting source-resolution tests and revalidating
+the full manifest.
 Canonicalizing symlinked inputs could also affect future rc discovery (the current
 manifest has none).
 
-The regular Linux CI run executes this per-file runner across the full manifest;
+The required-pin macOS CI job executes this per-file runner across the full manifest;
 investigate any incomplete or failed exact-SHA result before treating lint as
 passed. Synthetic-chain and real-subset tests protect source-context behavior;
 they are not a substitute for full-manifest CI. Revisit source-context handling
