@@ -229,8 +229,9 @@ __lmline_clipboard_read() {
 
 __lmline_redact_clip_text() {
   sed -E \
-    -e 's/([A-Za-z_][A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*[[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\1***REDACTED***/g' \
-    -e 's/(Authorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]+/\1***REDACTED***/Ig' \
+    -e "s/([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*[\"']?Bearer[[:space:]]+)[^\"'[:space:]]+/\\1***REDACTED***/Ig" \
+    -e "s/([\"']?[A-Za-z_][A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*[\"']?)([^\"'[:space:]]+|\"[^\"]*\"|'[^']*')/\\1***REDACTED***/Ig" \
+    -e "s/((^|[^A-Za-z0-9_-])([\"']?)(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*[\"']?)([^\"'[:space:]]+|\"[^\"]*\"|'[^']*')/\\1***REDACTED***/Ig" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1***REDACTED***/g' \
     -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[^[:space:]]+/\1***REDACTED***/g' \
     -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1***REDACTED***/g' \
