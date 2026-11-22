@@ -443,7 +443,9 @@ def mirror_sources(target, manifest, rcfile):
     the recursive source graph of the real repository.
     """
     relative = relative_target(ROOT / target)
-    root = Path(tempfile.mkdtemp(prefix="shellcheck-sources-"))
+    # Resolve once: on macOS TMPDIR (/var -> /private/var) is symlinked, and
+    # ShellCheck reports canonical paths that must stay relative to this root.
+    root = Path(tempfile.mkdtemp(prefix="shellcheck-sources-")).resolve()
     rc_source = Path(rcfile) if rcfile is not None else ROOT / ".shellcheckrc"
     try:
         names = list(production_manifest())

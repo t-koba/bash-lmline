@@ -189,6 +189,31 @@ print("[]")
         self.assertNotIn(call["cwd"], json.dumps(report, sort_keys=True))
         self.assertNotIn(call["cwd"], "".join(c.progress_record(r) for r in records))
 
+    def test_symlinked_temp_base_retains_diagnostics(self):
+        # macOS TMPDIR (/var -> /private/var) is symlinked; ShellCheck reports
+        # canonical paths that must still map back to the real repository file.
+        real = tempfile.TemporaryDirectory(prefix="shellcheck-real-")
+        self.addCleanup(real.cleanup)
+        link = Path(tempfile.mkdtemp(prefix="shellcheck-link-"))
+        link.rmdir()
+        link.symlink_to(real.name, target_is_directory=True)
+        self.addCleanup(link.unlink)
+        target = self.file("target.sh", '#!/bin/bash\necho "$undefined_var"\n')
+        expected = c.canonical(target)
+        records = []
+        with mock.patch.dict(os.environ, {"TMPDIR": str(link)}), \
+             mock.patch.object(tempfile, "tempdir", None):
+            report = c.run([target], self.shellcheck, rcfile=c.ROOT / ".shellcheckrc",
+                           timeout=20, record=records.append)
+        self.assertEqual(report["status"], 1, report)
+        self.assertTrue(report["complete"], report)
+        self.assertEqual([row["file"] for row in report["target_diagnostics"]], [expected])
+        self.assertEqual([row["code"] for row in report["target_diagnostics"]], [2154])
+        for text in (json.dumps(report, sort_keys=True),
+                     "".join(c.progress_record(row) for row in records)):
+            self.assertNotIn(str(link), text)
+            self.assertNotIn(real.name, text)
+
     def test_exact_rc_and_implicit_project_rc(self):
         path = self.file("rc.sh", "#!/bin/bash\nprintf '%s\\n' '$literal'\n")
         report = self.run_candidate([path])
