@@ -46,6 +46,9 @@ printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
 printf '%s\n' 'token: plainTokenValue1234567890'
 printf '%s\n' '{"api_key": "json_secret_value", "token": "json_token_value"}'
 printf '%s\n' '{"password": "value with spaces", "Authorization": "Bearer json_bearer_value"}'
+printf '%s\n' 'Authorization: Bearer quote"BearerSuffix1234567890'
+printf '%s\n' 'MY_TOKEN=abc"defGHI'
+printf '%s\n' "DB_PASSWORD=p@ss'w0rd"
 printf '%s\n' 'error: failed'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
@@ -76,7 +79,12 @@ grep -Fq '"token": ***REDACTED***' "$line_file" || exit 47
 grep -Fq 'json_token_value' "$line_file" && exit 48
 grep -Fq '"password": ***REDACTED***' "$line_file" || exit 49
 grep -Fq 'value with spaces' "$line_file" && exit 50
-grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
+grep -Fq 'quote"BearerSuffix' "$line_file" && exit 53
+grep -Fq 'MY_TOKEN=***REDACTED***' "$line_file" || exit 54
+grep -Fq 'defGHI' "$line_file" && exit 55
+grep -Fq "DB_PASSWORD=***REDACTED***" "$line_file" || exit 56
+grep -Fq "'w0rd" "$line_file" && exit 57
+grep -Fq '"Authorization": ***REDACTED***' "$line_file" || exit 51
 grep -Fq 'json_bearer_value' "$line_file" && exit 52
 grep -Fq 'gho_***REDACTED***' "$line_file" || exit 14
 grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15
