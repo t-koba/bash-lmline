@@ -1502,6 +1502,14 @@ doctor_secret_out=$(LMLINE_API_KEY_FILE="$doctor_secret_dir/key" LMLINE_CONFIG_D
 grep -q '^auth=configured$' <<<"$doctor_secret_out" || fail "doctor configured auth"
 ! grep -q 'configured API key file is missing or unreadable' <<<"$doctor_secret_out" ||
   fail "doctor warned about a readable secret file"
+if (( EUID != 0 )); then
+  chmod 000 "$doctor_secret_dir/key"
+  doctor_unreadable_out=$(LMLINE_API_KEY_FILE="$doctor_secret_dir/key" LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor)
+  grep -q 'configured API key file is missing or unreadable' <<<"$doctor_unreadable_out" ||
+    fail "doctor missed an unreadable secret file"
+  ! grep -q "$doctor_secret_dir/key" <<<"$doctor_unreadable_out" || fail "doctor leaked the unreadable secret path"
+  chmod 600 "$doctor_secret_dir/key"
+fi
 rm -f "$doctor_secret_dir/key"
 doctor_missing_secret_out=$(LMLINE_API_KEY_FILE="$doctor_secret_dir/key" LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor)
 grep -q 'configured API key file is missing or unreadable' <<<"$doctor_missing_secret_out" ||
