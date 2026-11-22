@@ -147,6 +147,11 @@ bash -c '
   [[ $(__lmline_risk_level "sh -s <<< ${hsq}echo echo MARK | sh${hsq} arg") == high ]]
   [[ $(__lmline_risk_level "bash -s -- <<< ${hsq}echo echo MARK | sh${hsq} arg") == high ]]
   [[ $(__lmline_risk_level "bash -s <<< ${hsq}echo echo MARK | sh${hsq} /dev/null") == high ]]
+  # A positional -s is data: it is not an option after -c or a script file.
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "sh -c ${hsq}echo hi${hsq} -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash /path/script.sh -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} foo -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "sh /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash \"/dev/stdin\" <<< ${hsq}rm -rf /${hsq}") == high ]]

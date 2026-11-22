@@ -2333,12 +2333,23 @@ __lmline_risk_here_string_payload() {
     if (( require_copy )) && __lmline_risk_word_copies_stdin_with_operands "${quoted[cmd_index]}"; then
       copies_with_operands=1
     fi
-    # With -s the shell reads its script from stdin whatever follows it, so
-    # later words are positional arguments rather than script-file operands.
+    # With -s the shell reads its script from stdin whatever follows it, but
+    # -s is an option only before the first operand and without -c. Redirect
+    # syntax is skipped while looking for that option.
     for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
       word=${quoted[index]}
+      if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
+        [[ $word == *'<<<' ]] && index=$((index + 1))
+        continue
+      fi
+      if __lmline_risk_redirect_word "$word"; then
+        (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
+        continue
+      fi
       [[ $word == -- ]] && break
-      [[ $word == -s ]] && stdin_script=1
+      [[ $word == -s ]] && { stdin_script=1; continue; }
+      [[ $word == -* ]] || break
+      [[ $word == -*c* ]] && break
     done
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already
