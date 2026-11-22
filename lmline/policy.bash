@@ -2361,7 +2361,6 @@ __lmline_risk_here_string_payload() {
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
     stdin_script=0
-    stdout_sunk=0
     mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0)")
     ((${#plain[@]})) || continue
     active=0
