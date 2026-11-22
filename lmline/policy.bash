@@ -1209,13 +1209,16 @@ __lmline_risk_level_rank() {
 # are removed, and a backslash escapes the next character. The words are
 # data and are never executed.
 __lmline_risk_split_words() {
-  local str=$1 keep_backticks=${2:-0} word="" ch quote="" i n
+  local str=$1 keep_backticks=${2:-0} keep_escapes=${3:-0} word="" ch quote="" i n
   n=${#str}
   for ((i = 0; i < n; i++)); do
     ch=${str:i:1}
     if [[ -n "$quote" ]]; then
       if [[ "$quote" == '"' && "$ch" == "\\" ]]; then
         i=$((i + 1))
+        if (( keep_escapes )) && [[ ${str:i:1} == '$' || ${str:i:1} == '`' || ${str:i:1} == '\\' ]]; then
+          word+="\\"
+        fi
         word+=${str:i:1}
         continue
       fi
@@ -1238,6 +1241,9 @@ __lmline_risk_split_words() {
         ;;
       "\\")
         i=$((i + 1))
+        if (( keep_escapes )) && [[ ${str:i:1} == '$' || ${str:i:1} == '`' || ${str:i:1} == '\\' ]]; then
+          word+="\\"
+        fi
         word+=${str:i:1}
         ;;
       ' '|$'\t')
@@ -1658,20 +1664,20 @@ __lmline_risk_shell_c_substitution_payloads() {
     generated=$(__lmline_risk_dynamic_c_script "$carried")
     [[ -n $generated ]] || continue
     printf '%s\n' "$generated"
-  done < <(__lmline_risk_shell_c_command_strings_in "$cmd")
+  done < <(__lmline_risk_shell_c_command_strings_in "$cmd" 1)
 }
 
 # Command strings the shell command words in a command run through -c. The
 # whole command is read once so a command substitution feeding -c stays one
 # argument; segments then cover shells hidden behind other commands.
 __lmline_risk_shell_c_command_strings_in() {
-  local cmd=$1 segment word index cmd_index raw_index
+  local cmd=$1 preserve_escapes=${2:-0} segment word index cmd_index raw_index
   local -a words raw_words source_words
   if [[ $cmd == *'$('* || $cmd == *'`'* ]]; then
     raw_words=()
     source_words=()
     mapfile -t raw_words < <(__lmline_risk_split_words "$cmd")
-    mapfile -t source_words < <(__lmline_risk_split_words "$cmd" 1)
+    mapfile -t source_words < <(__lmline_risk_split_words "$cmd" 1 "$preserve_escapes")
     raw_index=$(__lmline_risk_segment_command_index "${raw_words[@]}") || raw_index=-1
     if (( raw_index >= 0 )) && __lmline_risk_word_runs_shell "${raw_words[raw_index]}"; then
       __lmline_risk_shell_c_command_strings "${source_words[@]:raw_index+1}"
@@ -1683,7 +1689,7 @@ __lmline_risk_shell_c_command_strings_in() {
     words=()
     source_words=()
     mapfile -t words < <(__lmline_risk_split_words "$segment")
-    mapfile -t source_words < <(__lmline_risk_split_words "$segment" 1)
+    mapfile -t source_words < <(__lmline_risk_split_words "$segment" 1 "$preserve_escapes")
     ((${#words[@]})) || continue
     cmd_index=$(__lmline_risk_segment_command_index_with "$segment" "${words[@]}") || continue
     word=${words[cmd_index]}

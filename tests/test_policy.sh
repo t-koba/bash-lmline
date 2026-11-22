@@ -149,6 +149,10 @@ bash -c '
   # A substitution quoted in the -c operand hands its output to echo as data;
   # the real shell prints the payload and never starts the piped shell.
   [[ $(__lmline_risk_level "bash -c \"echo \\\"\$(cat <<< ${hsq}echo hi | sh${hsq})\\\"\"") == low ]]
+  # An escaped opener is expanded by the inner shell at run time, so its
+  # output stays data even in a dynamic -c operand.
+  [[ $(__lmline_risk_level "bash -c \"echo \\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \\`cat <<< ${hsq}echo hi | sh${hsq}\\`\"") == low ]]
   # Backticks carry the same nested command string in their own spelling.
   [[ $(__lmline_risk_level "\`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
   [[ $(__lmline_risk_level "echo \`cat <<< ${hsq}echo hi | sh${hsq}\`") == low ]]
