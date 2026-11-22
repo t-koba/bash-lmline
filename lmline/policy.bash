@@ -2484,8 +2484,8 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index payload_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_before=0 filter_after=0 active fd alias_matches carried_fd reaches alias_claimed
-  local -a plain=() quoted=() words=() filter_words=() before_words=()
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 active fd alias_matches carried_fd reaches alias_claimed
+  local -a plain=() quoted=() words=() filter_words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -2524,35 +2524,26 @@ __lmline_risk_here_string_payload() {
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
       stdout_sunk=0
-      filter_before=0
-      filter_after=0
+      filter_operand=0
       if (( require_copy )); then
-        # Match filter syntax on each side of the operator separately. A
-        # stream alias after a standalone operator is not filter syntax.
-        payload_index=$((op_index + 1))
-        [[ ${quoted[op_index]} == *'<<<' ]] && payload_index=$((payload_index + 1))
-        before_words=()
-        for ((index = cmd_index + 1; index < op_index; index++)); do
-          word=${quoted[index]}
-          __lmline_risk_descriptor_duplication_word "$word" && continue
-          if __lmline_risk_redirect_word "$word"; then
-            (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
-            continue
-          fi
-          before_words+=("$word")
-        done
-        __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" "${before_words[@]}" && filter_before=1
+        # Filter syntax can be split around the operator. A stream alias is
+        # not filter syntax: it names the input the filter should read.
         filter_words=()
-        for ((index = payload_index; index < ${#quoted[@]}; index++)); do
+        for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
           word=${quoted[index]}
+          [[ $index == op_index ]] && continue
+          if [[ ${quoted[op_index]} == *'<<<' ]] && (( index == op_index + 1 )); then
+            continue
+          fi
           __lmline_risk_descriptor_duplication_word "$word" && continue
           if __lmline_risk_redirect_word "$word"; then
             (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
             continue
           fi
+          __lmline_risk_stream_script_alias_descriptor "$word" >/dev/null && continue
           filter_words+=("$word")
         done
-        __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" "${filter_words[@]}" && filter_after=1
+        __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" "${filter_words[@]}" && filter_operand=1
       fi
       # Only duplication after the operator copies the here-string's fd;
       # an earlier one copied the stdin that preceded the operator.
@@ -2581,13 +2572,9 @@ __lmline_risk_here_string_payload() {
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
-        # Matched filter syntax is the producer's own operands, not a script
-        # file the shell would read. An unmatched word after the operator can
-        # still be a stream alias carrying the payload.
-        if (( filter_before && index < op_index )) ||
-           (( filter_after && index >= payload_index )); then
-          continue
-        fi
+        # A matched verbatim filter keeps its own syntax on either side of
+        # the operator; none of it is a script file the shell would read.
+        (( filter_operand )) && continue
         (( copies_with_operands )) && continue
         # An alias reads the payload when its descriptor is the here-string's
         # own or one a later duplication copied it to; otherwise it is a file.

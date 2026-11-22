@@ -280,6 +280,12 @@ bash -c '
   done
   [[ $(__lmline_risk_level "bash -c \"\$(head -n 1 <<< ${hsq}echo echo MARK | sh${hsq} /dev/fd/0)\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(head -n 1 <<< ${hsq}echo echo MARK | sh${hsq} file)\"") == low ]]
+  # Filter syntax may be split around the here-string operator.
+  for spec in "sed -n <<< ${hsq}echo echo MARK | sh${hsq} p" \
+              "tr a <<< ${hsq}echo echo MARK | sh${hsq} a" \
+              "head -n <<< ${hsq}echo echo MARK | sh${hsq} 1"; do
+    [[ $(__lmline_risk_level "bash -c \"\$(${spec})\"") == high ]]
+  done
   # Redirecting the copier stdout keeps the here-string out of the command
   # substitution: only the ordinary redirection risk remains.
   [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
