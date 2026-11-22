@@ -360,7 +360,7 @@ profile_endpoint_set_secret() {
 }
 
 profile_endpoint_remove() {
-  local name=${1-} keep_secret=0 line api_key_file tmp
+  local name=${1-} keep_secret=0 line api_key_file tmp secret_dir
   [[ -n "$name" ]] || { usage; exit 2; }
   shift
   while (($#)); do
@@ -379,12 +379,14 @@ profile_endpoint_remove() {
     chmod 600 "$models_file" 2>/dev/null || true
   fi
   if (( keep_secret == 0 )) && [[ -n "$api_key_file" ]]; then
+    secret_dir=$config_dir/secrets
     case "$api_key_file" in
-      "$config_dir"/secrets/*)
-        if __lmline_path_has_traversal_after_component "$api_key_file"; then
-          printf 'lmline: unsafe secret path was kept: %s\n' "$api_key_file" >&2
-        else
+      "$secret_dir"/*)
+        if [[ ${api_key_file%/*} == "$secret_dir" && ! -L "$secret_dir" ]] &&
+          ! __lmline_path_has_traversal_after_component "$api_key_file"; then
           rm -f "$api_key_file"
+        else
+          printf 'lmline: unsafe secret path was kept: %s\n' "$api_key_file" >&2
         fi
         ;;
       *) printf 'lmline: secret file outside %s/secrets was kept: %s\n' "$config_dir" "$api_key_file" >&2 ;;

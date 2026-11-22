@@ -1145,6 +1145,19 @@ grep -q 'credential path is occupied' "$dir_secret_tmp/err" || fail "set-secret 
 [[ "$(cat "$dir_secret_tmp/config/endpoints.tsv")" == "$before_dir_secret" ]] || fail "occupied credential path changed the profile"
 [[ -z $(find "$dir_secret_path" -type f -print) ]] || fail "credential was moved into the directory"
 rm -rf "$dir_secret_tmp"
+# A symlinked parent inside the secrets directory must not redirect deletion.
+link_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-link-secret.XXXXXX")
+mkdir -p "$link_secret_tmp/config/secrets" "$link_secret_tmp/outside"
+printf 'link-victim' >"$link_secret_tmp/outside/victim"
+ln -s "$link_secret_tmp/outside" "$link_secret_tmp/config/secrets/link"
+printf 'linked\thttps://example.invalid/v1\tAuthorization\tBearer\t%s\t\t\t\t\t\t\t\t\t\n' \
+  "$link_secret_tmp/config/secrets/link/victim" >"$link_secret_tmp/config/endpoints.tsv"
+env -i HOME="$link_secret_tmp" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" \
+  LMLINE_CONFIG_DIR="$link_secret_tmp/config" "$repo_dir/lmline/lmline" \
+  endpoint remove linked >"$link_secret_tmp/out" 2>"$link_secret_tmp/err" || fail "endpoint remove with symlinked secret parent"
+grep -q 'unsafe secret path was kept' "$link_secret_tmp/err" || fail "endpoint remove did not report the symlinked secret parent"
+cmp -s <(printf 'link-victim') "$link_secret_tmp/outside/victim" || fail "endpoint remove deleted a file through a symlinked parent"
+rm -rf "$link_secret_tmp"
 # A managed secret path that escapes the secrets directory is never deleted.
 escape_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-escape-secret.XXXXXX")
 mkdir -p "$escape_secret_tmp/config/secrets"
