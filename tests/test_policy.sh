@@ -263,6 +263,16 @@ bash -c '
   # A transforming filter or a file operand does not copy the here-string.
   [[ $(__lmline_risk_level "bash -c \"\$(tr a-z A-Z <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(sed -n 1p script.sh <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  # An unrelated redirect does not stop a filter from copying stdin, and its
+  # operands may follow a standalone here-string operator.
+  [[ $(__lmline_risk_level "bash -c \"\$(head -n 1 2>/dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(head <<< ${hsq}echo echo MARK | sh${hsq} -n 1)\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(grep <<< ${hsq}echo echo MARK | sh${hsq} .)\"") == high ]]
+  # Other common verbatim spellings carry the same payload.
+  [[ $(__lmline_risk_level "bash -c \"\$(grep -e . <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(awk ${hsq}{print;}${hsq} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(sed -n ${hsq}p;${hsq} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(grep -F . <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   # Redirecting the copier stdout keeps the here-string out of the command
   # substitution: only the ordinary redirection risk remains.
   [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]

@@ -2322,9 +2322,9 @@ __lmline_risk_copier_operand_prefix() {
   case $cmd in
     cat|tee) (( count == 0 )) ;;
     head|tail) [[ ($count == 2 && $1 == -n && $2 == 1) || ($count == 1 && $1 == -1) ]] ;;
-    sed) [[ $count == 2 && $1 == -n && ($2 == p || $2 == 1p || $2 == '$p') ]] ;;
-    awk) [[ $count == 1 && ($1 == 1 || $1 == '{print}' || $1 == '{ print }') ]] ;;
-    grep) [[ $count == 1 && $1 == . ]] ;;
+    sed) [[ $count == 2 && $1 == -n && ($2 == p || $2 == 1p || $2 == '$p' || $2 == 'p;') ]] ;;
+    awk) [[ $count == 1 && ($1 == 1 || $1 == '{print}' || $1 == '{ print }' || $1 == '{print;}') ]] ;;
+    grep) [[ ($count == 1 && $1 == .) || ($count == 2 && $1 == -e && $2 == .) ]] ;;
     tr) [[ $count == 2 && $1 != -* && $1 == "$2" ]] ;;
     *) return 1 ;;
   esac
@@ -2484,8 +2484,8 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 active fd alias_matches carried_fd reaches alias_claimed
-  local -a plain=() quoted=() words=()
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 active fd alias_matches carried_fd reaches alias_claimed
+  local -a plain=() quoted=() words=() filter_words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -2524,6 +2524,24 @@ __lmline_risk_here_string_payload() {
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
       stdout_sunk=0
+      filter_operand=0
+      if (( require_copy )); then
+        filter_words=()
+        for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
+          word=${quoted[index]}
+          [[ $index == op_index ]] && continue
+          if [[ ${quoted[op_index]} == *'<<<' ]] && (( index == op_index + 1 )); then
+            continue
+          fi
+          __lmline_risk_descriptor_duplication_word "$word" && continue
+          if __lmline_risk_redirect_word "$word"; then
+            (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
+            continue
+          fi
+          filter_words+=("$word")
+        done
+        __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" "${filter_words[@]}" && filter_operand=1
+      fi
       # Only duplication after the operator copies the here-string's fd;
       # an earlier one copied the stdin that preceded the operator.
       __lmline_risk_carry_fds "$fd" $((op_index + 1)) "${quoted[@]}"
@@ -2538,13 +2556,6 @@ __lmline_risk_here_string_payload() {
       for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
         word=${quoted[index]}
         (( stdin_script )) && continue
-        # Operands of a known verbatim filter are its own syntax, not a
-        # script file the shell would read.
-        if (( index < op_index )) &&
-           __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" \
-             "${quoted[@]:cmd_index+1:op_index-cmd_index-1}"; then
-          continue
-        fi
         # A standalone earlier here-string consumes its payload word, so that
         # word is not a script file given to the shell.
         if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
@@ -2558,6 +2569,9 @@ __lmline_risk_here_string_payload() {
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
+        # A matched verbatim filter keeps its own syntax on either side of
+        # the operator; none of it is a script file the shell would read.
+        (( filter_operand )) && continue
         (( copies_with_operands )) && continue
         # An alias reads the payload when its descriptor is the here-string's
         # own or one a later duplication copied it to; otherwise it is a file.
