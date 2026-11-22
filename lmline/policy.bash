@@ -1519,9 +1519,9 @@ __lmline_risk_shell_carries_remove() {
           # it for the inner scan, so a quote closes around a separator and
           # the semicolon stays literal data.
           carried=${carried//$qmark/$apostrophe}
-          # An embedded substitution is expanded as data before the shell
-          # runs the command string; only a leading substitution supplies it.
-          if [[ $carried == '$('* || $carried == '`'* ]]; then
+          # A substitution supplies the command string only in command
+          # position; elsewhere its output is data to another command.
+          if __lmline_risk_substitution_in_command_position "$carried"; then
             __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) && return 0
           fi
           if (( subst_body )); then
@@ -1544,6 +1544,28 @@ __lmline_risk_shell_carries_remove() {
     (( expect_value )) || return 1
     expect_value=0
   done
+  return 1
+}
+
+# Whether a command substitution stands where a command can run in a shell
+# command string. The structural splitter cuts at the substitution opener, so
+# a standalone `$` word marks it; assignments before it are the command's own
+# environment, while any other earlier word makes the output plain data.
+__lmline_risk_substitution_in_command_position() {
+  local text=$1 segment word index earlier
+  local -a words=()
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    words=()
+    mapfile -t words < <(__lmline_risk_split_words "$segment")
+    for ((index = 0; index < ${#words[@]}; index++)); do
+      [[ ${words[index]} == '$' ]] || continue
+      for ((earlier = 0; earlier < index; earlier++)); do
+        [[ ${words[earlier]} == *=* ]] && continue
+        break
+      done
+      (( earlier == index )) && return 0
+    done
+  done <<<"$(__lmline_split_pipeline "$text" 1 "()" bash structural-substitution)"
   return 1
 }
 

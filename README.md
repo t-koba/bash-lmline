@@ -775,9 +775,9 @@ runs another program carries (`env -i rm -fr build`, `timeout 5 rm -fr build`,
 `busybox rm -rf /`), a remove behind the operand a program names for itself
 (`su root rm -rf /`, `chroot /path rm -rf /`), and a remove written in a shell
 command string (`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one
-command; so is a command string supplied by a leading command substitution
-(`bash -c "$(cat <<< "rm -fr build")"`), while a substitution embedded in other
-text is only data. An active here-string
+command; so is a command string supplied by a command substitution in command
+position (`bash -c "$(cat <<< "rm -fr build")"`). A substitution used as an
+argument or assignment value is only data. An active here-string
 given to a shell (`bash <<< "rm -fr build"`) is
 also the script that shell reads; the `source` and `.` builtins read it the
 same way. A here-string given to another program or to a shell that already has

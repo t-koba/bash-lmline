@@ -92,6 +92,13 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"echo \$(cat /dev/stdin <<< ${hsq}rm -rf /${hsq})\"") == low ]]
   # A leading substitution still supplies the command string when text follows.
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}rm -rf /${hsq}); echo hi\"") == high ]]
+  # Shell syntax before a substitution can still place its output in command
+  # position, including after an assignment prefix.
+  [[ $(__lmline_risk_level "bash -c \" \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"true; \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo hi && \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo hi | \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"FOO=1 \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
   # The payload can be glued to the operator, and quotes around part of the
   # command word do not keep the shell from running it.
   [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]
