@@ -2266,7 +2266,7 @@ __lmline_risk_word_copies_stdin_with_operands() {
 # options and short bundles need their own values skipped before that prefix
 # ends; once -s is seen later words are positional parameters, not a script.
 __lmline_risk_shell_stdin_script() {
-  local start=$1 index word base seen_s=0 command_string=0
+  local start=$1 index word option base seen_s=0 command_string=0
   shift
   local -a words=("$@")
   for ((index = start + 1; index < ${#words[@]}; index++)); do
@@ -2279,14 +2279,17 @@ __lmline_risk_shell_stdin_script() {
       (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
       continue
     fi
-    [[ $word == -- ]] && break
-    if [[ $word != -* ]]; then
+    # The quote-preserving view keeps shell quotes and escapes; option names
+    # must be read as the shell would read them.
+    option=${word//[\'\"\\]/}
+    [[ $option == -- ]] && break
+    if [[ $option != -* ]]; then
       (( seen_s )) && continue
       break
     fi
-    if [[ $word == --* ]]; then
-      [[ $word == *=* ]] && continue
-      base=${word%%=*}
+    if [[ $option == --* ]]; then
+      [[ $option == *=* ]] && continue
+      base=${option%%=*}
       case $base in
         --rcfile|--init-file|--o|--O|--op|--optimization|--rpm|--wordchars|--histchars)
           index=$((index + 1))
@@ -2294,9 +2297,9 @@ __lmline_risk_shell_stdin_script() {
       esac
       continue
     fi
-    if [[ $word == *c* ]]; then command_string=1; break; fi
-    [[ $word == *s* ]] && seen_s=1
-    [[ $word == *[oO]* ]] && index=$((index + 1))
+    if [[ $option == *c* ]]; then command_string=1; break; fi
+    [[ $option == *s* ]] && seen_s=1
+    [[ $option == *[oO]* ]] && index=$((index + 1))
   done
   (( seen_s && ! command_string ))
 }
