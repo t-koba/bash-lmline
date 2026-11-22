@@ -1183,6 +1183,41 @@ env -i HOME="$escape_secret_tmp" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" \
 grep -q 'unsafe secret path was kept' "$escape_secret_tmp/err" || fail "endpoint remove did not report the unsafe secret path"
 cmp -s <(printf 'escape-victim') "$escape_secret_tmp/config/victim" || fail "endpoint remove deleted a file outside the secrets directory"
 rm -rf "$escape_secret_tmp"
+# A failed credential deletion keeps the endpoint so the normal removal command
+# can be retried after the filesystem problem is fixed.
+retry_remove_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-remove-retry.XXXXXX")
+mkdir -p "$retry_remove_tmp/config/secrets" "$retry_remove_tmp/fail-bin"
+retry_secret="$retry_remove_tmp/config/secrets/endpoint-retry-api-key.secret"
+printf 'retry-secret-sentinel' >"$retry_secret"
+printf 'retry\thttps://example.invalid/v1\tAuthorization\tBearer\t%s\t\t\t\t\t\t\t\t\t\n' \
+  "$retry_secret" >"$retry_remove_tmp/config/endpoints.tsv"
+retry_rm_marker="$retry_remove_tmp/rm-called"
+retry_real_rm=$(command -v rm)
+cat >"$retry_remove_tmp/fail-bin/rm" <<EOF
+#!/usr/bin/env bash
+if [[ \$1 == -f && \$2 == "$retry_secret" ]]; then
+  printf 'called\n' >>"$retry_rm_marker"
+  exit 1
+fi
+exec "$retry_real_rm" "\$@"
+EOF
+chmod +x "$retry_remove_tmp/fail-bin/rm"
+if env -i HOME="$retry_remove_tmp" PATH="$retry_remove_tmp/fail-bin:$PATH" TMPDIR="${TMPDIR:-/tmp}" \
+  LMLINE_CONFIG_DIR="$retry_remove_tmp/config" "$repo_dir/lmline/lmline" \
+  endpoint remove retry >"$retry_remove_tmp/out" 2>"$retry_remove_tmp/err"; then
+  fail "endpoint remove succeeded when credential deletion failed"
+fi
+[[ -f "$retry_rm_marker" ]] || fail "credential deletion was not attempted"
+awk -F'\t' '$1=="retry" {found=1} END {exit !found}' "$retry_remove_tmp/config/endpoints.tsv" || fail "endpoint was discarded before credential deletion succeeded"
+grep -q 'endpoint was kept for retry' "$retry_remove_tmp/err" || fail "credential deletion failure was not reported"
+cmp -s <(printf 'retry-secret-sentinel') "$retry_secret" || fail "credential changed when deletion failed"
+LMLINE_CONFIG_DIR="$retry_remove_tmp/config" "$repo_dir/lmline/lmline" \
+  endpoint remove retry >"$retry_remove_tmp/retry.out" 2>"$retry_remove_tmp/retry.err" || fail "endpoint remove retry failed"
+[[ ! -e "$retry_secret" ]] || fail "retry left the credential behind"
+if awk -F'\t' '$1=="retry" {found=1} END {exit !found}' "$retry_remove_tmp/config/endpoints.tsv"; then
+  fail "retry left the endpoint behind"
+fi
+rm -rf "$retry_remove_tmp"
 # A symlinked config directory spelled with a dot component is refused by the
 # shared private-directory guard just like a directly symlinked secrets dir.
 dot_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dot-secret.XXXXXX")

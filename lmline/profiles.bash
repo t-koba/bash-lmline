@@ -372,25 +372,28 @@ profile_endpoint_remove() {
   profile_require_name endpoint "$name"
   line=$(profile_find_line "$endpoints_file" "$name") || { printf 'lmline: unknown endpoint: %s\n' "$( __lmline_display_endpoint "$name" )" >&2; exit 2; }
   profile_split_tsv "$line" _ _ _ _ api_key_file _
-  profile_filter_out_key "$endpoints_file" 1 "$name"
-  chmod 600 "$endpoints_file" 2>/dev/null || true
-  if [[ -f "$models_file" ]]; then
-    profile_filter_out_key "$models_file" 1 "$name"
-    chmod 600 "$models_file" 2>/dev/null || true
-  fi
   if (( keep_secret == 0 )) && [[ -n "$api_key_file" ]]; then
     secret_dir=$config_dir/secrets
     case "$api_key_file" in
       "$secret_dir"/*)
         if [[ ${api_key_file%/*} == "$secret_dir" && ! -L "$secret_dir" ]] &&
           ! __lmline_path_has_traversal_after_component "$api_key_file"; then
-          rm -f "$api_key_file"
+          if ! rm -f "$api_key_file"; then
+            printf 'lmline: could not remove credential; endpoint was kept for retry: %s\n' "$api_key_file" >&2
+            exit 1
+          fi
         else
           printf 'lmline: unsafe secret path was kept: %s\n' "$api_key_file" >&2
         fi
         ;;
       *) printf 'lmline: secret file outside %s/secrets was kept: %s\n' "$config_dir" "$api_key_file" >&2 ;;
     esac
+  fi
+  profile_filter_out_key "$endpoints_file" 1 "$name"
+  chmod 600 "$endpoints_file" 2>/dev/null || true
+  if [[ -f "$models_file" ]]; then
+    profile_filter_out_key "$models_file" 1 "$name"
+    chmod 600 "$models_file" 2>/dev/null || true
   fi
   if [[ "${LMLINE_ACTIVE_ENDPOINT:-}" == "$name" ]]; then
     printf 'lmline: removed endpoint %s was active; run lmline use ENDPOINT [MODEL] to select another\n' "$( __lmline_display_endpoint "$name" )" >&2
