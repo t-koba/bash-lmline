@@ -2244,11 +2244,14 @@ __lmline_risk_descriptor_duplication_word() {
   __LMLINE_RISK_DUP_SOURCE=$((10#$source))
 }
 
-# The only stdin producer whose output is known to carry the here-string into
-# a command substitution is cat. An unknown or no-output producer is not
-# assumed to copy its input.
+# Verbatim stdin producers whose output carries the here-string into a
+# command substitution. An unknown or no-output producer is not assumed to
+# copy its input.
 __lmline_risk_word_copies_stdin() {
-  [[ ${1##*/} == cat ]]
+  case ${1##*/} in
+    cat|tee) return 0 ;;
+  esac
+  return 1
 }
 
 # Follow descriptor duplications after a script-carrying operator in source
