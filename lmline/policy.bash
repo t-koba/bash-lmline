@@ -2254,6 +2254,12 @@ __lmline_risk_word_copies_stdin() {
   return 1
 }
 
+# tee copies stdin to stdout even when file operands are present; cat instead
+# reads those files and stops using stdin.
+__lmline_risk_word_copies_stdin_with_operands() {
+  [[ ${1##*/} == tee ]]
+}
+
 # Follow descriptor duplications after a script-carrying operator in source
 # order. Each duplication overwrites its target with its source: a copied
 # carrier joins the set, and a target overwritten from a non-carrier leaves it.
@@ -2296,7 +2302,7 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 stdin_script=0 active fd alias_matches carried_fd reaches alias_claimed
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 active fd alias_matches carried_fd reaches alias_claimed
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2322,6 +2328,10 @@ __lmline_risk_here_string_payload() {
     fi
     if (( require_copy )) && ! __lmline_risk_word_copies_stdin "${quoted[cmd_index]}"; then
       continue
+    fi
+    copies_with_operands=0
+    if (( require_copy )) && __lmline_risk_word_copies_stdin_with_operands "${quoted[cmd_index]}"; then
+      copies_with_operands=1
     fi
     # With -s the shell reads its script from stdin whatever follows it, so
     # later words are positional arguments rather than script-file operands.
@@ -2360,6 +2370,7 @@ __lmline_risk_here_string_payload() {
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
+        (( copies_with_operands )) && continue
         # An alias reads the payload when its descriptor is the here-string's
         # own or one a later duplication copied it to; otherwise it is a file.
         fd=$(__lmline_risk_stream_script_alias_descriptor "$word") || fd=

@@ -205,6 +205,8 @@ bash -c '
   # its producer copies stdin to stdout.
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(tee <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(tee /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(tee -a /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(true <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo echo MARK | sh${hsq} /dev/null)\"") == low ]]
