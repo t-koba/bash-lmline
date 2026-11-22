@@ -1545,7 +1545,7 @@ __lmline_risk_shell_carries_remove() {
     [[ -n $carried ]] || continue
     # A substitution supplies the command string only in command
     # position; elsewhere its output is data to another command.
-    if __lmline_risk_substitution_in_command_position "$carried"; then
+    if __lmline_risk_substitution_any_in_command_position "$carried"; then
       # Every substitution in a -c string helps build the command string,
       # even one that is an argument where the string itself is parsed.
       __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) 1 && return 0
@@ -1559,6 +1559,18 @@ __lmline_risk_shell_carries_remove() {
     __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
   done < <(__lmline_risk_shell_c_command_strings "$@")
   return 1
+}
+
+# Every substitution in a -c argument helps build the command string, even
+# one that would be data where that string is parsed. Judge their payloads
+# when the string has a substitution in command position.
+__lmline_risk_shell_c_substitution_payloads() {
+  local cmd=$1 carried
+  while IFS= read -r carried || [[ -n $carried ]]; do
+    [[ -n $carried ]] || continue
+    __lmline_risk_substitution_any_in_command_position "$carried" || continue
+    __lmline_risk_substitution_command_payloads "$carried" 1
+  done < <(__lmline_risk_shell_c_command_strings_in "$cmd")
 }
 
 # Command strings the shell command words in a command run through -c. The
@@ -1634,6 +1646,21 @@ __lmline_risk_substitution_in_command_position() {
   return 1
 }
 
+# Backticks are another spelling of command substitution; normalize each pair
+# to the marker the structural splitter uses before judging command position.
+__lmline_risk_substitution_any_in_command_position() {
+  local text=$1 normalized='' index ch opening=1
+  for ((index = 0; index < ${#text}; index++)); do
+    ch=${text:index:1}
+    if [[ $ch == '`' ]]; then
+      if (( opening )); then normalized+='$('; opening=0; else normalized+=')'; opening=1; fi
+    else
+      normalized+=$ch
+    fi
+  done
+  __lmline_risk_substitution_in_command_position "$normalized"
+}
+
 # The text a command substitution can hand back to a command string: literal
 # here-string data copied by its body, and the body itself. The body is read,
 # never executed.
@@ -1688,15 +1715,11 @@ __lmline_risk_substitution_command_payloads() {
 # A command substitution can provide the command string a shell runs. Judge
 # the data it can hand back as that command string.
 __lmline_risk_substitution_payload_remove() {
-  local text=$1 depth=$2 all=${3:-0} payload match
+  local text=$1 depth=$2 all=${3:-0} payload
   (( depth < 4 )) || return 1
   while IFS= read -r payload || [[ -n $payload ]]; do
     [[ -n $payload ]] || continue
     __lmline_risk_recursive_remove "$payload" $((depth + 1)) && return 0
-    # A payload that builds a command string can carry risks other than a
-    # recursive remove, so judge it with the same rules as the outer command.
-    match=$(__lmline_risk_match "$payload" $((depth + 1))) || return 1
-    [[ ${match%%$'\t'*} == high ]] && return 0
   done < <(__lmline_risk_substitution_command_payloads "$text" "$all")
   return 1
 }
@@ -2745,7 +2768,10 @@ __lmline_risk_match() {
   # with these same rules at a bounded depth, including strings supplied by a
   # substitution in command position.
   if (( depth < 3 )); then
-    nested_match=$(__lmline_risk_nested_best "$depth" < <(__lmline_risk_shell_c_command_strings_in "$expanded")) || return 1
+    nested_match=$(__lmline_risk_nested_best "$depth" < <(
+      __lmline_risk_shell_c_command_strings_in "$expanded"
+      __lmline_risk_shell_c_substitution_payloads "$expanded"
+    )) || return 1
     if [[ -n $nested_match ]]; then
       nested_level=${nested_match%%$'\t'*}
       rank=$(__lmline_risk_level_rank "$nested_level")
