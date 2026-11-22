@@ -214,6 +214,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/4 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq}) 4<&3") == high ]]
   [[ $(__lmline_risk_reason "bash /dev/fd/4 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq}) 4<&3") == "generated shell script execution" ]]
   [[ $(__lmline_risk_level "bash /dev/fd/4 4<&3 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq})") == low ]]
+  # A later overwrite from a non-carrier stops the payload; copying the
+  # carrier back into the alias restores it for both delivery paths.
+  [[ $(__lmline_risk_level "bash /dev/fd/4 <<< ${hsq}echo echo MARK | sh${hsq} 3<&0 4<&3 5< /dev/null 4<&5") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 <<< ${hsq}echo echo MARK | sh${hsq} 3<&0 4<&3 5< /dev/null 4<&5 4<&3") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq}) 5< /dev/null 4<&5") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq}) 5< /dev/null 4<&5 4<&3") == high ]]
   [[ $(__lmline_risk_level "cat /dev/stdin <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
