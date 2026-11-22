@@ -99,6 +99,11 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"echo hi && \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo hi | \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"FOO=1 \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  # Keywords, negation, timing and redirects introduce the command too.
+  for prefix in if "!" while until then do else time ">out" "2>&1" "> out"; do
+    [[ $(__lmline_risk_level "bash -c \"${prefix} \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  done
+  [[ $(__lmline_risk_level "bash -c \"time echo \$(cat <<< ${hsq}rm -rf /${hsq})\"") == low ]]
   # A substitution can supply any nested command string, not only a remove.
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_reason "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == "piped shell execution" ]]

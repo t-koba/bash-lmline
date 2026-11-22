@@ -1581,15 +1581,31 @@ __lmline_risk_shell_c_command_strings_in() {
 # a standalone `$` word marks it; assignments before it are the command's own
 # environment, while any other earlier word makes the output plain data.
 __lmline_risk_substitution_in_command_position() {
-  local text=$1 segment word index earlier
+  local text=$1 segment word index earlier skip_target
   local -a words=()
   while IFS= read -r segment || [[ -n $segment ]]; do
     words=()
     mapfile -t words < <(__lmline_risk_split_words "$segment")
     for ((index = 0; index < ${#words[@]}; index++)); do
       [[ ${words[index]} == '$' ]] || continue
+      skip_target=0
       for ((earlier = 0; earlier < index; earlier++)); do
-        [[ ${words[earlier]} == *=* ]] && continue
+        word=${words[earlier]}
+        [[ $word == *=* ]] && continue
+        if (( skip_target )); then
+          skip_target=0
+          continue
+        fi
+        # Shell structure before the command leaves the substitution in
+        # command position; an argument to a command does not.
+        if __lmline_risk_descriptor_duplication_word "$word"; then
+          continue
+        fi
+        if __lmline_risk_redirect_word "$word"; then
+          (( __LMLINE_RISK_REDIRECT_TARGET )) && skip_target=1
+          continue
+        fi
+        __lmline_word_is_command_prefix "$word" && continue
         break
       done
       (( earlier == index )) && return 0
