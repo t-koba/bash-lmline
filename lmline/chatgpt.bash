@@ -83,6 +83,7 @@ __lmline_chatgpt_client_path() {
 # in __lmline_chatgpt_base_reason so the user can act on it.
 __lmline_chatgpt_base_allowed() {
   local base=$1 scheme host
+  local LC_ALL=C
   __lmline_chatgpt_base_reason=
   [[ "$base" == *://* ]] || {
     __lmline_chatgpt_base_reason="a base URL without an explicit scheme is not allowed"
@@ -95,6 +96,11 @@ __lmline_chatgpt_base_allowed() {
     __lmline_chatgpt_base_reason="a base URL with embedded credentials is not allowed"
     return 1
   }
+  # Schemes and DNS names are case-insensitive. The CLI already accepts
+  # mixed-case spellings, so fold only ASCII before the allowlist comparison
+  # rather than refusing a destination it just registered.
+  scheme=${scheme,,}
+  host=${host,,}
   if [[ "$host" == \[*\]* ]]; then
     # A bracketed IPv6 literal, with an optional port.
     host=${host#\[}

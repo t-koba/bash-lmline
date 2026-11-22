@@ -168,6 +168,18 @@ grep -q $'^plan\tgpt-plan-hidden\t' <<<"$plan_models" || fail "a manually added 
 ! grep -q 'gpt-plan-no-visibility' <<<"$plan_models" || fail "a model without visibility is imported"
 ok "the plan endpoint reads its account model catalog"
 
+# URL schemes and DNS names are case-insensitive. The CLI accepts the
+# mixed-case spelling at registration, so the plan route must accept it too.
+lmline endpoint add mixed-case-plan 'HTTPS://API.OPENAI.COM/v1' --auth-mode chatgpt >/dev/null \
+  || fail "the mixed-case plan endpoint registration"
+: >"$cli_tmp/curl.log"
+if ! PATH="$plan_bin:$PATH" LMLINE_FAKE_CURL_LOG="$cli_tmp/curl.log" LMLINE_CHATGPT_CLIENT="$plan_bin/client" \
+    lmline model refresh mixed-case-plan >"$cli_tmp/mixed-case.out" 2>"$cli_tmp/mixed-case.err"; then
+  fail "the plan route refused a mixed-case base URL: $(sed -n '1p' "$cli_tmp/mixed-case.err")"
+fi
+grep -q called "$cli_tmp/curl.log" || fail "the mixed-case plan endpoint made no catalog request"
+ok "the plan route accepts a case-insensitive base URL"
+
 # The plan token spends the user's ChatGPT plan, so it must not travel to a
 # host the ChatGPT route does not allow. A foreign host is refused before
 # the token is fetched, and no request is made.

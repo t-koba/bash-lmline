@@ -224,7 +224,8 @@ The subscription token is sent only to the OpenAI API, and only over
 `http://localhost:PORT/v1`, or `http://[::1]:PORT/v1`) is accepted, because
 its traffic stays on the machine; any other host, a cleartext base to the
 OpenAI API, a base URL without an explicit scheme, and a base URL that embeds
-credentials are refused before a request is sent.
+credentials are refused before a request is sent. Scheme and host names are
+compared case-insensitively.
 
 ### Plan failures
 
