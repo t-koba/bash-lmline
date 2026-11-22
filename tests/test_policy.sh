@@ -227,6 +227,10 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\$(cat 1> /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
   [[ $(__lmline_risk_level "bash -c \"\$(tee > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat 2> /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  # A sink in one segment or operator must not hide a later real payload.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}rm -rf /${hsq}; cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq} | cat <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}ignore${hsq}; cat > /dev/null <<< ${hsq}rm -rf /${hsq})\"") == medium ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo echo MARK | sh${hsq} /dev/null)\"") == low ]]
   # A redirection target belongs to the redirect, not to the script file.
