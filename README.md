@@ -777,13 +777,18 @@ runs another program carries (`env -i rm -fr build`, `timeout 5 rm -fr build`,
 command string (`bash -c "rm -fr build"`, `bash -c"rm -fr build"`) are one
 command; so is a command string supplied by a command substitution in command
 position (`bash -c "$(cat <<< "rm -fr build")"`). A substitution used as an
-argument or assignment value is only data. Nested command strings are judged by
-these same rules. An active here-string
-given to a shell (`bash <<< "rm -fr build"`) is
-also the script that shell reads; the `source` and `.` builtins read it the
-same way. A here-string given to another program or to a shell that already has
-a command string or script file stays data. A
-standard-stream script alias such as `/dev/stdin` carries a payload only when
+argument or assignment value is only data; each occurrence is judged by its own
+role, while every substitution in a shell `-c` argument helps build that command
+string. Nested command strings are judged by these same rules. An active
+here-string given to a shell (`bash <<< "rm -fr build"`) is also the script that
+shell reads; the `source` and `.` builtins read it the same way. A here-string
+given to another program stays data unless a verbatim producer carries it into
+a substitution: `cat`, `tee`, and fixed one-line filters such as `head -n 1`,
+`tail -1`, `sed -n p`, `awk 1`, `grep .`, and an identity `tr` copy stdin
+unchanged, while a transforming filter or a named file operand does not. A
+here-string given to a shell that already has a command string or script file
+stays data. A standard-stream script alias such as `/dev/stdin` carries a
+payload only when
 its descriptor matches the input: `/dev/stdin` and `/dev/fd/0` match a
 here-string, while `/dev/fd/1` or `/dev/fd/9` name a script file instead. An
 explicit `0<<<` feeds stdin and `1<<<` does not. A process-substitution argument
