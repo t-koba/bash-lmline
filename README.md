@@ -785,7 +785,9 @@ shell reads; the `source` and `.` builtins read it the same way. A here-string
 given to another program stays data unless a verbatim producer carries it into
 a substitution: `cat`, `tee`, and fixed one-line filters such as `head -n 1`,
 `tail -1`, `sed -n p`, `awk 1`, `grep .`, and an identity `tr` copy stdin
-unchanged, while a transforming filter or a named file operand does not. A
+unchanged. A transforming filter or a named file operand stops `cat` and those
+filters from carrying it, while `tee` still copies stdin with file operands and
+a stream alias after a verbatim filter can carry the payload. A
 here-string given to a shell that already has a command string or script file
 stays data. A standard-stream script alias such as `/dev/stdin` carries a
 payload only when
