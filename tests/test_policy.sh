@@ -99,6 +99,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"echo hi && \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"echo hi | \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"FOO=1 \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
+  # A substitution can supply any nested command string, not only a remove.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_reason "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == "piped shell execution" ]]
+  [[ $(__lmline_risk_level "echo \$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
+  [[ $(__lmline_risk_level "x=\$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == low ]]
   # The payload can be glued to the operator, and quotes around part of the
   # command word do not keep the shell from running it.
   [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]

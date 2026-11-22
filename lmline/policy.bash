@@ -1482,11 +1482,13 @@ __lmline_risk_remove_word_is_recursive() {
 # so the search continues past them; the value of an option that takes one
 # belongs to the shell as well, and a word that is neither is the script the
 # shell runs, which ends the search.
-__lmline_risk_shell_carries_remove() {
-  local depth=$1 subst_body=${2:-0}
-  shift 2
-  local word cluster carried index count=$# expect_value=0
-  local qmark apostrophe
+# The command strings a shell runs through -c. A long option takes a value but
+# is never -c; a clustered -c carries the rest of its word and following words.
+# The marker keeps a decoded apostrophe inert while the outer word is scanned;
+# in the script a shell runs it is a real quote, so restore it for the inner
+# scan.
+__lmline_risk_shell_c_command_strings() {
+  local word cluster carried index count=$# expect_value=0 qmark apostrophe
   printf -v qmark '\035'
   printf -v apostrophe '\047'
   local -a shell_args=("$@")
@@ -1494,7 +1496,6 @@ __lmline_risk_shell_carries_remove() {
     word=${shell_args[index]}
     if [[ "$word" == -* ]]; then
       if [[ "$word" == --* ]]; then
-        # A long option is never the -c option, and it takes a value.
         expect_value=1
         continue
       fi
@@ -1503,8 +1504,6 @@ __lmline_risk_shell_carries_remove() {
         *c*)
           carried=${cluster#*c}
           if [[ -n $carried ]]; then
-            # The string is written into the option itself, so the words that
-            # follow it belong to it.
             while (( index + 1 < count )); do
               index=$((index + 1))
               carried+=" ${shell_args[index]}"
@@ -1514,37 +1513,67 @@ __lmline_risk_shell_carries_remove() {
             carried=${shell_args[index]}
           fi
           [[ -n $carried ]] || return 1
-          # The marker keeps a decoded apostrophe inert while the outer word
-          # is scanned; in the script a shell runs it is a real quote. Restore
-          # it for the inner scan, so a quote closes around a separator and
-          # the semicolon stays literal data.
-          carried=${carried//$qmark/$apostrophe}
-          # A substitution supplies the command string only in command
-          # position; elsewhere its output is data to another command.
-          if __lmline_risk_substitution_in_command_position "$carried"; then
-            __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) && return 0
-          fi
-          if (( subst_body )); then
-            while IFS= read -r nested_payload || [[ -n $nested_payload ]]; do
-              [[ -n $nested_payload ]] || continue
-              __lmline_risk_recursive_remove "$nested_payload" $((depth + 1)) && return 0
-            done < <(__lmline_risk_here_string_payload "$carried" 0)
-          fi
-          __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
-          return 1
+          printf '%s\n' "${carried//$qmark/$apostrophe}"
+          return 0
           ;;
       esac
-      # The option that names the shell's own settings takes a value.
       expect_value=0
       [[ "$word" == -o || "$word" == -O ]] && expect_value=1
       continue
     fi
-    # The value of the option before it belongs to the shell; any other word
-    # is the script the shell runs.
     (( expect_value )) || return 1
     expect_value=0
   done
   return 1
+}
+
+__lmline_risk_shell_carries_remove() {
+  local depth=$1 subst_body=${2:-0} carried nested_payload
+  shift 2
+  while IFS= read -r carried || [[ -n $carried ]]; do
+    [[ -n $carried ]] || continue
+    # A substitution supplies the command string only in command
+    # position; elsewhere its output is data to another command.
+    if __lmline_risk_substitution_in_command_position "$carried"; then
+      __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) && return 0
+    fi
+    if (( subst_body )); then
+      while IFS= read -r nested_payload || [[ -n $nested_payload ]]; do
+        [[ -n $nested_payload ]] || continue
+        __lmline_risk_recursive_remove "$nested_payload" $((depth + 1)) && return 0
+      done < <(__lmline_risk_here_string_payload "$carried" 0)
+    fi
+    __lmline_risk_recursive_remove "$carried" $((depth + 1)) && return 0
+  done < <(__lmline_risk_shell_c_command_strings "$@")
+  return 1
+}
+
+# Command strings the shell command words in a command run through -c. The
+# whole command is read once so a command substitution feeding -c stays one
+# argument; segments then cover shells hidden behind other commands.
+__lmline_risk_shell_c_command_strings_in() {
+  local cmd=$1 segment word index cmd_index raw_index
+  local -a words raw_words
+  if [[ $cmd == *'$('* || $cmd == *'`'* ]]; then
+    raw_words=()
+    mapfile -t raw_words < <(__lmline_risk_split_words "$cmd")
+    raw_index=$(__lmline_risk_segment_command_index "${raw_words[@]}") || raw_index=-1
+    if (( raw_index >= 0 )) && __lmline_risk_word_runs_shell "${raw_words[raw_index]}"; then
+      __lmline_risk_shell_c_command_strings "${raw_words[@]:raw_index+1}"
+      return 0
+    fi
+  fi
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    [[ -n "${segment//[[:space:]]/}" ]] || continue
+    words=()
+    mapfile -t words < <(__lmline_risk_split_words "$segment")
+    ((${#words[@]})) || continue
+    cmd_index=$(__lmline_risk_segment_command_index_with "$segment" "${words[@]}") || continue
+    word=${words[cmd_index]}
+    __lmline_risk_word_runs_shell "$word" || continue
+    __lmline_risk_shell_c_command_strings "${words[@]:cmd_index+1}"
+  done <<<"$(__lmline_split_pipeline "$cmd" 1 "()" bash structural-substitution)"
+  return 0
 }
 
 # Whether a command substitution stands where a command can run in a shell
@@ -1569,13 +1598,11 @@ __lmline_risk_substitution_in_command_position() {
   return 1
 }
 
-# A command substitution can provide the command string a shell runs. Judge
-# literal here-string data inside its body as that command string: the body's
-# program may only copy the data to standard output, which the substitution
-# then hands to -c. Bodies are read, never executed.
-__lmline_risk_substitution_payload_remove() {
-  local text=$1 depth=$2 body payload rest closer
-  (( depth < 4 )) || return 1
+# The text a command substitution can hand back to a command string: literal
+# here-string data copied by its body, and the body itself. The body is read,
+# never executed.
+__lmline_risk_substitution_command_payloads() {
+  local text=$1 body payload rest closer
   for closer in ')' '`'; do
     rest=$text
     while [[ $rest == *'$('* || ( $closer == '`' && $rest == *'`'* ) ]]; do
@@ -1590,13 +1617,24 @@ __lmline_risk_substitution_payload_remove() {
       if [[ -n $body ]]; then
         while IFS= read -r payload || [[ -n $payload ]]; do
           [[ -n $payload ]] || continue
-          __lmline_risk_recursive_remove "$payload" $((depth + 1)) && return 0
+          printf '%s\n' "$payload"
         done < <(__lmline_risk_here_string_payload "$body" 0)
-        __lmline_risk_recursive_remove "$body" $((depth + 1)) && return 0
+        printf '%s\n' "$body"
       fi
       rest=${rest#*"$closer"}
     done
   done
+}
+
+# A command substitution can provide the command string a shell runs. Judge
+# the data it can hand back as that command string.
+__lmline_risk_substitution_payload_remove() {
+  local text=$1 depth=$2 payload
+  (( depth < 4 )) || return 1
+  while IFS= read -r payload || [[ -n $payload ]]; do
+    [[ -n $payload ]] || continue
+    __lmline_risk_recursive_remove "$payload" $((depth + 1)) && return 0
+  done < <(__lmline_risk_substitution_command_payloads "$text")
   return 1
 }
 
@@ -2423,13 +2461,35 @@ __lmline_risk_generated_script_source() {
 # highest level wins, so a generic medium rule never shadows a structural
 # high. LMLINE_RISK_*_LEVEL tunes structural fallbacks in both modes. Defaults
 # stay protective.
+# The strongest risk among nested command strings read from standard input.
+# Each is judged by the same rules at the next bounded depth.
+__lmline_risk_nested_best() {
+  local depth=$1 payload match level rank best_level="" best_reason="" best_rank=0
+  while IFS= read -r payload || [[ -n $payload ]]; do
+    [[ -n $payload ]] || continue
+    match=$(__lmline_risk_match "$payload" $((depth + 1))) || return 1
+    [[ -n $match ]] || continue
+    level=${match%%$'\t'*}
+    rank=$(__lmline_risk_level_rank "$level")
+    if (( rank > best_rank )); then
+      best_rank=$rank
+      best_level=$level
+      best_reason=${match#*$'\t'}
+    fi
+  done
+  if [[ -n $best_level ]]; then
+    printf '%s\t%s\n' "$best_level" "$best_reason"
+  fi
+  return 0
+}
+
 __lmline_risk_match() {
   local cmd=$1 depth=${2:-0} expanded file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 generated_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
   local struct_level="" struct_reason="" struct_rank=0 rank candidate_level best_rank=0
-  local nested_payload nested_match nested_level
+  local nested_match nested_level
   # History is judged on raw quoting/escaping, never decoded/canonical text.
   if __lmline_risk_history_expansion "$cmd"; then history_found=1; fi
   # Decode ANSI-C quoting so hex/octal hides are judged by content.
@@ -2438,10 +2498,8 @@ __lmline_risk_match() {
   # with these same rules at a bounded depth; its level competes with the
   # other structural signals below under the usual precedence.
   if (( depth < 3 )) && [[ $expanded == *'<<<'* ]]; then
-    while IFS= read -r nested_payload || [[ -n $nested_payload ]]; do
-      [[ -n $nested_payload ]] || continue
-      nested_match=$(__lmline_risk_match "$nested_payload" $((depth + 1))) || return 1
-      [[ -n $nested_match ]] || continue
+    nested_match=$(__lmline_risk_nested_best "$depth" < <(__lmline_risk_here_string_payload "$expanded")) || return 1
+    if [[ -n $nested_match ]]; then
       nested_level=${nested_match%%$'\t'*}
       rank=$(__lmline_risk_level_rank "$nested_level")
       if (( rank > struct_rank )); then
@@ -2449,7 +2507,36 @@ __lmline_risk_match() {
         struct_level=$nested_level
         struct_reason=${nested_match#*$'\t'}
       fi
-    done < <(__lmline_risk_here_string_payload "$expanded")
+    fi
+  fi
+  # A shell runs its -c argument as a command string. Judge those strings
+  # with these same rules at a bounded depth, including strings supplied by a
+  # substitution in command position.
+  if (( depth < 3 )); then
+    nested_match=$(__lmline_risk_nested_best "$depth" < <(__lmline_risk_shell_c_command_strings_in "$expanded")) || return 1
+    if [[ -n $nested_match ]]; then
+      nested_level=${nested_match%%$'\t'*}
+      rank=$(__lmline_risk_level_rank "$nested_level")
+      if (( rank > struct_rank )); then
+        struct_rank=$rank
+        struct_level=$nested_level
+        struct_reason=${nested_match#*$'\t'}
+      fi
+    fi
+  fi
+  # A substitution in command position supplies the command string itself.
+  # Judge the data it can hand back with these same rules at a bounded depth.
+  if (( depth < 3 )) && __lmline_risk_substitution_in_command_position "$expanded"; then
+    nested_match=$(__lmline_risk_nested_best "$depth" < <(__lmline_risk_substitution_command_payloads "$expanded")) || return 1
+    if [[ -n $nested_match ]]; then
+      nested_level=${nested_match%%$'\t'*}
+      rank=$(__lmline_risk_level_rank "$nested_level")
+      if (( rank > struct_rank )); then
+        struct_rank=$rank
+        struct_level=$nested_level
+        struct_reason=${nested_match#*$'\t'}
+      fi
+    fi
   fi
   if alts_str=$(__lmline_expand_braces_for_risk "$expanded"); then
     brace_capped=0
