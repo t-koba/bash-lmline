@@ -41,6 +41,8 @@ printf 'token %s%s12345_eyJhbGciOiJIUzI1NiJ9_stateless_jwt_body_0123456789\n' "$
 printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123\n' 'glp' 'at-'
 printf 'key %s%sSyD12345678901234567890123456789012\n' 'AI' 'za'
 printf '%s\n' 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
+printf '%s\n' 'authorization: bearer lowercaseBearerTokenValue1234567890'
+printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
 printf '%s\n' 'error: failed'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
@@ -59,6 +61,10 @@ done
 [[ "$mode" == clip ]] || exit 10
 grep -Fq 'API_KEY=***REDACTED***' "$line_file" || exit 11
 grep -Fq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 12
+grep -Fq 'authorization: bearer ***REDACTED***' "$line_file" || exit 39
+grep -Fq 'lowercaseBearerTokenValue' "$line_file" && exit 40
+grep -Fq 'api-key: ***REDACTED***' "$line_file" || exit 41
+grep -Fq 'hyphenatedKeyValue' "$line_file" && exit 42
 grep -Fq 'gho_***REDACTED***' "$line_file" || exit 14
 grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15
 grep -Fq 'ghs_***REDACTED***' "$line_file" || exit 17
