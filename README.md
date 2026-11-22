@@ -805,6 +805,12 @@ Process substitution used as a shell's script source (`bash < <(echo ...)` or
 `bash <(echo ...)`) is judged the same way, while non-shell uses and shells that
 already have a script are unchanged.
 
+A here-document follows the same script/data distinction. When its operator
+reaches a shell's script input (`sh <<EOF`, `sh -s <<EOF`, `sh /dev/stdin <<EOF`,
+or a descriptor carried to fd 0), the body is judged as a nested script; a
+here-document used as data, or given to a shell that already has `-c` or a
+script file, is not. The delimiter and body are not scanned as commands.
+
 A word that merely carries the name of a remove is not the family:
 `ls rm -r` and `grep rm -rf file` are not removes. A program that removes files
 by a subcommand of its own is that program, so `git rm -r dir` is named by the

@@ -2814,6 +2814,176 @@ __lmline_risk_here_string_payload() {
   done <<<"$(__lmline_split_pipeline "$cmd" 1)"
 }
 
+# Here-document bodies are data unless the command can read them as a shell
+# script. Split the candidate at real newlines outside quotes, then ask the
+# here-string rules about a virtual
+# line whose one active << / <<- operator is replaced by <<< with a
+# placeholder payload. Nothing is executed: only words around the operator are
+# read, and carried body lines go to the same nested matcher here-strings use.
+# __LMLINE_RISK_HEREDOC_DATA holds the candidate with those bodies removed so
+# data is never scanned as a command.
+declare -ga __LMLINE_RISK_HEREDOC_PAYLOADS=()
+__LMLINE_RISK_HEREDOC_DATA=
+__lmline_risk_heredoc_scan() {
+  local cmd=$1 n=${#1} i=0 j k end dstart op_start lt li ch next quote='' line=''
+  local digits delim_raw delimiter stripped virtual out emitted carrier strip_tabs
+  local scan_line spaces placeholder='__LMLINE_HEREDOC_PAYLOAD__'
+  local -a lines=() seps=() delim_words=() body=()
+  __LMLINE_RISK_HEREDOC_DATA=
+  __LMLINE_RISK_HEREDOC_PAYLOADS=()
+  while (( i < n )); do
+    ch=${cmd:i:1}
+    next=${cmd:i+1:1}
+    if [[ -n $quote ]]; then
+      if [[ $ch == $'\\' && $quote != "'" ]]; then
+        line+="$ch$next"
+        i=$((i + 2))
+        continue
+      fi
+      [[ $ch == "$quote" ]] && quote=
+      line+=$ch
+      i=$((i + 1))
+      continue
+    fi
+    case $ch in
+      "'"|'"'|'`')
+        quote=$ch
+        line+=$ch
+        i=$((i + 1))
+        ;;
+      $'\\')
+        if [[ $next == $'\n' ]]; then
+          lines+=("$line")
+          seps+=($'\n')
+          line=
+          i=$((i + 2))
+        else
+          # An escape is opaque: it cannot open a here-document operator.
+          line+="$ch$next"
+          i=$((i + 2))
+        fi
+        ;;
+      $'\n')
+        lines+=("$line")
+        seps+=($'\n')
+        line=
+        i=$((i + 1))
+        ;;
+      *)
+        line+=$ch
+        i=$((i + 1))
+        ;;
+    esac
+  done
+  lines+=("$line")
+
+  for ((li = 0; li < ${#lines[@]}; li++)); do
+    scan_line=${lines[li]}
+    while :; do
+      # Find the next unquoted, unescaped << operator on this command line.
+      quote=
+      lt=-1
+      n=${#scan_line}
+      for ((i = 0; i < n; i++)); do
+        ch=${scan_line:i:1}
+        if [[ -n $quote ]]; then
+          if [[ $ch == $'\\' && $quote != "'" ]]; then i=$((i + 2)); continue; fi
+          [[ $ch == "$quote" ]] && quote=
+          continue
+        fi
+        case $ch in
+          "'"|'"'|'`') quote=$ch ;;
+          $'\\') i=$((i + 2)) ;;
+          '<')
+            # The second < of a <<< here-string is not a document operator.
+            if [[ ${scan_line:i+1:1} == '<' && ${scan_line:i+2:1} != '<' ]]; then
+              if (( i > 0 )) && [[ ${scan_line:i-1:1} == '<' ]]; then continue; fi
+              lt=$i
+              break
+            fi
+            ;;
+        esac
+      done
+      (( lt >= 0 )) || break
+      op_start=$lt
+      while (( op_start > 0 )) && [[ ${scan_line:op_start-1:1} == [0-9] ]]; do
+        op_start=$((op_start - 1))
+      done
+      digits=${scan_line:op_start:lt-op_start}
+      j=$((lt + 2))
+      strip_tabs=0
+      if [[ ${scan_line:j:1} == '-' ]]; then
+        strip_tabs=1
+        j=$((j + 1))
+      fi
+      while [[ ${scan_line:j:1} == ' ' || ${scan_line:j:1} == $'\t' ]]; do
+        j=$((j + 1))
+      done
+      dstart=$j
+      quote=
+      while (( j < ${#scan_line} )); do
+        ch=${scan_line:j:1}
+        if [[ -n $quote ]]; then
+          if [[ $ch == $'\\' && $quote != "'" ]]; then j=$((j + 2)); continue; fi
+          [[ $ch == "$quote" ]] && quote=
+          j=$((j + 1))
+          continue
+        fi
+        case $ch in
+          "'"|'"') quote=$ch; j=$((j + 1)) ;;
+          $'\\') j=$((j + 2)) ;;
+          ' '|$'\t'|';'|'&'|'|') break ;;
+          *) j=$((j + 1)) ;;
+        esac
+      done
+      delim_raw=${scan_line:dstart:j-dstart}
+      [[ -n $delim_raw ]] || break
+      delim_words=()
+      mapfile -t delim_words < <(__lmline_risk_split_words "$delim_raw")
+      delimiter=${delim_words[0]-}
+      # An unresolved delimiter cannot be matched against body lines safely.
+      [[ -n $delimiter && $delimiter != *'$'* && $delimiter != *'`'* ]] || break
+      virtual="${scan_line:0:op_start}${digits}<<< ${placeholder} ${scan_line:j}"
+      out=$(__lmline_risk_here_string_payload "$virtual") || return 1
+      carrier=0
+      while IFS= read -r emitted; do
+        [[ $emitted == "$placeholder" ]] && carrier=1
+      done <<<"$out"
+      body=()
+      end=-1
+      for ((k = li + 1; k < ${#lines[@]}; k++)); do
+        stripped=${lines[k]}
+        if (( strip_tabs )); then
+          while [[ ${stripped:0:1} == $'\t' ]]; do stripped=${stripped:1}; done
+        fi
+        if [[ $stripped == "$delimiter" ]]; then
+          end=$k
+          break
+        fi
+        body+=("${lines[k]}")
+      done
+      # Without a delimiter the rest of the candidate is still body data.
+      (( end >= 0 )) || end=$((${#lines[@]} - 1))
+      if (( carrier )); then
+        for stripped in "${body[@]}"; do
+          [[ -n $stripped ]] && __LMLINE_RISK_HEREDOC_PAYLOADS+=("$stripped")
+        done
+      fi
+      # The body and its delimiter are data, not commands to scan again.
+      for ((k = li + 1; k <= end; k++)); do
+        lines[k]=
+      done
+      # Continue after this operator: several here-documents on one line each
+      # get their own decision, and the original candidate stays untouched.
+      printf -v spaces '%*s' "$((j - op_start))" ''
+      scan_line="${scan_line:0:op_start}${spaces}${scan_line:j}"
+    done
+  done
+  for ((li = 0; li < ${#lines[@]}; li++)); do
+    __LMLINE_RISK_HEREDOC_DATA+=${lines[li]}${seps[li]-}
+  done
+}
+
 # A process substitution that supplies a shell's script, either as a `<` stdin
 # redirect source or as the shell's script-file argument, is an implicit script
 # input like a pipe to a shell. The structural splitter's unquoted view proves
@@ -2951,7 +3121,7 @@ __lmline_risk_nested_best() {
 }
 
 __lmline_risk_match() {
-  local cmd=$1 depth=${2:-0} expanded file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
+  local cmd=$1 depth=${2:-0} expanded heredoc_payloads file line level pattern reason alt bare_alt decoded_alt operand_alt neutral_alt signal_alt canon alts_str
   local brace_capped=0 best_level="" best_reason="" piped_found=0 generated_found=0 history_found=0
   local removal_found=0 removal_reason="recursive remove"
   local shipped_defaults=0
@@ -2961,11 +3131,28 @@ __lmline_risk_match() {
   if __lmline_risk_history_expansion "$cmd"; then history_found=1; fi
   # Decode ANSI-C quoting so hex/octal hides are judged by content.
   expanded=$(__lmline_decode_ansi_c_for_risk "$cmd")
-  # A here-string handed to a shell command word is a nested script. Judge it
-  # with these same rules at a bounded depth; its level competes with the
-  # other structural signals below under the usual precedence.
-  if (( depth < 3 )) && [[ $expanded == *'<<<'* ]]; then
-    nested_match=$(__lmline_risk_nested_best "$depth" < <(__lmline_risk_here_string_payload "$expanded")) || return 1
+  # A here-document body is data unless its operator reaches a shell; carried
+  # bodies join the nested payloads, and the rest leave the command scan.
+  if [[ $expanded == *'<<'* ]]; then
+    __lmline_risk_heredoc_scan "$expanded" || return 1
+    expanded=$__LMLINE_RISK_HEREDOC_DATA
+  else
+    __LMLINE_RISK_HEREDOC_DATA=$expanded
+    __LMLINE_RISK_HEREDOC_PAYLOADS=()
+  fi
+  heredoc_payloads=
+  if ((${#__LMLINE_RISK_HEREDOC_PAYLOADS[@]})); then
+    heredoc_payloads=$(printf '%s\n' "${__LMLINE_RISK_HEREDOC_PAYLOADS[@]}")
+  fi
+  # A here-string or carried here-document handed to a shell command word is a
+  # nested script. Judge each with these same rules at a bounded depth; the
+  # level competes with the other structural signals below under the usual
+  # precedence.
+  if (( depth < 3 )) && [[ $expanded == *'<<<'* || -n $heredoc_payloads ]]; then
+    nested_match=$(__lmline_risk_nested_best "$depth" < <(
+      [[ $expanded == *'<<<'* ]] && __lmline_risk_here_string_payload "$expanded"
+      [[ -n $heredoc_payloads ]] && printf '%s\n' "$heredoc_payloads"
+    )) || return 1
     if [[ -n $nested_match ]]; then
       nested_level=${nested_match%%$'\t'*}
       rank=$(__lmline_risk_level_rank "$nested_level")
