@@ -273,6 +273,13 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\$(awk ${hsq}{print;}${hsq} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(sed -n ${hsq}p;${hsq} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(grep -F . <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  # A stream alias after the operator still carries the here-string through
+  # a verbatim filter, while a named file operand does not.
+  for filter in "head -n 1" "sed -n p" "awk 1" "grep ."; do
+    [[ $(__lmline_risk_level "bash -c \"\$(${filter} <<< ${hsq}echo echo MARK | sh${hsq} /dev/stdin)\"") == high ]]
+  done
+  [[ $(__lmline_risk_level "bash -c \"\$(head -n 1 <<< ${hsq}echo echo MARK | sh${hsq} /dev/fd/0)\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(head -n 1 <<< ${hsq}echo echo MARK | sh${hsq} file)\"") == low ]]
   # Redirecting the copier stdout keeps the here-string out of the command
   # substitution: only the ordinary redirection risk remains.
   [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
