@@ -1391,6 +1391,7 @@ case "$cmd" in
         [[ -z "$check_line" || "$check_line" == \#* ]] && continue
         profile_split_tsv "$check_line" check_name _ _ _ _ _ _ _ _ check_models_jq _ _ _
         if [[ -n "$check_models_jq" ]] && ! jq -n "def __lmline_items: $check_models_jq; null" >/dev/null 2>&1; then
+        # shellcheck disable=SC2154 # profile_split_tsv assigns check_name via read -r "$@".
           printf '  WARNING: endpoint %s has an invalid models_jq expression\n' "$( __lmline_display_endpoint "$check_name" )"
           profile_issues=$((profile_issues + 1))
         fi
@@ -1461,6 +1462,7 @@ case "$cmd" in
       api_url=$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")
       __lmline_mktemp api_header_tmp "$(__lmline_tmp_root)/lmline-hdr.XXXXXX"
       # ${VAR-default} (no colon): an explicitly empty scheme means raw key.
+      # shellcheck disable=SC2154 # __lmline_mktemp assigns api_header_tmp by indirection.
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \
         "${LMLINE_AUTH_HEADER:-Authorization}" "${LMLINE_AUTH_SCHEME-Bearer}" "$api_header_tmp" "$api_url" || exit $?
       if [[ -n "$api_base" ]]; then

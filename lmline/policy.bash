@@ -1216,6 +1216,7 @@ __lmline_risk_split_words() {
     if [[ -n "$quote" ]]; then
       if [[ "$quote" == '"' && "$ch" == "\\" ]]; then
         i=$((i + 1))
+        # shellcheck disable=SC1003 # Intentional literal backslash in the quote parser.
         if (( keep_escapes )) && [[ ${str:i:1} == '$' || ${str:i:1} == '`' || ${str:i:1} == '\\' ]]; then
           word+="\\"
         fi
@@ -1241,6 +1242,7 @@ __lmline_risk_split_words() {
         ;;
       "\\")
         i=$((i + 1))
+        # shellcheck disable=SC1003 # Intentional literal backslash in the quote parser.
         if (( keep_escapes )) && [[ ${str:i:1} == '$' || ${str:i:1} == '`' || ${str:i:1} == '\\' ]]; then
           word+="\\"
         fi
@@ -2528,6 +2530,7 @@ __lmline_risk_decode_option_word() {
       while (( i < ${#word} )); do
         ch=${word:i:1}
         if [[ $ch == "'" ]]; then i=$((i + 1)); break; fi
+        # shellcheck disable=SC1003 # Intentional literal backslash in the decoder.
         if [[ $ch == '\' ]]; then
           i=$((i + 1))
           ch=${word:i:1}
@@ -2546,8 +2549,10 @@ __lmline_risk_decode_option_word() {
     fi
     if [[ -n $quote ]]; then
       if [[ $ch == "$quote" ]]; then quote=; i=$((i + 1)); continue; fi
+      # shellcheck disable=SC1003 # Intentional literal backslash in the decoder.
       if [[ $quote == '"' && $ch == '\' ]]; then
         next=${word:i+1:1}
+        # shellcheck disable=SC1003 # Literal backslash patterns in these case arms.
         case $next in
           '$'|'`'|'"'|'\'|'') out+=$next; i=$((i + 2)) ;;
           *) out+='\'; i=$((i + 1)) ;;
@@ -2558,6 +2563,7 @@ __lmline_risk_decode_option_word() {
       i=$((i + 1))
       continue
     fi
+    # shellcheck disable=SC1003 # Literal backslash pattern in this case arm.
     case $ch in
       "'"|'"') quote=$ch; i=$((i + 1)) ;;
       '\') i=$((i + 1)); out+=${word:i:1}; i=$((i + 1)) ;;
