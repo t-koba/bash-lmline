@@ -2448,6 +2448,23 @@ __lmline_risk_descriptor_duplication_word() {
   __LMLINE_RISK_DUP_SOURCE=$((10#$source))
 }
 
+# The descriptor a plain redirect word reopens, so a carrier overwritten by a
+# later redirect stops feeding any script. Descriptor duplications are handled
+# separately because they copy rather than replace their source.
+__lmline_risk_redirect_target_fd() {
+  local word=$1 prefix operator
+  prefix=${word%%[!0-9]*}
+  operator=${word:${#prefix}:1}
+  [[ $operator == '<' || $operator == '>' ]] || return 1
+  if [[ -n $prefix ]]; then
+    printf '%s\n' "$((10#$prefix))"
+  elif [[ $operator == '<' ]]; then
+    printf '0\n'
+  else
+    printf '1\n'
+  fi
+}
+
 # Verbatim stdin producers whose output carries the here-string into a
 # command substitution. An unknown or no-output producer is not assumed to
 # copy its input. Filters that keep a one-line here-string unchanged count as
@@ -2610,7 +2627,21 @@ __lmline_risk_carry_fds() {
   [[ -n $initial_fd ]] || return 0
   carried=($((10#$initial_fd)))
   for ((index = start; index < ${#words[@]}; index++)); do
-    __lmline_risk_descriptor_duplication_word "${words[index]}" || continue
+    if ! __lmline_risk_descriptor_duplication_word "${words[index]}"; then
+      if __lmline_risk_here_string_descriptor "${words[index]}" >/dev/null 2>&1; then
+        target=$(__lmline_risk_here_string_descriptor "${words[index]}")
+      elif __lmline_risk_redirect_target_fd "${words[index]}" >/dev/null; then
+        target=$(__lmline_risk_redirect_target_fd "${words[index]}")
+      else
+        continue
+      fi
+      kept=()
+      for fd in "${carried[@]}"; do
+        [[ $fd == "$target" ]] || kept+=("$fd")
+      done
+      carried=("${kept[@]}")
+      continue
+    fi
     target=$__LMLINE_RISK_DUP_TARGET
     source=$__LMLINE_RISK_DUP_SOURCE
     source_carries=0
@@ -2638,7 +2669,7 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 superseded=0 survived active fd later_fd alias_matches carried_fd reaches alias_claimed
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 active fd alias_matches carried_fd reaches alias_claimed
   local -a plain=() quoted=() words=() filter_words=() filter_index=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2677,25 +2708,6 @@ __lmline_risk_here_string_payload() {
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
-      # A later active here-string on the same descriptor replaces this
-      # payload only if it was not duplicated to another live descriptor
-      # first; a dup before the later operator keeps this payload readable.
-      # Other descriptors keep their own last operator.
-      superseded=0
-      for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
-        later_fd=$(__lmline_risk_here_string_descriptor "${quoted[index]}") || continue
-        [[ $later_fd == "$fd" ]] || continue
-        __lmline_risk_carry_fds "$fd" $((op_index + 1)) "${quoted[@]:0:index}"
-        survived=0
-        for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
-          [[ $carried_fd == "$fd" ]] && continue
-          survived=1
-          break
-        done
-        (( survived )) || superseded=1
-        break
-      done
-      (( superseded )) && continue
       stdout_sunk=0
       filter_operand=0
       if (( require_copy )); then
