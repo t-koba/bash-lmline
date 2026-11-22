@@ -104,6 +104,13 @@ bash -c '
     [[ $(__lmline_risk_level "bash -c \"${prefix} \$(cat <<< ${hsq}rm -rf /${hsq})\"") == high ]]
   done
   [[ $(__lmline_risk_level "bash -c \"time echo \$(cat <<< ${hsq}rm -rf /${hsq})\"") == low ]]
+  # A separate redirect target is consumed, never a command word.
+  [[ $(__lmline_risk_level "> /tmp/a=b echo \$(cat <<< ${hsq}rm -rf /${hsq})") == medium ]]
+  [[ $(__lmline_risk_reason "> /tmp/a=b echo \$(cat <<< ${hsq}rm -rf /${hsq})") == "writes to a file or descriptor" ]]
+  [[ $(__lmline_risk_level "> \$(cat <<< ${hsq}rm -rf /${hsq})") == medium ]]
+  [[ $(__lmline_risk_level "> \`cat <<< ${hsq}rm -rf /${hsq}\`") == medium ]]
+  [[ $(__lmline_risk_level "> /tmp/a=b \$(cat <<< ${hsq}rm -rf /${hsq})") == high ]]
+  [[ $(__lmline_risk_level "> /tmp/a=b \`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
   # A substitution can supply any nested command string, not only a remove.
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_reason "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == "piped shell execution" ]]

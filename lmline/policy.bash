@@ -1642,11 +1642,13 @@ __lmline_risk_substitution_in_command_position() {
       skip_target=0
       for ((earlier = 0; earlier < index; earlier++)); do
         word=${words[earlier]}
-        [[ $word == *=* ]] && continue
+        # A separate redirect target is consumed before it can be mistaken
+        # for an assignment or command prefix.
         if (( skip_target )); then
           skip_target=0
           continue
         fi
+        [[ $word == *=* ]] && continue
         # Shell structure before the command leaves the substitution in
         # command position; an argument to a command does not.
         if __lmline_risk_descriptor_duplication_word "$word"; then
@@ -1659,6 +1661,9 @@ __lmline_risk_substitution_in_command_position() {
         __lmline_word_is_command_prefix "$word" && continue
         break
       done
+      # With the redirect target still pending, this substitution names the
+      # redirected file; its output is not a command.
+      (( skip_target )) && continue
       (( earlier == index )) && return 0
     done
   done <<<"$(__lmline_split_pipeline "$text" 1 "()" bash structural-substitution-marker)"
