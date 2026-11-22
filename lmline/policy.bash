@@ -2262,6 +2262,58 @@ __lmline_risk_word_copies_stdin_with_operands() {
 
 # A stdout redirection on the copying producer keeps its bytes out of the
 # command substitution, so the here-string cannot become a command string.
+# Decode one option word the way the shell would pass it to a program.
+# Quotes are removed; backslashes are escapes only outside quotes (and for the
+# few escapable characters inside double quotes), never inside single quotes.
+__lmline_risk_decode_option_word() {
+  local word=$1 out="" quote="" i=0 ch next
+  __LMLINE_RISK_OPTION_WORD=
+  while (( i < ${#word} )); do
+    ch=${word:i:1}
+    if [[ $ch == '$' && ${word:i+1:1} == "'" ]]; then
+      i=$((i + 2))
+      while (( i < ${#word} )); do
+        ch=${word:i:1}
+        if [[ $ch == "'" ]]; then i=$((i + 1)); break; fi
+        if [[ $ch == '\' ]]; then
+          i=$((i + 1))
+          ch=${word:i:1}
+          case $ch in
+            n) out+=$'\n' ;;
+            t) out+=$'\t' ;;
+            r) out+=$'\r' ;;
+            *) out+=$ch ;;
+          esac
+        else
+          out+=$ch
+        fi
+        i=$((i + 1))
+      done
+      continue
+    fi
+    if [[ -n $quote ]]; then
+      if [[ $ch == "$quote" ]]; then quote=; i=$((i + 1)); continue; fi
+      if [[ $quote == '"' && $ch == '\' ]]; then
+        next=${word:i+1:1}
+        case $next in
+          '$'|'`'|'"'|'\'|'') out+=$next; i=$((i + 2)) ;;
+          *) out+='\'; i=$((i + 1)) ;;
+        esac
+        continue
+      fi
+      out+=$ch
+      i=$((i + 1))
+      continue
+    fi
+    case $ch in
+      "'"|'"') quote=$ch; i=$((i + 1)) ;;
+      '\') i=$((i + 1)); out+=${word:i:1}; i=$((i + 1)) ;;
+      *) out+=$ch; i=$((i + 1)) ;;
+    esac
+  done
+  __LMLINE_RISK_OPTION_WORD=$out
+}
+
 # Shells read stdin as the script when -s occurs in the option prefix. Long
 # options and short bundles need their own values skipped before that prefix
 # ends; once -s is seen later words are positional parameters, not a script.
@@ -2281,7 +2333,8 @@ __lmline_risk_shell_stdin_script() {
     fi
     # The quote-preserving view keeps shell quotes and escapes; option names
     # must be read as the shell would read them.
-    option=${word//[\'\"\\]/}
+    __lmline_risk_decode_option_word "$word"
+    option=$__LMLINE_RISK_OPTION_WORD
     [[ $option == -- ]] && break
     if [[ $option != -* ]]; then
       (( seen_s )) && continue

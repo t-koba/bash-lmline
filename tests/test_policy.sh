@@ -160,12 +160,18 @@ bash -c '
   [[ $(__lmline_risk_level "bash --rcfile f -c ${hsq}echo hi${hsq} -s <<< ${hsq}echo hi | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -es -c ${hsq}echo hi${hsq} <<< ${hsq}echo hi | sh${hsq}") == low ]]
   # Shell quotes and escapes around the option name still select stdin.
-  [[ $(__lmline_risk_level "bash '-s' <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash ${hsq}-s${hsq} <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash \"-s\" f <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash \\-s f <<< ${hsq}rm -rf /${hsq}") == high ]]
-  [[ $(__lmline_risk_level "sh '-s' f <<< ${hsq}rm -rf /${hsq}") == high ]]
-  [[ $(__lmline_risk_level "bash '-c' ${hsq}echo hi${hsq} -s <<< ${hsq}echo hi | sh${hsq}") == low ]]
-  [[ $(__lmline_risk_level "bash 'f' -s <<< ${hsq}echo hi | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "sh ${hsq}-s${hsq} f <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash ${hsq}-c${hsq} ${hsq}echo hi${hsq} -s <<< ${hsq}echo hi | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash ${hsq}f${hsq} -s <<< ${hsq}echo hi | sh${hsq}") == low ]]
+  # A backslash inside quotes stays literal, unlike an unquoted escape.
+  [[ $(__lmline_risk_level "bash ${hsq}\\-s${hsq} <<< ${hsq}echo hi | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash \"\\-s\" <<< ${hsq}echo hi | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash ${hsq}-${hsq}s <<< ${hsq}rm -rf /${hsq}") == high ]]
+  dollar=$(printf "\044")
+  [[ $(__lmline_risk_level "bash ${dollar}${hsq}-s${hsq} <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} foo -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "sh /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
