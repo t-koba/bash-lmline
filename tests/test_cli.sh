@@ -1158,6 +1158,19 @@ env -i HOME="$link_secret_tmp" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" \
 grep -q 'unsafe secret path was kept' "$link_secret_tmp/err" || fail "endpoint remove did not report the symlinked secret parent"
 cmp -s <(printf 'link-victim') "$link_secret_tmp/outside/victim" || fail "endpoint remove deleted a file through a symlinked parent"
 rm -rf "$link_secret_tmp"
+# A symlinked secrets directory must not redirect credential removal.
+symlink_dir_remove_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-remove-symlink-dir.XXXXXX")
+mkdir -p "$symlink_dir_remove_tmp/config" "$symlink_dir_remove_tmp/outside"
+printf 'dir-victim' >"$symlink_dir_remove_tmp/outside/endpoint-victim-api-key.secret"
+printf 'victim\thttps://example.invalid/v1\tAuthorization\tBearer\t%s\t\t\t\t\t\t\t\t\t\n' \
+  "$symlink_dir_remove_tmp/config/secrets/endpoint-victim-api-key.secret" >"$symlink_dir_remove_tmp/config/endpoints.tsv"
+ln -s "$symlink_dir_remove_tmp/outside" "$symlink_dir_remove_tmp/config/secrets"
+env -i HOME="$symlink_dir_remove_tmp" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" \
+  LMLINE_CONFIG_DIR="$symlink_dir_remove_tmp/config" "$repo_dir/lmline/lmline" \
+  endpoint remove victim >"$symlink_dir_remove_tmp/out" 2>"$symlink_dir_remove_tmp/err" || fail "endpoint remove with symlinked secrets directory"
+grep -q 'unsafe secret path was kept' "$symlink_dir_remove_tmp/err" || fail "endpoint remove did not report the symlinked secrets directory"
+cmp -s <(printf 'dir-victim') "$symlink_dir_remove_tmp/outside/endpoint-victim-api-key.secret" || fail "endpoint remove deleted a file through the symlinked secrets directory"
+rm -rf "$symlink_dir_remove_tmp"
 # A managed secret path that escapes the secrets directory is never deleted.
 escape_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-escape-secret.XXXXXX")
 mkdir -p "$escape_secret_tmp/config/secrets"
