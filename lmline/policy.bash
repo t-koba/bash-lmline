@@ -2296,11 +2296,12 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches alias_claimed
+  local index cmd_index op_index script_word=0 stdin_script=0 active fd alias_matches carried_fd reaches alias_claimed
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
+    stdin_script=0
     mapfile -t plain < <(__lmline_risk_split_words "$(__lmline_split_pipeline "$segment" 0)")
     ((${#plain[@]})) || continue
     active=0
@@ -2322,6 +2323,13 @@ __lmline_risk_here_string_payload() {
     if (( require_copy )) && ! __lmline_risk_word_copies_stdin "${quoted[cmd_index]}"; then
       continue
     fi
+    # With -s the shell reads its script from stdin whatever follows it, so
+    # later words are positional arguments rather than script-file operands.
+    for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
+      word=${quoted[index]}
+      [[ $word == -- ]] && break
+      [[ $word == -s ]] && stdin_script=1
+    done
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
@@ -2339,6 +2347,7 @@ __lmline_risk_here_string_payload() {
       script_word=0
       for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
         word=${quoted[index]}
+        (( stdin_script )) && continue
         # A standalone earlier here-string consumes its payload word, so that
         # word is not a script file given to the shell.
         if __lmline_risk_here_string_descriptor "$word" >/dev/null; then

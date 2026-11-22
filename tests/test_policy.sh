@@ -141,6 +141,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash <<<${hsq}echo${hsq} <<<${hsq}rm -rf /${hsq}") == high ]]
   # A standard-stream alias reads the here-string, not a stored script file.
   [[ $(__lmline_risk_level "bash /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
+  # With -s the shell reads the here-string as its script even when trailing
+  # words look like script files or positional arguments.
+  [[ $(__lmline_risk_level "bash -s <<< ${hsq}echo echo MARK | sh${hsq} arg") == high ]]
+  [[ $(__lmline_risk_level "sh -s <<< ${hsq}echo echo MARK | sh${hsq} arg") == high ]]
+  [[ $(__lmline_risk_level "bash -s -- <<< ${hsq}echo echo MARK | sh${hsq} arg") == high ]]
+  [[ $(__lmline_risk_level "bash -s <<< ${hsq}echo echo MARK | sh${hsq} /dev/null") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "sh /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "bash \"/dev/stdin\" <<< ${hsq}rm -rf /${hsq}") == high ]]
