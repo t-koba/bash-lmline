@@ -1121,14 +1121,7 @@ candidate=${(q)candidate}"
   __lmline_zsh_history_log_ready || return 0
   # Buffer the whole record in one dd output block: shell output can split at newlines.
   bytes=$(command wc -c 2>/dev/null <<<"$record") || return 0
-  # GNU dd can take a short read from the here-string pipe and write only a
-  # fragment; fullblock keeps the whole record in one append. BSD dd lacks
-  # iflag and reads the here-string's temporary file, so it keeps its default.
-  if command dd --help 2>/dev/null | grep -q fullblock; then
-    command dd iflag=fullblock "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
-  else
-    command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
-  fi
+  command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
 }
 
 # Applies the candidate at the given index using the engine's risk/flag

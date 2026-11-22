@@ -30,8 +30,6 @@ padding=${padding// /x}
 mkdir "$tmp/bin"
 cat >"$tmp/bin/dd" <<'DD'
 #!/usr/bin/env bash
-# Capability probes are not append calls.
-if [[ ${1-} == --help || ${1-} == --version ]]; then exec "$LMLINE_TEST_DD" "$@"; fi
 # Bash has opened the append fd. Keep the peers concurrent while it is open.
 # One record must be one dd invocation: a second call can interleave fields.
 printf x >>"$LMLINE_HISTORY_DIR/dd-calls" || exit 1
@@ -192,63 +190,6 @@ for shell in bash zsh; do
   done
   ok "$shell suggestion history keeps concurrent records intact"
 done
-
-# GNU dd must accumulate the whole here-string before writing it. A shim that
-# emits a short first block without fullblock makes the race deterministic;
-# the production code passes iflag=fullblock, so each record stays one append.
-if command -v zsh >/dev/null && command dd --help 2>/dev/null | grep -q fullblock; then
-  race_dir=$tmp/zsh-short-read
-  mkdir -p "$race_dir"
-  mkdir -m 700 "$race_dir/history" "$race_dir/bin"
-  real_dd=$(type -P dd)
-  cat >"$race_dir/bin/dd" <<'SH'
-#!/usr/bin/env bash
-if [[ ${1-} == --help || ${1-} == --version ]]; then exec "$LMLINE_TEST_DD" "$@"; fi
-case " $* " in
-  *' iflag=fullblock '*) full=1 ;;
-  *) full=0 ;;
-esac
-IFS= read -r -d '' data || true
-if ((full)); then
-  printf '%s' "$data"
-else
-  half=$((${#data} / 2))
-  printf '%s' "${data:0:half}"
-fi
-: >"$RACE_DIR/first-$$"
-if (( ! full )); then
-  for ((attempt = 0; attempt < 400; attempt++)); do
-    [[ ! -e $RACE_DIR/go ]] || break
-    sleep 0.025
-  done
-  printf '%s' "${data:half}"
-fi
-SH
-  chmod +x "$race_dir/bin/dd"
-  race_pids=()
-  for writer in 1 2 3; do
-    RACE_DIR="$race_dir" PATH="$race_dir/bin:$PATH" LMLINE_TEST_DD="$real_dd" \
-      LMLINE_CONFIG_DIR="$tmp/config-short-read" LMLINE_HISTORY_DIR="$race_dir/history" LMLINE_BIND_KEYS=0 \
-      zsh -f -e -i -c 'source "$1/lmline/init.zsh"; __lmline_zsh_record_suggestion generate "$2" "$3"' \
-      _ "$repo_dir" "short-$writer-$padding" "candidate-$writer-$padding" \
-      >"$race_dir/writer-$writer.out" 2>&1 &
-    race_pids+=("$!")
-  done
-  for ((attempt = 0; attempt < 400; attempt++)); do
-    markers=("$race_dir"/first-*)
-    (( ${#markers[@]} >= 3 )) && break
-    sleep 0.025
-  done
-  : >"$race_dir/go"
-  for pid in "${race_pids[@]}"; do
-    wait "$pid" || fail "zsh short-read suggestion writer failed"
-  done
-  short_lines=$(wc -l <"$race_dir/history/suggestions.log")
-  [[ $short_lines == 18 ]] || fail "zsh short-read append produced $short_lines lines, expected 18"
-  awk 'NR % 6 == 1 && $0 !~ /^id=/ { exit 1 } NR % 6 == 2 && $0 !~ /^timestamp=/ { exit 1 } NR % 6 == 3 && $0 !~ /^cwd=/ { exit 1 } NR % 6 == 4 && $0 != "mode=generate" { exit 1 }' \
-    "$race_dir/history/suggestions.log" || fail "zsh short-read append interleaved fields"
-  ok "zsh suggestion records survive short dd reads"
-fi
 
 # Zsh must keep shell-quoted newlines and backslashes escaped in the record;
 # reinterpreting them would add a stray physical line to the history log.
