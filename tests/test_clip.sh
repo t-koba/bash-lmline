@@ -49,6 +49,10 @@ printf '%s\n' '{"password": "value with spaces", "Authorization": "Bearer json_b
 printf '%s\n' 'Authorization: Bearer quote"BearerSuffix1234567890'
 printf '%s\n' 'MY_TOKEN=abc"defGHI'
 printf '%s\n' "DB_PASSWORD=p@ss'w0rd"
+printf '%s\n' '123MY_TOKEN=SECRETVAL'
+printf '%s\n' '"123MY_TOKEN": "SECRETVAL"'
+printf '%s\n' '-MY_TOKEN=MARKER'
+printf '%s\n' '{"2fa_secret": "SUPERSECRET123", "123api_token": "ANOTHERSECRET456"}'
 printf '%s\n' 'error: failed'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
@@ -86,6 +90,15 @@ grep -Fq "DB_PASSWORD=***REDACTED***" "$line_file" || exit 56
 grep -Fq "'w0rd" "$line_file" && exit 57
 grep -Fq '"Authorization": ***REDACTED***' "$line_file" || exit 51
 grep -Fq 'json_bearer_value' "$line_file" && exit 52
+grep -Fq '123MY_TOKEN=***REDACTED***' "$line_file" || exit 58
+grep -Fq 'SECRETVAL' "$line_file" && exit 59
+grep -Fq '"123MY_TOKEN": ***REDACTED***' "$line_file" || exit 60
+grep -Fq -- '-MY_TOKEN=***REDACTED***' "$line_file" || exit 61
+grep -Fq 'MARKER' "$line_file" && exit 62
+grep -Fq '"2fa_secret": ***REDACTED***' "$line_file" || exit 63
+grep -Fq 'SUPERSECRET123' "$line_file" && exit 64
+grep -Fq '"123api_token": ***REDACTED***' "$line_file" || exit 65
+grep -Fq 'ANOTHERSECRET456' "$line_file" && exit 66
 grep -Fq 'gho_***REDACTED***' "$line_file" || exit 14
 grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15
 grep -Fq 'ghs_***REDACTED***' "$line_file" || exit 17

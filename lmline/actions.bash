@@ -231,8 +231,8 @@ __lmline_redact_clip_text() {
   sed -E \
     -e "s/([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)(\"[^\"]*Bearer[[:space:]][^\"]*\")/\\1@@LMLINE_REDACTED@@ /Ig" \
     -e "s/([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*[\"']?Bearer[[:space:]]+)[^[:space:]]+/\\1***REDACTED***/Ig" \
-    -e "s/((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)(\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')/\\1@@LMLINE_REDACTED@@ /Ig" \
-    -e "s/((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z_][A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\\1***REDACTED***/Ig" \
+    -e "s/((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)(\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')/\\1@@LMLINE_REDACTED@@ /Ig" \
+    -e "s/((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\\1***REDACTED***/Ig" \
     -e "s/@@LMLINE_REDACTED@@ /***REDACTED***/g" \
     -e "s/(\\*\\*\\*REDACTED\\*\\*\\*)[[:space:]]+([,}])/\\1\\2/g" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1***REDACTED***/g' \
