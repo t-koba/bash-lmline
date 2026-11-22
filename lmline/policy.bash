@@ -2260,6 +2260,17 @@ __lmline_risk_word_copies_stdin_with_operands() {
   [[ ${1##*/} == tee ]]
 }
 
+# A stdout redirection on the copying producer keeps its bytes out of the
+# command substitution, so the here-string cannot become a command string.
+__lmline_risk_word_sinks_stdout() {
+  local word=$1 target
+  [[ $word == '&>'* ]] && return 0
+  [[ $word =~ ^([0-9]*)'>' ]] || return 1
+  target=${BASH_REMATCH[1]}
+  [[ -n $target ]] || target=1
+  (( 10#$target == 1 ))
+}
+
 # Follow descriptor duplications after a script-carrying operator in source
 # order. Each duplication overwrites its target with its source: a copied
 # carrier joins the set, and a target overwritten from a non-carrier leaves it.
@@ -2302,7 +2313,7 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 active fd alias_matches carried_fd reaches alias_claimed
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 active fd alias_matches carried_fd reaches alias_claimed
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2378,6 +2389,7 @@ __lmline_risk_here_string_payload() {
           continue
         fi
         if __lmline_risk_redirect_word "$word"; then
+          (( require_copy )) && __lmline_risk_word_sinks_stdout "$word" && stdout_sunk=1
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
@@ -2407,6 +2419,7 @@ __lmline_risk_here_string_payload() {
           break
         fi
       done
+      (( stdout_sunk )) && continue
       (( script_word )) && continue
       (( reaches )) || continue
       if [[ ${quoted[op_index]} == *'<<<' ]]; then

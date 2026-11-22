@@ -213,6 +213,12 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\$(tee /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(tee -a /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(true <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  # Redirecting the copier stdout keeps the here-string out of the command
+  # substitution: only the ordinary redirection risk remains.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat 1> /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(tee > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat 2> /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo echo MARK | sh${hsq} /dev/null)\"") == low ]]
   # A redirection target belongs to the redirect, not to the script file.
