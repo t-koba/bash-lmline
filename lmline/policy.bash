@@ -2244,49 +2244,46 @@ __lmline_risk_descriptor_duplication_word() {
   __LMLINE_RISK_DUP_SOURCE=$((10#$source))
 }
 
-# Bounded transitive walk of descriptor duplications after a script-carrying
-# operator. Its arguments are the fd carrying the script, the index of the
-# first word after the operator, then the quote-preserving words to scan.
-# The resulting descriptor set is published in __LMLINE_RISK_CARRIED_FDS for
-# the caller to read immediately after the call. Four passes preserve the
-# policy's bounded chain depth; a word adds a target when its source is
-# carried and its target is not. Nothing is executed here.
-declare -ga __LMLINE_RISK_CARRIED_FDS=()
-__lmline_risk_carry_fds() {
-  local initial_fd=$1 start=$2 index pass changed target source alias_matches carried_fd
-  shift 2
-  local -a words=("$@")
-  __LMLINE_RISK_CARRIED_FDS=()
-  [[ -n $initial_fd ]] || return 0
-  __LMLINE_RISK_CARRIED_FDS=("$initial_fd")
-  for ((pass = 0; pass < 4; pass++)); do
-    changed=0
-    for ((index = start; index < ${#words[@]}; index++)); do
-      __lmline_risk_descriptor_duplication_word "${words[index]}" || continue
-      target=$__LMLINE_RISK_DUP_TARGET
-      source=$__LMLINE_RISK_DUP_SOURCE
-      alias_matches=0
-      for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
-        [[ $source == "$carried_fd" ]] && { alias_matches=1; break; }
-      done
-      (( alias_matches )) || continue
-      alias_matches=0
-      for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
-        [[ $target == "$carried_fd" ]] && { alias_matches=1; break; }
-      done
-      (( alias_matches )) && continue
-      __LMLINE_RISK_CARRIED_FDS+=("$target")
-      changed=1
-    done
-    (( changed )) || break
-  done
-}
-
 # The only stdin producer whose output is known to carry the here-string into
 # a command substitution is cat. An unknown or no-output producer is not
 # assumed to copy its input.
 __lmline_risk_word_copies_stdin() {
   [[ ${1##*/} == cat ]]
+}
+
+# Follow descriptor duplications after a script-carrying operator in source
+# order. Each duplication overwrites its target with its source: a copied
+# carrier joins the set, and a target overwritten from a non-carrier leaves it.
+# The resulting descriptor set is published in __LMLINE_RISK_CARRIED_FDS for
+# the caller to read immediately after the call. Nothing is executed here.
+declare -ga __LMLINE_RISK_CARRIED_FDS=()
+__lmline_risk_carry_fds() {
+  local initial_fd=$1 start=$2 index target source fd source_carries
+  shift 2
+  local -a words=("$@") carried=() kept=()
+  __LMLINE_RISK_CARRIED_FDS=()
+  [[ -n $initial_fd ]] || return 0
+  carried=($((10#$initial_fd)))
+  for ((index = start; index < ${#words[@]}; index++)); do
+    __lmline_risk_descriptor_duplication_word "${words[index]}" || continue
+    target=$__LMLINE_RISK_DUP_TARGET
+    source=$__LMLINE_RISK_DUP_SOURCE
+    source_carries=0
+    for fd in "${carried[@]}"; do
+      [[ $source == "$fd" ]] && { source_carries=1; break; }
+    done
+    kept=()
+    for fd in "${carried[@]}"; do
+      [[ $fd == "$target" ]] || kept+=("$fd")
+    done
+    carried=("${kept[@]}")
+    (( source_carries )) || continue
+    for fd in "${carried[@]}"; do
+      [[ $fd == "$target" ]] && { source_carries=0; break; }
+    done
+    (( source_carries )) && carried+=("$target")
+  done
+  __LMLINE_RISK_CARRIED_FDS=("${carried[@]}")
 }
 
 # The script a shell reads from an active here-string operator. The unquoted

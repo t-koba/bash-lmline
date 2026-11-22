@@ -175,6 +175,13 @@ bash -c '
   [[ $(__lmline_risk_level "bash /dev/fd/9 <<< ${hsq}rm -rf /${hsq} 3>&0") != high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/4 <<< ${hsq}rm -rf /${hsq} 3>&0 4>&3") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/3 <<< ${hsq}rm -rf /${hsq} 4>&0 3>&4") == high ]]
+  # Descriptor copies take effect in source order: reversing the two copies
+  # leaves the alias reading an empty descriptor, so it is only data.
+  [[ $(__lmline_risk_level "bash /dev/fd/4 <<< ${hsq}echo echo MARK | sh${hsq} 3<&0 4<&3") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 <<< ${hsq}echo echo MARK | sh${hsq} 4<&3 3<&0") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq}) 4<&3") == high ]]
+  [[ $(__lmline_risk_reason "bash /dev/fd/4 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq}) 4<&3") == "generated shell script execution" ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/4 4<&3 3< <(cat <<< ${hsq}echo echo MARK | sh${hsq})") == low ]]
   [[ $(__lmline_risk_level "cat /dev/stdin <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "cat <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash \"<<<\" \"rm -rf /\"") == low ]]
