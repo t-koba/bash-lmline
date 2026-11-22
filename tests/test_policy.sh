@@ -286,6 +286,19 @@ bash -c '
               "head -n <<< ${hsq}echo echo MARK | sh${hsq} 1"; do
     [[ $(__lmline_risk_level "bash -c \"\$(${spec})\"") == high ]]
   done
+  # A stream alias left out of the filter match still names a script file:
+  # only an alias on the carried descriptor passes the payload through.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat /dev/fd/3 <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(sed -n p /dev/fd/3 <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(sed -n <<< ${hsq}echo echo MARK | sh${hsq} p /dev/fd/1)\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(sed -n <<< ${hsq}echo echo MARK | sh${hsq} p /proc/self/fd/3)\"") == low ]]
+  # A later here-string on the same descriptor overrides the earlier payload.
+  [[ $(__lmline_risk_level "bash -c \"\$(sed -n <<< ${hsq}echo echo MARK | sh${hsq} p <<< ${hsq}echo SAFE_MARKER${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(head -n <<< ${hsq}echo echo MARK | sh${hsq} 1 <<< ${hsq}echo SAFE_MARKER${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} 3<<< ${hsq}echo${hsq} 0<&3") == low ]]
+  # A dangerous last payload or another descriptor still carries the script.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo SAFE_MARKER${hsq} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/fd/3 3<<< ${hsq}rm -rf /${hsq} <<< ${hsq}echo${hsq}") == high ]]
   # Redirecting the copier stdout keeps the here-string out of the command
   # substitution: only the ordinary redirection risk remains.
   [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]

@@ -2484,8 +2484,8 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 active fd alias_matches carried_fd reaches alias_claimed
-  local -a plain=() quoted=() words=() filter_words=()
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 superseded=0 active fd later_fd alias_matches carried_fd reaches alias_claimed
+  local -a plain=() quoted=() words=() filter_words=() filter_index=()
   local IFS=$' \t\n'
   printf -v marker '\002'
   while IFS= read -r segment || [[ -n $segment ]]; do
@@ -2523,12 +2523,21 @@ __lmline_risk_here_string_payload() {
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
+      # A later active here-string on the same descriptor replaces this
+      # payload; other descriptors keep their own last operator.
+      superseded=0
+      for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
+        later_fd=$(__lmline_risk_here_string_descriptor "${quoted[index]}") || continue
+        [[ $later_fd == "$fd" ]] && { superseded=1; break; }
+      done
+      (( superseded )) && continue
       stdout_sunk=0
       filter_operand=0
       if (( require_copy )); then
         # Filter syntax can be split around the operator. A stream alias is
         # not filter syntax: it names the input the filter should read.
         filter_words=()
+        filter_index=()
         for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
           word=${quoted[index]}
           [[ $index == op_index ]] && continue
@@ -2542,6 +2551,7 @@ __lmline_risk_here_string_payload() {
           fi
           __lmline_risk_stream_script_alias_descriptor "$word" >/dev/null && continue
           filter_words+=("$word")
+          filter_index+=("$index")
         done
         __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" "${filter_words[@]}" && filter_operand=1
       fi
@@ -2572,9 +2582,11 @@ __lmline_risk_here_string_payload() {
           (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
           continue
         fi
-        # A matched verbatim filter keeps its own syntax on either side of
-        # the operator; none of it is a script file the shell would read.
-        (( filter_operand )) && continue
+        # Only the filter words matched as operands are its syntax. An alias
+        # left out of that match still names a possible script file.
+        if (( filter_operand )) && [[ " ${filter_index[*]} " == *" $index "* ]]; then
+          continue
+        fi
         (( copies_with_operands )) && continue
         # An alias reads the payload when its descriptor is the here-string's
         # own or one a later duplication copied it to; otherwise it is a file.
