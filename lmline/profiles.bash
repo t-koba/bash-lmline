@@ -380,7 +380,13 @@ profile_endpoint_remove() {
   fi
   if (( keep_secret == 0 )) && [[ -n "$api_key_file" ]]; then
     case "$api_key_file" in
-      "$config_dir"/secrets/*) rm -f "$api_key_file" ;;
+      "$config_dir"/secrets/*)
+        if __lmline_path_has_traversal_after_component "$api_key_file"; then
+          printf 'lmline: unsafe secret path was kept: %s\n' "$api_key_file" >&2
+        else
+          rm -f "$api_key_file"
+        fi
+        ;;
       *) printf 'lmline: secret file outside %s/secrets was kept: %s\n' "$config_dir" "$api_key_file" >&2 ;;
     esac
   fi

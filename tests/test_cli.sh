@@ -1145,6 +1145,18 @@ grep -q 'credential path is occupied' "$dir_secret_tmp/err" || fail "set-secret 
 [[ "$(cat "$dir_secret_tmp/config/endpoints.tsv")" == "$before_dir_secret" ]] || fail "occupied credential path changed the profile"
 [[ -z $(find "$dir_secret_path" -type f -print) ]] || fail "credential was moved into the directory"
 rm -rf "$dir_secret_tmp"
+# A managed secret path that escapes the secrets directory is never deleted.
+escape_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-escape-secret.XXXXXX")
+mkdir -p "$escape_secret_tmp/config/secrets"
+printf 'escape-victim' >"$escape_secret_tmp/config/victim"
+printf 'escaped\thttps://example.invalid/v1\tAuthorization\tBearer\t%s\t\t\t\t\t\t\t\t\t\n' \
+  "$escape_secret_tmp/config/secrets/../victim" >"$escape_secret_tmp/config/endpoints.tsv"
+env -i HOME="$escape_secret_tmp" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" \
+  LMLINE_CONFIG_DIR="$escape_secret_tmp/config" "$repo_dir/lmline/lmline" \
+  endpoint remove escaped >"$escape_secret_tmp/out" 2>"$escape_secret_tmp/err" || fail "endpoint remove with escaping secret path"
+grep -q 'unsafe secret path was kept' "$escape_secret_tmp/err" || fail "endpoint remove did not report the unsafe secret path"
+cmp -s <(printf 'escape-victim') "$escape_secret_tmp/config/victim" || fail "endpoint remove deleted a file outside the secrets directory"
+rm -rf "$escape_secret_tmp"
 # A symlinked config directory spelled with a dot component is refused by the
 # shared private-directory guard just like a directly symlinked secrets dir.
 dot_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dot-secret.XXXXXX")
