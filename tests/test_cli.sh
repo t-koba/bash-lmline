@@ -1130,6 +1130,21 @@ fi
 grep -q 'secrets directory is unsafe' "$symlink_secret_tmp/err" || fail "set-secret did not report the unsafe secrets directory"
 [[ -z $(find "$symlink_secret_tmp/outside" -type f -print) ]] || fail "credential was written through the symlinked secrets directory"
 rm -rf "$symlink_secret_tmp"
+# An ordinary directory at the managed credential filename is refused; the
+# profile and the directory stay untouched.
+dir_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dir-secret.XXXXXX")
+LMLINE_CONFIG_DIR="$dir_secret_tmp/config" "$repo_dir/lmline/lmline" endpoint add collide-dir https://example.invalid/v1 >/dev/null
+dir_secret_path="$dir_secret_tmp/config/secrets/endpoint-collide-dir-api-key.secret"
+mkdir -p "$dir_secret_path"
+before_dir_secret=$(cat "$dir_secret_tmp/config/endpoints.tsv")
+if printf '%s' 'dir-secret-sentinel' | LMLINE_CONFIG_DIR="$dir_secret_tmp/config" "$repo_dir/lmline/lmline" \
+  endpoint set-secret collide-dir >"$dir_secret_tmp/out" 2>"$dir_secret_tmp/err"; then
+  fail "set-secret accepted a directory at the credential path"
+fi
+grep -q 'credential path is occupied' "$dir_secret_tmp/err" || fail "set-secret did not report the occupied credential path"
+[[ "$(cat "$dir_secret_tmp/config/endpoints.tsv")" == "$before_dir_secret" ]] || fail "occupied credential path changed the profile"
+[[ -z $(find "$dir_secret_path" -type f -print) ]] || fail "credential was moved into the directory"
+rm -rf "$dir_secret_tmp"
 # A symlinked config directory spelled with a dot component is refused by the
 # shared private-directory guard just like a directly symlinked secrets dir.
 dot_secret_tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-dot-secret.XXXXXX")

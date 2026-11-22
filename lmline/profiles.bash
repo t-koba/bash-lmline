@@ -341,12 +341,21 @@ profile_endpoint_set_secret() {
   safe_name=${name//%/%%}
   safe_name=${safe_name//\//%2F}
   secret_file=$config_dir/secrets/endpoint-${safe_name}-api-key.secret
+  if [[ -d "$secret_file" || ( -e "$secret_file" && ! -f "$secret_file" ) ]]; then
+    printf 'lmline: credential path is occupied by a non-file: %s\n' "$secret_file" >&2
+    exit 2
+  fi
   umask 077
   __lmline_mktemp tmp "${secret_file}.XXXXXX"
   printf '%s' "$value" >"$tmp" || return 1
   chmod 600 "$tmp" || return 1
   mv "$tmp" "$secret_file" || return 1
   __lmline_forget_tmp "$tmp"
+  if [[ ! -f "$secret_file" || -L "$secret_file" ]]; then
+    rm -f "$secret_file/${tmp##*/}" 2>/dev/null || true
+    printf 'lmline: credential path is occupied by a non-file: %s\n' "$secret_file" >&2
+    exit 2
+  fi
   profile_upsert_line "$endpoints_file" 1 "$(printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s' "$name" "$base" "$auth_header" "$auth_scheme" "$secret_file" "$old_temp" "$old_tokens" "$old_tool" "$old_models_url" "$old_models_jq" "$old_models_prefix" "$old_models_include" "$old_models_exclude" "$old_auth_mode")"
 }
 
