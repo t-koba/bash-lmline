@@ -1209,7 +1209,7 @@ __lmline_risk_level_rank() {
 # are removed, and a backslash escapes the next character. The words are
 # data and are never executed.
 __lmline_risk_split_words() {
-  local str=$1 word="" ch quote="" i n
+  local str=$1 keep_backticks=${2:-0} word="" ch quote="" i n
   n=${#str}
   for ((i = 0; i < n; i++)); do
     ch=${str:i:1}
@@ -1220,6 +1220,9 @@ __lmline_risk_split_words() {
         continue
       fi
       if [[ "$ch" == "$quote" ]]; then
+        if (( keep_backticks )) && [[ "$ch" == '`' ]]; then
+          word+=$ch
+        fi
         quote=""
         continue
       fi
@@ -1229,6 +1232,9 @@ __lmline_risk_split_words() {
     case "$ch" in
       "'"|'"'|'`')
         quote=$ch
+        if (( keep_backticks )) && [[ "$ch" == '`' ]]; then
+          word+=$ch
+        fi
         ;;
       "\\")
         i=$((i + 1))
@@ -1553,48 +1559,6 @@ __lmline_risk_shell_carries_remove() {
   return 1
 }
 
-# Word splitting for a command string that must keep backtick delimiters: a
-# backtick still quotes one word, but its marks belong to the word so a nested
-# command string can be judged as written.
-__lmline_risk_split_words_keep_backticks() {
-  local str=$1 word="" ch quote="" i n
-  n=${#str}
-  for ((i = 0; i < n; i++)); do
-    ch=${str:i:1}
-    if [[ -n $quote ]]; then
-      if [[ $quote == '"' && $ch == "\\" ]]; then
-        i=$((i + 1))
-        word+=${str:i:1}
-        continue
-      fi
-      if [[ $ch == "$quote" ]]; then
-        [[ $ch == '`' ]] && word+=$ch
-        quote=""
-        continue
-      fi
-      word+=$ch
-      continue
-    fi
-    case $ch in
-      "'"|'"'|'`')
-        quote=$ch
-        [[ $ch == '`' ]] && word+=$ch
-        ;;
-      "\\")
-        i=$((i + 1))
-        word+=${str:i:1}
-        ;;
-      ' '|$'\t')
-        [[ -n $word ]] && printf '%s\n' "$word"
-        word=""
-        ;;
-      *) word+=$ch ;;
-    esac
-  done
-  [[ -n $word ]] && printf '%s\n' "$word"
-  return 0
-}
-
 # Command strings the shell command words in a command run through -c. The
 # whole command is read once so a command substitution feeding -c stays one
 # argument; segments then cover shells hidden behind other commands.
@@ -1605,7 +1569,7 @@ __lmline_risk_shell_c_command_strings_in() {
     raw_words=()
     source_words=()
     mapfile -t raw_words < <(__lmline_risk_split_words "$cmd")
-    mapfile -t source_words < <(__lmline_risk_split_words_keep_backticks "$cmd")
+    mapfile -t source_words < <(__lmline_risk_split_words "$cmd" 1)
     raw_index=$(__lmline_risk_segment_command_index "${raw_words[@]}") || raw_index=-1
     if (( raw_index >= 0 )) && __lmline_risk_word_runs_shell "${raw_words[raw_index]}"; then
       __lmline_risk_shell_c_command_strings "${source_words[@]:raw_index+1}"
@@ -1617,7 +1581,7 @@ __lmline_risk_shell_c_command_strings_in() {
     words=()
     source_words=()
     mapfile -t words < <(__lmline_risk_split_words "$segment")
-    mapfile -t source_words < <(__lmline_risk_split_words_keep_backticks "$segment")
+    mapfile -t source_words < <(__lmline_risk_split_words "$segment" 1)
     ((${#words[@]})) || continue
     cmd_index=$(__lmline_risk_segment_command_index_with "$segment" "${words[@]}") || continue
     word=${words[cmd_index]}
