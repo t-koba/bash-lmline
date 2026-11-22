@@ -1561,11 +1561,93 @@ __lmline_risk_shell_carries_remove() {
   return 1
 }
 
-# Every substitution in a -c argument helps build the command string, even
-# one that would be data where that string is parsed. Judge their payloads
-# when the string has a substitution in command position.
+# The data a substitution can hand back to a command string: here-string
+# data copied by its body, or the body itself when no copied data is found.
+# The body is read, never executed.
+__lmline_risk_substitution_output() {
+  local body=$1 payload
+  while IFS= read -r payload || [[ -n $payload ]]; do
+    [[ -n $payload ]] || continue
+    printf '%s\n' "$payload"
+    return 0
+  done < <(__lmline_risk_here_string_payload "$body" 0 1)
+  printf '%s\n' "$body"
+}
+
+# The script text a dynamic -c operand builds when each substitution is
+# replaced by the data it can hand back. Output inside double quotes stays
+# quoted, so shell syntax in that output remains data to the inner shell.
+__lmline_risk_dynamic_c_script() {
+  local text=$1 normalized out='' i n j depth inner_quote='' quote='' ch next c
+  local start body output
+  normalized=$(__lmline_risk_substitution_normalize "$text")
+  n=${#normalized}
+  for ((i = 0; i < n; i++)); do
+    ch=${normalized:i:1}
+    next=${normalized:i+1:1}
+    if [[ $ch == $'\\' && $quote != "'" ]] && (( i + 1 < n )); then
+      # The source view keeps an escaped quote as written; the inner shell
+      # sees the quote itself, so it opens or closes a quoted argument here.
+      if [[ $next == '"' ]]; then
+        if [[ $quote == '"' ]]; then
+          quote=''
+        else
+          quote='"'
+        fi
+        out+=$next
+      else
+        out+=$ch$next
+      fi
+      ((i++))
+      continue
+    fi
+    if [[ $ch == '$' && $next == '(' && $quote != "'" ]]; then
+      start=$((i + 2))
+      depth=1
+      inner_quote=''
+      for ((j = start; j < n; j++)); do
+        c=${normalized:j:1}
+        if [[ -n $inner_quote ]]; then
+          if [[ $c == $'\\' && $inner_quote == '"' ]]; then
+            ((j++))
+          elif [[ $c == "$inner_quote" ]]; then
+            inner_quote=''
+          fi
+          continue
+        fi
+        case $c in
+          "'"|'"') inner_quote=$c ;;
+          '(') ((depth++)) ;;
+          ')')
+            (( --depth == 0 )) && break
+            ;;
+        esac
+      done
+      if (( depth )); then
+        out+=$ch
+        continue
+      fi
+      body=${normalized:start:j-start}
+      output=$(__lmline_risk_substitution_output "$body")
+      out+=$output
+      i=$j
+      continue
+    fi
+    if [[ -n $quote ]]; then
+      [[ $ch == "$quote" ]] && quote=''
+    else
+      [[ $ch == "'" || $ch == '"' ]] && quote=$ch
+    fi
+    out+=$ch
+  done
+  printf '%s' "$out"
+}
+
+# A dynamic -c operand is parsed as script text after its substitutions have
+# handed back their output. Judge that built script, not just the isolated
+# substitution payloads, so data in an argument is not mistaken for syntax.
 __lmline_risk_shell_c_substitution_payloads() {
-  local cmd=$1 carried literal
+  local cmd=$1 carried literal generated
   while IFS= read -r carried || [[ -n $carried ]]; do
     [[ -n $carried ]] || continue
     # A substitution inside a single-quoted -c operand belongs to the inner
@@ -1573,8 +1655,9 @@ __lmline_risk_shell_c_substitution_payloads() {
     # script itself is judged by the ordinary -c and substitution rules.
     literal="'${carried}'"
     [[ $cmd == *"$literal"* ]] && continue
-    __lmline_risk_substitution_in_command_position "$carried" || continue
-    __lmline_risk_substitution_command_payloads "$carried" 1
+    generated=$(__lmline_risk_dynamic_c_script "$carried")
+    [[ -n $generated ]] || continue
+    printf '%s\n' "$generated"
   done < <(__lmline_risk_shell_c_command_strings_in "$cmd")
 }
 

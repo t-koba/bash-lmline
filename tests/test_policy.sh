@@ -135,7 +135,20 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(cat <<< \"echo hi | sh\") \$(printf true)${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(printf true) \`cat <<< \"echo hi | sh\"\`${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(cat <<< \"echo hi | sh\")${hsq}") == low ]]
-  [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == low ]]
+  # Output from an unquoted substitution is parsed as part of the -c script, not
+  # passed to echo as data: the real shell runs the piped shell below. A
+  # generated script built by replacing the substitution is judged as nested
+  # text, wherever that substitution sat in the outer command string.
+  [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"printf %s \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"x=\$(cat <<< ${hsq}echo hi | sh${hsq}); echo hi\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \$(cat /dev/stdin <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq}); \$(printf true)\"") == high ]]
+  [[ $(__lmline_risk_reason "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == "piped shell execution" ]]
+  [[ $(__lmline_risk_level "bash -c \"echo \`cat <<< ${hsq}echo hi | sh${hsq}\`\"") == high ]]
+  # A substitution quoted in the -c operand hands its output to echo as data;
+  # the real shell prints the payload and never starts the piped shell.
+  [[ $(__lmline_risk_level "bash -c \"echo \\\"\$(cat <<< ${hsq}echo hi | sh${hsq})\\\"\"") == low ]]
   # Backticks carry the same nested command string in their own spelling.
   [[ $(__lmline_risk_level "\`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
   [[ $(__lmline_risk_level "echo \`cat <<< ${hsq}echo hi | sh${hsq}\`") == low ]]
