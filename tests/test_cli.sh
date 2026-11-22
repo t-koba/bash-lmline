@@ -1481,6 +1481,19 @@ doctor_out=$(LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor)
 grep -q "missing command=definitely-not-a-command-for-lmline" <<<"$doctor_out" || fail "custom doctor commands"
 grep -q "install definitely-not-a-command-for-lmline or check PATH" <<<"$doctor_out" || fail "doctor missing command hint"
 grep -q "lmline endpoint set-secret ENDPOINT" <<<"$doctor_out" || fail "doctor auth hint"
+doctor_secret_dir="$cfg_tmp/doctor-secret"
+mkdir -p "$doctor_secret_dir"
+printf 'sentinel' >"$doctor_secret_dir/key"
+chmod 600 "$doctor_secret_dir/key"
+doctor_secret_out=$(LMLINE_API_KEY_FILE="$doctor_secret_dir/key" LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor)
+grep -q '^auth=configured$' <<<"$doctor_secret_out" || fail "doctor configured auth"
+! grep -q 'configured API key file is missing or unreadable' <<<"$doctor_secret_out" ||
+  fail "doctor warned about a readable secret file"
+rm -f "$doctor_secret_dir/key"
+doctor_missing_secret_out=$(LMLINE_API_KEY_FILE="$doctor_secret_dir/key" LMLINE_CONFIG_DIR="$doctor_dir" "$repo_dir/lmline/lmline" doctor)
+grep -q 'configured API key file is missing or unreadable' <<<"$doctor_missing_secret_out" ||
+  fail "doctor missed an unavailable secret file"
+! grep -q "$doctor_secret_dir/key" <<<"$doctor_missing_secret_out" || fail "doctor leaked the secret path"
 grep -q '^engine=.* (ok)$' <<<"$doctor_out" || fail "doctor engine status"
 grep -q '^defaults$' <<<"$doctor_out" || fail "doctor defaults heading"
 grep -q 'risk_patterns.tsv: ok' <<<"$doctor_out" || fail "doctor defaults risk patterns"

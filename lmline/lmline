@@ -1327,6 +1327,9 @@ case "$cmd" in
     printf 'model=%s\n' "$( __lmline_display_catalog_model "${LMLINE_MODEL:-auto-discover}" )"
     if [[ -n "${LMLINE_API_KEY_FILE:-}" ]]; then
       printf 'auth=configured\n'
+      if [[ ! -f "$LMLINE_API_KEY_FILE" || ! -r "$LMLINE_API_KEY_FILE" ]]; then
+        printf '  -> configured API key file is missing or unreadable\n'
+      fi
     else
       printf 'auth=not-configured\n'
       printf '  -> lmline endpoint set-secret ENDPOINT\n'
