@@ -151,6 +151,14 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "sh -c ${hsq}echo hi${hsq} -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash /path/script.sh -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
+  # -s in a short bundle or after options with separate values still selects
+  # stdin as the script; a -c string or script file still wins over -s.
+  [[ $(__lmline_risk_level "bash -es ARG <<< ${hsq}echo echo GT | sh${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash --rcfile f -s <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash --init-file f -s <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash --rcfile=f -s <<< ${hsq}rm -rf /${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash --rcfile f -c ${hsq}echo hi${hsq} -s <<< ${hsq}echo hi | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash -es -c ${hsq}echo hi${hsq} <<< ${hsq}echo hi | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} foo -s <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash /dev/fd/0 <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_level "sh /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]

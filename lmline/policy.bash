@@ -2262,6 +2262,45 @@ __lmline_risk_word_copies_stdin_with_operands() {
 
 # A stdout redirection on the copying producer keeps its bytes out of the
 # command substitution, so the here-string cannot become a command string.
+# Shells read stdin as the script when -s occurs in the option prefix. Long
+# options and short bundles need their own values skipped before that prefix
+# ends; once -s is seen later words are positional parameters, not a script.
+__lmline_risk_shell_stdin_script() {
+  local start=$1 index word base seen_s=0 command_string=0
+  shift
+  local -a words=("$@")
+  for ((index = start + 1; index < ${#words[@]}; index++)); do
+    word=${words[index]}
+    if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
+      [[ $word == *'<<<' ]] && index=$((index + 1))
+      continue
+    fi
+    if __lmline_risk_redirect_word "$word"; then
+      (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
+      continue
+    fi
+    [[ $word == -- ]] && break
+    if [[ $word != -* ]]; then
+      (( seen_s )) && continue
+      break
+    fi
+    if [[ $word == --* ]]; then
+      [[ $word == *=* ]] && continue
+      base=${word%%=*}
+      case $base in
+        --rcfile|--init-file|--o|--O|--op|--optimization|--rpm|--wordchars|--histchars)
+          index=$((index + 1))
+          ;;
+      esac
+      continue
+    fi
+    if [[ $word == *c* ]]; then command_string=1; break; fi
+    [[ $word == *s* ]] && seen_s=1
+    [[ $word == *[oO]* ]] && index=$((index + 1))
+  done
+  (( seen_s && ! command_string ))
+}
+
 __lmline_risk_word_sinks_stdout() {
   local word=$1 target
   [[ $word == '&>'* ]] && return 0
@@ -2345,23 +2384,9 @@ __lmline_risk_here_string_payload() {
       copies_with_operands=1
     fi
     # With -s the shell reads its script from stdin whatever follows it, but
-    # -s is an option only before the first operand and without -c. Redirect
-    # syntax is skipped while looking for that option.
-    for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
-      word=${quoted[index]}
-      if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
-        [[ $word == *'<<<' ]] && index=$((index + 1))
-        continue
-      fi
-      if __lmline_risk_redirect_word "$word"; then
-        (( __LMLINE_RISK_REDIRECT_TARGET )) && index=$((index + 1))
-        continue
-      fi
-      [[ $word == -- ]] && break
-      [[ $word == -s ]] && { stdin_script=1; continue; }
-      [[ $word == -* ]] || break
-      [[ $word == -*c* ]] && break
-    done
+    # only when -s is in the option prefix and no -c selected a command string.
+    stdin_script=0
+    __lmline_risk_shell_stdin_script "$cmd_index" "${quoted[@]}" && stdin_script=1
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
