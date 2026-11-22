@@ -303,6 +303,11 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\$(sed -n <<< ${hsq}echo echo MARK | sh${hsq} p <<< ${hsq}echo SAFE_MARKER${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash -c \"\$(head -n <<< ${hsq}echo echo MARK | sh${hsq} 1 <<< ${hsq}echo SAFE_MARKER${hsq})\"") == low ]]
   [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} 3<<< ${hsq}echo${hsq} 0<&3") == low ]]
+  # A duplication before the later same-fd operator keeps the earlier
+  # payload live, both directly and through a chain of descriptors.
+  [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} 0<&3 3<<< ${hsq}echo${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash 3<<< ${hsq}rm -rf /${hsq} 4<&3 0<&4 3<<< ${hsq}echo${hsq}") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat 3<<< ${hsq}rm -rf /${hsq} 0<&3 3<<< ${hsq}echo${hsq})\"") == high ]]
   # A dangerous last payload or another descriptor still carries the script.
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo SAFE_MARKER${hsq} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash /dev/fd/3 3<<< ${hsq}rm -rf /${hsq} <<< ${hsq}echo${hsq}") == high ]]

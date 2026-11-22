@@ -2555,7 +2555,7 @@ __lmline_risk_carry_fds() {
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
   local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
-  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 superseded=0 active fd later_fd alias_matches carried_fd reaches alias_claimed
+  local index cmd_index op_index script_word=0 stdin_script=0 copies_with_operands=0 stdout_sunk=0 filter_operand=0 superseded=0 survived active fd later_fd alias_matches carried_fd reaches alias_claimed
   local -a plain=() quoted=() words=() filter_words=() filter_index=()
   local IFS=$' \t\n'
   printf -v marker '\002'
@@ -2595,11 +2595,22 @@ __lmline_risk_here_string_payload() {
       # decoded by the caller, so both spellings start with the operator here.
       fd=$(__lmline_risk_here_string_descriptor "${quoted[op_index]}") || continue
       # A later active here-string on the same descriptor replaces this
-      # payload; other descriptors keep their own last operator.
+      # payload only if it was not duplicated to another live descriptor
+      # first; a dup before the later operator keeps this payload readable.
+      # Other descriptors keep their own last operator.
       superseded=0
       for ((index = op_index + 1; index < ${#quoted[@]}; index++)); do
         later_fd=$(__lmline_risk_here_string_descriptor "${quoted[index]}") || continue
-        [[ $later_fd == "$fd" ]] && { superseded=1; break; }
+        [[ $later_fd == "$fd" ]] || continue
+        __lmline_risk_carry_fds "$fd" $((op_index + 1)) "${quoted[@]:0:index}"
+        survived=0
+        for carried_fd in "${__LMLINE_RISK_CARRIED_FDS[@]}"; do
+          [[ $carried_fd == "$fd" ]] && continue
+          survived=1
+          break
+        done
+        (( survived )) || superseded=1
+        break
       done
       (( superseded )) && continue
       stdout_sunk=0
