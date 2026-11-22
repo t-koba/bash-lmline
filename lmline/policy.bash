@@ -1545,7 +1545,7 @@ __lmline_risk_shell_carries_remove() {
     [[ -n $carried ]] || continue
     # A substitution supplies the command string only in command
     # position; elsewhere its output is data to another command.
-    if __lmline_risk_substitution_any_in_command_position "$carried"; then
+    if __lmline_risk_substitution_in_command_position "$carried"; then
       # Every substitution in a -c string helps build the command string,
       # even one that is an argument where the string itself is parsed.
       __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) 1 && return 0
@@ -1565,10 +1565,15 @@ __lmline_risk_shell_carries_remove() {
 # one that would be data where that string is parsed. Judge their payloads
 # when the string has a substitution in command position.
 __lmline_risk_shell_c_substitution_payloads() {
-  local cmd=$1 carried
+  local cmd=$1 carried literal
   while IFS= read -r carried || [[ -n $carried ]]; do
     [[ -n $carried ]] || continue
-    __lmline_risk_substitution_any_in_command_position "$carried" || continue
+    # A substitution inside a single-quoted -c operand belongs to the inner
+    # shell's script; it does not help build the outer command string. The
+    # script itself is judged by the ordinary -c and substitution rules.
+    literal="'${carried}'"
+    [[ $cmd == *"$literal"* ]] && continue
+    __lmline_risk_substitution_in_command_position "$carried" || continue
     __lmline_risk_substitution_command_payloads "$carried" 1
   done < <(__lmline_risk_shell_c_command_strings_in "$cmd")
 }
@@ -1638,27 +1643,91 @@ __lmline_risk_substitution_marker_line() {
   return 1
 }
 
-__lmline_risk_substitution_in_command_position() {
-  local text=$1 segment
-  while IFS= read -r segment || [[ -n $segment ]]; do
-    __lmline_risk_substitution_marker_line "$segment" && return 0
-  done <<<"$(__lmline_split_pipeline "$text" 1 "()" bash structural-substitution-marker)"
-  return 1
-}
-
-# Backticks are another spelling of command substitution; normalize each pair
-# to the marker the structural splitter uses before judging command position.
-__lmline_risk_substitution_any_in_command_position() {
-  local text=$1 normalized='' index ch opening=1
-  for ((index = 0; index < ${#text}; index++)); do
-    ch=${text:index:1}
+# Backticks are another spelling of command substitution: normalize each pair
+# to the markers the structural splitter uses.
+__lmline_risk_substitution_normalize() {
+  local text=$1 normalized='' i ch opening=1
+  for ((i = 0; i < ${#text}; i++)); do
+    ch=${text:i:1}
     if [[ $ch == '`' ]]; then
       if (( opening )); then normalized+='$('; opening=0; else normalized+=')'; opening=1; fi
     else
       normalized+=$ch
     fi
   done
-  __lmline_risk_substitution_in_command_position "$normalized"
+  printf '%s' "$normalized"
+}
+
+# The structural splitter cuts at every substitution opener, isolating a
+# marker that follows an earlier substitution from the data word before it.
+# Replace completed substitutions with a command-prefix word so each marker
+# is judged against the code around it instead of losing that context.
+__lmline_risk_substitution_context() {
+  local text=$1 normalized out='' ch next quote='' depth=0 i n
+  normalized=$(__lmline_risk_substitution_normalize "$text")
+  n=${#normalized}
+  for ((i = 0; i < n; i++)); do
+    ch=${normalized:i:1}
+    next=${normalized:i+1:1}
+    if (( depth )); then
+      if [[ -n $quote ]]; then
+        if [[ $quote == "'" ]]; then
+          [[ $ch == "'" ]] && quote=''
+        elif [[ $ch == $'\\' ]]; then
+          ((i++))
+        elif [[ $ch == '"' ]]; then
+          quote=''
+        elif [[ $ch == '$' && $next == '(' ]]; then
+          depth=$((depth + 1))
+          ((i++))
+        fi
+      else
+        case $ch in
+          "'"|'"') quote=$ch ;;
+          '$') [[ $next == '(' ]] && { depth=$((depth + 1)); ((i++)); } ;;
+          ')') depth=$((depth - 1)) ;;
+        esac
+      fi
+      continue
+    fi
+    if [[ $ch == '$' && $next == '(' ]]; then
+      out+=' time '
+      depth=1
+      ((i += 2))
+      continue
+    fi
+    if [[ -n $quote ]]; then
+      if [[ $quote == "'" ]]; then
+        out+=$ch
+        [[ $ch == "'" ]] && quote=''
+      elif [[ $ch == $'\\' ]] && (( i + 1 < n )); then
+        out+="$ch$next"
+        ((i++))
+      elif [[ $ch == '"' ]]; then
+        out+=$ch
+        quote=''
+      else
+        out+=$ch
+      fi
+    else
+      out+=$ch
+      [[ $ch == "'" || $ch == '"' ]] && quote=$ch
+    fi
+  done
+  printf '%s' "$out"
+}
+
+__lmline_risk_substitution_in_command_position() {
+  local text=$1 normalized rest prefix offset=0
+  normalized=$(__lmline_risk_substitution_normalize "$text")
+  rest=$normalized
+  while [[ $rest == *'$('* ]]; do
+    prefix=${rest%%'$('*}
+    __lmline_risk_substitution_occurrence_command_position "${normalized:0:offset+${#prefix}}" && return 0
+    (( offset += ${#prefix} + 2 ))
+    rest=${rest#*'$('}
+  done
+  return 1
 }
 
 # The text a command substitution can hand back to a command string: literal
@@ -1666,6 +1735,7 @@ __lmline_risk_substitution_any_in_command_position() {
 # never executed.
 __lmline_risk_substitution_occurrence_command_position() {
   local text=$1 segment last=
+  text=$(__lmline_risk_substitution_context "$text")
   while IFS= read -r segment || [[ -n $segment ]]; do
     last=$segment
   done < <(__lmline_split_pipeline "${text}\$" 1 "()" bash structural-substitution-marker)
@@ -1673,7 +1743,7 @@ __lmline_risk_substitution_occurrence_command_position() {
 }
 
 __lmline_risk_substitution_command_payloads() {
-  local text=$1 all=${2:-0} rest prefix after body dollar_pos backtick_pos pos skip payload
+  local text=$1 all=${2:-0} rest prefix after body dollar_pos backtick_pos pos skip payload offset=0
   rest=$text
   while :; do
     dollar_pos=-1
@@ -1700,7 +1770,7 @@ __lmline_risk_substitution_command_payloads() {
       body=${after%%')'*}
       skip=$((pos + ${#body} + 3))
     fi
-    prefix=${rest:0:pos}
+    prefix=${text:0:offset+pos}
     if [[ -n $body ]] && { (( all )) || __lmline_risk_substitution_occurrence_command_position "$prefix"; }; then
       while IFS= read -r payload || [[ -n $payload ]]; do
         [[ -n $payload ]] || continue
@@ -1708,6 +1778,7 @@ __lmline_risk_substitution_command_payloads() {
       done < <(__lmline_risk_here_string_payload "$body" 0 1)
       printf '%s\n' "$body"
     fi
+    (( offset += skip ))
     rest=${rest:skip}
   done
 }

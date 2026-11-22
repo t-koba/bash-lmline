@@ -128,6 +128,13 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\`cat <<< ${hsq}echo hi | sh${hsq}\`; \`printf true\`\"") == high ]]
   [[ $(__lmline_risk_level "echo \$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
   [[ $(__lmline_risk_level "x=\$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
+  # In a literal single-quoted -c operand the substitutions are the inner
+  # shell text, not text building the outer command string: a dangerous
+  # here-string copied into an argument stays data, in either order or spelling.
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(printf true) \$(cat <<< \"echo hi | sh\")${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(cat <<< \"echo hi | sh\") \$(printf true)${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(printf true) \`cat <<< \"echo hi | sh\"\`${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash -c ${hsq}echo \$(cat <<< \"echo hi | sh\")${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == low ]]
   # Backticks carry the same nested command string in their own spelling.
   [[ $(__lmline_risk_level "\`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
