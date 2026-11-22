@@ -181,6 +181,19 @@ bash -c '
   [[ $(__lmline_risk_level "bash <<< ${hsq}echo hello${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash -c ${hsq}echo hi${hsq} <<< ${hsq}rm -rf /${hsq}") == low ]]
   [[ $(__lmline_risk_level "bash script.sh <<< ${hsq}rm -rf /${hsq}") == low ]]
+  # Here-string syntax is not a positional argument: an empty script file
+  # still supplies the script in either order, and /dev/stdin still
+  # claims the script role and reads the payload.
+  [[ $(__lmline_risk_level "bash <<< ${hsq}echo echo MARK | sh${hsq} /dev/null") == low ]]
+  [[ $(__lmline_risk_level "bash /dev/null <<< ${hsq}echo echo MARK | sh${hsq}") == low ]]
+  [[ $(__lmline_risk_level "bash <<< ${hsq}rm -rf /${hsq} /dev/stdin") == high ]]
+  [[ $(__lmline_risk_level "bash /dev/stdin <<< ${hsq}rm -rf /${hsq}") == high ]]
+  # A substitution only carries here-string data into a command string when
+  # its producer copies stdin to stdout.
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(true <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo echo MARK | sh${hsq} /dev/null)\"") == low ]]
   # A redirection target belongs to the redirect, not to the script file.
   [[ $(__lmline_risk_level "bash > out <<< ${hsq}rm -rf /${hsq}") == high ]]
   [[ $(__lmline_risk_reason "bash > out <<< ${hsq}rm -rf /${hsq}") == "recursive remove" ]]

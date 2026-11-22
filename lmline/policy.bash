@@ -1654,7 +1654,7 @@ __lmline_risk_substitution_command_payloads() {
         while IFS= read -r payload || [[ -n $payload ]]; do
           [[ -n $payload ]] || continue
           printf '%s\n' "$payload"
-        done < <(__lmline_risk_here_string_payload "$body" 0)
+        done < <(__lmline_risk_here_string_payload "$body" 0 1)
         printf '%s\n' "$body"
       fi
       rest=${rest#*"$closer"}
@@ -2282,13 +2282,20 @@ __lmline_risk_carry_fds() {
   done
 }
 
+# The only stdin producer whose output is known to carry the here-string into
+# a command substitution is cat. An unknown or no-output producer is not
+# assumed to copy its input.
+__lmline_risk_word_copies_stdin() {
+  [[ ${1##*/} == cat ]]
+}
+
 # The script a shell reads from an active here-string operator. The unquoted
 # view proves an operator is active: a quoted or escaped operator has no
 # standalone token there. That view can drop a quoted command word, so the
-# quote-preserving view supplies the command and the words before the operator.
+# quote-preserving view supplies the command and all simple-command words.
 # Both views are read without executing anything. One payload per line.
 __lmline_risk_here_string_payload() {
-  local cmd=$1 require_shell=${2:-1} segment marker word payload
+  local cmd=$1 require_shell=${2:-1} require_copy=${3:-0} segment marker word payload
   local index cmd_index op_index script_word=0 active fd alias_matches carried_fd reaches alias_claimed
   local -a plain=() quoted=() words=()
   local IFS=$' \t\n'
@@ -2312,6 +2319,9 @@ __lmline_risk_here_string_payload() {
         continue
       fi
     fi
+    if (( require_copy )) && ! __lmline_risk_word_copies_stdin "${quoted[cmd_index]}"; then
+      continue
+    fi
     for ((op_index = cmd_index + 1; op_index < ${#quoted[@]}; op_index++)); do
       # A payload can be glued to the operator; ANSI-C quoting was already
       # decoded by the caller, so both spellings start with the operator here.
@@ -2327,7 +2337,7 @@ __lmline_risk_here_string_payload() {
       # A command string or script file already gives the shell its input, so
       # the here-string is data to that program, not a script it reads.
       script_word=0
-      for ((index = cmd_index + 1; index < op_index; index++)); do
+      for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
         word=${quoted[index]}
         # A standalone earlier here-string consumes its payload word, so that
         # word is not a script file given to the shell.
