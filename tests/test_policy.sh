@@ -248,6 +248,17 @@ bash -c '
   [[ $(__lmline_risk_level "bash -c \"\$(tee /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(tee -a /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
   [[ $(__lmline_risk_level "bash -c \"\$(true <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  # Verbatim one-line filters carry the here-string into the -c argument in
+  # the same way as cat and tee.
+  for filter in "head -n 1" "head -1" "tail -n 1" "tail -1" "sed -n p" \
+                "sed -n 1p" "sed -n ${hsq}1p${hsq}" "sed -n ${hsq}\$p${hsq}" \
+                "awk 1" "awk ${hsq}{print}${hsq}" "awk ${hsq}{ print }${hsq}" \
+                "grep ." "tr a-z a-z"; do
+    [[ $(__lmline_risk_level "bash -c \"\$(${filter} <<< ${hsq}echo echo MARK | sh${hsq})\"") == high ]]
+  done
+  # A transforming filter or a file operand does not copy the here-string.
+  [[ $(__lmline_risk_level "bash -c \"\$(tr a-z A-Z <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(sed -n 1p script.sh <<< ${hsq}echo echo MARK | sh${hsq})\"") == low ]]
   # Redirecting the copier stdout keeps the here-string out of the command
   # substitution: only the ordinary redirection risk remains.
   [[ $(__lmline_risk_level "bash -c \"\$(cat > /dev/null <<< ${hsq}echo echo MARK | sh${hsq})\"") == medium ]]

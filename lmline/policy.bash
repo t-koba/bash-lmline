@@ -2273,12 +2273,38 @@ __lmline_risk_descriptor_duplication_word() {
 
 # Verbatim stdin producers whose output carries the here-string into a
 # command substitution. An unknown or no-output producer is not assumed to
-# copy its input.
+# copy its input. Filters that keep a one-line here-string unchanged count as
+# copiers only with the fixed operands recorded below.
 __lmline_risk_word_copies_stdin() {
   case ${1##*/} in
-    cat|tee) return 0 ;;
+    cat|tee|head|tail|sed|awk|grep|tr) return 0 ;;
   esac
   return 1
+}
+
+# Operand words that belong to a copying filter, not to the script a shell
+# might run. Anything else before the here-string remains a script-file word.
+__lmline_risk_copier_operand_prefix() {
+  local cmd=${1##*/} word count
+  local -a decoded=()
+  shift
+  for word in "$@"; do
+    # The quote-preserving view folds spaces inside a word into a marker.
+    word=${word//$'\002'/ }
+    __lmline_risk_decode_option_word "$word"
+    decoded+=("$__LMLINE_RISK_OPTION_WORD")
+  done
+  set -- "${decoded[@]}"
+  count=$#
+  case $cmd in
+    cat|tee) (( count == 0 )) ;;
+    head|tail) [[ ($count == 2 && $1 == -n && $2 == 1) || ($count == 1 && $1 == -1) ]] ;;
+    sed) [[ $count == 2 && $1 == -n && ($2 == p || $2 == 1p || $2 == '$p') ]] ;;
+    awk) [[ $count == 1 && ($1 == 1 || $1 == '{print}' || $1 == '{ print }') ]] ;;
+    grep) [[ $count == 1 && $1 == . ]] ;;
+    tr) [[ $count == 2 && $1 != -* && $1 == "$2" ]] ;;
+    *) return 1 ;;
+  esac
 }
 
 # tee copies stdin to stdout even when file operands are present; cat instead
@@ -2489,6 +2515,13 @@ __lmline_risk_here_string_payload() {
       for ((index = cmd_index + 1; index < ${#quoted[@]}; index++)); do
         word=${quoted[index]}
         (( stdin_script )) && continue
+        # Operands of a known verbatim filter are its own syntax, not a
+        # script file the shell would read.
+        if (( index < op_index )) &&
+           __lmline_risk_copier_operand_prefix "${quoted[cmd_index]}" \
+             "${quoted[@]:cmd_index+1:op_index-cmd_index-1}"; then
+          continue
+        fi
         # A standalone earlier here-string consumes its payload word, so that
         # word is not a script file given to the shell.
         if __lmline_risk_here_string_descriptor "$word" >/dev/null; then
