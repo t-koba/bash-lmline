@@ -110,6 +110,12 @@ bash -c '
   [[ $(__lmline_risk_level "echo \$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
   [[ $(__lmline_risk_level "x=\$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
   [[ $(__lmline_risk_level "bash -c \"echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == low ]]
+  # Backticks carry the same nested command string in their own spelling.
+  [[ $(__lmline_risk_level "\`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
+  [[ $(__lmline_risk_level "echo \`cat <<< ${hsq}echo hi | sh${hsq}\`") == low ]]
+  [[ $(__lmline_risk_level "x=\`cat <<< ${hsq}echo hi | sh${hsq}\`") == low ]]
+  [[ $(__lmline_risk_level "bash -c \`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\`cat <<< ${hsq}echo hi | sh${hsq}\`\"") == high ]]
   # The payload can be glued to the operator, and quotes around part of the
   # command word do not keep the shell from running it.
   [[ $(__lmline_risk_level "bash <<<${hsq}rm -rf /${hsq}") == high ]]

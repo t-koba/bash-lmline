@@ -378,6 +378,9 @@ __lmline_backtick_risky() {
 
 __lmline_split_pipeline() {
   local cmd=$1 keep_quoted=${2:-0} extra_seps=${3:-} syntax_shell=${4:-bash} split_mode=${5:-all} emit_boundary=${6:-1}
+  local structural_mode=0 subst_marker=0
+  [[ $split_mode == structural-substitution || $split_mode == structural-substitution-marker ]] && structural_mode=1
+  [[ $split_mode == structural-substitution-marker ]] && subst_marker=1
   local stripped="" i ch next quote="" prev="" dq_subst_depth=0 dq_opener=0 dq_backslash_odd=0 dq_escaped_dollar=0 bt_subst_depth=0 bt_exposed=0 bt_quote_return=0 bt_risky=0 bt_bs_run=0 bt_escaped_sep=0 bt_escaped_bt=0 dq_backtick_depth=0 zsh_glob_qualifier_depth=0 zsh_qualifier_just_closed=0 prior_zsh_qualifier_close
   local subst_boundary=$'\n'
   local quote_was_exposed=0
@@ -393,7 +396,7 @@ __lmline_split_pipeline() {
     if [[ -n "$quote" ]]; then
       # Backticks open a command substitution for structural checks, so its
       # content and operators are read as commands rather than as one word.
-      if [[ "$split_mode" == structural-substitution && "$quote" == '`' ]] && (( bt_exposed )); then
+      if (( structural_mode )) && [[ "$quote" == '`' ]] && (( bt_exposed )); then
         if [[ "$ch" == "\\" ]]; then
           # Backslashes are kept through backtick dequoting except when they
           # pair, so a separator is escaped by one or two of them and a
@@ -468,7 +471,7 @@ __lmline_split_pipeline() {
       # Double quotes do not stop a command substitution from running. Open
       # its content as its own segment for structural checks; single quotes
       # still keep the same text inert.
-      if [[ "$split_mode" == structural-substitution && "$quote" == '"' ]]; then
+      if (( structural_mode )) && [[ "$quote" == '"' ]]; then
         # Inside a command substitution the body is shell syntax again:
         # single quotes and backslashes make substitution openers literal.
         if (( dq_subst_depth > 0 )); then
@@ -512,6 +515,7 @@ __lmline_split_pipeline() {
             if (( bt_risky )); then
               dq_backtick_depth=$((dq_backtick_depth + 1))
               if [[ -n "$subst_boundary" ]]; then
+                (( subst_marker )) && stripped+='$'
                 stripped+=$subst_boundary
               else
                 (( keep_quoted )) && stripped+=$ch
@@ -576,7 +580,7 @@ __lmline_split_pipeline() {
           continue
         fi
       fi
-      if [[ "$split_mode" == structural-substitution && "$quote" == '"' ]]; then
+      if (( structural_mode )) && [[ "$quote" == '"' ]]; then
         if [[ "$ch" == $'\\' ]]; then
           (( dq_backslash_odd = 1 - dq_backslash_odd ))
         else
@@ -651,12 +655,13 @@ __lmline_split_pipeline() {
       "'"|'"'|'`')
         quote=$ch
         [[ "$split_mode" != command-prefix && "$split_mode" != cwd-pipeline ]] || stripped+=$'\001'
-        if [[ "$split_mode" == structural-substitution && "$ch" == '`' ]]; then
+        if (( structural_mode )) && [[ "$ch" == '`' ]]; then
           bt_risky=$(__lmline_backtick_risky "$cmd" "$i" "$emit_boundary" 1)
           if (( bt_risky )); then
             bt_exposed=1
             bt_bs_run=0
             if [[ -n "$subst_boundary" ]]; then
+              (( subst_marker )) && stripped+='$'
               stripped+=$subst_boundary
             else
               (( keep_quoted )) && stripped+=$ch
@@ -1548,30 +1553,76 @@ __lmline_risk_shell_carries_remove() {
   return 1
 }
 
+# Word splitting for a command string that must keep backtick delimiters: a
+# backtick still quotes one word, but its marks belong to the word so a nested
+# command string can be judged as written.
+__lmline_risk_split_words_keep_backticks() {
+  local str=$1 word="" ch quote="" i n
+  n=${#str}
+  for ((i = 0; i < n; i++)); do
+    ch=${str:i:1}
+    if [[ -n $quote ]]; then
+      if [[ $quote == '"' && $ch == "\\" ]]; then
+        i=$((i + 1))
+        word+=${str:i:1}
+        continue
+      fi
+      if [[ $ch == "$quote" ]]; then
+        [[ $ch == '`' ]] && word+=$ch
+        quote=""
+        continue
+      fi
+      word+=$ch
+      continue
+    fi
+    case $ch in
+      "'"|'"'|'`')
+        quote=$ch
+        [[ $ch == '`' ]] && word+=$ch
+        ;;
+      "\\")
+        i=$((i + 1))
+        word+=${str:i:1}
+        ;;
+      ' '|$'\t')
+        [[ -n $word ]] && printf '%s\n' "$word"
+        word=""
+        ;;
+      *) word+=$ch ;;
+    esac
+  done
+  [[ -n $word ]] && printf '%s\n' "$word"
+  return 0
+}
+
 # Command strings the shell command words in a command run through -c. The
 # whole command is read once so a command substitution feeding -c stays one
 # argument; segments then cover shells hidden behind other commands.
 __lmline_risk_shell_c_command_strings_in() {
   local cmd=$1 segment word index cmd_index raw_index
-  local -a words raw_words
+  local -a words raw_words source_words
   if [[ $cmd == *'$('* || $cmd == *'`'* ]]; then
     raw_words=()
+    source_words=()
     mapfile -t raw_words < <(__lmline_risk_split_words "$cmd")
+    mapfile -t source_words < <(__lmline_risk_split_words_keep_backticks "$cmd")
     raw_index=$(__lmline_risk_segment_command_index "${raw_words[@]}") || raw_index=-1
     if (( raw_index >= 0 )) && __lmline_risk_word_runs_shell "${raw_words[raw_index]}"; then
-      __lmline_risk_shell_c_command_strings "${raw_words[@]:raw_index+1}"
+      __lmline_risk_shell_c_command_strings "${source_words[@]:raw_index+1}"
       return 0
     fi
   fi
   while IFS= read -r segment || [[ -n $segment ]]; do
     [[ -n "${segment//[[:space:]]/}" ]] || continue
     words=()
+    source_words=()
     mapfile -t words < <(__lmline_risk_split_words "$segment")
+    mapfile -t source_words < <(__lmline_risk_split_words_keep_backticks "$segment")
     ((${#words[@]})) || continue
     cmd_index=$(__lmline_risk_segment_command_index_with "$segment" "${words[@]}") || continue
     word=${words[cmd_index]}
     __lmline_risk_word_runs_shell "$word" || continue
-    __lmline_risk_shell_c_command_strings "${words[@]:cmd_index+1}"
+    __lmline_risk_shell_c_command_strings "${source_words[@]:cmd_index+1}"
   done <<<"$(__lmline_split_pipeline "$cmd" 1 "()" bash structural-substitution)"
   return 0
 }
@@ -1610,7 +1661,7 @@ __lmline_risk_substitution_in_command_position() {
       done
       (( earlier == index )) && return 0
     done
-  done <<<"$(__lmline_split_pipeline "$text" 1 "()" bash structural-substitution)"
+  done <<<"$(__lmline_split_pipeline "$text" 1 "()" bash structural-substitution-marker)"
   return 1
 }
 
