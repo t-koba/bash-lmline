@@ -113,6 +113,14 @@ bash -c '
   [[ $(__lmline_risk_level "> /tmp/a=b \`cat <<< ${hsq}echo hi | sh${hsq}\`") == high ]]
   # A substitution can supply any nested command string, not only a remove.
   [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
+  # A substitution gets its own role: a later data substitution cannot make
+  # an earlier harmless command string risky, in either order.
+  [[ $(__lmline_risk_level "\$(printf true); echo \$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
+  [[ $(__lmline_risk_level "echo \$(cat <<< ${hsq}echo hi | sh${hsq}); \$(printf true)") == low ]]
+  # Every substitution inside a -c argument helps build that command string,
+  # so a risky payload counts whichever side of the benign one it appears.
+  [[ $(__lmline_risk_level "bash -c \"\$(printf true); echo \$(cat <<< ${hsq}echo hi | sh${hsq})\"") == high ]]
+  [[ $(__lmline_risk_level "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq}); \$(printf true)\"") == high ]]
   [[ $(__lmline_risk_reason "bash -c \"\$(cat <<< ${hsq}echo hi | sh${hsq})\"") == "piped shell execution" ]]
   [[ $(__lmline_risk_level "echo \$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]
   [[ $(__lmline_risk_level "x=\$(cat <<< ${hsq}echo hi | sh${hsq})") == low ]]

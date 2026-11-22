@@ -1546,7 +1546,9 @@ __lmline_risk_shell_carries_remove() {
     # A substitution supplies the command string only in command
     # position; elsewhere its output is data to another command.
     if __lmline_risk_substitution_in_command_position "$carried"; then
-      __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) && return 0
+      # Every substitution in a -c string helps build the command string,
+      # even one that is an argument where the string itself is parsed.
+      __lmline_risk_substitution_payload_remove "$carried" $((depth + 1)) 1 && return 0
     fi
     if (( subst_body )); then
       while IFS= read -r nested_payload || [[ -n $nested_payload ]]; do
@@ -1591,45 +1593,43 @@ __lmline_risk_shell_c_command_strings_in() {
   return 0
 }
 
-# Whether a command substitution stands where a command can run in a shell
-# command string. The structural splitter cuts at the substitution opener, so
-# a standalone `$` word marks it; assignments before it are the command's own
-# environment, while any other earlier word makes the output plain data.
-__lmline_risk_substitution_in_command_position() {
-  local text=$1 segment word index earlier skip_target
+# The structural splitter marks a substitution opener with a standalone `$`
+# word. Assignments and shell structure before it leave it in command
+# position; any other earlier word makes its output plain data.
+__lmline_risk_substitution_marker_line() {
+  local segment=$1 word index earlier skip_target
   local -a words=()
-  while IFS= read -r segment || [[ -n $segment ]]; do
-    words=()
-    mapfile -t words < <(__lmline_risk_split_words "$segment")
-    for ((index = 0; index < ${#words[@]}; index++)); do
-      [[ ${words[index]} == '$' ]] || continue
-      skip_target=0
-      for ((earlier = 0; earlier < index; earlier++)); do
-        word=${words[earlier]}
-        # A separate redirect target is consumed before it can be mistaken
-        # for an assignment or command prefix.
-        if (( skip_target )); then
-          skip_target=0
-          continue
-        fi
-        [[ $word == *=* ]] && continue
-        # Shell structure before the command leaves the substitution in
-        # command position; an argument to a command does not.
-        if __lmline_risk_descriptor_duplication_word "$word"; then
-          continue
-        fi
-        if __lmline_risk_redirect_word "$word"; then
-          (( __LMLINE_RISK_REDIRECT_TARGET )) && skip_target=1
-          continue
-        fi
-        __lmline_word_is_command_prefix "$word" && continue
-        break
-      done
-      # With the redirect target still pending, this substitution names the
-      # redirected file; its output is not a command.
-      (( skip_target )) && continue
-      (( earlier == index )) && return 0
+  mapfile -t words < <(__lmline_risk_split_words "$segment")
+  for ((index = 0; index < ${#words[@]}; index++)); do
+    [[ ${words[index]} == '$' ]] || continue
+    skip_target=0
+    for ((earlier = 0; earlier < index; earlier++)); do
+      word=${words[earlier]}
+      if (( skip_target )); then
+        skip_target=0
+        continue
+      fi
+      [[ $word == *=* ]] && continue
+      if __lmline_risk_descriptor_duplication_word "$word"; then
+        continue
+      fi
+      if __lmline_risk_redirect_word "$word"; then
+        (( __LMLINE_RISK_REDIRECT_TARGET )) && skip_target=1
+        continue
+      fi
+      __lmline_word_is_command_prefix "$word" && continue
+      break
     done
+    (( skip_target )) && continue
+    (( earlier == index )) && return 0
+  done
+  return 1
+}
+
+__lmline_risk_substitution_in_command_position() {
+  local text=$1 segment
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    __lmline_risk_substitution_marker_line "$segment" && return 0
   done <<<"$(__lmline_split_pipeline "$text" 1 "()" bash structural-substitution-marker)"
   return 1
 }
@@ -1637,40 +1637,67 @@ __lmline_risk_substitution_in_command_position() {
 # The text a command substitution can hand back to a command string: literal
 # here-string data copied by its body, and the body itself. The body is read,
 # never executed.
+__lmline_risk_substitution_occurrence_command_position() {
+  local text=$1 segment last=
+  while IFS= read -r segment || [[ -n $segment ]]; do
+    last=$segment
+  done < <(__lmline_split_pipeline "${text}\$" 1 "()" bash structural-substitution-marker)
+  __lmline_risk_substitution_marker_line "$last"
+}
+
 __lmline_risk_substitution_command_payloads() {
-  local text=$1 body payload rest closer
-  for closer in ')' '`'; do
-    rest=$text
-    while [[ $rest == *'$('* || ( $closer == '`' && $rest == *'`'* ) ]]; do
-      if [[ $closer == ')' ]]; then
-        [[ $rest == *'$('* ]] || break
-        body=${rest#*'$('}
-      else
-        body=${rest#*'`'}
-      fi
-      [[ $body == *"$closer"* ]] || break
-      body=${body%%"$closer"*}
-      if [[ -n $body ]]; then
-        while IFS= read -r payload || [[ -n $payload ]]; do
-          [[ -n $payload ]] || continue
-          printf '%s\n' "$payload"
-        done < <(__lmline_risk_here_string_payload "$body" 0 1)
-        printf '%s\n' "$body"
-      fi
-      rest=${rest#*"$closer"}
-    done
+  local text=$1 all=${2:-0} rest prefix after body dollar_pos backtick_pos pos skip payload
+  rest=$text
+  while :; do
+    dollar_pos=-1
+    backtick_pos=-1
+    if [[ $rest == *'$('* ]]; then
+      prefix=${rest%%'$('*}
+      dollar_pos=${#prefix}
+    fi
+    if [[ $rest == *'`'* ]]; then
+      prefix=${rest%%'`'*}
+      backtick_pos=${#prefix}
+    fi
+    (( dollar_pos >= 0 )) || (( backtick_pos >= 0 )) || break
+    if (( backtick_pos >= 0 && (dollar_pos < 0 || backtick_pos < dollar_pos) )); then
+      pos=$backtick_pos
+      after=${rest:pos+1}
+      [[ $after == *'`'* ]] || break
+      body=${after%%'`'*}
+      skip=$((pos + ${#body} + 2))
+    else
+      pos=$dollar_pos
+      after=${rest:pos+2}
+      [[ $after == *')'* ]] || break
+      body=${after%%')'*}
+      skip=$((pos + ${#body} + 3))
+    fi
+    prefix=${rest:0:pos}
+    if [[ -n $body ]] && { (( all )) || __lmline_risk_substitution_occurrence_command_position "$prefix"; }; then
+      while IFS= read -r payload || [[ -n $payload ]]; do
+        [[ -n $payload ]] || continue
+        printf '%s\n' "$payload"
+      done < <(__lmline_risk_here_string_payload "$body" 0 1)
+      printf '%s\n' "$body"
+    fi
+    rest=${rest:skip}
   done
 }
 
 # A command substitution can provide the command string a shell runs. Judge
 # the data it can hand back as that command string.
 __lmline_risk_substitution_payload_remove() {
-  local text=$1 depth=$2 payload
+  local text=$1 depth=$2 all=${3:-0} payload match
   (( depth < 4 )) || return 1
   while IFS= read -r payload || [[ -n $payload ]]; do
     [[ -n $payload ]] || continue
     __lmline_risk_recursive_remove "$payload" $((depth + 1)) && return 0
-  done < <(__lmline_risk_substitution_command_payloads "$text")
+    # A payload that builds a command string can carry risks other than a
+    # recursive remove, so judge it with the same rules as the outer command.
+    match=$(__lmline_risk_match "$payload" $((depth + 1))) || return 1
+    [[ ${match%%$'\t'*} == high ]] && return 0
+  done < <(__lmline_risk_substitution_command_payloads "$text" "$all")
   return 1
 }
 
