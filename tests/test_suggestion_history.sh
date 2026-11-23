@@ -530,6 +530,17 @@ grep -q '^generate=1$' <<<"$reader_tendencies" ||
 ok "history readers allow a linked ancestor"
 
 # A dead owner must not block later records; a live owner's lock is kept.
+cat >"$tmp/self-writer" <<'SELF_WRITER'
+source "$1/lmline/init.$2"
+lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock
+command mkdir "$lock_dir" 2>/dev/null || exit 1
+printf '%s\n' "$$" >"$lock_dir/pid" 2>/dev/null || exit 1
+if [[ $2 == bash ]]; then
+  __lmline_record_suggestion generate original-self candidate-self
+else
+  __lmline_zsh_record_suggestion generate original-self candidate-self
+fi
+SELF_WRITER
 for shell in bash zsh; do
   if ! command -v "$shell" >/dev/null; then
     printf 'skip - %s stale suggestion lock (shell unavailable)\n' "$shell"
@@ -553,7 +564,7 @@ for shell in bash zsh; do
     fail "$shell stale-lock writer failed"
   }
   # Interactive bash prints job-control noise without a tty; only lock noise is a defect.
-  if grep -q 'suggestions\.lock\|\.reclaim\|/pid' "$tmp/stale-$shell.err" 2>/dev/null; then
+  if grep -q 'suggestions\.lock\|\.stale\|/pid' "$tmp/stale-$shell.err" 2>/dev/null; then
     cat "$tmp/stale-$shell.err" >&2
     fail "$shell stale-lock writer wrote lock noise to stderr"
   fi
@@ -562,6 +573,56 @@ for shell in bash zsh; do
   [[ ! -e "$stale_dir/.suggestions.lock" ]] ||
     fail "$shell left a reclaimed suggestion lock behind"
   ok "$shell reclaims a dead-owner suggestion lock"
+
+  # A lock left by the current shell is stale and must be reclaimed.
+  self_dir="$tmp/self-lock-$shell"
+  mkdir -m 700 "$self_dir"
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-self-$shell" LMLINE_HISTORY_DIR="$self_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/self-writer" "$repo_dir" "$shell" \
+    >"$tmp/self-$shell.out" 2>"$tmp/self-$shell.err" || {
+    cat "$tmp/self-$shell.err" >&2
+    fail "$shell self-lock writer failed"
+  }
+  if grep -q 'suggestions\.lock\|\.stale\|/pid' "$tmp/self-$shell.err" 2>/dev/null; then
+    cat "$tmp/self-$shell.err" >&2
+    fail "$shell self-lock writer wrote lock noise to stderr"
+  fi
+  grep -q '^candidate=candidate-self$' "$self_dir/suggestions.log" ||
+    fail "$shell did not record through a self-pid lock"
+  [[ ! -e "$self_dir/.suggestions.lock" ]] ||
+    fail "$shell left a reclaimed self-pid lock behind"
+  ok "$shell reclaims a self-pid suggestion lock"
+
+  # A killed reclamation may leave a renamed lock; it must not block records.
+  leftover_dir="$tmp/stale-leftover-$shell"
+  mkdir -m 700 "$leftover_dir"
+  sleep 0.01 &
+  leftover_dead=$!
+  wait "$leftover_dead" || true
+  kill -0 "$leftover_dead" 2>/dev/null && fail "$shell dead-pid fixture is still alive"
+  mkdir "$leftover_dir/.suggestions.lock.stale.$leftover_dead"
+  printf '%s\n' "$leftover_dead" >"$leftover_dir/.suggestions.lock.stale.$leftover_dead/pid"
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-leftover-$shell" LMLINE_HISTORY_DIR="$leftover_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+    >"$tmp/leftover-$shell.out" 2>"$tmp/leftover-$shell.err" || {
+    cat "$tmp/leftover-$shell.err" >&2
+    fail "$shell stale-leftover writer failed"
+  }
+  if grep -q 'suggestions\.lock\|\.stale\|/pid' "$tmp/leftover-$shell.err" 2>/dev/null; then
+    cat "$tmp/leftover-$shell.err" >&2
+    fail "$shell stale-leftover writer wrote lock noise to stderr"
+  fi
+  grep -q '^candidate=candidate-private$' "$leftover_dir/suggestions.log" ||
+    fail "$shell did not record with a stale-directory leftover present"
+  [[ ! -e "$leftover_dir/.suggestions.lock" ]] ||
+    fail "$shell left the active suggestion lock behind"
+  for stale_path in "$leftover_dir"/.suggestions.lock.stale.*; do
+    [[ ! -e "$stale_path" ]] ||
+      fail "$shell left a stale-directory leftover behind"
+  done
+  ok "$shell cleans a stale-directory leftover"
 
   live_dir="$tmp/live-lock-$shell"
   mkdir -m 700 "$live_dir"
@@ -576,7 +637,7 @@ for shell in bash zsh; do
     cat "$tmp/live-$shell.err" >&2
     fail "$shell live-lock writer failed"
   }
-  if grep -q 'suggestions\.lock\|\.reclaim\|/pid' "$tmp/live-$shell.err" 2>/dev/null; then
+  if grep -q 'suggestions\.lock\|\.stale\|/pid' "$tmp/live-$shell.err" 2>/dev/null; then
     cat "$tmp/live-$shell.err" >&2
     fail "$shell live-lock writer wrote lock noise to stderr"
   fi

@@ -677,68 +677,69 @@ __lmline_record_suggestion() {
   # A directory lock serializes appends because concurrent writes can interleave lines;
   # dd only reads the shell-backed here-string, it does not make the append atomic.
   # The pid file lets a later record reclaim a lock whose owner died.
-  local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt owner current
+  local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt owner current stale_dir
   for ((attempt = 0; attempt < 40; attempt++)); do
     if command mkdir "$lock_dir" 2>/dev/null; then
+      # A killed reclamation may leave a renamed lock; it never blocks mkdir.
+      command rm -rf "$lock_dir".stale.* 2>/dev/null || true
       printf '%s\n' "$$" >"$lock_dir/pid" 2>/dev/null || true
       break
     fi
     owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
     case $owner in
       ''|*[!0-9]*|0*)
-        # A fresh lock has no pid until its owner writes it; only a lock
-        # that outlives that window is stale.
-        if ((attempt < 20)); then
+        # A fresh lock has no pid yet; give the owner a short grace to write it.
+        if ((attempt < 5)); then
           sleep 0.025 2>/dev/null || true
           continue
         fi
-        if ! command mkdir "$lock_dir/.reclaim" 2>/dev/null; then
+        ;;
+      *)
+        if [[ $owner == "$$" ]]; then
+          : # An own pid left behind is stale.
+        elif kill -0 "$owner" 2>/dev/null; then
           sleep 0.025 2>/dev/null || true
           continue
         fi
-        current=$(command cat "$lock_dir/pid" 2>/dev/null) || current=
-        case $current in
-          ''|*[!0-9]*|0*)
-            command rm -f "$lock_dir/pid" 2>/dev/null || true
-            command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
-            command rmdir "$lock_dir" 2>/dev/null || true ;;
-          *)
-            command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
-            sleep 0.025 2>/dev/null || true ;;
-        esac
-        continue ;;
+        ;;
     esac
-    if [[ $owner == "$$" ]]; then
+    # Stale: one atomic rename decides the winner; losers retry.
+    stale_dir="$lock_dir.stale.$$"
+    if [[ ! -e "$stale_dir" ]]; then
+      command mv "$lock_dir" "$lock_dir.stale.$$" 2>/dev/null || {
+        sleep 0.025 2>/dev/null || true
+        continue
+      }
+    fi
+    [[ -e "$stale_dir" ]] || {
       sleep 0.025 2>/dev/null || true
       continue
-    fi
-    if kill -0 "$owner" 2>/dev/null; then
-      sleep 0.025 2>/dev/null || true
-      continue
-    fi
-    if ! command mkdir "$lock_dir/.reclaim" 2>/dev/null; then
-      sleep 0.025 2>/dev/null || true
-      continue
-    fi
-    current=$(command cat "$lock_dir/pid" 2>/dev/null) || current=
-    if [[ $current == "$owner" ]]; then
-      command rm -f "$lock_dir/pid" 2>/dev/null || true
-      command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
-      command rmdir "$lock_dir" 2>/dev/null || true
-    else
-      command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
-      sleep 0.025 2>/dev/null || true
-    fi
+    }
+    current=$(command cat "$stale_dir/pid" 2>/dev/null) || current=
+    case $current in
+      ''|*[!0-9]*|0*) command rm -rf "$stale_dir" 2>/dev/null || true ;;
+      *)
+        if [[ $current == "$$" ]]; then
+          command rm -rf "$stale_dir" 2>/dev/null || true
+        elif kill -0 "$current" 2>/dev/null; then
+          # A live owner appeared; restore it when the active path is free.
+          if [[ ! -e "$lock_dir" ]]; then
+            command mv "$stale_dir" "$lock_dir" 2>/dev/null || true
+          fi
+          sleep 0.025 2>/dev/null || true
+        else
+          command rm -rf "$stale_dir" 2>/dev/null || true
+        fi
+        ;;
+    esac
   done
   ((attempt < 40)) || return 0
   bytes=$(command wc -c 2>/dev/null <<<"$record") || {
-    command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
     command rm -f "$lock_dir/pid" 2>/dev/null || true
     command rmdir "$lock_dir" 2>/dev/null || true
     return 0
   }
   command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
-  command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
   command rm -f "$lock_dir/pid" 2>/dev/null || true
   command rmdir "$lock_dir" 2>/dev/null || true
 }
