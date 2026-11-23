@@ -309,10 +309,10 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}[^\"'[:space:]][^[:space:]]*/\1@@LMLINE_REDACTED@@/Ig" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
-    -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
-    -e 's/(AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
-    -e 's/(xox[a-z]-|xapp-)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
-    -e 's/(glpat-)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[A-Z0-9]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(xox[a-z]-|xapp-)[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(glpat-)[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(AIza)[A-Za-z0-9_-]{35}[A-Za-z0-9_=-]*/\1@@LMLINE_REDACTED@@/g' \
     -e '/-----BEGIN[ A-Z0-9_-]*PRIVATE KEY/,/-----END[ A-Z0-9_-]*PRIVATE KEY/s/.*/***REDACTED PRIVATE KEY***/' \
     -e "s/##LMLINE_REDACTED##/***REDACTED***/Ig" \

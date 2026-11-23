@@ -215,6 +215,10 @@ printf '%s\n' "curl 'https://example.test/?token=user@example.com&at=1'"
 printf '%s\n' "curl 'https://example.test/?token=abc/def&slash=1'"
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
+printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
+printf '%s\n' 'curl "https://example.test/?q=AKIAAWSBODYTAIL456&x=1"'
+printf '%s\n' 'curl "https://example.test/?q=xoxb-1234-5678-SlackBodyTail&x=1"'
+printf '%s\n' 'curl "https://example.test/?q=glpat-GitLabBodyTail456&x=1"'
 printf '%s\n' "curl 'https://user:pass;token=abc@example.test/path'"
 printf '%s\n' 'TOKEN=httpsSecret987654 https://x'
 printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
@@ -542,6 +546,14 @@ grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_fil
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
 grep -Fq 'StripeCommaBody456' "$line_file" && exit 254
+grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 255
+grep -Fq 'GitHubBodyTail456' "$line_file" && exit 254
+grep -Fxq 'curl "https://example.test/?q=AKIA***REDACTED***&x=1"' "$line_file" || exit 255
+grep -Fq 'AWSBODYTAIL456' "$line_file" && exit 254
+grep -Fxq 'curl "https://example.test/?q=xoxb-***REDACTED***&x=1"' "$line_file" || exit 255
+grep -Fq 'SlackBodyTail' "$line_file" && exit 254
+grep -Fxq 'curl "https://example.test/?q=glpat-***REDACTED***&x=1"' "$line_file" || exit 255
+grep -Fq 'GitLabBodyTail456' "$line_file" && exit 254
 grep -Fxq "curl 'https://user:***REDACTED***@example.test/path'" "$line_file" || exit 255
 grep -Fq 'pass;token=abc@example.test' "$line_file" && exit 254
 grep -Fxq 'TOKEN=***REDACTED*** https://x' "$line_file" || exit 255
