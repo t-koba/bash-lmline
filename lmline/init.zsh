@@ -1129,7 +1129,7 @@ candidate=${(q)candidate}"
       command chmod 700 "$lock_dir" 2>/dev/null || true
       # A killed reclamation may leave a renamed lock; it never blocks mkdir.
       command rm -rf "$lock_dir".stale.*(N) 2>/dev/null || true
-      printf '%s\n' "$$" >"$lock_dir/pid" 2>/dev/null || true
+      { printf '%s\n' "$$" >"$lock_dir/pid"; } 2>/dev/null || true
       break
     fi
     owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=

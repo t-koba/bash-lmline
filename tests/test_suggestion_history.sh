@@ -312,6 +312,26 @@ else
 fi
 ORIGINAL_WRITER
 
+# A failing chmod and a restrictive umask make the lock pid output open fail.
+mkdir -p "$tmp/no-chmod-bin"
+cat >"$tmp/no-chmod-bin/chmod" <<'NO_CHMOD'
+#!/bin/sh
+case " $* " in
+  *"$FAKE_CHMOD_LOCK"*) exit 1 ;;
+esac
+exec "$LMLINE_TEST_CHMOD" "$@"
+NO_CHMOD
+chmod +x "$tmp/no-chmod-bin/chmod"
+cat >"$tmp/pid-open-writer" <<'PID_OPEN_WRITER'
+source "$1/lmline/init.$2"
+umask 0777
+if [[ $2 == bash ]]; then
+  __lmline_record_suggestion generate pid-open pid-open
+else
+  __lmline_zsh_record_suggestion generate pid-open pid-open
+fi
+PID_OPEN_WRITER
+
 private_mode() {
   stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
 }
@@ -727,6 +747,26 @@ for shell in bash zsh; do
   [[ ! -e "$umask_dir/.suggestions.lock" ]] ||
     fail "$shell left a lock under a restrictive umask"
   ok "$shell records under a restrictive umask"
+
+  # A failed pid output open must stay quiet and must not append a record.
+  closed_dir="$tmp/pid-open-$shell"
+  mkdir -m 700 "$closed_dir"
+  : >"$closed_dir/suggestions.log"
+  /bin/chmod 600 "$closed_dir/suggestions.log"
+  FAKE_CHMOD_LOCK="$closed_dir/.suggestions.lock" LMLINE_TEST_CHMOD=$(type -P chmod) \
+    LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/no-chmod-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-pid-open-$shell" LMLINE_HISTORY_DIR="$closed_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/pid-open-writer" "$repo_dir" "$shell" \
+    >"$tmp/pid-open-$shell.out" 2>"$tmp/pid-open-$shell.err" || fail "$shell pid-open writer failed"
+  if grep -q 'suggestions\.lock\|/pid\|permission denied' "$tmp/pid-open-$shell.err" 2>/dev/null; then
+    cat "$tmp/pid-open-$shell.err" >&2
+    fail "$shell printed a failed pid output-open diagnostic"
+  fi
+  [[ ! -e "$closed_dir/.suggestions.lock/pid" ]] ||
+    fail "$shell published a pid after a failed output open"
+  ! grep -q '^candidate=' "$closed_dir/suggestions.log" 2>/dev/null ||
+    fail "$shell appended after a failed pid output open"
+  ok "$shell keeps failed pid output opens quiet"
 
   # A stalled creator must not append after a later owner takes the lock.
   delay_dir="$tmp/delayed-lock-$shell"
