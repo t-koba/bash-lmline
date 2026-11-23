@@ -75,6 +75,10 @@ printf '%s\n' 'curl -H "Authorization: abc\"defGHI tailSECRET9992" -H "X: keep" 
 printf '%s\n' 'curl -H "Authorization: Bearer abc\" defGHI tailLEAK9041" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "Authorization: abc\" defGHI tailLEAK9042" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "X: keep" -H "Authorization: Bearer abc\" tailLEAK9043" https://x'
+printf '%s\n' 'curl -H "Authorization: Bearer tailEscBearer9031\" -H "X: keepTail9033" https://x'
+printf '%s\n' 'curl -H "Authorization: tailEscScheme9032\" -H "X: keepTail9033" https://x'
+printf '%s\n' 'curl -H "Authorization: Bearer abc"plainQuote9044" -H "X: keep" https://x'
+printf '%s\n' 'curl -H "Authorization: Bearer abc\\"dblSlashQuote9045" -H "X: keep" https://x'
 printf '%s\n' 'Authorization: Bearer @sec".unterminatedDot9021'
 printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
@@ -287,6 +291,14 @@ grep -Fq 'tailLEAK9042' "$line_file" && exit 236
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 237
 grep -Fq 'tailLEAK9043' "$line_file" && exit 238
 grep -Fxq 'curl -H "X: keep" -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 239
+grep -Fq 'tailEscBearer9031' "$line_file" && exit 240
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 241
+grep -Fq 'tailEscScheme9032' "$line_file" && exit 242
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 243
+grep -Fq 'plainQuote9044' "$line_file" && exit 244
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***' "$line_file" || exit 245
+grep -Fq 'dblSlashQuote9045' "$line_file" && exit 246
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***' "$line_file" || exit 247
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
 grep -Fq 'more_secret456' "$line_file" && exit 129
