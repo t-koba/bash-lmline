@@ -75,6 +75,7 @@ printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
 printf '%s\n' 'Authorization: Bearer @sec"untermTail -H "X: keep" https://x'
 printf '%s\n' 'Authorization: Digest @digestAtSecret9023, response="respSecret9023"'
+printf '%s\n' 'Authorization: Bearer #secretHash9020'
 printf '%s\n' "Authorization: Bearer @o'brienApostrophe9016"
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
 printf '%s\n' 'Authorization: Basic p@ss" w0rd123SECRET'
@@ -238,6 +239,8 @@ grep -Fq 'unterminatedApostrophe9022' "$line_file" && exit 208
 grep -Fq 'Secret9029' "$line_file" && exit 209
 grep -Fq 'untermTail' "$line_file" && exit 210
 grep -Fq 'respSecret9023' "$line_file" && exit 211
+grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 212
+grep -Fq 'secretHash9020' "$line_file" && exit 213
 grep -Fq 'escapedTail9015' "$line_file" && exit 178
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
