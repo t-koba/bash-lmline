@@ -110,6 +110,13 @@ printf '%s\n' '"123MY_TOKEN": "SECRETVAL"'
 printf '%s\n' '-MY_TOKEN=MARKER'
 printf '%s\n' '{"2fa_secret": "SUPERSECRET123", "123api_token": "ANOTHERSECRET456"}'
 printf '%s\n' 'error: failed'
+printf '%s\n' 'Authorization: Bearer "backslashBearerOdd901\'
+printf '%s\n' 'Authorization: "backslashSchemeLessOdd902\'
+printf '%s\n' "Authorization: 'backslashSingleOdd903\\"
+printf '%s\n' "MY_TOKEN='backslashKeyOdd904\\"
+printf '%s\n' 'Authorization: "u@hostBackslashOdd905\"'
+printf '%s\n' 'Authorization: Bearer "backslashBearerEven906\\"'
+printf '%s\n' 'Authorization: "backslashSchemeLessEven907\\"'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -191,6 +198,17 @@ grep -Fq 'acct99' "$line_file" && exit 118
 grep -Fq 'example.com' "$line_file" && exit 119
 grep -Fq 'two999' "$line_file" && exit 120
 grep -Fq 'u@host99' "$line_file" && exit 121
+grep -Fq 'backslashBearerOdd901' "$line_file" && exit 150
+grep -Fq 'backslashSchemeLessOdd902' "$line_file" && exit 151
+grep -Fq 'backslashSingleOdd903' "$line_file" && exit 152
+grep -Fq 'backslashKeyOdd904' "$line_file" && exit 153
+grep -Fq 'hostBackslashOdd905' "$line_file" && exit 154
+grep -Fxq 'Authorization: Bearer "***REDACTED***' "$line_file" || exit 155
+grep -Fxq 'Authorization: "***REDACTED***' "$line_file" || exit 156
+grep -Fxq "Authorization: '***REDACTED***'" "$line_file" || exit 157
+grep -Fxq 'MY_TOKEN=***REDACTED***' "$line_file" || exit 158
+grep -Fq 'backslashBearerEven906' "$line_file" && exit 159
+grep -Fq 'backslashSchemeLessEven907' "$line_file" && exit 160
 grep -Fq 'u@host456' "$line_file" && exit 122
 grep -Fq 'keyVal123' "$line_file" && exit 123
 grep -Fq 'foo bar baz' "$line_file" && exit 124
