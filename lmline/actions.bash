@@ -249,10 +249,10 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*\\\\?)$/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
     -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*\\\\?)$/\1@@LMLINE_REDACTED@@/Ig" \
-    -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\\\]|\\\\.)*)(\\\\*')([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
-    -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\]|\\\\.)*\\\\?)$/\1\2@@LMLINE_REDACTED@@/Ig" \
-    -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.)*)(\\\\*')([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
-    -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.)*\\\\?)$/\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\]|\\\\.|'[[:alnum:]])*)(\\\\*')([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
+    -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\]|\\\\.|'[[:alnum:]])*\\\\?)('?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
+    -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.|'[[:alnum:]])*)(\\\\*')([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
+    -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.|'[[:alnum:]])*\\\\?)('?)$/\1@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${auth_prefix}${auth_scheme}\"(([^\"\\\\]|\\\\.)*)\"/\1\2\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}${auth_scheme_dq}(([^\"\\\\]|\\\\.)*)\"/\1\2@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}${auth_scheme}'(([^'\\\\]|\\\\.)*)'/\1\2'@@LMLINE_REDACTED@@'/Ig" \
