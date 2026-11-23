@@ -248,6 +248,8 @@ __lmline_redact_clip_text() {
   auth_prefix_quoted_dq="(\"[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   auth_prefix_quoted_sq="('[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   sed -E \
+    -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*\\\\?)(\"?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
@@ -294,8 +296,10 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${key_prefix}[^\"'[:space:]][^[:space:]]*/\1@@LMLINE_REDACTED@@/Ig" \
-    -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)?//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
-    -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)?//)[^:/?#@[:space:]]{8,}@#\1@@LMLINE_REDACTED@@@#g' \
+    -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
+    -e 's#(^|[[:space:]"'"'"'(]|[[:space:]][A-Za-z_][A-Za-z0-9_-]*=)(//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1\2@@LMLINE_REDACTED@@@#g' \
+    -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//)[^:/?#@[:space:]]{8,}@#\1@@LMLINE_REDACTED@@@#g' \
+    -e 's#(^|[[:space:]"'"'"'(]|[[:space:]][A-Za-z_][A-Za-z0-9_-]*=)(//)[^:/?#@[:space:]]{8,}@#\1\2@@LMLINE_REDACTED@@@#g' \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \

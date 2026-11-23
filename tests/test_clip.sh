@@ -79,6 +79,9 @@ printf '%s\n' 'curl -H "Authorization: Bearer tailEscBearer9031\" -H "X: keepTai
 printf '%s\n' 'curl -H "Authorization: tailEscScheme9032\" -H "X: keepTail9033" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer abc"plainQuote9044" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer abc\\"dblSlashQuote9045" -H "X: keep" https://x'
+printf '%s\n' 'curl -H "Authorization: abc"tailAUDIT028 -H "X: keep" https://example.test'
+printf '%s\n' "curl -H \"Authorization: Bearer abc\"'tailAUDIT027' -H \"X: keep\" https://example.test"
+printf '%s\n' "curl -H 'Authorization: abc'\"tailAUDIT029\" -H \"X: keep\" https://example.test"
 printf '%s\n' 'Authorization: Bearer @sec".unterminatedDot9021'
 printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
@@ -180,6 +183,12 @@ printf '%s\n' 'curl "https://u:quotedPwUrl903@host.example/x" -H "X: keepUrl"'
 printf '%s\n' 'curl https://example.test:8443?q=alice@example.test'
 printf '%s\n' 'curl https://example.test:8443#alice@example.test'
 printf '%s\n' 'git clone //user:pass@example.test/path'
+printf '%s\n' 'git clone //BAREabcdefghijkl@example.test/path'
+printf '%s\n' 'echo url=//user:passAssign@example.test/path'
+printf '%s\n' 'echo url=//BAREassign123456@example.test/path'
+printf '%s\n' 'curl https://example.test/?q=//abcdefghijkl@example.test'
+printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
+printf '%s\n' 'curl https://example.test/?q=//BAREabcdefghijkl@example.test'
 printf '%s\n' 'git clone https://PATabcdefghijkl@example.test/nope.git'
 printf '%s\n' 'git clone https://shortus@example.test/nope.git'
 printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
@@ -296,9 +305,15 @@ grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"X: keepTail9033" https:
 grep -Fq 'tailEscScheme9032' "$line_file" && exit 242
 grep -Fxq 'curl -H "Authorization: ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 243
 grep -Fq 'plainQuote9044' "$line_file" && exit 244
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***' "$line_file" || exit 245
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 245
 grep -Fq 'dblSlashQuote9045' "$line_file" && exit 246
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***' "$line_file" || exit 247
+grep -Fq 'tailAUDIT028' "$line_file" && exit 248
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 249
+grep -Fq 'tailAUDIT027' "$line_file" && exit 250
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 251
+grep -Fq 'tailAUDIT029' "$line_file" && exit 252
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test" "$line_file" || exit 253
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
 grep -Fq 'more_secret456' "$line_file" && exit 129
@@ -457,6 +472,16 @@ grep -Fxq 'curl https://example.test:8443?q=alice@example.test' "$line_file" || 
 grep -Fxq 'curl https://example.test:8443#alice@example.test' "$line_file" || exit 208
 grep -Fxq 'git clone //user:***REDACTED***@example.test/path' "$line_file" || exit 209
 grep -Fq 'git clone //user:pass@example.test/path' "$line_file" && exit 210
+grep -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test' "$line_file" || exit 214
+grep -Fq 'abcdefghijkl@example.test' "$line_file" || exit 215
+grep -Fxq 'curl https://example.test/a//abc:def@example.test' "$line_file" || exit 216
+grep -Fxq 'git clone //***REDACTED***@example.test/path' "$line_file" || exit 217
+grep -Fq 'BAREabcdefghijkl@example.test/path' "$line_file" && exit 218
+grep -Fxq 'echo url=//user:***REDACTED***@example.test/path' "$line_file" || exit 220
+grep -Fq 'passAssign@example.test' "$line_file" && exit 221
+grep -Fxq 'echo url=//***REDACTED***@example.test/path' "$line_file" || exit 222
+grep -Fq 'BAREassign123456@example.test' "$line_file" && exit 223
+grep -Fxq 'curl https://example.test/?q=//BAREabcdefghijkl@example.test' "$line_file" || exit 219
 grep -Fxq 'git clone https://***REDACTED***@example.test/nope.git' "$line_file" || exit 211
 grep -Fq 'PATabcdefghijkl' "$line_file" && exit 212
 grep -Fxq 'git clone https://shortus@example.test/nope.git' "$line_file" || exit 213
