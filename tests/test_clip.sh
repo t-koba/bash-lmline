@@ -70,6 +70,11 @@ printf '%s\n' 'Authorization: Bearer @sec"quoteTail9011" -H "X: keep" https://x'
 printf '%s\n' "Authorization: Bearer @sec'quoteTail9012' -H 'X: keep' https://x"
 printf '%s\n' 'Authorization: Digest @digestAt9013, nonce="nonceTail9014"'
 printf '%s\n' 'curl -H "Authorization: Bearer @sec\"escapedTail9015\"" https://x'
+printf '%s\n' 'Authorization: Bearer @sec".unterminatedDot9021'
+printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
+printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
+printf '%s\n' 'Authorization: Bearer @sec"untermTail -H "X: keep" https://x'
+printf '%s\n' 'Authorization: Digest @digestAtSecret9023, response="respSecret9023"'
 printf '%s\n' "Authorization: Bearer @o'brienApostrophe9016"
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
 printf '%s\n' 'Authorization: Basic p@ss" w0rd123SECRET'
@@ -223,6 +228,16 @@ grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 174
 grep -Fq 'quoteTail9011' "$line_file" && exit 175
 grep -Fq 'quoteTail9012' "$line_file" && exit 176
 grep -Fq 'nonceTail9014' "$line_file" && exit 177
+grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 202
+grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 203
+grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 204
+grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 205
+grep -Fxq 'Authorization: Digest ***REDACTED*** response="***REDACTED***"' "$line_file" || exit 206
+grep -Fq 'unterminatedDot9021' "$line_file" && exit 207
+grep -Fq 'unterminatedApostrophe9022' "$line_file" && exit 208
+grep -Fq 'Secret9029' "$line_file" && exit 209
+grep -Fq 'untermTail' "$line_file" && exit 210
+grep -Fq 'respSecret9023' "$line_file" && exit 211
 grep -Fq 'escapedTail9015' "$line_file" && exit 178
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
