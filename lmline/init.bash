@@ -674,7 +674,8 @@ __lmline_record_suggestion() {
     "$__LMLINE_LAST_SUGGESTION_ID" "$timestamp" "$PWD" "$mode" "$original" "$candidate"
   __lmline_history_dir_ready || return 0
   __lmline_history_log_ready || return 0
-  # Buffer the whole record in one dd output block: shell output can split at newlines.
+  # Emit the record as one dd output block so concurrent appends cannot interleave lines.
+  # The shell chooses how to back the here-string; dd only reads it.
   bytes=$(command wc -c 2>/dev/null <<<"$record") || return 0
   command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
 }
