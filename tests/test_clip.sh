@@ -47,6 +47,9 @@ printf '%s\n' 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
 printf '%s\n' 'authorization: bearer lowercaseBearerTokenValue1234567890'
 printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
 printf '%s\n' 'TOKEN=*starredSecretValue*'
+printf '%s\n' 'Authorization: Bearer @secretAtValue123'
+printf '%s\n' 'token=@tokenAtValue123'
+printf '%s\n' 'api-key: @keyAtValue123'
 printf '%s\n' 'token: plainTokenValue1234567890'
 printf '%s\n' '{"api_key": "json_secret_value", "token": "json_token_value"}'
 printf '%s\n' '{"password": "value with spaces", "Authorization": "Bearer json_bearer_value"}'
@@ -89,6 +92,9 @@ grep -Fq 'api-key: ***REDACTED***' "$line_file" || exit 41
 grep -Fq 'hyphenatedKeyValue' "$line_file" && exit 42
 grep -Fq 'token: ***REDACTED***' "$line_file" || exit 43
 grep -Fq 'starredSecretValue' "$line_file" && exit 79
+grep -Fq 'secretAtValue123' "$line_file" && exit 80
+grep -Fq 'tokenAtValue123' "$line_file" && exit 81
+grep -Fq 'keyAtValue123' "$line_file" && exit 82
 grep -Fq 'plainTokenValue' "$line_file" && exit 44
 grep -Fq '"api_key": "***REDACTED***"' "$line_file" || exit 45
 grep -Fq 'json_secret_value' "$line_file" && exit 46
