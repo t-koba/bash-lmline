@@ -77,6 +77,9 @@ printf '%s\n' 'Authorization: Bearer @sec"untermTail -H "X: keep" https://x'
 printf '%s\n' 'Authorization: Digest @digestAtSecret9023, response="respSecret9023"'
 printf '%s\n' 'Authorization: Digest @ZxSecretMARKER7788, nonce="nonce7788", response="ZxSecretMARKER7788"'
 printf '%s\n' 'Authorization: Digest @ZxSecret7789, response="respFirst7789", nonce="nonceSecond7789"'
+printf '%s\n' 'Authorization" : Digest @sec7788, nonce="NONCE7788", response="RESP7788"'
+printf '%s\n' '"Authorization" : Digest @sec7789, nonce="NONCE7789", response="RESP7789"'
+printf '%s\n' 'authorization  : Digest @sec7790, nonce="NONCE7790", response="RESP7790"'
 printf '%s\n' 'Authorization: Bearer #secretHash9020'
 printf '%s\n' "Authorization: Bearer @o'brienApostrophe9016"
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
@@ -245,6 +248,18 @@ grep -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***", respons
 grep -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***", nonce="***REDACTED***"' "$line_file" || exit 215
 grep -Fq 'ZxSecretMARKER7788' "$line_file" && exit 216
 grep -Fq 'nonceSecond7789' "$line_file" && exit 217
+grep -Fxq 'Authorization" : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 218
+grep -Fq 'sec7788' "$line_file" && exit 219
+grep -Fq 'NONCE7788' "$line_file" && exit 220
+grep -Fq 'RESP7788' "$line_file" && exit 221
+grep -Fxq '"Authorization" : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 222
+grep -Fq 'sec7789' "$line_file" && exit 223
+grep -Fq 'NONCE7789' "$line_file" && exit 224
+grep -Fq 'RESP7789' "$line_file" && exit 225
+grep -Fxq 'authorization  : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 226
+grep -Fq 'sec7790' "$line_file" && exit 227
+grep -Fq 'NONCE7790' "$line_file" && exit 228
+grep -Fq 'RESP7790' "$line_file" && exit 229
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 212
 grep -Fq 'secretHash9020' "$line_file" && exit 213
 grep -Fq 'escapedTail9015' "$line_file" && exit 178
