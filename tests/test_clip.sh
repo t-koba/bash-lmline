@@ -192,6 +192,11 @@ printf '%s\n' 'foo=bar,//user:passComma2@example.test/path'
 printf '%s\n' 'git clone //BAREabcdefghijkl@example.test/path'
 printf '%s\n' 'echo url=//user:passAssign@example.test/path'
 printf '%s\n' 'echo url=//BAREassign123456@example.test/path'
+printf '%s\n' 'echo [//user:passBracket@example.test/path]'
+printf '%s\n' 'echo {user=//user:passBrace@example.test/path}'
+printf '%s\n' 'echo `//user:passTick@example.test/path`'
+printf '%s\n' 'echo "url=//user:passQuotedAssign@example.test/path"'
+printf '%s\n' "echo 'url=//user:passSingleAssign@example.test/path'"
 printf '%s\n' 'curl https://example.test/?q=//abcdefghijkl@example.test'
 printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
 printf '%s\n' 'curl https://example.test/?q=//BAREabcdefghijkl@example.test'
@@ -478,6 +483,16 @@ grep -Fxq 'curl https://example.test:8443?q=alice@example.test' "$line_file" || 
 grep -Fxq 'curl https://example.test:8443#alice@example.test' "$line_file" || exit 208
 grep -Fxq 'git clone //user:***REDACTED***@example.test/path' "$line_file" || exit 209
 grep -Fq 'git clone //user:pass@example.test/path' "$line_file" && exit 210
+grep -Fxq 'echo [//user:***REDACTED***@example.test/path]' "$line_file" || exit 255
+grep -Fq 'passBracket@example.test' "$line_file" && exit 254
+grep -Fxq 'echo {user=//user:***REDACTED***@example.test/path}' "$line_file" || exit 255
+grep -Fq 'passBrace@example.test' "$line_file" && exit 254
+grep -Fxq 'echo `//user:***REDACTED***@example.test/path`' "$line_file" || exit 255
+grep -Fq 'passTick@example.test' "$line_file" && exit 254
+grep -Fxq 'echo "url=//user:***REDACTED***@example.test/path"' "$line_file" || exit 255
+grep -Fq 'passQuotedAssign@example.test' "$line_file" && exit 254
+grep -Fxq "echo 'url=//user:***REDACTED***@example.test/path'" "$line_file" || exit 255
+grep -Fq 'passSingleAssign@example.test' "$line_file" && exit 254
 grep -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test' "$line_file" || exit 214
 grep -Fq 'abcdefghijkl@example.test' "$line_file" || exit 215
 grep -Fxq 'curl https://example.test/a//abc:def@example.test' "$line_file" || exit 216
