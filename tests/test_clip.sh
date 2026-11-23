@@ -168,6 +168,11 @@ printf "%s\n" "MY_TOKEN\\: \"plainKey777\""
 printf '%s\n' 'git clone https://oauth2:cloneTokUrl901@github.example/org/repo.git'
 printf '%s\n' 'psql postgresql://reporting:dbPwUrl902@db.example:5432/analytics'
 printf '%s\n' 'curl "https://u:quotedPwUrl903@host.example/x" -H "X: keepUrl"'
+printf '%s\n' 'curl https://example.test:8443?q=alice@example.test'
+printf '%s\n' 'curl https://example.test:8443#alice@example.test'
+printf '%s\n' 'git clone //user:pass@example.test/path'
+printf '%s\n' 'git clone https://PATabcdefghijkl@example.test/nope.git'
+printf '%s\n' 'git clone https://shortus@example.test/nope.git'
 printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
 printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
 EOF
@@ -421,6 +426,13 @@ grep -Fq 'dbPwUrl902' "$line_file" && exit 203
 grep -Fxq 'curl "https://u:***REDACTED***@host.example/x" -H "X: keepUrl"' "$line_file" || exit 204
 grep -Fq 'quotedPwUrl903' "$line_file" && exit 205
 grep -Fq 'plain@example.com' "$line_file" || exit 206
+grep -Fxq 'curl https://example.test:8443?q=alice@example.test' "$line_file" || exit 207
+grep -Fxq 'curl https://example.test:8443#alice@example.test' "$line_file" || exit 208
+grep -Fxq 'git clone //user:***REDACTED***@example.test/path' "$line_file" || exit 209
+grep -Fq 'git clone //user:pass@example.test/path' "$line_file" && exit 210
+grep -Fxq 'git clone https://***REDACTED***@example.test/nope.git' "$line_file" || exit 211
+grep -Fq 'PATabcdefghijkl' "$line_file" && exit 212
+grep -Fxq 'git clone https://shortus@example.test/nope.git' "$line_file" || exit 213
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
