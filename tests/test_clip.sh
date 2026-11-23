@@ -128,6 +128,8 @@ printf '%s\n' 'curl -d "{\"MY_TOKEN\":\"ab\\cdSECRET888\"}" https://x'
 printf '%s\n' 'curl -d "{\"Authorization\":\"Bearer mytok\\\" tailSECRET999\"}" https://x'
 printf '%s\n' 'Authorization\":\"Bearer secretEnding8888\\'
 printf '%s\n' 'MY_TOKEN\":\"secretEnding7777\\'
+printf '%s\n' 'Authorization\":\"Bearer backslashOddEscapedAuth9011\'
+printf '%s\n' 'MY_TOKEN\":\"backslashOddEscapedKey9012\\\'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -265,6 +267,10 @@ grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 178
 grep -Fq 'secretEnding8888' "$line_file" && exit 179
 grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 180
 grep -Fq 'secretEnding7777' "$line_file" && exit 181
+grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 182
+grep -Fq 'backslashOddEscapedAuth9011' "$line_file" && exit 183
+grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 184
+grep -Fq 'backslashOddEscapedKey9012' "$line_file" && exit 185
 grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
 json_count=0
 while IFS= read -r json_line; do
