@@ -1017,7 +1017,7 @@ Quoted values keep their quote characters, including escaped quotes inside the v
 Adjacent shell word pieces of a quoted Authorization value are masked with the value
 URL userinfo credentials (user:password@host, network-path //user:password@host) are masked at the URL authority
 Bare colonless userinfo is masked when the token has eight or more characters; shorter tokens are treated as usernames and kept
-Scheme, host, port, path, query and fragment are kept outside the authority; a //user:password@host shape after punctuation is masked conservatively
+Scheme, host, port, path, query and fragment are kept outside the authority; //user:password@host is masked at a URL start or after an unquoted shell separator, but not when ;// or ,// appears inside an already quoted URL path or query
 At-prefixed Authorization values are masked through unterminated quotes
 Escaped-quote JSON payloads redact their Authorization and key=value values
 sk-... OpenAI-style API keys (after the first 12 characters)
