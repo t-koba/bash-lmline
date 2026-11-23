@@ -197,6 +197,11 @@ printf '%s\n' 'echo {user=//user:passBrace@example.test/path}'
 printf '%s\n' 'echo `//user:passTick@example.test/path`'
 printf '%s\n' 'echo "url=//user:passQuotedAssign@example.test/path"'
 printf '%s\n' "echo 'url=//user:passSingleAssign@example.test/path'"
+printf '%s\n' 'db.url=//user:passDotted@example.test/x'
+printf '%s\n' 'spring.datasource.url=//user:passSpring@example.test/x'
+printf '%s\n' 'curl --url=//user:passFlag@example.test/x'
+printf '%s\n' 'java -Ddb.url=//user:passD@example.test/x'
+printf '%s\n' 'db.url=//BAREdot123456@example.test/x'
 printf '%s\n' "curl 'https://example.test/docs#//user:Secret987654@example.test'"
 printf '%s\n' "curl 'https://example.test/?a=1&//user:Secret987654@example.test'"
 printf '%s\n' 'curl https://example.test/?q=//abcdefghijkl@example.test'
@@ -497,6 +502,16 @@ grep -Fq 'passTick@example.test' "$line_file" && exit 254
 grep -Fxq 'echo "url=//user:***REDACTED***@example.test/path"' "$line_file" || exit 255
 grep -Fq 'passQuotedAssign@example.test' "$line_file" && exit 254
 grep -Fxq "echo 'url=//user:***REDACTED***@example.test/path'" "$line_file" || exit 255
+grep -Fxq 'db.url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
+grep -Fq 'passDotted@example.test' "$line_file" && exit 254
+grep -Fxq 'spring.datasource.url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
+grep -Fq 'passSpring@example.test' "$line_file" && exit 254
+grep -Fxq 'curl --url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
+grep -Fq 'passFlag@example.test' "$line_file" && exit 254
+grep -Fxq 'java -Ddb.url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
+grep -Fq 'passD@example.test' "$line_file" && exit 254
+grep -Fxq 'db.url=//***REDACTED***@example.test/x' "$line_file" || exit 255
+grep -Fq 'BAREdot123456@example.test' "$line_file" && exit 254
 grep -Fxq "curl 'https://example.test/docs#//user:Secret987654@example.test'" "$line_file" || exit 255
 grep -Fxq "curl 'https://example.test/?a=1&//user:Secret987654@example.test'" "$line_file" || exit 255
 grep -Fq 'passSingleAssign@example.test' "$line_file" && exit 254
