@@ -48,6 +48,13 @@ printf '%s\n' 'authorization: bearer lowercaseBearerTokenValue1234567890'
 printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
 printf '%s\n' 'TOKEN=*starredSecretValue*'
 printf '%s\n' 'Authorization: Bearer @secretAtValue123'
+printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
+printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
+printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
+printf '%s\n' 'Authorization: bareSchemeLessValue1234567890'
+printf '%s\n' '{"Authorization": "Basic jsonBasicValue1234567890", "note": "keepme2"}'
+printf "%s\n" "Authorization: 'Basic quotedBasicValue1234567890'"
+printf '%s\n' 'Authorization: "unterminatedBasicValue1234567890'
 printf '%s\n' 'token=@tokenAtValue123'
 printf '%s\n' 'api-key: @keyAtValue123'
 printf '%s\n' 'Authorization: Bearer "unterminated_secret_12345'
@@ -96,6 +103,17 @@ grep -Fq 'hyphenatedKeyValue' "$line_file" && exit 42
 grep -Fq 'token: ***REDACTED***' "$line_file" || exit 43
 grep -Fq 'starredSecretValue' "$line_file" && exit 79
 grep -Fq 'secretAtValue123' "$line_file" && exit 80
+grep -Fq 'Authorization: Basic ***REDACTED***' "$line_file" || exit 85
+grep -Fq 'basicCredentialValue' "$line_file" && exit 86
+grep -Fq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 87
+grep -Fq 'digestNonceValue' "$line_file" && exit 88
+grep -Fq 'Authorization: Token ***REDACTED***' "$line_file" || exit 89
+grep -Fq 'tokenSchemeValue' "$line_file" && exit 90
+grep -Fq 'Authorization: ***REDACTED***' "$line_file" || exit 91
+grep -Fq 'bareSchemeLessValue' "$line_file" && exit 92
+grep -Fq 'jsonBasicValue' "$line_file" && exit 93
+grep -Fq 'quotedBasicValue' "$line_file" && exit 94
+grep -Fq 'unterminatedBasicValue' "$line_file" && exit 95
 grep -Fq 'tokenAtValue123' "$line_file" && exit 81
 grep -Fq 'keyAtValue123' "$line_file" && exit 82
 grep -Fq 'unterminated_secret_12345' "$line_file" && exit 83

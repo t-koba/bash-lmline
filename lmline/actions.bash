@@ -228,9 +228,10 @@ __lmline_clipboard_read() {
 }
 
 __lmline_redact_clip_text() {
-  local auth_prefix bearer_prefix key_prefix
+  local auth_prefix bearer_prefix key_prefix auth_scheme
   auth_prefix="([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   bearer_prefix="((${auth_prefix})[\"']?Bearer[[:space:]]+)"
+  auth_scheme="([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"
   key_prefix="((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)"
   sed -E \
     -e "s/${auth_prefix}\"(([^\"\\\\]|\\\\.)*Bearer[[:space:]]+([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
@@ -247,6 +248,10 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${key_prefix}[^\"'[:space:]][^[:space:]]*/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e "/@@LMLINE_REDACTED@@/!s/${auth_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "/@@LMLINE_REDACTED@@/!s/${auth_prefix}('([^'\\\\]|\\\\.)*')/\\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "/@@LMLINE_REDACTED@@/!s/${auth_prefix}${auth_scheme}[^\"'[:space:]].*$/\\1\2@@LMLINE_REDACTED@@/Ig" \
+    -e "/@@LMLINE_REDACTED@@/!s/${auth_prefix}[^\"'[:space:]].*$/\\1@@LMLINE_REDACTED@@/Ig" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
