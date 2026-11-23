@@ -4,7 +4,13 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # Risk: concurrent widgets can mix suggestion records, and malformed mode markers can skew counts.
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-suggestion-history.XXXXXX")
-trap 'rm -rf "$tmp"' EXIT
+cleanup() {
+  # The pid-open fixture sets umask 0777, leaving mode-000 lock directories
+  # that macOS cannot unlink; restore owner access before removing the tree.
+  find "$tmp" -depth -exec chmod u+rwx {} + 2>/dev/null || :
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
 
 mkdir "$tmp/tendencies"
 printf '%s\n' 'mode=generate' 'unrecognized line' 'mode=' 'mode=fix' >"$tmp/tendencies/suggestions.log"
