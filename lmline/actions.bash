@@ -298,7 +298,7 @@ __lmline_prepare_clip_input() {
   local raw_bytes redacted input_bytes truncated=0 patterns_file
   [[ "$max_input" =~ ^[1-9][0-9]*$ ]] || max_input=65536
   raw_bytes=$(LC_ALL=C printf '%s' "$clipboard" | wc -c | tr -d ' ')
-  redacted=$(printf '%s' "$clipboard" | __lmline_redact_clip_text)
+  redacted=$(printf '%s' "$clipboard" | __lmline_redact_clip_text) || return 1
   input_bytes=$(LC_ALL=C printf '%s' "$redacted" | wc -c | tr -d ' ')
   if (( input_bytes > max_input )); then
     patterns_file=$(__lmline_condense_patterns_file) || return 1
