@@ -1307,7 +1307,6 @@ copilot_client() {
   node "$script_dir/copilot-client.js" "$@"
 }
 cmd=${1-}
-# shellcheck disable=SC2154 # Callers assign check_name and api_header_tmp through indirection.
 case "$cmd" in
   doctor)
     shift || true
@@ -1388,6 +1387,7 @@ case "$cmd" in
     if [[ -f "$endpoints_file" ]]; then
       while IFS= read -r check_line; do
         [[ -z "$check_line" || "$check_line" == \#* ]] && continue
+        check_name=
         profile_split_tsv "$check_line" check_name _ _ _ _ _ _ _ _ check_models_jq _ _ _
         if [[ -n "$check_models_jq" ]] && ! jq -n "def __lmline_items: $check_models_jq; null" >/dev/null 2>&1; then
           printf '  WARNING: endpoint %s has an invalid models_jq expression\n' "$( __lmline_display_endpoint "$check_name" )"
@@ -1458,6 +1458,7 @@ case "$cmd" in
       printf '\napi_check\n'
       api_base=${LMLINE_BASE_URL:-}
       api_url=$(profile_model_catalog_url "$api_base" "${LMLINE_MODELS_URL:-}")
+      api_header_tmp=
       __lmline_mktemp api_header_tmp "$(__lmline_tmp_root)/lmline-hdr.XXXXXX"
       # ${VAR-default} (no colon): an explicitly empty scheme means raw key.
       __lmline_http_build_headers "${LMLINE_API_KEY_FILE:-}" \

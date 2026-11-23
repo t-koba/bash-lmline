@@ -1206,7 +1206,7 @@ __lmline_risk_level_rank() {
 }
 
 # Split a command into words: quotes group words, a backslash escapes the next character; words are data, never executed.
-# shellcheck disable=SC1003 # Literal backslashes in the quote parser are intentional.
+# shellcheck disable=SC1003 # Backslashes are literal here; site directives exceed the pinned lint memory ceiling.
 __lmline_risk_split_words() {
   local str=$1 keep_backticks=${2:-0} keep_escapes=${3:-0} word="" ch quote="" i n
   n=${#str}
@@ -2515,7 +2515,7 @@ __lmline_risk_word_copies_stdin_with_operands() {
 # A stdout redirection on the copying producer keeps its bytes out of the
 # command substitution, so the here-string cannot become a command string.
 # Decode an option word as the shell would pass it: quotes are removed; backslashes escape only outside quotes (and a few characters inside double quotes), never inside single quotes.
-# shellcheck disable=SC1003 # Literal backslashes in option decoding are intentional.
+# shellcheck disable=SC1003 # Backslashes are literal here; site directives exceed the pinned lint memory ceiling.
 __lmline_risk_decode_option_word() {
   local word=$1 out="" quote="" i=0 ch next
   __LMLINE_RISK_OPTION_WORD=
