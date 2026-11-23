@@ -75,6 +75,8 @@ printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
 printf '%s\n' 'Authorization: Bearer @sec"untermTail -H "X: keep" https://x'
 printf '%s\n' 'Authorization: Digest @digestAtSecret9023, response="respSecret9023"'
+printf '%s\n' 'Authorization: Digest @ZxSecretMARKER7788, nonce="nonce7788", response="ZxSecretMARKER7788"'
+printf '%s\n' 'Authorization: Digest @ZxSecret7789, response="respFirst7789", nonce="nonceSecond7789"'
 printf '%s\n' 'Authorization: Bearer #secretHash9020'
 printf '%s\n' "Authorization: Bearer @o'brienApostrophe9016"
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
@@ -223,7 +225,7 @@ grep -Fq 'atFirstSingle778' "$line_file" && exit 147
 grep -Fq 'atSecondDouble779' "$line_file" && exit 148
 grep -Fxq 'Authorization: Bearer ***REDACTED*** -H "X: keep" https://x' "$line_file" || exit 170
 grep -Fxq "Authorization: Bearer ***REDACTED*** -H 'X: keep' https://x" "$line_file" || exit 171
-grep -Fxq 'Authorization: Digest ***REDACTED*** nonce="***REDACTED***"' "$line_file" || exit 172
+grep -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***"' "$line_file" || exit 172
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 173
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 174
 grep -Fq 'quoteTail9011' "$line_file" && exit 175
@@ -233,12 +235,16 @@ grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 202
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 203
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 204
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 205
-grep -Fxq 'Authorization: Digest ***REDACTED*** response="***REDACTED***"' "$line_file" || exit 206
+grep -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***"' "$line_file" || exit 206
 grep -Fq 'unterminatedDot9021' "$line_file" && exit 207
 grep -Fq 'unterminatedApostrophe9022' "$line_file" && exit 208
 grep -Fq 'Secret9029' "$line_file" && exit 209
 grep -Fq 'untermTail' "$line_file" && exit 210
 grep -Fq 'respSecret9023' "$line_file" && exit 211
+grep -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 214
+grep -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***", nonce="***REDACTED***"' "$line_file" || exit 215
+grep -Fq 'ZxSecretMARKER7788' "$line_file" && exit 216
+grep -Fq 'nonceSecond7789' "$line_file" && exit 217
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 212
 grep -Fq 'secretHash9020' "$line_file" && exit 213
 grep -Fq 'escapedTail9015' "$line_file" && exit 178
