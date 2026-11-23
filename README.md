@@ -1014,6 +1014,7 @@ VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments (spaces around =/
 Authorization: <scheme> <value> headers, any scheme or bare value (case-insensitive)
 Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
+scheme://user:password@host URLs mask the userinfo password, keeping scheme, user, host and command text
 At-prefixed Authorization values are masked through unterminated quotes
 Escaped-quote JSON payloads redact their Authorization and key=value values
 sk-... OpenAI-style API keys (after the first 12 characters)

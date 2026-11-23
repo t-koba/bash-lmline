@@ -165,6 +165,10 @@ printf "%s\n" "MY_TOKEN\\': 'o'brienKey777'"
 printf "%s\n" "Authorization: \\\"Bearer dqSecret777\""
 printf "%s\n" "Authorization: \\\"o'brien777\""
 printf "%s\n" "MY_TOKEN\\: \"plainKey777\""
+printf '%s\n' 'git clone https://oauth2:cloneTokUrl901@github.example/org/repo.git'
+printf '%s\n' 'psql postgresql://reporting:dbPwUrl902@db.example:5432/analytics'
+printf '%s\n' 'curl "https://u:quotedPwUrl903@host.example/x" -H "X: keepUrl"'
+printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
 printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
@@ -410,6 +414,13 @@ grep -Fq '123456789012' "$line_file" && exit 24
 grep -Fq '***REDACTED PRIVATE KEY***' "$line_file" || exit 25
 grep -Fq 'FAKE-KEY-BODY-FOR-REDACT-TEST' "$line_file" && exit 26
 grep -Fq 'BEGIN RSA PRIV''ATE KEY' "$line_file" && exit 27
+grep -Fxq 'git clone https://oauth2:***REDACTED***@github.example/org/repo.git' "$line_file" || exit 200
+grep -Fq 'cloneTokUrl901' "$line_file" && exit 201
+grep -Fxq 'psql postgresql://reporting:***REDACTED***@db.example:5432/analytics' "$line_file" || exit 202
+grep -Fq 'dbPwUrl902' "$line_file" && exit 203
+grep -Fxq 'curl "https://u:***REDACTED***@host.example/x" -H "X: keepUrl"' "$line_file" || exit 204
+grep -Fq 'quotedPwUrl903' "$line_file" && exit 205
+grep -Fq 'plain@example.com' "$line_file" || exit 206
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
