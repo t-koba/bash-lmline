@@ -58,6 +58,16 @@ printf '%s\n' 'Authorization: Bearer firstHeaderToken123 Authorization: Basic se
 printf '%s\n' 'curl -H "Authorization: Bearer curlToken123" -H "Authorization: Basic curlCred123" https://x'
 printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123"}'
 printf '%s\n' 'TOKEN=tokenPlusHeaderValue123 Authorization: Basic tokenPlusHeaderCred123'
+printf '%s\n' 'Authorization: bareSchemeLessValue1234567890'
+printf '%s\n' 'Authorization: "quotedSchemeLessValue123"'
+printf '%s\n' "Authorization: 'singleSchemeLessValue123'"
+printf '%s\n' 'authorization: bareLowerSchemeLess123'
+printf '%s\n' 'Authorization: Bearer "tok1" Authorization: bareCred2'
+printf '%s\n' '{"api_key": "k1", "Authorization": "schemeLessJsonCred123"}'
+printf '%s\n' 'Authorization: @bareAtValue123'
+printf '%s\n' 'Authorization: "@quotedAtValue123"'
+printf '%s\n' 'Authorization: "unterminatedSchemeLess123'
+printf '%s\n' 'Authorization: Bearer @@oddAtValue123'
 printf '%s\n' 'token=@tokenAtValue123'
 printf '%s\n' 'api-key: @keyAtValue123'
 printf '%s\n' 'Authorization: Bearer "unterminated_secret_12345'
@@ -123,6 +133,19 @@ grep -Fq 'keyPlusHeaderValue123' "$line_file" && exit 100
 grep -Fq 'keyPlusHeaderCred123' "$line_file" && exit 101
 grep -Fq 'tokenPlusHeaderValue123' "$line_file" && exit 102
 grep -Fq 'tokenPlusHeaderCred123' "$line_file" && exit 103
+grep -Fq 'Authorization: ***REDACTED***' "$line_file" || exit 104
+grep -Fq 'Authorization: "***REDACTED***"' "$line_file" || exit 105
+grep -Fq "Authorization: '***REDACTED***'" "$line_file" || exit 106
+grep -Fq 'bareSchemeLessValue' "$line_file" && exit 107
+grep -Fq 'quotedSchemeLessValue' "$line_file" && exit 108
+grep -Fq 'singleSchemeLessValue' "$line_file" && exit 109
+grep -Fq 'bareLowerSchemeLess' "$line_file" && exit 110
+grep -Fq 'bareCred2' "$line_file" && exit 111
+grep -Fq 'schemeLessJsonCred' "$line_file" && exit 112
+grep -Fq 'bareAtValue' "$line_file" && exit 113
+grep -Fq 'quotedAtValue' "$line_file" && exit 114
+grep -Fq 'unterminatedSchemeLess' "$line_file" && exit 115
+grep -Fq 'oddAtValue' "$line_file" && exit 116
 grep -Fq 'tokenAtValue123' "$line_file" && exit 81
 grep -Fq 'keyAtValue123' "$line_file" && exit 82
 grep -Fq 'unterminated_secret_12345' "$line_file" && exit 83
