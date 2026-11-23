@@ -59,6 +59,10 @@ printf '%s\n' 'curl -H "Authorization: Bearer curlToken123" -H "Authorization: B
 printf '%s\n' 'curl -H "Authorization: schemeLessQuoted123" https://x'
 printf '%s\n' "curl -H 'Authorization: schemeLessQuoted124' https://x"
 printf '%s\n' "curl -H 'Authorization: Basic schemedQuoted125' https://x"
+printf '%s\n' 'curl -H "Authorization: @@oddAtDouble999" -H "X: tailDouble" https://x'
+printf '%s\n' "curl -H 'Authorization: @@oddAtSingle999' -H 'X: tailSingle' https://x"
+printf '%s\n' 'curl -H "Authorization: @" -H "X: keepAtDouble" https://x'
+printf '%s\n' "curl -H 'Authorization: @' -H 'X: keepAtSingle' https://x"
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
 printf '%s\n' 'Authorization: Basic p@ss" w0rd123SECRET'
 printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123"}'
@@ -155,6 +159,12 @@ grep -Fq 'schemedQuoted125' "$line_file" && exit 133
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x' "$line_file" || exit 134
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' https://x" "$line_file" || exit 135
 grep -Fxq "curl -H 'Authorization: Basic ***REDACTED***' https://x" "$line_file" || exit 136
+grep -Fq 'oddAtDouble999' "$line_file" && exit 137
+grep -Fq 'oddAtSingle999' "$line_file" && exit 138
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: tailDouble" https://x' "$line_file" || exit 139
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: tailSingle' https://x" "$line_file" || exit 140
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepAtDouble" https://x' "$line_file" || exit 141
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
