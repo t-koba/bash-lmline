@@ -68,6 +68,8 @@ printf '%s\n' 'Authorization: @bareAtValue123'
 printf '%s\n' 'Authorization: "@quotedAtValue123"'
 printf '%s\n' 'Authorization: "unterminatedSchemeLess123'
 printf '%s\n' 'Authorization: Bearer @@oddAtValue123'
+printf '%s\n' 'Authorization: Bearer @'
+printf '%s\n' 'Authorization: @'
 printf '%s\n' 'Authorization: Bearer @s3cr3tToken99 extra words'
 printf '%s\n' 'Authorization: Basic @acct99 # comment'
 printf '%s\n' 'Authorization: Bearer @tok https://example.com'
@@ -141,6 +143,9 @@ grep -Fq 'firstHeaderToken123' "$line_file" && exit 96
 grep -Fq 'secondHeaderCred123' "$line_file" && exit 97
 grep -Fq 'curlToken123' "$line_file" && exit 98
 grep -Fq 'curlCred123' "$line_file" && exit 99
+grep -Fxq 'curl -H "Authorization: Bearer "***REDACTED***" -H "Authorization: Basic "***REDACTED***" https://x' "$line_file" || exit 126
+grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
+grep -Fxq 'Authorization: ***REDACTED***' "$line_file" || exit 128
 grep -Fq 'keyPlusHeaderValue123' "$line_file" && exit 100
 grep -Fq 'keyPlusHeaderCred123' "$line_file" && exit 101
 grep -Fq 'tokenPlusHeaderValue123' "$line_file" && exit 102
