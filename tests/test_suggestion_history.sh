@@ -29,19 +29,23 @@ printf -v padding '%8192s' ''
 padding=${padding// /x}
 mkdir "$tmp/bin"
 cat >"$tmp/bin/dd" <<'DD'
-#!/usr/bin/env bash
-# Bash has opened the append fd. Keep the peers concurrent while it is open.
+#!/bin/sh
+# The shell has opened the append fd. Keep the peers waiting while it is open.
 # One record must be one dd invocation: a second call can interleave fields.
 printf x >>"$LMLINE_HISTORY_DIR/dd-calls" || exit 1
 : >"$LMLINE_HISTORY_DIR/start-peers" || exit 1
-await done-2
-await done-3
+attempt=0
+while [ ! -e "$LMLINE_HISTORY_DIR/done-2" ] || [ ! -e "$LMLINE_HISTORY_DIR/done-3" ]; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 400 ] || exit 1
+  sleep 0.025
+done
 exec "$LMLINE_TEST_DD" "$@"
 DD
 chmod +x "$tmp/bin/dd"
 cat >"$tmp/writer" <<'WRITER'
 source "$1/lmline/init.$2"
-writer=$3 padding=$4
+writer=$3 padding=$4 script_dir=$5
 await() {
   local attempt
   for ((attempt=0; attempt<400; ++attempt)); do
@@ -50,13 +54,17 @@ await() {
   done
   exit 1
 }
-if [[ $2 == bash ]]; then
-  if [[ $writer == 1 ]]; then
+if [[ $writer == 1 ]]; then
+  if [[ $2 == bash ]]; then
     LMLINE_TEST_DD=$(type -P dd)
-    export LMLINE_TEST_DD
-    export -f await
-    export PATH="${BASH_SOURCE[0]%/*}/bin:$PATH"
+  else
+    LMLINE_TEST_DD=$(command -v dd)
   fi
+  export LMLINE_TEST_DD
+  PATH="$script_dir/bin:$PATH"
+  export PATH
+fi
+if [[ $2 == bash ]]; then
   record_suggestion=__lmline_record_suggestion
 else
   record_suggestion=__lmline_zsh_record_suggestion
@@ -64,17 +72,13 @@ fi
 if [[ $writer != 1 ]]; then
   await start-peers
   # Writer 1's fake dd waits for the peers while it holds the lock.
-  [[ $2 != bash || -d "$LMLINE_HISTORY_DIR/.suggestions.lock" ]] || exit 1
+  [[ -d "$LMLINE_HISTORY_DIR/.suggestions.lock" ]] || exit 1
   # Signal before recording: writer 1 cannot release the lock until peers do.
   : >"$LMLINE_HISTORY_DIR/done-$writer"
 fi
 "$record_suggestion" generate "original $writer-$padding" "candidate $writer-$padding"
 if [[ $writer == 1 ]]; then
   : >"$LMLINE_HISTORY_DIR/done-$writer"
-fi
-# A full-record zsh append has no per-field hook; release the peers here.
-if [[ $2 == zsh && $writer == 1 ]]; then
-  : >"$LMLINE_HISTORY_DIR/start-peers"
 fi
 WRITER
 
@@ -91,7 +95,7 @@ check_concurrent_records() {
   local pids=() pid writer failed=0
   for writer in 1 2 3; do
     LMLINE_CONFIG_DIR="$config_dir" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
-      "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/writer" "$repo_dir" "$shell" "$writer" "$padding" \
+      "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/writer" "$repo_dir" "$shell" "$writer" "$padding" "$tmp" \
       >"$out_prefix-$writer.out" 2>&1 &
     pids+=("$!")
   done
@@ -104,15 +108,13 @@ check_concurrent_records() {
     concurrent_failure="$shell suggestion writers did not finish"
     return 1
   fi
-  if [[ $shell == bash ]]; then
-    # BSD wc pads its count; compare numerically, not as text.
-    local append_calls
-    append_calls=$(wc -c <"$history_dir/dd-calls")
-    if ((append_calls != 1)); then
-      concurrent_failure="bash suggestion record used more than one append"
-      concurrent_diagnostic="dd-calls: $append_calls"
-      return 1
-    fi
+  # BSD wc pads its count; compare numerically, not as text.
+  local append_calls
+  append_calls=$(wc -c <"$history_dir/dd-calls")
+  if ((append_calls != 1)); then
+    concurrent_failure="$shell suggestion record used more than one append"
+    concurrent_diagnostic="dd-calls: $append_calls"
+    return 1
   fi
   # Check the six fields in order and exactly one original/candidate pair per writer.
   local diagnostic
@@ -529,6 +531,18 @@ grep -q '^generate=1$' <<<"$reader_tendencies" ||
   fail "history tendencies ignored a real directory under a linked ancestor"
 ok "history readers allow a linked ancestor"
 
+# A live owner that writes its pid late must keep the lock it already holds.
+cat >"$tmp/late-owner" <<'LATE_OWNER'
+lock_dir=$1 owner=$2
+sleep 0.6
+printf '%s\n' "$owner" >"$lock_dir/pid" 2>/dev/null || exit 1
+sleep 0.2
+[[ -d "$lock_dir" ]] || exit 1
+rm -f "$lock_dir/pid"
+rmdir "$lock_dir"
+LATE_OWNER
+chmod +x "$tmp/late-owner"
+
 # A dead owner must not block later records; a live owner's lock is kept.
 cat >"$tmp/self-writer" <<'SELF_WRITER'
 source "$1/lmline/init.$2"
@@ -623,6 +637,26 @@ for shell in bash zsh; do
       fail "$shell left a stale-directory leftover behind"
   done
   ok "$shell cleans a stale-directory leftover"
+
+  # A lock whose owner publishes its pid after the grace window is still live.
+  late_dir="$tmp/late-lock-$shell"
+  mkdir -m 700 "$late_dir"
+  mkdir "$late_dir/.suggestions.lock"
+  sleep 2 &
+  late_owner=$!
+  bash "$tmp/late-owner" "$late_dir/.suggestions.lock" "$late_owner" &
+  late_helper=$!
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-late-$shell" LMLINE_HISTORY_DIR="$late_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+    >"$tmp/late-$shell.out" 2>"$tmp/late-$shell.err" &
+  late_writer=$!
+  wait "$late_helper" || fail "$shell late-pid owner lost its lock"
+  wait "$late_writer" || fail "$shell late-pid writer failed"
+  wait "$late_owner" 2>/dev/null || true
+  grep -q '^candidate=candidate-private$' "$late_dir/suggestions.log" ||
+    fail "$shell did not record after a late-pid lock"
+  ok "$shell keeps a late-pid suggestion lock"
 
   live_dir="$tmp/live-lock-$shell"
   mkdir -m 700 "$live_dir"

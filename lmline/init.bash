@@ -689,7 +689,7 @@ __lmline_record_suggestion() {
     case $owner in
       ''|*[!0-9]*|0*)
         # A fresh lock has no pid yet; give the owner a short grace to write it.
-        if ((attempt < 5)); then
+        if ((attempt < 20)); then
           sleep 0.025 2>/dev/null || true
           continue
         fi
@@ -703,6 +703,12 @@ __lmline_record_suggestion() {
         fi
         ;;
     esac
+    # A late pid write means the owner is live; never dispossess it.
+    current=$(command cat "$lock_dir/pid" 2>/dev/null) || current=
+    if [[ $current != "$owner" ]]; then
+      sleep 0.025 2>/dev/null || true
+      continue
+    fi
     # Stale: one atomic rename decides the winner; losers retry.
     stale_dir="$lock_dir.stale.$$"
     if [[ ! -e "$stale_dir" ]]; then
