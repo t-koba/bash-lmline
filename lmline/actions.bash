@@ -242,7 +242,7 @@ __lmline_redact_clip_text() {
   auth_scheme_sq="('[A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"
   key_word='(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)'
   key_name="(${key_word}[A-Za-z0-9_-]*|[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)"
-  key_prefix="((^|[[:space:]\"'(\[{,;.-])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
+  key_prefix="((^|[^A-Za-z0-9_/?@#&=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   key_prefix_url="(([?&/@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   auth_prefix_escaped_dq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*\")"
   auth_prefix_escaped_sq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*')"
@@ -305,7 +305,7 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}'(([^'\\\\]|\\\\.)*\\\\?)$/\1@@LMLINE_REDACTED@@/Ig" \
     -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\1'@@LMLINE_REDACTED@@'/Ig" \
-    -e "s/${key_prefix_url}([^[:space:]\"'@/?#&]+)/\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${key_prefix_url}([^[:space:]\"'#&]+)/\1@@LMLINE_REDACTED@@/Ig" \
     -e "s/${key_prefix}[^\"'[:space:]][^[:space:]]*/\1@@LMLINE_REDACTED@@/Ig" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \

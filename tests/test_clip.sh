@@ -208,6 +208,11 @@ printf '%s\n' 'curl https://example.test/?q=//abcdefghijkl@example.test'
 printf '%s\n' "curl 'https://example.test/path?token=abc&x=1'"
 printf '%s\n' "curl 'https://example.test/?x=1&token=abc'"
 printf '%s\n' "curl 'https://example.test/a/token=abc'"
+printf '%s\n' 'INFO|token=SECRETpipe987654 service=web'
+printf '%s\n' 'db:password=SECRETcolon987654'
+printf '%s\n' '[INFO]token=SECRETbracket987654'
+printf '%s\n' "curl 'https://example.test/?token=user@example.com&x=1'"
+printf '%s\n' "curl 'https://example.test/?token=abc/def&x=1'"
 printf '%s\n' "curl 'https://user:pass;token=abc@example.test/path'"
 printf '%s\n' 'TOKEN=httpsSecret987654 https://x'
 printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
@@ -524,6 +529,10 @@ grep -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test' "$line_file
 grep -Fxq "curl 'https://example.test/path?token=***REDACTED***&x=1'" "$line_file" || exit 255
 grep -Fxq "curl 'https://example.test/?x=1&token=***REDACTED***'" "$line_file" || exit 255
 grep -Fxq "curl 'https://example.test/a/token=***REDACTED***'" "$line_file" || exit 255
+grep -Fxq 'INFO|token=***REDACTED*** service=web' "$line_file" || exit 255
+grep -Fxq 'db:password=***REDACTED***' "$line_file" || exit 255
+grep -Fxq '[INFO]token=***REDACTED***' "$line_file" || exit 255
+grep -Fxq "curl 'https://example.test/?token=***REDACTED***&x=1'" "$line_file" || exit 255
 grep -Fxq "curl 'https://user:***REDACTED***@example.test/path'" "$line_file" || exit 255
 grep -Fq 'pass;token=abc@example.test' "$line_file" && exit 254
 grep -Fxq 'TOKEN=***REDACTED*** https://x' "$line_file" || exit 255
