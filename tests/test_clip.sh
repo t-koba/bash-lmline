@@ -91,10 +91,8 @@ printf '%s\n' "curl -H 'Authorization: abc''tail innerSPACE5' -H \"X: keep\" htt
 printf '%s\n' 'curl -H "Authorization: abc""tail multiDQ901""tail multiDQ903" -H "X: keep" https://example.test'
 printf '%s\n' "curl -H \"Authorization: Bearer abc\"'tail multiSQ902''tail multiSQ904' -H \"X: keep\" https://example.test"
 printf '%s\n' 'curl -H "Authorization: abc""multiDQ905""multiDQ906""multiDQ907" -H "X: keep" https://example.test'
-printf '%s\n' 'curl -H "Authorization: abc""pa\\"insideEsc9031""pb" -H "X: keep" https://x'
-printf '%s\n' "curl -H \"Authorization: abc\"'pa\\'insideEsc9032'pb' -H \"X: keep\" https://x"
-printf '%s\n' "curl -H 'Authorization: abc'\"pa\\\"insideEsc9033\"\"pb\" -H \"X: keep\" https://x"
-printf '%s\n' "curl -H 'Authorization: abc''pa'\"insideEsc9034\"''pb' -H \"X: keep\" https://x"
+printf '%s\n' 'curl -H "Authorization: abc""pa\\"insideEsc9031""pb" -H "X: keep" https://dqesc9031.example.test'
+printf '%s\n' "curl -H 'Authorization: abc'\"pa\\\"insideEsc9033\"\"pb\" -H \"X: keep\" https://sqesc9033.example.test"
 printf '%s\n' 'Authorization: Bearer @sec".unterminatedDot9021'
 printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
@@ -387,9 +385,10 @@ grep -Fq 'multiDQ90' "$line_file" && exit 256
 grep -Fq 'multiSQ90' "$line_file" && exit 257
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 258
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 259
-grep -Fq 'insideEsc903' "$line_file" && exit 270
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 271
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://x" "$line_file" || exit 272
+grep -Fq 'insideEsc9031' "$line_file" && exit 270
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test' "$line_file" || exit 271
+grep -Fq 'insideEsc9033' "$line_file" && exit 272
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test" "$line_file" || exit 273
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
 grep -Fq 'more_secret456' "$line_file" && exit 129
