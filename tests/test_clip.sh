@@ -68,6 +68,14 @@ printf '%s\n' 'Authorization: @bareAtValue123'
 printf '%s\n' 'Authorization: "@quotedAtValue123"'
 printf '%s\n' 'Authorization: "unterminatedSchemeLess123'
 printf '%s\n' 'Authorization: Bearer @@oddAtValue123'
+printf '%s\n' 'Authorization: Bearer @s3cr3tToken99 extra words'
+printf '%s\n' 'Authorization: Basic @acct99 # comment'
+printf '%s\n' 'Authorization: Bearer @tok https://example.com'
+printf '%s\n' 'Authorization: Bearer @tok Authorization: Basic two999'
+printf '%s\n' 'Authorization: "u@host99"'
+printf '%s\n' "Authorization: 'u@host99'"
+printf '%s\n' '{"Authorization": "u@host99"}'
+printf '%s\n' 'api-key: keyVal123 Authorization: "u@host456"'
 printf '%s\n' 'token=@tokenAtValue123'
 printf '%s\n' 'api-key: @keyAtValue123'
 printf '%s\n' 'Authorization: Bearer "unterminated_secret_12345'
@@ -146,6 +154,13 @@ grep -Fq 'bareAtValue' "$line_file" && exit 113
 grep -Fq 'quotedAtValue' "$line_file" && exit 114
 grep -Fq 'unterminatedSchemeLess' "$line_file" && exit 115
 grep -Fq 'oddAtValue' "$line_file" && exit 116
+grep -Fq 's3cr3tToken99' "$line_file" && exit 117
+grep -Fq 'acct99' "$line_file" && exit 118
+grep -Fq 'example.com' "$line_file" && exit 119
+grep -Fq 'two999' "$line_file" && exit 120
+grep -Fq 'u@host99' "$line_file" && exit 121
+grep -Fq 'u@host456' "$line_file" && exit 122
+grep -Fq 'keyVal123' "$line_file" && exit 123
 grep -Fq 'tokenAtValue123' "$line_file" && exit 81
 grep -Fq 'keyAtValue123' "$line_file" && exit 82
 grep -Fq 'unterminated_secret_12345' "$line_file" && exit 83
