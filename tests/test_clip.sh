@@ -76,6 +76,8 @@ printf '%s\n' 'curl -H "Authorization: Bearer abc\" defGHI tailLEAK9041" -H "X: 
 printf '%s\n' 'curl -H "Authorization: abc\" defGHI tailLEAK9042" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "X: keep" -H "Authorization: Bearer abc\" tailLEAK9043" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer tailEscBearer9031\" -H "X: keepTail9033" https://x'
+printf '%s\n' 'curl -H "Authorization: Bearer tailClosedBearer9031\"" -H "X: keepClosed" https://x'
+printf '%s\n' 'curl -H "Authorization: tailClosedScheme9032\"" -H "X: keepClosed" https://x'
 printf '%s\n' 'curl -H "Authorization: tailEscScheme9032\" -H "X: keepTail9033" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer abc"plainQuote9044" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer abc\\"dblSlashQuote9045" -H "X: keep" https://x'
@@ -341,6 +343,13 @@ grep -Fq 'tailEscBearer9031' "$line_file" && exit 240
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 241
 grep -Fq 'tailEscScheme9032' "$line_file" && exit 242
 grep -Fxq 'curl -H "Authorization: ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 243
+# Genuinely closed escaped quotes are real word boundaries: keep the next header.
+grep -Fq 'tailClosedBearer9031' "$line_file" && exit 254
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keepClosed" https://x' "$line_file" || exit 255
+grep -Fq 'tailClosedScheme9032' "$line_file" && exit 254
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepClosed" https://x' "$line_file" || exit 255
+# The tailEscBearer9031/tailEscScheme9032 fixtures above are malformed shell text.
+# Their exact assertions record the fail-closed fallback, not a word boundary.
 grep -Fq 'plainQuote9044' "$line_file" && exit 244
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 245
 grep -Fq 'dblSlashQuote9045' "$line_file" && exit 246
