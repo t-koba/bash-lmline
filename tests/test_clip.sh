@@ -183,6 +183,10 @@ printf '%s\n' 'curl "https://u:quotedPwUrl903@host.example/x" -H "X: keepUrl"'
 printf '%s\n' 'curl https://example.test:8443?q=alice@example.test'
 printf '%s\n' 'curl https://example.test:8443#alice@example.test'
 printf '%s\n' 'git clone //user:pass@example.test/path'
+printf '%s\n' 'url=//user:passAssignLine@example.test/path'
+printf '%s\n' 'url=//BAREline123456@example.test/path'
+printf '%s\n' 'echo foo,//user:passComma@example.test/path'
+printf '%s\n' 'foo=bar,//user:passComma2@example.test/path'
 printf '%s\n' 'git clone //BAREabcdefghijkl@example.test/path'
 printf '%s\n' 'echo url=//user:passAssign@example.test/path'
 printf '%s\n' 'echo url=//BAREassign123456@example.test/path'
@@ -481,6 +485,14 @@ grep -Fxq 'echo url=//user:***REDACTED***@example.test/path' "$line_file" || exi
 grep -Fq 'passAssign@example.test' "$line_file" && exit 221
 grep -Fxq 'echo url=//***REDACTED***@example.test/path' "$line_file" || exit 222
 grep -Fq 'BAREassign123456@example.test' "$line_file" && exit 223
+grep -Fxq 'url=//user:***REDACTED***@example.test/path' "$line_file" || exit 224
+grep -Fq 'passAssignLine@example.test' "$line_file" && exit 225
+grep -Fxq 'url=//***REDACTED***@example.test/path' "$line_file" || exit 226
+grep -Fq 'BAREline123456@example.test' "$line_file" && exit 227
+grep -Fxq 'echo foo,//user:***REDACTED***@example.test/path' "$line_file" || exit 228
+grep -Fq 'passComma@example.test' "$line_file" && exit 229
+grep -Fxq 'foo=bar,//user:***REDACTED***@example.test/path' "$line_file" || exit 230
+grep -Fq 'passComma2@example.test' "$line_file" && exit 231
 grep -Fxq 'curl https://example.test/?q=//BAREabcdefghijkl@example.test' "$line_file" || exit 219
 grep -Fxq 'git clone https://***REDACTED***@example.test/nope.git' "$line_file" || exit 211
 grep -Fq 'PATabcdefghijkl' "$line_file" && exit 212
