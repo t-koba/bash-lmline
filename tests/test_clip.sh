@@ -205,6 +205,11 @@ printf '%s\n' 'db.url=//BAREdot123456@example.test/x'
 printf '%s\n' "curl 'https://example.test/docs#//user:Secret987654@example.test'"
 printf '%s\n' "curl 'https://example.test/?a=1&//user:Secret987654@example.test'"
 printf '%s\n' 'curl https://example.test/?q=//abcdefghijkl@example.test'
+printf '%s\n' "curl 'https://example.test/path?token=abc&x=1'"
+printf '%s\n' "curl 'https://example.test/?x=1&token=abc'"
+printf '%s\n' "curl 'https://example.test/a/token=abc'"
+printf '%s\n' "curl 'https://user:pass;token=abc@example.test/path'"
+printf '%s\n' 'TOKEN=httpsSecret987654 https://x'
 printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
 printf '%s\n' 'curl https://example.test/?q=//BAREabcdefghijkl@example.test'
 printf '%s\n' 'git clone https://PATabcdefghijkl@example.test/nope.git'
@@ -516,6 +521,13 @@ grep -Fxq "curl 'https://example.test/docs#//user:Secret987654@example.test'" "$
 grep -Fxq "curl 'https://example.test/?a=1&//user:Secret987654@example.test'" "$line_file" || exit 255
 grep -Fq 'passSingleAssign@example.test' "$line_file" && exit 254
 grep -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test' "$line_file" || exit 214
+grep -Fxq "curl 'https://example.test/path?token=***REDACTED***&x=1'" "$line_file" || exit 255
+grep -Fxq "curl 'https://example.test/?x=1&token=***REDACTED***'" "$line_file" || exit 255
+grep -Fxq "curl 'https://example.test/a/token=***REDACTED***'" "$line_file" || exit 255
+grep -Fxq "curl 'https://user:***REDACTED***@example.test/path'" "$line_file" || exit 255
+grep -Fq 'pass;token=abc@example.test' "$line_file" && exit 254
+grep -Fxq 'TOKEN=***REDACTED*** https://x' "$line_file" || exit 255
+grep -Fq 'httpsSecret987654' "$line_file" && exit 254
 grep -Fq 'abcdefghijkl@example.test' "$line_file" || exit 215
 grep -Fxq 'curl https://example.test/a//abc:def@example.test' "$line_file" || exit 216
 grep -Fxq 'git clone //***REDACTED***@example.test/path' "$line_file" || exit 217
