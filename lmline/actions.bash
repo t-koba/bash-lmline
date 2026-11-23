@@ -246,9 +246,9 @@ __lmline_redact_clip_text() {
   key_prefix_escaped_sq="(\\\\*[\"']?(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*\\\\*[\"']?\\\\*[:=][[:space:]]*\\\\*')"
   sed -E \
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
-    -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*\\\\?)$/\1\2@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*\\\\?)(\"?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
-    -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*\\\\?)$/\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*\\\\?)(\"?)$/\1@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\]|\\\\.|'[[:alnum:]])*)(\\\\*')([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
     -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\]|\\\\.|'[[:alnum:]])*\\\\?)('?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.|'[[:alnum:]])*)(\\\\*')([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\

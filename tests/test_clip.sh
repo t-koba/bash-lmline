@@ -143,6 +143,10 @@ printf "%s\n" "Authorization: \\'Bearer simpleSecret777'"
 printf "%s\n" "Authorization: \\'o'brienZZSECRETABC123END'"
 printf "%s\n" "Authorization: \\'Bearer o'brienAuth777'}"
 printf "%s\n" "MY_TOKEN\\': 'o'brienKey777'"
+printf "%s\n" "Authorization: \\\"Bearer dqSecret777\""
+printf "%s\n" "Authorization: \\\"o'brien777\""
+printf "%s\n" "MY_TOKEN\\: \"plainKey777\""
+printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -297,6 +301,9 @@ grep -Fxq "Authorization: \\'Bearer ***REDACTED***'" "$line_file" || exit 195
 grep -Fxq "Authorization: \\'***REDACTED***'" "$line_file" || exit 196
 grep -Fxq "Authorization: \\'Bearer ***REDACTED***'}" "$line_file" || exit 197
 grep -Fxq "MY_TOKEN\\': '***REDACTED***'" "$line_file" || exit 198
+grep -Fxq "Authorization: \\\"Bearer ***REDACTED***\"" "$line_file" || exit 199
+grep -Fxq "Authorization: \\\"***REDACTED***\"" "$line_file" || exit 200
+grep -Fxq "MY_TOKEN\\: \"***REDACTED***\"" "$line_file" || exit 201
 grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
 json_count=0
 while IFS= read -r json_line; do
