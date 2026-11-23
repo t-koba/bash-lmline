@@ -234,7 +234,13 @@ __lmline_redact_clip_text() {
   key_prefix="((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)"
   sed -E \
     -e "s/${auth_prefix}\"(([^\"\\\\]|\\\\.)*Bearer[[:space:]]+([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${auth_prefix}\"(([^\"\\\\]|\\\\.)*)$/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix}'(([^'\\\\]|\\\\.)*)$/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${bearer_prefix}\"(([^\"\\\\]|\\\\.)*)$/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${bearer_prefix}'(([^'\\\\]|\\\\.)*)$/\\1@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}'(([^'\\\\]|\\\\.)*Bearer[[:space:]]+([^'\\\\]|\\\\.)*)'/\\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)$/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${key_prefix}'(([^'\\\\]|\\\\.)*)$/\\1@@LMLINE_REDACTED@@/Ig" \
     -e "s/${bearer_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${bearer_prefix}('([^'\\\\]|\\\\.)*')/\\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${bearer_prefix}[^\"'[:space:]][^[:space:]]*/\\1@@LMLINE_REDACTED@@/Ig" \
