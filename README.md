@@ -593,6 +593,10 @@ restrictions.
 `~/.config/lmline/settings.bash`. `lmline config set` accepts an explicitly
 empty value, for example `LMLINE_AUTH_SCHEME=''`.
 
+Set `LMLINE_CLIP_USERINFO_MIN` to a positive integer to choose how long a bare URL
+username must be before clipboard redaction masks it. The default `8` keeps short
+usernames; `1` masks short or ambiguous tokens too.
+
 Project settings use `./.lmline.bash`:
 
 ```bash
@@ -1016,7 +1020,7 @@ Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
 Adjacent shell word pieces of a quoted Authorization value are masked with the value
 URL userinfo credentials (user:password@host, network-path //user:password@host) are masked at the URL authority
-Bare colonless userinfo is masked when the token has eight or more characters; shorter tokens are treated as usernames and kept
+Bare colonless userinfo is masked when the token reaches `LMLINE_CLIP_USERINFO_MIN` characters (default `8`); shorter tokens are kept as usernames
 Scheme, host, port, path, query and fragment are kept outside the authority; //user:password@host is masked at a URL start or after an unquoted shell separator, but not when ;// or ,// appears inside an already quoted URL path or query
 At-prefixed Authorization values are masked through unterminated quotes
 Escaped-quote JSON payloads redact their Authorization and key=value values

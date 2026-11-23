@@ -17,6 +17,8 @@ if ! declare -F __lmline_engine_error_message >/dev/null 2>&1; then
   source "$__LMLINE_ACTIONS_DIR/http.bash"
 fi
 
+: "${LMLINE_CLIP_USERINFO_MIN:=8}"
+
 __lmline_copilot_client() {
   printf '%s/copilot-client.js\n' "$__LMLINE_ACTIONS_DIR"
 }
@@ -236,6 +238,8 @@ __lmline_redact_clip_text() {
   local auth_prefix_escaped_dq auth_prefix_escaped_sq auth_scheme_optional
   local key_prefix_escaped_dq key_prefix_escaped_sq
   local auth_prefix_quoted_dq auth_prefix_quoted_sq
+  local userinfo_min=$LMLINE_CLIP_USERINFO_MIN
+  [[ $userinfo_min =~ ^[1-9][0-9]*$ ]] || userinfo_min=8
   auth_prefix="([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   auth_scheme="([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"
   auth_scheme_dq="(\"[A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"
@@ -254,12 +258,12 @@ __lmline_redact_clip_text() {
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e "/[\"']/! s#(^|.)([;,])//([^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1\2//\3@@LMLINE_REDACTED@@@#g" \
-    -e "/[\"']/! s#(^|.)([;,])//([^:/?#@[:space:]]{8,})@#\1\2//@@LMLINE_REDACTED@@@#g" \
+    -e "/[\"']/! s#(^|.)([;,])//([^:/?#@[:space:]]{${userinfo_min},})@#\1\2//@@LMLINE_REDACTED@@@#g" \
     -e 's#(^|[^A-Za-z0-9_./?@#&=:;,-])(//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1\2@@LMLINE_REDACTED@@@#g' \
     -e 's#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1\2\3@@LMLINE_REDACTED@@@#g' \
-    -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//)[^:/?#@[:space:]]{8,}@#\1@@LMLINE_REDACTED@@@#g' \
-    -e 's#(^|[^A-Za-z0-9_./?@#&=:;,-])(//)[^:/?#@[:space:]]{8,}@#\1\2@@LMLINE_REDACTED@@@#g' \
-    -e 's#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{8,}@#\1\2\3@@LMLINE_REDACTED@@@#g' \
+    -e "s#(([A-Za-z][A-Za-z0-9+.-]*:)//)[^:/?#@[:space:]]{${userinfo_min},}@#\1@@LMLINE_REDACTED@@@#g" \
+    -e "s#(^|[^A-Za-z0-9_./?@#&=:;,-])(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2@@LMLINE_REDACTED@@@#g" \
+    -e "s#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2\3@@LMLINE_REDACTED@@@#g" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"\"[^\"]*\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"'[^']*'[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'\"[^\"]*\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \

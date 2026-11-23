@@ -779,4 +779,33 @@ grep -q "LMLINE_CLIPBOARD_PROVIDER=.*wayland" "$install_linux_clip_dir/config/se
 custom_count_payload=$(LMLINE_CANDIDATE_COUNT=5 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" payload generate "# list files")
 grep -q 'Requested candidate limit: 5' <<<"$custom_count_payload" || fail "payload custom candidate count"
 
+strict_dir="$cfg_tmp/strict"
+mkdir -p "$strict_dir/bin" "$strict_dir/config"
+LMLINE_CONFIG_DIR="$strict_dir/config" "$repo_dir/lmline/lmline" config set LMLINE_BASE_URL https://api.test.invalid/v1
+LMLINE_CONFIG_DIR="$strict_dir/config" "$repo_dir/lmline/lmline" config set LMLINE_MODEL test-model
+cat >"$strict_dir/bin/fakeclip-strict" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'git clone https://s3cret@example.test/nope.git'
+EOF
+printf 'strictclip\t%s\n' "$strict_dir/bin/fakeclip-strict" >"$strict_dir/config/clipboard_providers.tsv"
+cat >"$strict_dir/engine" <<'EOF'
+#!/usr/bin/env bash
+line_file=
+while (($#)); do
+  case "$1" in
+    --line-file) line_file=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+grep -Fxq 'git clone https://***REDACTED***@example.test/nope.git' "$line_file" || exit 11
+grep -Fq 's3cret@example.test' "$line_file" && exit 12
+printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
+printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
+printf 'strict answer\n'
+EOF
+chmod +x "$strict_dir/bin/fakeclip-strict" "$strict_dir/engine"
+strict_out=$(LMLINE_CLIP_USERINFO_MIN=1 LMLINE_CONFIG_DIR="$strict_dir/config" LMLINE_ENGINE="$strict_dir/engine" \
+  "$repo_dir/lmline/lmline" clip --provider strictclip explain) || fail "strict userinfo minimum status"
+grep -q 'strict answer' <<<"$strict_out" || fail "strict userinfo minimum answer"
+
 ok "clip cli"
