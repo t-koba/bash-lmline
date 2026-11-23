@@ -84,6 +84,10 @@ printf '%s\n' 'curl -H "Authorization: Bearer abc\\"dblSlashQuote9045" -H "X: ke
 printf '%s\n' 'curl -H "Authorization: abc"tailAUDIT028 -H "X: keep" https://example.test'
 printf '%s\n' "curl -H \"Authorization: Bearer abc\"'tailAUDIT027' -H \"X: keep\" https://example.test"
 printf '%s\n' "curl -H 'Authorization: abc'\"tailAUDIT029\" -H \"X: keep\" https://example.test"
+printf '%s\n' 'curl -H "Authorization: abc""tail innerSPACE1" -H "X: keep" https://example.test'
+printf '%s\n' "curl -H \"Authorization: abc\"'tail innerSPACE2' -H \"X: keep\" https://example.test"
+printf '%s\n' "curl -H 'Authorization: abc'\"tail innerSPACE4\" -H \"X: keep\" https://example.test"
+printf '%s\n' "curl -H 'Authorization: abc''tail innerSPACE5' -H \"X: keep\" https://example.test"
 printf '%s\n' 'Authorization: Bearer @sec".unterminatedDot9021'
 printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
@@ -359,6 +363,9 @@ grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.
 grep -Fq 'tailAUDIT027' "$line_file" && exit 250
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 251
 grep -Fq 'tailAUDIT029' "$line_file" && exit 252
+grep -Fq 'innerSPACE' "$line_file" && exit 254
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 255
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test" "$line_file" || exit 255
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test" "$line_file" || exit 253
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
