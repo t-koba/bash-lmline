@@ -238,6 +238,11 @@ printf '%s\n' 'git clone https://s3cret@example.test/nope.git'
 printf '%s\n' "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'"
 printf '%s\n' "curl 'https://example.test/a,//u:pCommaPath987654@example.test'"
 printf '%s\n' 'echo first;//u:pShellSeparator987654@example.test'
+printf '%s\n' 'echo "q";echo first;//u:pQuoteSemi987654@example.test'
+printf '%s\n' "echo 'q';echo first;//u:pSquoteSemi987654@example.test"
+printf '%s\n' 'echo "q";echo foo,//user:passQuoteComma987654@example.test/path'
+printf '%s\n' 'echo first;//u:pTrailingQuote987654@example.test "tail"'
+printf '%s\n' 'echo "q";;//BAREabcdefghijkl@example.test'
 printf '%s\n' 'x=1;url=//user:passSemiAssign@example.test/path'
 printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
 printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
@@ -612,6 +617,16 @@ grep -Fxq "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'" "
 grep -Fxq "curl 'https://example.test/a,//u:pCommaPath987654@example.test'" "$line_file" || exit 255
 grep -Fxq 'echo first;//u:***REDACTED***@example.test' "$line_file" || exit 255
 grep -Fq 'pShellSeparator987654@example.test' "$line_file" && exit 254
+grep -Fq 'QuoteSemi987654@example.test' "$line_file" && exit 260
+grep -Fq 'SquoteSemi987654@example.test' "$line_file" && exit 261
+grep -Fq 'passQuoteComma987654@example.test' "$line_file" && exit 262
+grep -Fq 'pTrailingQuote987654@example.test' "$line_file" && exit 263
+grep -Fq ';;//BAREabcdefghijkl@example.test' "$line_file" && exit 264
+grep -Fxq 'echo "q";echo first;//u:***REDACTED***@example.test' "$line_file" || exit 265
+grep -Fxq "echo 'q';echo first;//u:***REDACTED***@example.test" "$line_file" || exit 266
+grep -Fxq 'echo "q";echo foo,//user:***REDACTED***@example.test/path' "$line_file" || exit 267
+grep -Fxq 'echo first;//u:***REDACTED***@example.test "tail"' "$line_file" || exit 268
+grep -Fxq 'echo "q";;//***REDACTED***@example.test' "$line_file" || exit 269
 grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
