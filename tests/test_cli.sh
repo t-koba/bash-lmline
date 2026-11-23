@@ -136,6 +136,20 @@ defaults_out=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" con
 grep -q $'^LMLINE_MICROSANDBOX_COMMAND\tmsb\t' <<<"$defaults_out" || fail "config defaults microsandbox command"
 grep -q $'^LMLINE_MODELS_URL\t\\$LMLINE_BASE_URL/models\t' <<<"$defaults_out" || fail "config defaults models url"
 grep -q $'^LMLINE_KEY_FIX\t' <<<"$defaults_out" || fail "config defaults key fix"
+grep -q $'LMLINE_CLIP_USERINFO_MIN\t8\tminimum bare colonless URL username length to mask (1..255; invalid values use 8)' <<<"$defaults_out" || fail "config defaults userinfo minimum"
+userinfo_config="$cfg_tmp/userinfo-config"
+mkdir -p "$userinfo_config"
+LMLINE_CONFIG_DIR="$userinfo_config" "$repo_dir/lmline/lmline" config set LMLINE_CLIP_USERINFO_MIN 1
+grep -q "export LMLINE_CLIP_USERINFO_MIN='1'" "$userinfo_config/settings.bash" || fail "userinfo minimum config set persisted"
+userinfo_description=$(LMLINE_CONFIG_DIR="$userinfo_config" "$repo_dir/lmline/lmline" config describe LMLINE_CLIP_USERINFO_MIN)
+grep -q '^default=8$' <<<"$userinfo_description" || fail "userinfo minimum describe default"
+grep -q '^value=1$' <<<"$userinfo_description" || fail "userinfo minimum describe value"
+userinfo_effective=$(LMLINE_CONFIG_DIR="$userinfo_config" "$repo_dir/lmline/lmline" config effective)
+grep -q $'^LMLINE_CLIP_USERINFO_MIN\t1\t' <<<"$userinfo_effective" || fail "userinfo minimum effective setting"
+userinfo_project="$cfg_tmp/userinfo-project"
+mkdir -p "$userinfo_project"
+(cd "$userinfo_project" && LMLINE_CONFIG_DIR="$userinfo_config" "$repo_dir/lmline/lmline" config project-set LMLINE_CLIP_USERINFO_MIN 2)
+grep -q "export LMLINE_CLIP_USERINFO_MIN='2'" "$userinfo_project/.lmline.bash" || fail "userinfo minimum project-set persisted"
 grep -q $'^LMLINE_RISK_HISTORY_EXPANSION_LEVEL\thigh\t' <<<"$defaults_out" || fail "history risk catalog default"
 describe_chatgpt=$(LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config describe LMLINE_CHATGPT_AUTH_URL)
 grep -q '^default=https://auth.openai.com$' <<<"$describe_chatgpt" || fail "chatgpt auth url describe default"
@@ -253,6 +267,7 @@ grep -q '^LMLINE_MICROSANDBOX_COMMAND$' <<<"$complete_settings" || fail "complet
 grep -q '^LMLINE_API_FORMAT$' <<<"$complete_settings" || fail "complete settings api format"
 grep -q '^LMLINE_MODELS_INCLUDE$' <<<"$complete_settings" || fail "complete settings models include"
 grep -q '^LMLINE_KEY_GENERATE$' <<<"$complete_settings" || fail "complete settings key"
+grep -q '^LMLINE_CLIP_USERINFO_MIN$' <<<"$complete_settings" || fail "complete settings userinfo minimum"
 # Static completion catalogs must not load settings or opt-in project config;
 # dynamic provider completion must continue to load configuration.
 static_config_dir="$cfg_tmp/static-config"

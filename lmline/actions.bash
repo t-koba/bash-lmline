@@ -238,8 +238,10 @@ __lmline_redact_clip_text() {
   local auth_prefix_escaped_dq auth_prefix_escaped_sq auth_scheme_optional
   local key_prefix_escaped_dq key_prefix_escaped_sq
   local auth_prefix_quoted_dq auth_prefix_quoted_sq
-  local userinfo_min=$LMLINE_CLIP_USERINFO_MIN
-  [[ $userinfo_min =~ ^[1-9][0-9]*$ ]] || userinfo_min=8
+  local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
+  if [[ ! $userinfo_min =~ ^[1-9][0-9]{0,2}$ ]] || (( 10#$userinfo_min > 255 )); then
+    userinfo_min=8
+  fi
   auth_prefix="([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   auth_scheme="([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"
   auth_scheme_dq="(\"[A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"

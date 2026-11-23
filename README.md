@@ -593,9 +593,10 @@ restrictions.
 `~/.config/lmline/settings.bash`. `lmline config set` accepts an explicitly
 empty value, for example `LMLINE_AUTH_SCHEME=''`.
 
-Set `LMLINE_CLIP_USERINFO_MIN` to a positive integer to choose how long a bare URL
-username must be before clipboard redaction masks it. The default `8` keeps short
-usernames; `1` masks short or ambiguous tokens too.
+Set `LMLINE_CLIP_USERINFO_MIN` to an integer from `1` to `255` to choose how long a
+bare URL username must be before clipboard redaction masks it. The default `8` keeps
+short usernames; `1` masks short or ambiguous tokens too. Values outside this range
+fall back to `8`. Configure it with `lmline config set` or `lmline config project-set`.
 
 Project settings use `./.lmline.bash`:
 
@@ -1560,6 +1561,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_CLIPBOARD_PROVIDER` | `auto` | clipboard provider name |
 | `LMLINE_CLIPBOARD_PROVIDERS_FILE` | installed defaults | provider TSV path |
 | `LMLINE_CLIP_MAX_INPUT_BYTES` | `65536` | redacted clipboard input byte limit |
+| `LMLINE_CLIP_USERINFO_MIN` | `8` | minimum bare URL username length to mask (`1`–`255`; otherwise defaults to `8`) |
 | `LMLINE_SELECTOR` | empty | Bash-only external candidate selector |
 | `LMLINE_STATUS_MODE` | `inline` | `inline`, `transient`, `log`/`debug`, or `silent`/`none` |
 | `LMLINE_SPINNER` | `1` | waiting animation |
