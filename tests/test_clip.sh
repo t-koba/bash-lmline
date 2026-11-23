@@ -197,6 +197,8 @@ printf '%s\n' 'echo {user=//user:passBrace@example.test/path}'
 printf '%s\n' 'echo `//user:passTick@example.test/path`'
 printf '%s\n' 'echo "url=//user:passQuotedAssign@example.test/path"'
 printf '%s\n' "echo 'url=//user:passSingleAssign@example.test/path'"
+printf '%s\n' "curl 'https://example.test/docs#//user:Secret987654@example.test'"
+printf '%s\n' "curl 'https://example.test/?a=1&//user:Secret987654@example.test'"
 printf '%s\n' 'curl https://example.test/?q=//abcdefghijkl@example.test'
 printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
 printf '%s\n' 'curl https://example.test/?q=//BAREabcdefghijkl@example.test'
@@ -492,6 +494,8 @@ grep -Fq 'passTick@example.test' "$line_file" && exit 254
 grep -Fxq 'echo "url=//user:***REDACTED***@example.test/path"' "$line_file" || exit 255
 grep -Fq 'passQuotedAssign@example.test' "$line_file" && exit 254
 grep -Fxq "echo 'url=//user:***REDACTED***@example.test/path'" "$line_file" || exit 255
+grep -Fxq "curl 'https://example.test/docs#//user:Secret987654@example.test'" "$line_file" || exit 255
+grep -Fxq "curl 'https://example.test/?a=1&//user:Secret987654@example.test'" "$line_file" || exit 255
 grep -Fq 'passSingleAssign@example.test' "$line_file" && exit 254
 grep -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test' "$line_file" || exit 214
 grep -Fq 'abcdefghijkl@example.test' "$line_file" || exit 215
