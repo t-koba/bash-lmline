@@ -1125,6 +1125,8 @@ candidate=${(q)candidate}"
   local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt owner current stale_dir
   for ((attempt = 0; attempt < 40; attempt++)); do
     if command mkdir "$lock_dir" 2>/dev/null; then
+      # A restrictive umask must not make the new lock unwritable.
+      command chmod 700 "$lock_dir" 2>/dev/null || true
       # A killed reclamation may leave a renamed lock; it never blocks mkdir.
       command rm -rf "$lock_dir".stale.*(N) 2>/dev/null || true
       printf '%s\n' "$$" >"$lock_dir/pid" 2>/dev/null || true

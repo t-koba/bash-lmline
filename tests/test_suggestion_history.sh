@@ -240,6 +240,19 @@ else
   __lmline_zsh_record_suggestion generate original-private candidate-private
 fi
 PRIVATE_WRITER
+# This fake dd runs while the history lock is held; it proves ownership was
+# published even under a restrictive umask.
+mkdir -p "$tmp/umask-bin"
+cat >"$tmp/umask-bin/dd" <<'UMASK_DD'
+#!/usr/bin/env bash
+pid_file=$LMLINE_HISTORY_DIR/.suggestions.lock/pid
+[[ -f $pid_file ]] || exit 1
+pid=$(command cat "$pid_file") || exit 1
+[[ $pid == [1-9]* ]] || exit 1
+printf x >>"$LMLINE_HISTORY_DIR/pid-ok" || exit 1
+exec "$LMLINE_TEST_DD" "$@"
+UMASK_DD
+chmod +x "$tmp/umask-bin/dd"
 cat >"$tmp/original-writer" <<'ORIGINAL_WRITER'
 source "$1/lmline/init.$2"
 if [[ $2 == bash ]]; then
@@ -657,6 +670,29 @@ for shell in bash zsh; do
   grep -q '^candidate=candidate-private$' "$late_dir/suggestions.log" ||
     fail "$shell did not record after a late-pid lock"
   ok "$shell keeps a late-pid suggestion lock"
+
+  # A restrictive umask must leave the lock directory writable by its owner.
+  umask_dir="$tmp/umask-lock-$shell"
+  mkdir -m 700 "$umask_dir"
+  real_dd=$(type -P dd)
+  (
+    umask 0222
+    LMLINE_TEST_DD=$real_dd PATH="$tmp/umask-bin:$PATH" \
+      LMLINE_CONFIG_DIR="$tmp/config-umask-$shell" LMLINE_HISTORY_DIR="$umask_dir" LMLINE_BIND_KEYS=0 \
+      "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+      >"$tmp/umask-$shell.out" 2>"$tmp/umask-$shell.err"
+  ) || fail "$shell umask lock writer failed"
+  if grep -q 'suggestions\.lock\|\.stale\|/pid\|permission denied' "$tmp/umask-$shell.err" 2>/dev/null; then
+    cat "$tmp/umask-$shell.err" >&2
+    fail "$shell umask lock writer wrote lock noise to stderr"
+  fi
+  [[ -s "$umask_dir/pid-ok" ]] ||
+    fail "$shell did not publish the lock pid under a restrictive umask"
+  grep -q '^candidate=candidate-private$' "$umask_dir/suggestions.log" ||
+    fail "$shell did not record under a restrictive umask"
+  [[ ! -e "$umask_dir/.suggestions.lock" ]] ||
+    fail "$shell left a lock under a restrictive umask"
+  ok "$shell records under a restrictive umask"
 
   live_dir="$tmp/live-lock-$shell"
   mkdir -m 700 "$live_dir"
