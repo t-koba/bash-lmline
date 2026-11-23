@@ -227,6 +227,9 @@ __lmline_clipboard_read() {
   "${fields[1]}" "${args[@]}"
 }
 
+# The @ in the temporary marker is deliberate: later scheme-less rules
+# exclude @ so they cannot re-redact a value whose scheme was preserved.
+# @-specific rules restore coverage for real credentials beginning with @.
 __lmline_redact_clip_text() {
   local auth_prefix auth_scheme auth_scheme_dq auth_scheme_sq key_prefix
   auth_prefix="([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
