@@ -40,13 +40,20 @@ printf 'stripe %s%sStripePublicBody0123456789\n' "$st_pk" "$st_live"
 printf 'token %s%s12345_eyJhbGciOiJIUzI1NiJ9_stateless_jwt_body_0123456789\n' "$gh_a" 's_'
 printf 'token %s%sabcdefghijklmnopqrstuvwxyz0123\n' 'glp' 'at-'
 printf 'key %s%sSyD12345678901234567890123456789012\n' 'AI' 'za'
+printf '%s\n' 'Authorization: Bearer "quoted bearer token value"'
+printf '%s\n' "Authorization: Bearer 'single quoted bearer token'"
+printf '%s\n' 'Authorization: Bearer "quote\"insideTail1234567890"'
 printf '%s\n' 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
 printf '%s\n' 'authorization: bearer lowercaseBearerTokenValue1234567890'
 printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
+printf '%s\n' 'TOKEN=*starredSecretValue*'
 printf '%s\n' 'token: plainTokenValue1234567890'
 printf '%s\n' '{"api_key": "json_secret_value", "token": "json_token_value"}'
 printf '%s\n' '{"password": "value with spaces", "Authorization": "Bearer json_bearer_value"}'
 printf '%s\n' 'Authorization: Bearer quote"BearerSuffix1234567890'
+printf '%s\n' '{"note": "keepme", "Authorization": "Bearer quote\"BearerSuffix1234567890"}'
+printf "%s\n" "Authorization: 'Bearer quote\\'BearerSuffixSingle1234567890'"
+printf "%s\n" "TOKEN='quotedTokenSecret123'"
 printf '%s\n' 'MY_TOKEN=abc"defGHI'
 printf '%s\n' "DB_PASSWORD=p@ss'w0rd"
 printf '%s\n' '123MY_TOKEN=SECRETVAL'
@@ -71,33 +78,50 @@ done
 [[ "$mode" == clip ]] || exit 10
 grep -Fq 'API_KEY=***REDACTED***' "$line_file" || exit 11
 grep -Fq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 12
+grep -Fq 'Authorization: Bearer "***REDACTED***"' "$line_file" || exit 74
+grep -Fq "Authorization: Bearer '***REDACTED***'" "$line_file" || exit 75
+grep -Fq 'quoted bearer token value' "$line_file" && exit 76
+grep -Fq 'single quoted bearer token' "$line_file" && exit 77
+grep -Fq 'insideTail1234567890' "$line_file" && exit 78
 grep -Fq 'authorization: bearer ***REDACTED***' "$line_file" || exit 39
 grep -Fq 'lowercaseBearerTokenValue' "$line_file" && exit 40
 grep -Fq 'api-key: ***REDACTED***' "$line_file" || exit 41
 grep -Fq 'hyphenatedKeyValue' "$line_file" && exit 42
 grep -Fq 'token: ***REDACTED***' "$line_file" || exit 43
+grep -Fq 'starredSecretValue' "$line_file" && exit 79
 grep -Fq 'plainTokenValue' "$line_file" && exit 44
-grep -Fq '"api_key": ***REDACTED***' "$line_file" || exit 45
+grep -Fq '"api_key": "***REDACTED***"' "$line_file" || exit 45
 grep -Fq 'json_secret_value' "$line_file" && exit 46
-grep -Fq '"token": ***REDACTED***' "$line_file" || exit 47
+grep -Fq '"token": "***REDACTED***"' "$line_file" || exit 47
 grep -Fq 'json_token_value' "$line_file" && exit 48
-grep -Fq '"password": ***REDACTED***' "$line_file" || exit 49
+grep -Fq '"password": "***REDACTED***"' "$line_file" || exit 49
 grep -Fq 'value with spaces' "$line_file" && exit 50
 grep -Fq 'quote"BearerSuffix' "$line_file" && exit 53
 grep -Fq 'MY_TOKEN=***REDACTED***' "$line_file" || exit 54
+grep -Fq "Authorization: '***REDACTED***'" "$line_file" || exit 70
+grep -Fq 'BearerSuffixSingle' "$line_file" && exit 71
+grep -Fq "TOKEN='***REDACTED***'" "$line_file" || exit 72
+grep -Fq 'quotedTokenSecret123' "$line_file" && exit 73
 grep -Fq 'defGHI' "$line_file" && exit 55
 grep -Fq "DB_PASSWORD=***REDACTED***" "$line_file" || exit 56
 grep -Fq "'w0rd" "$line_file" && exit 57
-grep -Fq '"Authorization": ***REDACTED***' "$line_file" || exit 51
+grep -Fq '"Authorization": "***REDACTED***"' "$line_file" || exit 51
+json_count=0
+while IFS= read -r json_line; do
+  printf '%s' "$json_line" | jq -e . >/dev/null 2>&1 || exit 68
+  ((json_count += 1))
+done < <(grep '^{' "$line_file")
+((json_count >= 4)) || exit 67
+grep -Fq 'BearerSuffix1234567890' "$line_file" && exit 69
 grep -Fq 'json_bearer_value' "$line_file" && exit 52
 grep -Fq '123MY_TOKEN=***REDACTED***' "$line_file" || exit 58
 grep -Fq 'SECRETVAL' "$line_file" && exit 59
-grep -Fq '"123MY_TOKEN": ***REDACTED***' "$line_file" || exit 60
+grep -Fq '"123MY_TOKEN": "***REDACTED***"' "$line_file" || exit 60
 grep -Fq -- '-MY_TOKEN=***REDACTED***' "$line_file" || exit 61
 grep -Fq 'MARKER' "$line_file" && exit 62
-grep -Fq '"2fa_secret": ***REDACTED***' "$line_file" || exit 63
+grep -Fq '"2fa_secret": "***REDACTED***"' "$line_file" || exit 63
 grep -Fq 'SUPERSECRET123' "$line_file" && exit 64
-grep -Fq '"123api_token": ***REDACTED***' "$line_file" || exit 65
+grep -Fq '"123api_token": "***REDACTED***"' "$line_file" || exit 65
 grep -Fq 'ANOTHERSECRET456' "$line_file" && exit 66
 grep -Fq 'gho_***REDACTED***' "$line_file" || exit 14
 grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15

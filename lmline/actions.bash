@@ -228,21 +228,28 @@ __lmline_clipboard_read() {
 }
 
 __lmline_redact_clip_text() {
+  local auth_prefix bearer_prefix key_prefix
+  auth_prefix="([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
+  bearer_prefix="((${auth_prefix})[\"']?Bearer[[:space:]]+)"
+  key_prefix="((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)"
   sed -E \
-    -e "s/([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)(\"[^\"]*Bearer[[:space:]][^\"]*\")/\\1@@LMLINE_REDACTED@@ /Ig" \
-    -e "s/([\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*[\"']?Bearer[[:space:]]+)[^[:space:]]+/\\1***REDACTED***/Ig" \
-    -e "s/((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)(\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')/\\1@@LMLINE_REDACTED@@ /Ig" \
-    -e "s/((^|[^A-Za-z0-9_-])([\"']?)((TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*|[A-Za-z0-9_-]*(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*)[\"']?[[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\\1***REDACTED***/Ig" \
-    -e "s/@@LMLINE_REDACTED@@ /***REDACTED***/g" \
-    -e "s/(\\*\\*\\*REDACTED\\*\\*\\*)[[:space:]]+([,}])/\\1\\2/g" \
-    -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1***REDACTED***/g' \
-    -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[^[:space:]]+/\1***REDACTED***/g' \
-    -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1***REDACTED***/g' \
-    -e 's/(AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[^[:space:]]+/\1***REDACTED***/g' \
-    -e 's/(xox[a-z]-|xapp-)[^[:space:]]+/\1***REDACTED***/g' \
-    -e 's/(glpat-)[^[:space:]]+/\1***REDACTED***/g' \
-    -e 's/(AIza)[A-Za-z0-9_-]{35}[A-Za-z0-9_=-]*/\1***REDACTED***/g' \
-    -e '/-----BEGIN[ A-Z0-9_-]*PRIVATE KEY/,/-----END[ A-Z0-9_-]*PRIVATE KEY/s/.*/***REDACTED PRIVATE KEY***/'
+    -e "s/${auth_prefix}\"(([^\"\\\\]|\\\\.)*Bearer[[:space:]]+([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${auth_prefix}'(([^'\\\\]|\\\\.)*Bearer[[:space:]]+([^'\\\\]|\\\\.)*)'/\\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${bearer_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${bearer_prefix}('([^'\\\\]|\\\\.)*')/\\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${bearer_prefix}[^\"'@[:space:]][^[:space:]]*/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${key_prefix}[^\"'@[:space:]][^[:space:]]*/\\1@@LMLINE_REDACTED@@/Ig" \
+    -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(xox[a-z]-|xapp-)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(glpat-)[^[:space:]]+/\1@@LMLINE_REDACTED@@/g' \
+    -e 's/(AIza)[A-Za-z0-9_-]{35}[A-Za-z0-9_=-]*/\1@@LMLINE_REDACTED@@/g' \
+    -e '/-----BEGIN[ A-Z0-9_-]*PRIVATE KEY/,/-----END[ A-Z0-9_-]*PRIVATE KEY/s/.*/***REDACTED PRIVATE KEY***/' \
+    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/g"
 }
 
 __lmline_prepare_clip_input() {
