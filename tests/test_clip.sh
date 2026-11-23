@@ -75,6 +75,10 @@ printf '%s\n' 'Authorization: Bearer @tok Authorization: Basic two999'
 printf '%s\n' 'Authorization: "u@host99"'
 printf '%s\n' "Authorization: 'u@host99'"
 printf '%s\n' '{"Authorization": "u@host99"}'
+printf '%s\n' 'Authorization: "@foo bar baz'
+printf '%s\n' "Authorization: '@foo bar baz"
+printf '%s\n' 'Authorization: "@user@host with spaces tail'
+printf '%s\n' "Authorization: '@user@host with spaces tail"
 printf '%s\n' 'api-key: keyVal123 Authorization: "u@host456"'
 printf '%s\n' 'token=@tokenAtValue123'
 printf '%s\n' 'api-key: @keyAtValue123'
@@ -161,6 +165,8 @@ grep -Fq 'two999' "$line_file" && exit 120
 grep -Fq 'u@host99' "$line_file" && exit 121
 grep -Fq 'u@host456' "$line_file" && exit 122
 grep -Fq 'keyVal123' "$line_file" && exit 123
+grep -Fq 'foo bar baz' "$line_file" && exit 124
+grep -Fq 'spaces tail' "$line_file" && exit 125
 grep -Fq 'tokenAtValue123' "$line_file" && exit 81
 grep -Fq 'keyAtValue123' "$line_file" && exit 82
 grep -Fq 'unterminated_secret_12345' "$line_file" && exit 83
