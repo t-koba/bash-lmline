@@ -6,8 +6,9 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lmline-suggestion-history.XXXXXX")
 cleanup() {
   # The pid-open fixture sets umask 0777, leaving mode-000 lock directories
-  # that macOS cannot unlink; restore owner access before removing the tree.
-  find "$tmp" -depth -exec chmod u+rwx {} + 2>/dev/null || :
+  # that macOS cannot unlink. Restore access from the top down so cleanup can
+  # descend into them, rather than discovering them after traversal has failed.
+  chmod -R u+rwx "$tmp" 2>/dev/null || :
   rm -rf "$tmp"
 }
 trap cleanup EXIT
