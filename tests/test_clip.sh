@@ -63,6 +63,9 @@ printf '%s\n' 'curl -H "Authorization: @@oddAtDouble999" -H "X: tailDouble" http
 printf '%s\n' "curl -H 'Authorization: @@oddAtSingle999' -H 'X: tailSingle' https://x"
 printf '%s\n' 'curl -H "Authorization: @" -H "X: keepAtDouble" https://x'
 printf '%s\n' "curl -H 'Authorization: @' -H 'X: keepAtSingle' https://x"
+printf '%s\n' 'curl -H "Authorization: Bearer @atFirstDouble777" -H "X: tailDouble" https://x'
+printf '%s\n' "curl -H 'Authorization: Bearer @atFirstSingle778' -H 'X: tailSingle' https://x"
+printf '%s\n' 'curl -H "X: keep" -H "Authorization: Bearer @atSecondDouble779" https://x'
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
 printf '%s\n' 'Authorization: Basic p@ss" w0rd123SECRET'
 printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123"}'
@@ -201,6 +204,12 @@ grep -Fq 'oddAtSingle999' "$line_file" && exit 138
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: tailDouble" https://x' "$line_file" || exit 139
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: tailSingle' https://x" "$line_file" || exit 140
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepAtDouble" https://x' "$line_file" || exit 141
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: tailDouble" https://x' "$line_file" || exit 143
+grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***' -H 'X: tailSingle' https://x" "$line_file" || exit 144
+grep -Fxq 'curl -H "X: keep" -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 145
+grep -Fq 'atFirstDouble777' "$line_file" && exit 146
+grep -Fq 'atFirstSingle778' "$line_file" && exit 147
+grep -Fq 'atSecondDouble779' "$line_file" && exit 148
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
@@ -225,7 +234,7 @@ grep -Fq 'unterminatedSchemeLess' "$line_file" && exit 115
 grep -Fq 'oddAtValue' "$line_file" && exit 116
 grep -Fq 's3cr3tToken99' "$line_file" && exit 117
 grep -Fq 'acct99' "$line_file" && exit 118
-grep -Fq 'example.com' "$line_file" && exit 119
+grep -Fxq 'Authorization: Bearer ***REDACTED*** https://example.com' "$line_file" || exit 119
 grep -Fq 'two999' "$line_file" && exit 120
 grep -Fq 'u@host99' "$line_file" && exit 121
 grep -Fq 'backslashBearerOdd901' "$line_file" && exit 150
