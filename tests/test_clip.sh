@@ -117,6 +117,10 @@ printf '%s\n' "MY_TOKEN='backslashKeyOdd904\\"
 printf '%s\n' 'Authorization: "u@hostBackslashOdd905\"'
 printf '%s\n' 'Authorization: Bearer "backslashBearerEven906\\"'
 printf '%s\n' 'Authorization: "backslashSchemeLessEven907\\"'
+printf '%s\n' 'curl -d "{\"Authorization\":\"Bearer escapedJsonAuth9001\"}" https://x'
+printf '%s\n' 'Authorization\":\"Bearer escapedUnterminated9002'
+printf '%s\n' 'MY_TOKEN\":\"escapedKey9003'
+printf '%s\n' 'curl -d "{\"api_key\":\"escapedApiKey9004\"}" https://x'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -233,6 +237,14 @@ grep -Fq 'quotedTokenSecret123' "$line_file" && exit 73
 grep -Fq 'defGHI' "$line_file" && exit 55
 grep -Fq "DB_PASSWORD=***REDACTED***" "$line_file" || exit 56
 grep -Fq "'w0rd" "$line_file" && exit 57
+grep -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 161
+grep -Fq 'escapedJsonAuth9001' "$line_file" && exit 162
+grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 163
+grep -Fq 'escapedUnterminated9002' "$line_file" && exit 164
+grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 165
+grep -Fq 'escapedKey9003' "$line_file" && exit 166
+grep -Fxq 'curl -d "{\"api_key\":\"***REDACTED***\"}" https://x' "$line_file" || exit 167
+grep -Fq 'escapedApiKey9004' "$line_file" && exit 168
 grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
 json_count=0
 while IFS= read -r json_line; do
