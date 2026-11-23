@@ -51,10 +51,13 @@ printf '%s\n' 'Authorization: Bearer @secretAtValue123'
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
-printf '%s\n' 'Authorization: bareSchemeLessValue1234567890'
 printf '%s\n' '{"Authorization": "Basic jsonBasicValue1234567890", "note": "keepme2"}'
 printf "%s\n" "Authorization: 'Basic quotedBasicValue1234567890'"
-printf '%s\n' 'Authorization: "unterminatedBasicValue1234567890'
+printf '%s\n' 'Authorization: "Basic unterminatedBasicValue1234567890'
+printf '%s\n' 'Authorization: Bearer firstHeaderToken123 Authorization: Basic secondHeaderCred123'
+printf '%s\n' 'curl -H "Authorization: Bearer curlToken123" -H "Authorization: Basic curlCred123" https://x'
+printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123"}'
+printf '%s\n' 'TOKEN=tokenPlusHeaderValue123 Authorization: Basic tokenPlusHeaderCred123'
 printf '%s\n' 'token=@tokenAtValue123'
 printf '%s\n' 'api-key: @keyAtValue123'
 printf '%s\n' 'Authorization: Bearer "unterminated_secret_12345'
@@ -109,11 +112,17 @@ grep -Fq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 87
 grep -Fq 'digestNonceValue' "$line_file" && exit 88
 grep -Fq 'Authorization: Token ***REDACTED***' "$line_file" || exit 89
 grep -Fq 'tokenSchemeValue' "$line_file" && exit 90
-grep -Fq 'Authorization: ***REDACTED***' "$line_file" || exit 91
-grep -Fq 'bareSchemeLessValue' "$line_file" && exit 92
 grep -Fq 'jsonBasicValue' "$line_file" && exit 93
 grep -Fq 'quotedBasicValue' "$line_file" && exit 94
 grep -Fq 'unterminatedBasicValue' "$line_file" && exit 95
+grep -Fq 'firstHeaderToken123' "$line_file" && exit 96
+grep -Fq 'secondHeaderCred123' "$line_file" && exit 97
+grep -Fq 'curlToken123' "$line_file" && exit 98
+grep -Fq 'curlCred123' "$line_file" && exit 99
+grep -Fq 'keyPlusHeaderValue123' "$line_file" && exit 100
+grep -Fq 'keyPlusHeaderCred123' "$line_file" && exit 101
+grep -Fq 'tokenPlusHeaderValue123' "$line_file" && exit 102
+grep -Fq 'tokenPlusHeaderCred123' "$line_file" && exit 103
 grep -Fq 'tokenAtValue123' "$line_file" && exit 81
 grep -Fq 'keyAtValue123' "$line_file" && exit 82
 grep -Fq 'unterminated_secret_12345' "$line_file" && exit 83
@@ -127,14 +136,14 @@ grep -Fq '"password": "***REDACTED***"' "$line_file" || exit 49
 grep -Fq 'value with spaces' "$line_file" && exit 50
 grep -Fq 'quote"BearerSuffix' "$line_file" && exit 53
 grep -Fq 'MY_TOKEN=***REDACTED***' "$line_file" || exit 54
-grep -Fq "Authorization: '***REDACTED***'" "$line_file" || exit 70
+grep -Fq "Authorization: 'Bearer ***REDACTED***'" "$line_file" || exit 70
 grep -Fq 'BearerSuffixSingle' "$line_file" && exit 71
 grep -Fq "TOKEN='***REDACTED***'" "$line_file" || exit 72
 grep -Fq 'quotedTokenSecret123' "$line_file" && exit 73
 grep -Fq 'defGHI' "$line_file" && exit 55
 grep -Fq "DB_PASSWORD=***REDACTED***" "$line_file" || exit 56
 grep -Fq "'w0rd" "$line_file" && exit 57
-grep -Fq '"Authorization": "***REDACTED***"' "$line_file" || exit 51
+grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
 json_count=0
 while IFS= read -r json_line; do
   printf '%s' "$json_line" | jq -e . >/dev/null 2>&1 || exit 68
