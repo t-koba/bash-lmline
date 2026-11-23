@@ -1205,9 +1205,8 @@ __lmline_risk_level_rank() {
   esac
 }
 
-# Split a command into the words the policy judges: quotes group words and
-# are removed, and a backslash escapes the next character. The words are
-# data and are never executed.
+# Split a command into words: quotes group words, a backslash escapes the next character; words are data, never executed.
+# shellcheck disable=SC1003 # Literal backslashes in the quote parser are intentional.
 __lmline_risk_split_words() {
   local str=$1 keep_backticks=${2:-0} keep_escapes=${3:-0} word="" ch quote="" i n
   n=${#str}
@@ -1216,7 +1215,6 @@ __lmline_risk_split_words() {
     if [[ -n "$quote" ]]; then
       if [[ "$quote" == '"' && "$ch" == "\\" ]]; then
         i=$((i + 1))
-        # shellcheck disable=SC1003 # Intentional literal backslash in the quote parser.
         if (( keep_escapes )) && [[ ${str:i:1} == '$' || ${str:i:1} == '`' || ${str:i:1} == '\\' ]]; then
           word+="\\"
         fi
@@ -1242,7 +1240,6 @@ __lmline_risk_split_words() {
         ;;
       "\\")
         i=$((i + 1))
-        # shellcheck disable=SC1003 # Intentional literal backslash in the quote parser.
         if (( keep_escapes )) && [[ ${str:i:1} == '$' || ${str:i:1} == '`' || ${str:i:1} == '\\' ]]; then
           word+="\\"
         fi
@@ -2517,9 +2514,8 @@ __lmline_risk_word_copies_stdin_with_operands() {
 
 # A stdout redirection on the copying producer keeps its bytes out of the
 # command substitution, so the here-string cannot become a command string.
-# Decode one option word the way the shell would pass it to a program.
-# Quotes are removed; backslashes are escapes only outside quotes (and for the
-# few escapable characters inside double quotes), never inside single quotes.
+# Decode an option word as the shell would pass it: quotes are removed; backslashes escape only outside quotes (and a few characters inside double quotes), never inside single quotes.
+# shellcheck disable=SC1003 # Literal backslashes in option decoding are intentional.
 __lmline_risk_decode_option_word() {
   local word=$1 out="" quote="" i=0 ch next
   __LMLINE_RISK_OPTION_WORD=
@@ -2530,7 +2526,6 @@ __lmline_risk_decode_option_word() {
       while (( i < ${#word} )); do
         ch=${word:i:1}
         if [[ $ch == "'" ]]; then i=$((i + 1)); break; fi
-        # shellcheck disable=SC1003 # Intentional literal backslash in the decoder.
         if [[ $ch == '\' ]]; then
           i=$((i + 1))
           ch=${word:i:1}
@@ -2549,10 +2544,8 @@ __lmline_risk_decode_option_word() {
     fi
     if [[ -n $quote ]]; then
       if [[ $ch == "$quote" ]]; then quote=; i=$((i + 1)); continue; fi
-      # shellcheck disable=SC1003 # Intentional literal backslash in the decoder.
       if [[ $quote == '"' && $ch == '\' ]]; then
         next=${word:i+1:1}
-        # shellcheck disable=SC1003 # Literal backslash patterns in these case arms.
         case $next in
           '$'|'`'|'"'|'\'|'') out+=$next; i=$((i + 2)) ;;
           *) out+='\'; i=$((i + 1)) ;;
@@ -2563,7 +2556,6 @@ __lmline_risk_decode_option_word() {
       i=$((i + 1))
       continue
     fi
-    # shellcheck disable=SC1003 # Literal backslash pattern in this case arm.
     case $ch in
       "'"|'"') quote=$ch; i=$((i + 1)) ;;
       '\') i=$((i + 1)); out+=${word:i:1}; i=$((i + 1)) ;;
