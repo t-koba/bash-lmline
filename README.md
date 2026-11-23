@@ -1011,7 +1011,8 @@ untrusted pasted text. Redaction masks these patterns:
 
 ```text
 VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments (spaces around =/: allowed)
-Authorization: Bearer <token> headers (case-insensitive)
+Authorization: <scheme> <value> headers, any scheme or bare value (case-insensitive)
+Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
 sk-... OpenAI-style API keys (after the first 12 characters)
 sk_live_/sk_test_/rk_live_/rk_test_... Stripe keys (body redacted, prefix kept; pk_live_ publishable keys are left alone)
