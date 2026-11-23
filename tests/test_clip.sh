@@ -213,6 +213,8 @@ printf '%s\n' 'db:password=SECRETcolon987654'
 printf '%s\n' '[INFO]token=SECRETbracket987654'
 printf '%s\n' "curl 'https://example.test/?token=user@example.com&at=1'"
 printf '%s\n' "curl 'https://example.test/?token=abc/def&slash=1'"
+printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
+printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' "curl 'https://user:pass;token=abc@example.test/path'"
 printf '%s\n' 'TOKEN=httpsSecret987654 https://x'
 printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
@@ -536,6 +538,10 @@ grep -Fxq "curl 'https://example.test/?token=***REDACTED***&at=1'" "$line_file" 
 grep -Fxq "curl 'https://example.test/?token=***REDACTED***&slash=1'" "$line_file" || exit 255
 grep -Fq '@example.com&at=1' "$line_file" && exit 254
 grep -Fq '/def&slash=1' "$line_file" && exit 254
+grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
+grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
+grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
+grep -Fq 'StripeCommaBody456' "$line_file" && exit 254
 grep -Fxq "curl 'https://user:***REDACTED***@example.test/path'" "$line_file" || exit 255
 grep -Fq 'pass;token=abc@example.test' "$line_file" && exit 254
 grep -Fxq 'TOKEN=***REDACTED*** https://x' "$line_file" || exit 255
