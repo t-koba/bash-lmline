@@ -676,17 +676,70 @@ __lmline_record_suggestion() {
   __lmline_history_log_ready || return 0
   # A directory lock serializes appends because concurrent writes can interleave lines;
   # dd only reads the shell-backed here-string, it does not make the append atomic.
-  local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt
+  # The pid file lets a later record reclaim a lock whose owner died.
+  local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt owner current
   for ((attempt = 0; attempt < 40; attempt++)); do
-    command mkdir "$lock_dir" 2>/dev/null && break
-    sleep 0.025 2>/dev/null || true
+    if command mkdir "$lock_dir" 2>/dev/null; then
+      printf '%s\n' "$$" >"$lock_dir/pid" 2>/dev/null || true
+      break
+    fi
+    owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
+    case $owner in
+      ''|*[!0-9]*|0*)
+        # A fresh lock has no pid until its owner writes it; only a lock
+        # that outlives that window is stale.
+        if ((attempt < 20)); then
+          sleep 0.025 2>/dev/null || true
+          continue
+        fi
+        if ! command mkdir "$lock_dir/.reclaim" 2>/dev/null; then
+          sleep 0.025 2>/dev/null || true
+          continue
+        fi
+        current=$(command cat "$lock_dir/pid" 2>/dev/null) || current=
+        case $current in
+          ''|*[!0-9]*|0*)
+            command rm -f "$lock_dir/pid" 2>/dev/null || true
+            command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
+            command rmdir "$lock_dir" 2>/dev/null || true ;;
+          *)
+            command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
+            sleep 0.025 2>/dev/null || true ;;
+        esac
+        continue ;;
+    esac
+    if [[ $owner == "$$" ]]; then
+      sleep 0.025 2>/dev/null || true
+      continue
+    fi
+    if kill -0 "$owner" 2>/dev/null; then
+      sleep 0.025 2>/dev/null || true
+      continue
+    fi
+    if ! command mkdir "$lock_dir/.reclaim" 2>/dev/null; then
+      sleep 0.025 2>/dev/null || true
+      continue
+    fi
+    current=$(command cat "$lock_dir/pid" 2>/dev/null) || current=
+    if [[ $current == "$owner" ]]; then
+      command rm -f "$lock_dir/pid" 2>/dev/null || true
+      command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
+      command rmdir "$lock_dir" 2>/dev/null || true
+    else
+      command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
+      sleep 0.025 2>/dev/null || true
+    fi
   done
   ((attempt < 40)) || return 0
   bytes=$(command wc -c 2>/dev/null <<<"$record") || {
+    command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
+    command rm -f "$lock_dir/pid" 2>/dev/null || true
     command rmdir "$lock_dir" 2>/dev/null || true
     return 0
   }
   command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
+  command rmdir "$lock_dir/.reclaim" 2>/dev/null || true
+  command rm -f "$lock_dir/pid" 2>/dev/null || true
   command rmdir "$lock_dir" 2>/dev/null || true
 }
 

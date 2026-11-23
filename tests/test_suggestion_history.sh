@@ -528,3 +528,65 @@ reader_tendencies=$(LMLINE_CONFIG_DIR="$tmp/config" \
 grep -q '^generate=1$' <<<"$reader_tendencies" ||
   fail "history tendencies ignored a real directory under a linked ancestor"
 ok "history readers allow a linked ancestor"
+
+# A dead owner must not block later records; a live owner's lock is kept.
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s stale suggestion lock (shell unavailable)\n' "$shell"
+    continue
+  fi
+  stale_flags=(-f -e -i)
+  [[ $shell != bash ]] || stale_flags=(--norc -e -i)
+  stale_dir="$tmp/stale-lock-$shell"
+  mkdir -m 700 "$stale_dir"
+  sleep 0.01 &
+  stale_dead=$!
+  wait "$stale_dead" || true
+  kill -0 "$stale_dead" 2>/dev/null && fail "$shell dead-pid fixture is still alive"
+  mkdir "$stale_dir/.suggestions.lock"
+  printf '%s\n' "$stale_dead" >"$stale_dir/.suggestions.lock/pid"
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-stale-$shell" LMLINE_HISTORY_DIR="$stale_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+    >"$tmp/stale-$shell.out" 2>"$tmp/stale-$shell.err" || {
+    cat "$tmp/stale-$shell.err" >&2
+    fail "$shell stale-lock writer failed"
+  }
+  # Interactive bash prints job-control noise without a tty; only lock noise is a defect.
+  if grep -q 'suggestions\.lock\|\.reclaim\|/pid' "$tmp/stale-$shell.err" 2>/dev/null; then
+    cat "$tmp/stale-$shell.err" >&2
+    fail "$shell stale-lock writer wrote lock noise to stderr"
+  fi
+  grep -q '^candidate=candidate-private$' "$stale_dir/suggestions.log" ||
+    fail "$shell did not record through a dead-owner lock"
+  [[ ! -e "$stale_dir/.suggestions.lock" ]] ||
+    fail "$shell left a reclaimed suggestion lock behind"
+  ok "$shell reclaims a dead-owner suggestion lock"
+
+  live_dir="$tmp/live-lock-$shell"
+  mkdir -m 700 "$live_dir"
+  mkdir "$live_dir/.suggestions.lock"
+  printf '%s\n' "$$" >"$live_dir/.suggestions.lock/pid"
+  live_owner=$(command cat "$live_dir/.suggestions.lock/pid" 2>/dev/null) ||
+    fail "$shell cannot read live lock fixture"
+  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-live-$shell" LMLINE_HISTORY_DIR="$live_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+    >"$tmp/live-$shell.out" 2>"$tmp/live-$shell.err" || {
+    cat "$tmp/live-$shell.err" >&2
+    fail "$shell live-lock writer failed"
+  }
+  if grep -q 'suggestions\.lock\|\.reclaim\|/pid' "$tmp/live-$shell.err" 2>/dev/null; then
+    cat "$tmp/live-$shell.err" >&2
+    fail "$shell live-lock writer wrote lock noise to stderr"
+  fi
+  # The log file itself is created before the lock is taken; only a record proves theft.
+  ! grep -q '^id=' "$live_dir/suggestions.log" 2>/dev/null ||
+    fail "$shell stole a live-owner suggestion lock"
+  [[ -d "$live_dir/.suggestions.lock" ]] ||
+    fail "$shell removed a live-owner suggestion lock"
+  live_current=$(command cat "$live_dir/.suggestions.lock/pid" 2>/dev/null) || live_current=
+  [[ $live_current == "$live_owner" ]] ||
+    fail "$shell changed a live-owner suggestion lock"
+  ok "$shell keeps a live-owner suggestion lock"
+done
