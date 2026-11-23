@@ -246,8 +246,8 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix}${auth_scheme_dq}(([^\"\\\\]|\\\\.)*)$/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}${auth_scheme}'(([^'\\\\]|\\\\.)*)$/\1\2'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix}${auth_scheme_sq}(([^'\\\\]|\\\\.)*)$/\1\2@@LMLINE_REDACTED@@/Ig" \
-    -e "s/(Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)([^\"]+)\"([[:space:]]|$)/\\1\"@@LMLINE_REDACTED@@\"\\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme}@[^[:space:]]*.*$/\1\2@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(\"[^\"]*Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)([^\"]+)(\"[[:space:]]|$)/\\1@@LMLINE_REDACTED@@\\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme}[^@\"'[:space:]].*$/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}\"(([^@\\\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}'(([^@'\\\\]|\\\\.)*)'/\\1'@@LMLINE_REDACTED@@'/Ig" \
