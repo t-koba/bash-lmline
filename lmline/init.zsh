@@ -1187,14 +1187,26 @@ candidate=${(q)candidate}"
     esac
   done
   ((attempt < 40)) || return 0
+  # A stalled creator can be displaced before its pid is visible. Never
+  # append or clean up after losing the lock to a later owner.
+  owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
+  [[ $owner == "$$" ]] || return 0
   bytes=$(command wc -c 2>/dev/null <<<"$record") || {
-    command rm -f "$lock_dir/pid" 2>/dev/null || true
-    command rmdir "$lock_dir" 2>/dev/null || true
+    owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
+    if [[ $owner == "$$" ]]; then
+      command rm -f "$lock_dir/pid" 2>/dev/null || true
+      command rmdir "$lock_dir" 2>/dev/null || true
+    fi
     return 0
   }
+  owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
+  [[ $owner == "$$" ]] || return 0
   command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
-  command rm -f "$lock_dir/pid" 2>/dev/null || true
-  command rmdir "$lock_dir" 2>/dev/null || true
+  owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
+  if [[ $owner == "$$" ]]; then
+    command rm -f "$lock_dir/pid" 2>/dev/null || true
+    command rmdir "$lock_dir" 2>/dev/null || true
+  fi
 }
 
 # Applies the candidate at the given index using the engine's risk/flag

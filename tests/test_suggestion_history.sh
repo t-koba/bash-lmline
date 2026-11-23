@@ -221,6 +221,40 @@ if command -v zsh >/dev/null; then
   ok "zsh keeps escaped newlines and backslashes in one suggestion record"
 fi
 
+# A delayed creator holds the lock after mkdir but before publishing its pid.
+mkdir -p "$tmp/delayed-bin"
+cat >"$tmp/delayed-bin/mkdir" <<'DELAYED_MKDIR'
+#!/usr/bin/env bash
+"$LMLINE_TEST_MKDIR" "$@" || exit $?
+case $* in
+  */.suggestions.lock)
+    : >"$LMLINE_HISTORY_DIR/created" || exit 1
+    for ((i = 0; i < 400; i++)); do
+      [[ -e "$LMLINE_HISTORY_DIR/release" ]] && exit 0
+      sleep 0.025
+    done
+    exit 0
+    ;;
+esac
+DELAYED_MKDIR
+chmod +x "$tmp/delayed-bin/mkdir"
+cat >"$tmp/delayed-writer" <<'DELAYED_WRITER'
+source "$1/lmline/init.$2"
+if [[ $2 == bash ]]; then
+  __lmline_record_suggestion generate original-delayed candidate-delayed
+else
+  __lmline_zsh_record_suggestion generate original-delayed candidate-delayed
+fi
+DELAYED_WRITER
+cat >"$tmp/quick-writer" <<'QUICK_WRITER'
+source "$1/lmline/init.$2"
+if [[ $2 == bash ]]; then
+  __lmline_record_suggestion generate original-successor candidate-successor
+else
+  __lmline_zsh_record_suggestion generate original-successor candidate-successor
+fi
+QUICK_WRITER
+
 # Privacy helpers must establish the mode before the append. The fake dd
 # checks the log mode at append time, so a record can only appear if the
 # tightening happened first.
@@ -693,6 +727,33 @@ for shell in bash zsh; do
   [[ ! -e "$umask_dir/.suggestions.lock" ]] ||
     fail "$shell left a lock under a restrictive umask"
   ok "$shell records under a restrictive umask"
+
+  # A stalled creator must not append after a later owner takes the lock.
+  delay_dir="$tmp/delayed-lock-$shell"
+  mkdir -m 700 "$delay_dir"
+  PATH="$tmp/delayed-bin:$PATH" LMLINE_TEST_MKDIR=$(type -P mkdir) \
+    LMLINE_CONFIG_DIR="$tmp/config-delay-$shell" LMLINE_HISTORY_DIR="$delay_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/delayed-writer" "$repo_dir" "$shell" \
+    >"$tmp/delayed-$shell.out" 2>"$tmp/delayed-$shell.err" &
+  delayed_pid=$!
+  for ((i = 0; i < 200; i++)); do
+    [[ -e "$delay_dir/created" ]] && break
+    sleep 0.025
+  done
+  [[ -e "$delay_dir/created" ]] || fail "$shell stalled creator never created the lock"
+  LMLINE_CONFIG_DIR="$tmp/config-delay-$shell" LMLINE_HISTORY_DIR="$delay_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/quick-writer" "$repo_dir" "$shell" \
+    >"$tmp/successor-$shell.out" 2>"$tmp/successor-$shell.err" || fail "$shell successor writer failed"
+  : >"$delay_dir/release"
+  wait "$delayed_pid" || fail "$shell stalled creator failed"
+  grep -q '^candidate=candidate-successor$' "$delay_dir/suggestions.log" ||
+    fail "$shell successor did not append"
+  if grep -q '^candidate=candidate-delayed$' "$delay_dir/suggestions.log"; then
+    fail "$shell displaced creator appended after the successor"
+  fi
+  [[ ! -e "$delay_dir/.suggestions.lock" ]] ||
+    fail "$shell left a lock after the delayed-creator race"
+  ok "$shell keeps a stalled creator from appending after displacement"
 
   live_dir="$tmp/live-lock-$shell"
   mkdir -m 700 "$live_dir"
