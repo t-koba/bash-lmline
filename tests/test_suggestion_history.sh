@@ -63,9 +63,15 @@ else
 fi
 if [[ $writer != 1 ]]; then
   await start-peers
+  # Writer 1's fake dd waits for the peers while it holds the lock.
+  [[ $2 != bash || -d "$LMLINE_HISTORY_DIR/.suggestions.lock" ]] || exit 1
+  # Signal before recording: writer 1 cannot release the lock until peers do.
+  : >"$LMLINE_HISTORY_DIR/done-$writer"
 fi
 "$record_suggestion" generate "original $writer-$padding" "candidate $writer-$padding"
-: >"$LMLINE_HISTORY_DIR/done-$writer"
+if [[ $writer == 1 ]]; then
+  : >"$LMLINE_HISTORY_DIR/done-$writer"
+fi
 # A full-record zsh append has no per-field hook; release the peers here.
 if [[ $2 == zsh && $writer == 1 ]]; then
   : >"$LMLINE_HISTORY_DIR/start-peers"

@@ -674,10 +674,20 @@ __lmline_record_suggestion() {
     "$__LMLINE_LAST_SUGGESTION_ID" "$timestamp" "$PWD" "$mode" "$original" "$candidate"
   __lmline_history_dir_ready || return 0
   __lmline_history_log_ready || return 0
-  # Emit the record as one dd output block so concurrent appends cannot interleave lines.
-  # The shell chooses how to back the here-string; dd only reads it.
-  bytes=$(command wc -c 2>/dev/null <<<"$record") || return 0
+  # A directory lock serializes appends because concurrent writes can interleave lines;
+  # dd only reads the shell-backed here-string, it does not make the append atomic.
+  local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt
+  for ((attempt = 0; attempt < 40; attempt++)); do
+    command mkdir "$lock_dir" 2>/dev/null && break
+    sleep 0.025 2>/dev/null || true
+  done
+  ((attempt < 40)) || return 0
+  bytes=$(command wc -c 2>/dev/null <<<"$record") || {
+    command rmdir "$lock_dir" 2>/dev/null || true
+    return 0
+  }
   command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
+  command rmdir "$lock_dir" 2>/dev/null || true
 }
 
 # Applies the candidate at the given index using the engine's risk/flag
