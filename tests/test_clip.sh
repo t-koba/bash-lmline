@@ -56,6 +56,9 @@ printf "%s\n" "Authorization: 'Basic quotedBasicValue1234567890'"
 printf '%s\n' 'Authorization: "Basic unterminatedBasicValue1234567890'
 printf '%s\n' 'Authorization: Bearer firstHeaderToken123 Authorization: Basic secondHeaderCred123'
 printf '%s\n' 'curl -H "Authorization: Bearer curlToken123" -H "Authorization: Basic curlCred123" https://x'
+printf '%s\n' 'curl -H "Authorization: schemeLessQuoted123" https://x'
+printf '%s\n' "curl -H 'Authorization: schemeLessQuoted124' https://x"
+printf '%s\n' "curl -H 'Authorization: Basic schemedQuoted125' https://x"
 printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
 printf '%s\n' 'Authorization: Basic p@ss" w0rd123SECRET'
 printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123"}'
@@ -146,6 +149,12 @@ grep -Fq 'secondHeaderCred123' "$line_file" && exit 97
 grep -Fq 'curlToken123' "$line_file" && exit 98
 grep -Fq 'curlCred123' "$line_file" && exit 99
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "Authorization: Basic ***REDACTED***" https://x' "$line_file" || exit 126
+grep -Fq 'schemeLessQuoted123' "$line_file" && exit 131
+grep -Fq 'schemeLessQuoted124' "$line_file" && exit 132
+grep -Fq 'schemedQuoted125' "$line_file" && exit 133
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x' "$line_file" || exit 134
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' https://x" "$line_file" || exit 135
+grep -Fxq "curl -H 'Authorization: Basic ***REDACTED***' https://x" "$line_file" || exit 136
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
