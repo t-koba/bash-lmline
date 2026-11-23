@@ -123,6 +123,11 @@ printf '%s\n' 'MY_TOKEN\":\"escapedKey9003'
 printf '%s\n' 'curl -d "{\"api_key\":\"escapedApiKey9004\"}" https://x'
 printf '%s\n' 'curl -d "{\\\"Authorization\\\":\\\"Bearer doubleEscapedAuth9101\\\"}" https://x'
 printf '%s\n' 'MY_TOKEN\\\":\\\"doubleEscapedKey9102'
+printf '%s\n' 'curl -d "{\"Authorization\":\"Bearer ab\\cdSECRET888\"}" https://x'
+printf '%s\n' 'curl -d "{\"MY_TOKEN\":\"ab\\cdSECRET888\"}" https://x'
+printf '%s\n' 'curl -d "{\"Authorization\":\"Bearer mytok\\\" tailSECRET999\"}" https://x'
+printf '%s\n' 'Authorization\":\"Bearer secretEnding8888\\'
+printf '%s\n' 'MY_TOKEN\":\"secretEnding7777\\'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -247,10 +252,19 @@ grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 165
 grep -Fq 'escapedKey9003' "$line_file" && exit 166
 grep -Fxq 'curl -d "{\"api_key\":\"***REDACTED***\"}" https://x' "$line_file" || exit 167
 grep -Fq 'escapedApiKey9004' "$line_file" && exit 168
-grep -Fxq 'curl -d "{\\\"Authorization\\\":\\\"Bearer ***REDACTED***\\\"}" https://x' "$line_file" || exit 169
+grep -Fxq 'curl -d "{\\\"Authorization\\\":\\\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 169
 grep -Fq 'doubleEscapedAuth9101' "$line_file" && exit 170
 grep -Fxq 'MY_TOKEN\\\":\\\"***REDACTED***' "$line_file" || exit 171
 grep -Fq 'doubleEscapedKey9102' "$line_file" && exit 172
+grep -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 173
+grep -Fq 'SECRET888' "$line_file" && exit 174
+grep -Fxq 'curl -d "{\"MY_TOKEN\":\"***REDACTED***\"}" https://x' "$line_file" || exit 175
+grep -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 176
+grep -Fq 'tailSECRET999' "$line_file" && exit 177
+grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 178
+grep -Fq 'secretEnding8888' "$line_file" && exit 179
+grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 180
+grep -Fq 'secretEnding7777' "$line_file" && exit 181
 grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
 json_count=0
 while IFS= read -r json_line; do
