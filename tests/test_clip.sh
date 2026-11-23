@@ -121,6 +121,8 @@ printf '%s\n' 'curl -d "{\"Authorization\":\"Bearer escapedJsonAuth9001\"}" http
 printf '%s\n' 'Authorization\":\"Bearer escapedUnterminated9002'
 printf '%s\n' 'MY_TOKEN\":\"escapedKey9003'
 printf '%s\n' 'curl -d "{\"api_key\":\"escapedApiKey9004\"}" https://x'
+printf '%s\n' 'curl -d "{\\\"Authorization\\\":\\\"Bearer doubleEscapedAuth9101\\\"}" https://x'
+printf '%s\n' 'MY_TOKEN\\\":\\\"doubleEscapedKey9102'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -245,6 +247,10 @@ grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 165
 grep -Fq 'escapedKey9003' "$line_file" && exit 166
 grep -Fxq 'curl -d "{\"api_key\":\"***REDACTED***\"}" https://x' "$line_file" || exit 167
 grep -Fq 'escapedApiKey9004' "$line_file" && exit 168
+grep -Fxq 'curl -d "{\\\"Authorization\\\":\\\"Bearer ***REDACTED***\\\"}" https://x' "$line_file" || exit 169
+grep -Fq 'doubleEscapedAuth9101' "$line_file" && exit 170
+grep -Fxq 'MY_TOKEN\\\":\\\"***REDACTED***' "$line_file" || exit 171
+grep -Fq 'doubleEscapedKey9102' "$line_file" && exit 172
 grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
 json_count=0
 while IFS= read -r json_line; do
