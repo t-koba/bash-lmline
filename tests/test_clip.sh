@@ -244,6 +244,7 @@ printf '%s\n' "curl 'https://example.test/a,//u:pCommaPath987654@example.test'"
 printf '%s\n' 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""'
 printf '%s\n' 'echo first;//u:pShellSeparator987654@example.test'
 printf '%s\n' 'echo "q";echo first;//u:pQuoteSemi987654@example.test'
+printf '%s\n' 'echo "a\"b";echo first;//u:pQuoteEscSep987654@example.test'
 printf '%s\n' "echo 'q';echo first;//u:pSquoteSemi987654@example.test"
 printf '%s\n' 'echo "q";echo foo,//user:passQuoteComma987654@example.test/path'
 printf '%s\n' 'echo first;//u:pTrailingQuote987654@example.test "tail"'
@@ -627,6 +628,8 @@ grep -Fxq 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""' "$line_fil
 grep -Fxq 'echo first;//u:***REDACTED***@example.test' "$line_file" || exit 255
 grep -Fq 'pShellSeparator987654@example.test' "$line_file" && exit 254
 grep -Fq 'QuoteSemi987654@example.test' "$line_file" && exit 260
+grep -Fq 'pQuoteEscSep987654@example.test' "$line_file" && exit 274
+grep -Fxq 'echo "a\"b";echo first;//u:***REDACTED***@example.test' "$line_file" || exit 275
 grep -Fq 'SquoteSemi987654@example.test' "$line_file" && exit 261
 grep -Fq 'passQuoteComma987654@example.test' "$line_file" && exit 262
 grep -Fq 'pTrailingQuote987654@example.test' "$line_file" && exit 263
