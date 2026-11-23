@@ -261,7 +261,7 @@ __lmline_redact_clip_text() {
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 'h' \
     -e ':lmline_url_sep_norm1' \
-    -e 's/"[^"]*"//g' \
+    -e 's/"([^"\\]|\\.)*"//g' \
     -e "s/'[^']*'//g" \
     -e 't lmline_url_sep_norm1' \
     -e "s#(^|.)([;,])//([^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\\1\\2//\\3@@LMLINE_REDACTED@@@#g" \
@@ -274,7 +274,7 @@ __lmline_redact_clip_text() {
     -e ':lmline_url_sep_done1' \
     -e 'h' \
     -e ':lmline_url_sep_norm2' \
-    -e 's/"[^"]*"//g' \
+    -e 's/"([^"\\]|\\.)*"//g' \
     -e "s/'[^']*'//g" \
     -e 't lmline_url_sep_norm2' \
     -e "s#(^|.)([;,])//([^:/?#@[:space:]]{${userinfo_min},})@#\\1\\2//@@LMLINE_REDACTED@@@#g" \

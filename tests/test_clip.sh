@@ -241,6 +241,7 @@ printf '%s\n' 'git clone https://shortus@example.test/nope.git'
 printf '%s\n' 'git clone https://s3cret@example.test/nope.git'
 printf '%s\n' "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'"
 printf '%s\n' "curl 'https://example.test/a,//u:pCommaPath987654@example.test'"
+printf '%s\n' 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""'
 printf '%s\n' 'echo first;//u:pShellSeparator987654@example.test'
 printf '%s\n' 'echo "q";echo first;//u:pQuoteSemi987654@example.test'
 printf '%s\n' "echo 'q';echo first;//u:pSquoteSemi987654@example.test"
@@ -622,6 +623,7 @@ grep -Fxq 'git clone https://shortus@example.test/nope.git' "$line_file" || exit
 grep -Fxq 'git clone https://s3cret@example.test/nope.git' "$line_file" || exit 213
 grep -Fxq "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'" "$line_file" || exit 255
 grep -Fxq "curl 'https://example.test/a,//u:pCommaPath987654@example.test'" "$line_file" || exit 255
+grep -Fxq 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""' "$line_file" || exit 273
 grep -Fxq 'echo first;//u:***REDACTED***@example.test' "$line_file" || exit 255
 grep -Fq 'pShellSeparator987654@example.test' "$line_file" && exit 254
 grep -Fq 'QuoteSemi987654@example.test' "$line_file" && exit 260
