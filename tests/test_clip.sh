@@ -204,6 +204,9 @@ printf '%s\n' 'curl https://example.test/a//abc:def@example.test'
 printf '%s\n' 'curl https://example.test/?q=//BAREabcdefghijkl@example.test'
 printf '%s\n' 'git clone https://PATabcdefghijkl@example.test/nope.git'
 printf '%s\n' 'git clone https://shortus@example.test/nope.git'
+printf '%s\n' 'git clone https://s3cret@example.test/nope.git'
+printf '%s\n' "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'"
+printf '%s\n' 'x=1;url=//user:passSemiAssign@example.test/path'
 printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
 printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
 EOF
@@ -522,6 +525,11 @@ grep -Fxq 'curl https://example.test/?q=//BAREabcdefghijkl@example.test' "$line_
 grep -Fxq 'git clone https://***REDACTED***@example.test/nope.git' "$line_file" || exit 211
 grep -Fq 'PATabcdefghijkl' "$line_file" && exit 212
 grep -Fxq 'git clone https://shortus@example.test/nope.git' "$line_file" || exit 213
+grep -Fxq 'git clone https://s3cret@example.test/nope.git' "$line_file" || exit 213
+grep -Fxq "curl 'https://example.test/?a=1;//u:***REDACTED***@example.test'" "$line_file" || exit 255
+grep -Fq 'pSemiQuery987654@example.test' "$line_file" && exit 254
+grep -Fxq 'x=1;url=//user:***REDACTED***@example.test/path' "$line_file" || exit 255
+grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
