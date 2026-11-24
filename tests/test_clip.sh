@@ -217,6 +217,15 @@ printf '%s\n' "DB_PASSWORD=p@ss'w0rd"
 printf '%s\n' '123MY_TOKEN=SECRETVAL'
 printf '%s\n' '"123MY_TOKEN": "SECRETVAL"'
 printf '%s\n' '-MY_TOKEN=MARKER'
+printf '%s\n' 'token=SYNTHSEMIKEY; echo KEEPSEMIFIX'
+printf '%s\n' 'TOKEN=SYNTHSEMIKEY2; echo KEEPSEMI2FIX'
+printf '%s\n' 'api_key=SYNTHSEMIKEY3; echo KEEPAPIFIX'
+printf '%s\n' '"token=SYNTHSEMIKEY"; echo KEEPQUOTEDFIX'
+printf '%s\n' "'token=SYNTHSEMIKEY'; echo KEEPQUOTED2FIX"
+printf '%s\n' 'token=abc;defFIX'
+printf '%s\n' 'token=SYNTHSEMIKEY;token2=SYNTHSEMIKEY2; echo KEEPDOUBLEFIX'
+printf '%s\n' 'token=ghp_SYNTHSEMI; echo KEEPKEYSemiFIX'
+printf '%s\n' 'token=SYNTHPIPE | grep KEEPPIPEFIX'
 printf '%s\n' '{"2fa_secret": "SUPERSECRET123", "123api_token": "ANOTHERSECRET456"}'
 printf '%s\n' 'error: failed'
 printf '%s\n' 'Authorization: Bearer "backslashBearerOdd901\'
@@ -722,6 +731,16 @@ grep -Fq '123MY_TOKEN=***REDACTED***' "$line_file" || exit 58
 grep -Fq 'SECRETVAL' "$line_file" && exit 59
 grep -Fq '"123MY_TOKEN": "***REDACTED***"' "$line_file" || exit 60
 grep -Fq -- '-MY_TOKEN=***REDACTED***' "$line_file" || exit 61
+grep -Fxq 'token=***REDACTED***; echo KEEPSEMIFIX' "$line_file" || exit 460
+grep -Fxq 'TOKEN=***REDACTED***; echo KEEPSEMI2FIX' "$line_file" || exit 461
+grep -Fxq 'api_key=***REDACTED***; echo KEEPAPIFIX' "$line_file" || exit 462
+grep -Fxq '"token=***REDACTED***"; echo KEEPQUOTEDFIX' "$line_file" || exit 463
+grep -Fxq "'token=***REDACTED***'; echo KEEPQUOTED2FIX" "$line_file" || exit 464
+grep -Fxq 'token=***REDACTED***' "$line_file" || exit 465
+grep -Fq 'defFIX' "$line_file" && exit 466
+grep -Fq 'SYNTHSEMIKEY' "$line_file" && exit 467
+grep -Fxq 'token=***REDACTED***; echo KEEPKEYSemiFIX' "$line_file" || exit 468
+grep -Fxq 'token=***REDACTED*** | grep KEEPPIPEFIX' "$line_file" || exit 469
 grep -Fq 'MARKER' "$line_file" && exit 62
 grep -Fq '"2fa_secret": "***REDACTED***"' "$line_file" || exit 63
 grep -Fq 'SUPERSECRET123' "$line_file" && exit 64

@@ -266,6 +266,8 @@ __lmline_redact_clip_text() {
   # A late cleanup removes an orphaned bare word between a redaction marker
   # and the next quote; a genuine following argument starts with a quote.
   # A shell operator directly after that quote also ends the orphan word.
+  # A keyed value before "; " masks only its value; quoting the temporary
+  # marker keeps the terminal bare rule from swallowing the separator.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
@@ -369,6 +371,8 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/(${key_prefix_url})([^[:space:]\"'#&?]+)(\?[A-Za-z_][A-Za-z0-9_-]*=)/\1'@@LMLINE_URL_REDACTED@@'\9/Ig" \
     -e "s/${key_prefix_url}([^[:space:]\"'#&]+)/\1'@@LMLINE_URL_REDACTED@@'/Ig" \
+    -e "s/${key_prefix}([^\"'[:space:];,&|<>]+)(;[[:space:]])/\1'@@LMLINE_URL_REDACTED@@'\8/Ig" \
+    -e "s/${key_prefix}([^\"'[:space:];,&|<>]+)([\"\'])(;[[:space:]])/\1'@@LMLINE_URL_REDACTED@@'\8\9/Ig" \
     -e "s/${key_prefix}[^\"'[:space:]][^[:space:]]*/\1@@LMLINE_REDACTED@@/Ig" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
     -e 's/(sk_live_|sk_test_|rk_live_|rk_test_)[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \
