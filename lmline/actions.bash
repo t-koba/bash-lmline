@@ -260,15 +260,14 @@ __lmline_redact_clip_text() {
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
-    -e 's#"(([^";\\]|\\.)*);//(([^\\"\\]|\\.)*)"#"\1@@LMLINE_QUOTED_SEMI@@\3"#g' \
-    -e "s#'([^';]*);//([^']*)'#'\1@@LMLINE_QUOTED_SEMI@@\2'#g" \
-    -e 's#"(([^",\\]|\\.)*),//(([^\\"\\]|\\.)*)"#"\1@@LMLINE_QUOTED_COMMA@@\3"#g' \
-    -e "s#'([^',]*),//([^']*)'#'\1@@LMLINE_QUOTED_COMMA@@\2'#g" \
+    -e 's#(^|[[:space:]=])"(([^"\\]|\\.)*);//(([^\\"\\]|\\.)*)"#\1"\2@@LMLINE_QUOTED_SEMI@@\4"#g' \
+    -e "s#(^|[[:space:]=])'([^']*);//([^']*)'#\1'\2@@LMLINE_QUOTED_SEMI@@\3'#g" \
+    -e 's#(^|[[:space:]=])"(([^"\\]|\\.)*),//(([^\\"\\]|\\.)*)"#\1"\2@@LMLINE_QUOTED_COMMA@@\4"#g' \
+    -e "s#(^|[[:space:]=])'([^']*),//([^']*)'#\1'\2@@LMLINE_QUOTED_COMMA@@\3'#g" \
     -e 't lmline_quote_sep_protect' \
     -e 'h' \
     -e ':lmline_url_sep_norm1' \
-    -e 's/"([^"\\]|\\.)*"//g' \
-    -e "s/'[^']*'//g" \
+    -e "s/'[^']*'|\"([^\"\\\\]|\\\\.)*\"//g" \
     -e 't lmline_url_sep_norm1' \
     -e "s#(^|.)([;,])//([^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\\1\\2//\\3@@LMLINE_REDACTED@@@#g" \
     -e 't lmline_url_sep_apply1' \
@@ -280,8 +279,7 @@ __lmline_redact_clip_text() {
     -e ':lmline_url_sep_done1' \
     -e 'h' \
     -e ':lmline_url_sep_norm2' \
-    -e 's/"([^"\\]|\\.)*"//g' \
-    -e "s/'[^']*'//g" \
+    -e "s/'[^']*'|\"([^\"\\\\]|\\\\.)*\"//g" \
     -e 't lmline_url_sep_norm2' \
     -e "s#(^|.)([;,])//([^:/?#@[:space:]]{${userinfo_min},})@#\\1\\2//@@LMLINE_REDACTED@@@#g" \
     -e 't lmline_url_sep_apply2' \
