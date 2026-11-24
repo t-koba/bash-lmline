@@ -242,6 +242,10 @@ printf '%s\n' "curl 'https://example.test/a,//u:pCommaPath987654@example.test'"
 printf '%s\n' 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""'
 printf '%s\n' 'curl "https://x/?q=\"a;//BAREesc987654@example.test\""'
 printf '%s\n' 'echo first;//u:pShellSeparator987654@example.test'
+printf '%s\n' 'curl "https://mixedsep1.example.test/?q=;//u:pMixedSepData1@one.example.test";//u:pMixedSepReal1@two.example.test'
+printf '%s\n' 'curl "https://mixedsep2.example.test/?q=;//BAREMixedData2@one.example.test";//BAREMixedReal2@two.example.test'
+printf '%s\n' 'curl "https://mixedsep3.example.test/?q=,//u:pMixedCommaData3@one.example.test",//u:pMixedCommaReal3@two.example.test'
+printf '%s\n' "curl 'https://mixedsep4.example.test/?q=;//u:pMixedSquoteData4@one.example.test';//u:pMixedSquoteReal4@two.example.test"
 printf '%s\n' 'echo "q";echo first;//u:pQuoteSemi987654@example.test'
 printf '%s\n' 'echo "a\"b";echo first;//u:pQuoteEscSep987654@example.test'
 printf '%s\n' "echo 'q';echo first;//u:pSquoteSemi987654@example.test"
@@ -627,6 +631,14 @@ grep -Fxq "curl 'https://example.test/a,//u:pCommaPath987654@example.test'" "$li
 grep -Fxq 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""' "$line_file" || exit 273
 grep -Fxq 'curl "https://x/?q=\"a;//BAREesc987654@example.test\""' "$line_file" || exit 276
 grep -Fxq 'echo first;//u:***REDACTED***@example.test' "$line_file" || exit 255
+grep -Fxq 'curl "https://mixedsep1.example.test/?q=;//u:pMixedSepData1@one.example.test";//u:***REDACTED***@two.example.test' "$line_file" || exit 277
+grep -Fq 'pMixedSepReal1' "$line_file" && exit 278
+grep -Fxq 'curl "https://mixedsep2.example.test/?q=;//BAREMixedData2@one.example.test";//***REDACTED***@two.example.test' "$line_file" || exit 279
+grep -Fq 'BAREMixedReal2' "$line_file" && exit 280
+grep -Fxq 'curl "https://mixedsep3.example.test/?q=,//u:pMixedCommaData3@one.example.test",//u:***REDACTED***@two.example.test' "$line_file" || exit 281
+grep -Fq 'pMixedCommaReal3' "$line_file" && exit 282
+grep -Fxq "curl 'https://mixedsep4.example.test/?q=;//u:pMixedSquoteData4@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 283
+grep -Fq 'pMixedSquoteReal4' "$line_file" && exit 284
 grep -Fq 'pShellSeparator987654@example.test' "$line_file" && exit 254
 grep -Fq 'QuoteSemi987654@example.test' "$line_file" && exit 260
 grep -Fq 'pQuoteEscSep987654@example.test' "$line_file" && exit 274

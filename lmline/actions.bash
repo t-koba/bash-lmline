@@ -259,6 +259,12 @@ __lmline_redact_clip_text() {
   auth_prefix_quoted_sq="('[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
+    -e ':lmline_quote_sep_protect' \
+    -e 's#"(([^";\\]|\\.)*);//(([^\\"\\]|\\.)*)"#"\1@@LMLINE_QUOTED_SEMI@@\3"#g' \
+    -e "s#'([^';]*);//([^']*)'#'\1@@LMLINE_QUOTED_SEMI@@\2'#g" \
+    -e 's#"(([^",\\]|\\.)*),//(([^\\"\\]|\\.)*)"#"\1@@LMLINE_QUOTED_COMMA@@\3"#g' \
+    -e "s#'([^',]*),//([^']*)'#'\1@@LMLINE_QUOTED_COMMA@@\2'#g" \
+    -e 't lmline_quote_sep_protect' \
     -e 'h' \
     -e ':lmline_url_sep_norm1' \
     -e 's/"([^"\\]|\\.)*"//g' \
@@ -356,6 +362,8 @@ __lmline_redact_clip_text() {
     -e 's/(AIza)[A-Za-z0-9_-]{35}[A-Za-z0-9_=-]*/\1@@LMLINE_REDACTED@@/g' \
     -e '/-----BEGIN[ A-Z0-9_-]*PRIVATE KEY/,/-----END[ A-Z0-9_-]*PRIVATE KEY/s/.*/***REDACTED PRIVATE KEY***/' \
     -e "s/##LMLINE_REDACTED##/***REDACTED***/Ig" \
+    -e 's#@@LMLINE_QUOTED_SEMI@@#;//#g' \
+    -e 's#@@LMLINE_QUOTED_COMMA@@#,//#g' \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/g"
 }
 
