@@ -141,6 +141,14 @@ printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb tailBe
 printf '%s\n' 'curl -H "Authorization: abc""pa\\\"inside space""pb tailEOL9039"'
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"; echo "KEEP07"'
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT08", "KEEP08"'
+# An operator immediately after an orphaned quoted tail is a word boundary:
+# the tail must be discarded while the operator and its command survive.
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT09"| :'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT10">out'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT11">>out'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT12"<in'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT13" >out'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT14"; :'
 printf '%s\n' "curl -H 'Authorization: Bearer abc'\"'pa\\\"inside space'\"'pb TAILAUDIT02'"
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "payload123" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "user@host" "other" https://x'
@@ -561,6 +569,18 @@ grep -Fq 'TAILAUDIT07' "$line_file" && exit 328
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo "KEEP07"' "$line_file" || exit 329
 grep -Fq 'TAILAUDIT08' "$line_file" && exit 330
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***", "KEEP08"' "$line_file" || exit 331
+grep -Fq 'TAILAUDIT09' "$line_file" && exit 430
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"| :' "$line_file" || exit 431
+grep -Fq 'TAILAUDIT10' "$line_file" && exit 432
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***">out' "$line_file" || exit 433
+grep -Fq 'TAILAUDIT11' "$line_file" && exit 434
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***">>out' "$line_file" || exit 435
+grep -Fq 'TAILAUDIT12' "$line_file" && exit 436
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"<in' "$line_file" || exit 437
+grep -Fq 'TAILAUDIT13' "$line_file" && exit 438
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" >out' "$line_file" || exit 439
+grep -Fq 'TAILAUDIT14' "$line_file" && exit 440
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; :' "$line_file" || exit 441
 grep -Fq 'TAILAUDIT02' "$line_file" && exit 332
 grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'" "$line_file" || exit 333
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "payload123" https://x' "$line_file" || exit 326
@@ -1066,6 +1086,19 @@ grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$threshold_255" || fail "u
 for invalid_userinfo_min in 256 32768 100000 invalid; do
   fallback_userinfo=$(LMLINE_CLIP_USERINFO_MIN="$invalid_userinfo_min" bash -c 'source "$1"; printf "https://abcdefghijkl@example.test/x\n" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash") || fail "invalid userinfo threshold $invalid_userinfo_min broke redaction"
   grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$fallback_userinfo" || fail "invalid userinfo threshold $invalid_userinfo_min did not fall back"
+done
+
+# The direct forms must also stay valid shell text after redaction: the
+# unfixed rule left the synthetic tail behind and bash -n returned rc=2.
+quoted_tail_fixtures=(
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"| :'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07">out'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07">>out'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"<in'
+)
+for quoted_tail_fixture in "${quoted_tail_fixtures[@]}"; do
+  quoted_tail_redacted=$(bash -c 'source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash" "$quoted_tail_fixture") || fail "quoted tail redaction: $quoted_tail_fixture"
+  printf '%s\n' "$quoted_tail_redacted" | bash -n || fail "quoted tail redaction is not valid shell text: $quoted_tail_redacted"
 done
 
 ok "clip cli"
