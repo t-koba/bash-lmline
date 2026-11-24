@@ -173,6 +173,7 @@ printf '%s\n' 'Authorization: Bearer "backslashBearerOdd901\'
 printf '%s\n' 'Authorization: "backslashSchemeLessOdd902\'
 printf '%s\n' "Authorization: 'backslashSingleOdd903\\"
 printf '%s\n' "MY_TOKEN='backslashKeyOdd904\\"
+printf '%s\n' 'Authorization: continuationSecret444444\'
 printf '%s\n' 'Authorization: "u@hostBackslashOdd905\"'
 printf '%s\n' 'Authorization: Bearer "backslashBearerEven906\\"'
 printf '%s\n' 'Authorization: "backslashSchemeLessEven907\\"'
@@ -491,6 +492,8 @@ grep -Fq 'backslashBearerOdd901' "$line_file" && exit 150
 grep -Fq 'backslashSchemeLessOdd902' "$line_file" && exit 151
 grep -Fq 'backslashSingleOdd903' "$line_file" && exit 152
 grep -Fq 'backslashKeyOdd904' "$line_file" && exit 153
+grep -Fxq 'Authorization: ***REDACTED***\' "$line_file" || exit 355
+grep -Fq 'continuationSecret444444' "$line_file" && exit 356
 grep -Fq 'hostBackslashOdd905' "$line_file" && exit 154
 grep -Fxq 'Authorization: Bearer "***REDACTED***' "$line_file" || exit 155
 grep -Fxq 'Authorization: "***REDACTED***' "$line_file" || exit 156
