@@ -92,7 +92,9 @@ printf '%s\n' 'curl -H "Authorization: abc""tail multiDQ901""tail multiDQ903" -H
 printf '%s\n' "curl -H \"Authorization: Bearer abc\"'tail multiSQ902''tail multiSQ904' -H \"X: keep\" https://example.test"
 printf '%s\n' 'curl -H "Authorization: abc""multiDQ905""multiDQ906""multiDQ907" -H "X: keep" https://example.test'
 printf '%s\n' 'curl -H "Authorization: abc""pa\\"insideEsc9031""pb" -H "X: keep" https://dqesc9031.example.test'
+printf '%s\n' 'curl -H "Authorization: abc""pa\\"inside space""pb tailDQSpaced9034" -H "X: keep" https://dqesc9031.example.test'
 printf '%s\n' "curl -H 'Authorization: abc'\"pa\\\"insideEsc9033\"\"pb\" -H \"X: keep\" https://sqesc9033.example.test"
+printf '%s\n' "curl -H 'Authorization: abc'\"pa\\\"inside space\"\"pb tailSQSpaced9035\" -H \"X: keep\" https://sqesc9033.example.test"
 printf '%s\n' 'Authorization: Bearer @sec".unterminatedDot9021'
 printf '%s\n' "Authorization: Bearer @sec'unterminatedApostrophe9022 more"
 printf '%s\n' "Authorization: Bearer @o'brien Secret9029 tail"
@@ -405,6 +407,10 @@ grep -Fq 'insideEsc9031' "$line_file" && exit 270
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test' "$line_file" || exit 271
 grep -Fq 'insideEsc9033' "$line_file" && exit 272
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test" "$line_file" || exit 273
+grep -Fq 'tailDQSpaced9034' "$line_file" && exit 307
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test' "$line_file" || exit 308
+grep -Fq 'tailSQSpaced9035' "$line_file" && exit 309
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test" "$line_file" || exit 310
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
 grep -Fq 'more_secret456' "$line_file" && exit 129
