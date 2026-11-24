@@ -255,6 +255,9 @@ printf '%s\n' "echo 'x';//u:fixtureSeq101Control@example.test; echo 'x'"
 printf '%s\n' 'curl "https://x/?a=1;b=2;//u:pSeq113Semi@one.example.test";//u:realSeq113Semi@two.example.test'
 printf '%s\n' 'curl "https://x/?a=1,b=2,//u:pSeq113Comma@one.example.test",//u:realSeq113Comma@two.example.test'
 printf '%s\n' "curl 'https://x/?a=;//u:pSeq113One@h;b=;//u:pSeq113Two@h';//u:realSeq113Two@h"
+printf '%s\n' 'a=("https://x/?q=;//u:pArrayData@one.example.test");//u:realArray@two.example.test'
+printf '%s\n' 'foo("https://x/?q=;//u:pParenData@one.example.test");//u:realParen@two.example.test'
+printf '%s\n' 'echo {"url":"https://x/?q=;//u:pAnchorData@one.example.test"};//u:realAnchor@two.example.test'
 printf '%s\n' 'curl "https://mixedsep1.example.test/?q=;//u:pMixedSepData1@one.example.test";//u:pMixedSepReal1@two.example.test'
 printf '%s\n' 'curl "https://mixedsep2.example.test/?q=;//BAREMixedData2@one.example.test";//BAREMixedReal2@two.example.test'
 printf '%s\n' 'curl "https://mixedsep3.example.test/?q=,//u:pMixedCommaData3@one.example.test",//u:pMixedCommaReal3@two.example.test'
@@ -670,6 +673,12 @@ grep -Fxq 'curl "https://x/?a=1,b=2,//u:pSeq113Comma@one.example.test",//u:***RE
 grep -Fq 'realSeq113Comma@two.example.test' "$line_file" && exit 300
 grep -Fxq "curl 'https://x/?a=;//u:pSeq113One@h;b=;//u:pSeq113Two@h';//u:***REDACTED***@h" "$line_file" || exit 301
 grep -Fq 'realSeq113Two@h' "$line_file" && exit 302
+grep -Fxq 'a=("https://x/?q=;//u:pArrayData@one.example.test");//u:***REDACTED***@two.example.test' "$line_file" || exit 311
+grep -Fq 'realArray@two.example.test' "$line_file" && exit 312
+grep -Fxq 'foo("https://x/?q=;//u:pParenData@one.example.test");//u:***REDACTED***@two.example.test' "$line_file" || exit 313
+grep -Fq 'realParen@two.example.test' "$line_file" && exit 314
+grep -Fxq 'echo {"url":"https://x/?q=;//u:pAnchorData@one.example.test"};//u:***REDACTED***@two.example.test' "$line_file" || exit 315
+grep -Fq 'realAnchor@two.example.test' "$line_file" && exit 316
 grep -Fxq 'curl "https://mixedsep1.example.test/?q=;//u:pMixedSepData1@one.example.test";//u:***REDACTED***@two.example.test' "$line_file" || exit 277
 grep -Fq 'pMixedSepReal1' "$line_file" && exit 278
 grep -Fxq 'curl "https://mixedsep2.example.test/?q=;//BAREMixedData2@one.example.test";//***REDACTED***@two.example.test' "$line_file" || exit 279
