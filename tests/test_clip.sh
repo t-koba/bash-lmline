@@ -222,6 +222,8 @@ printf '%s\n' 'TOKEN=SYNTHSEMIKEY2; echo KEEPSEMI2FIX'
 printf '%s\n' 'api_key=SYNTHSEMIKEY3; echo KEEPAPIFIX'
 printf '%s\n' '"token=SYNTHSEMIKEY"; echo KEEPQUOTEDFIX'
 printf '%s\n' "'token=SYNTHSEMIKEY'; echo KEEPQUOTED2FIX"
+printf '%s\n' 'token=SYNTHSECRETFIRST; password=SYNTHSECRETSECOND; echo KEEP_TWO'
+printf '%s\n' 'token=SYNTHMULTI1; password=SYNTHMULTI2; key=SYNTHMULTI3; echo KEEP_MULTI'
 printf '%s\n' 'token=abc;defFIX'
 printf '%s\n' 'token=SYNTHSEMIKEY;token2=SYNTHSEMIKEY2; echo KEEPDOUBLEFIX'
 printf '%s\n' 'token=ghp_SYNTHSEMI; echo KEEPKEYSemiFIX'
@@ -737,10 +739,16 @@ grep -Fxq 'api_key=***REDACTED***; echo KEEPAPIFIX' "$line_file" || exit 462
 grep -Fxq '"token=***REDACTED***"; echo KEEPQUOTEDFIX' "$line_file" || exit 463
 grep -Fxq "'token=***REDACTED***'; echo KEEPQUOTED2FIX" "$line_file" || exit 464
 grep -Fxq 'token=***REDACTED***' "$line_file" || exit 465
-grep -Fq 'defFIX' "$line_file" && exit 466
-grep -Fq 'SYNTHSEMIKEY' "$line_file" && exit 467
-grep -Fxq 'token=***REDACTED***; echo KEEPKEYSemiFIX' "$line_file" || exit 468
-grep -Fxq 'token=***REDACTED*** | grep KEEPPIPEFIX' "$line_file" || exit 469
+grep -Fq 'defFIX' "$line_file" && exit 475
+grep -Fxq 'token=***REDACTED***; password=***REDACTED***; echo KEEP_TWO' "$line_file" || exit 466
+grep -Fxq 'token=***REDACTED***; password=***REDACTED***; key=***REDACTED***; echo KEEP_MULTI' "$line_file" || exit 467
+grep -Fxq 'token=***REDACTED*** echo KEEPDOUBLEFIX' "$line_file" || exit 468
+grep -Fq 'SYNTHSEMIKEY' "$line_file" && exit 469
+grep -Fq 'SYNTHSECRETFIRST' "$line_file" && exit 470
+grep -Fq 'SYNTHSECRETSECOND' "$line_file" && exit 471
+grep -Fq 'SYNTHMULTI' "$line_file" && exit 472
+grep -Fxq 'token=***REDACTED***; echo KEEPKEYSemiFIX' "$line_file" || exit 473
+grep -Fxq 'token=***REDACTED*** | grep KEEPPIPEFIX' "$line_file" || exit 474
 grep -Fq 'MARKER' "$line_file" && exit 62
 grep -Fq '"2fa_secret": "***REDACTED***"' "$line_file" || exit 63
 grep -Fq 'SUPERSECRET123' "$line_file" && exit 64
