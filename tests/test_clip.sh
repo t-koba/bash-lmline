@@ -65,6 +65,8 @@ printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
 printf '%s\n' 'Authorization: tokenWithBack\slash9003 "payload9003"; echo "K9003"'
+printf '%s\n' 'Authorization: DPoP "realDpopSecret123456" https://x'
+printf '%s\n' 'Authorization: WSSE "realWsseSecret123456" https://x'
 printf '%s\n' 'curl -H "Authorization: @@oddAtDouble999" -H "X: tailDouble" https://x'
 printf '%s\n' "curl -H 'Authorization: @@oddAtSingle999' -H 'X: tailSingle' https://x"
 printf '%s\n' 'curl -H "Authorization: @" -H "X: keepAtDouble" https://x'
@@ -335,18 +337,21 @@ grep -Fq 'schemedQuoted125' "$line_file" && exit 133
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x' "$line_file" || exit 134
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' https://x" "$line_file" || exit 135
 grep -Fxq "curl -H 'Authorization: Basic ***REDACTED***' https://x" "$line_file" || exit 136
-grep -Fxq 'Authorization: ***REDACTED*** "payload127"; echo "KEEP4"' "$line_file" || exit 340
+grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "KEEP4"' "$line_file" || exit 340
 grep -Fq 'secretValue127' "$line_file" && exit 341
 grep -Fxq 'Authorization: ***REDACTED***; echo "KEEP5"' "$line_file" || exit 342
 grep -Fq 'secretValue130' "$line_file" && exit 343
-grep -Fxq 'Authorization: ***REDACTED*** "payload131"' "$line_file" || exit 344
+grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***' "$line_file" || exit 344
 grep -Fq 'secretValue131' "$line_file" && exit 345
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" "payload128" https://x' "$line_file" || exit 346
 grep -Fq 'secretValue128' "$line_file" && exit 347
-grep -Fxq 'Authorization: ***REDACTED*** "payload9002"; echo "K9002"' "$line_file" || exit 348
+grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "K9002"' "$line_file" || exit 348
 grep -Fq 'tokenWithHash#9002' "$line_file" && exit 349
-grep -Fxq 'Authorization: ***REDACTED*** "payload9003"; echo "K9003"' "$line_file" || exit 350
+grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "K9003"' "$line_file" || exit 350
 grep -Fq 'tokenWithBack\slash9003' "$line_file" && exit 351
+grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED*** https://x' "$line_file" || exit 352
+grep -Fq 'realDpopSecret123456' "$line_file" && exit 353
+grep -Fq 'realWsseSecret123456' "$line_file" && exit 354
 grep -Fq 'oddAtDouble999' "$line_file" && exit 137
 grep -Fq 'oddAtSingle999' "$line_file" && exit 138
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: tailDouble" https://x' "$line_file" || exit 139
