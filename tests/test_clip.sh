@@ -221,6 +221,8 @@ printf '%s\n' "curl 'https://example.test/?x=1&token=abc'"
 printf '%s\n' "curl 'https://example.test/?x=1;token=fixtureSemi9001&y=2'"
 printf '%s\n' "curl 'https://example.test/?x=1,token=fixtureComma9002&y=2'"
 printf '%s\n' "curl 'https://example.test/a;token=fixturePath9003?x=1'"
+printf '%s\n' 'curl "https://x/?token=abcQuestionMark9004&y=2"'
+printf '%s\n' 'echo x;token=abcQuestionShell9005'
 printf '%s\n' 'echo x;token=fixtureShell9004'
 printf '%s\n' "curl 'https://example.test/a/token=abc'"
 printf '%s\n' 'INFO|token=SECRETpipe987654 service=web'
@@ -592,6 +594,10 @@ grep -Fxq "curl 'https://example.test/?x=1,token=***REDACTED***&y=2'" "$line_fil
 grep -Fq 'fixtureComma9002' "$line_file" && exit 288
 grep -Fxq "curl 'https://example.test/a;token=***REDACTED***?x=1'" "$line_file" || exit 289
 grep -Fq 'fixturePath9003' "$line_file" && exit 290
+grep -Fxq 'curl "https://x/?token=***REDACTED***&y=2"' "$line_file" || exit 303
+grep -Fq 'abcQuestionMark9004' "$line_file" && exit 304
+grep -Fxq 'echo x;token=***REDACTED***' "$line_file" || exit 305
+grep -Fq 'abcQuestionShell9005' "$line_file" && exit 306
 grep -Fxq 'echo x;token=***REDACTED***' "$line_file" || exit 291
 grep -Fq 'fixtureShell9004' "$line_file" && exit 292
 grep -Fxq "curl 'https://example.test/a/token=***REDACTED***'" "$line_file" || exit 255
