@@ -257,6 +257,8 @@ __lmline_redact_clip_text() {
   key_prefix_escaped_sq="(\\\\*[\"']?(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*\\\\*[\"']?\\\\*[:=][[:space:]]*\\\\*')"
   auth_prefix_quoted_dq="(\"[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   auth_prefix_quoted_sq="('[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
+  # Known schemes are shielded so their quoted credentials stay credentials;
+  # scheme-less values end at a following quote or shell separator only.
   # A late cleanup removes an orphaned bare word between a redaction marker
   # and the next quote; a genuine following argument starts with a quote.
   sed -E \
@@ -296,6 +298,10 @@ __lmline_redact_clip_text() {
     -e "s#(([A-Za-z][A-Za-z0-9+.-]*:)//)[^:/?#@[:space:]]{${userinfo_min},}@#\1@@LMLINE_REDACTED@@@#g" \
     -e "s#(^|[^A-Za-z0-9_./?@#&=:;,-])(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2@@LMLINE_REDACTED@@@#g" \
     -e "s#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2\3@@LMLINE_REDACTED@@@#g" \
+    -e "s/${auth_prefix}(Bearer|Basic|Digest|Token|Negotiate|NTLM|OAuth|AWS4-HMAC-SHA256)([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
+    -e "s/${auth_prefix}([^\"'=[:space:];,]+)([[:space:]]+)([\"'])/\\1@@LMLINE_REDACTED@@\\3\\4/Ig" \
+    -e "s/${auth_prefix}([^\"'=[:space:];,]+)([[:space:]]*[,;])/\\1@@LMLINE_REDACTED@@\\3/Ig" \
+    -e 's/==LMLINE_AUTH_SCHEME==//Ig' \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"\"([^\"]*\\\\\"[^\"]*)\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'(\"([^\"]*\\\\\"[^\"]*)\"|'[^']*\\\\.[^']*')[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"(\"[^\"']*\"|'[^']*')[^[:space:]\"']*/\1\2@@LMLINE_REDACTED@@\"/Ig" \
