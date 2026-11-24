@@ -79,6 +79,24 @@ printf '%s\n' 'Authorization: Bearer secretBearerRedirectTail123456>out.txt'
 printf '%s\n' 'Authorization: secretInput123456 < in.txt'
 printf '%s\n' 'Authorization: Bearer secretHere123456 <<EOF'
 printf '%s\n' 'Authorization: splitRedirect123456 > out.txt; Authorization: splitBare123456'
+# Fd-prefixed redirections must stay outside the masked credential. The
+# synthetic tokens are secret-shaped without matching the privacy scanner.
+printf '%s\n' 'Authorization: SYNTHFDSECRET 2>err'
+printf '%s\n' 'Authorization: SYNTHPLAINSECRET >out'
+printf '%s\n' 'Authorization: SYNTHFDSTDERR 2>&1'
+printf '%s\n' 'Authorization: SYNTHFDSTDIN 0<in'
+printf '%s\n' 'Authorization: SYNTHFDFD10 10>out'
+printf '%s\n' 'Authorization: SYNTHFDAPPEND 3>>err'
+printf '%s\n' 'Authorization: SYNTHFDSPACE 2> err'
+printf '%s\n' 'Authorization: Bearer SYNTHFDBEARER 2>err'
+printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMED10 10>out'
+printf '%s\n' 'Authorization: SYNTHFDSPLIT 2>err; Authorization: SYNTHFDBARE'
+printf '%s\n' 'Authorization: SYNTHFDNUM123 2>err'
+printf '%s\n' 'Authorization: SYNTHFDTAIL456>out'
+printf '%s\n' 'Authorization: SYNTHFDFD123 123>out'
+printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMED123 123>out'
+printf '%s\n' 'Authorization: SYNTHFDGAP 2 >err'
+printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMEGAP 2 >err'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -352,6 +370,43 @@ grep -Fq 'secretHere123456' "$line_file" && exit 380
 grep -Fxq 'Authorization: ***REDACTED*** > out.txt; Authorization: ***REDACTED***' "$line_file" || exit 384
 grep -Fq 'splitRedirect123456' "$line_file" && exit 385
 grep -Fq 'splitBare123456' "$line_file" && exit 386
+# Fd digits belong to the redirect boundary, never to the credential.
+grep -Fxq 'Authorization: ***REDACTED*** 2>err' "$line_file" || exit 390
+grep -Fq 'SYNTHFDSECRET' "$line_file" && exit 391
+grep -Fxq 'Authorization: ***REDACTED*** >out' "$line_file" || exit 392
+grep -Fq 'SYNTHPLAINSECRET' "$line_file" && exit 393
+grep -Fxq 'Authorization: ***REDACTED*** 2>&1' "$line_file" || exit 394
+grep -Fq 'SYNTHFDSTDERR' "$line_file" && exit 395
+grep -Fxq 'Authorization: ***REDACTED*** 0<in' "$line_file" || exit 396
+grep -Fq 'SYNTHFDSTDIN' "$line_file" && exit 397
+grep -Fxq 'Authorization: ***REDACTED*** 10>out' "$line_file" || exit 398
+grep -Fq 'SYNTHFDFD10' "$line_file" && exit 399
+grep -Fxq 'Authorization: ***REDACTED*** 3>>err' "$line_file" || exit 400
+grep -Fq 'SYNTHFDAPPEND' "$line_file" && exit 401
+grep -Fxq 'Authorization: ***REDACTED*** 2> err' "$line_file" || exit 402
+grep -Fq 'SYNTHFDSPACE' "$line_file" && exit 403
+grep -Fxq 'Authorization: Bearer ***REDACTED*** 2>err' "$line_file" || exit 404
+grep -Fq 'SYNTHFDBEARER' "$line_file" && exit 405
+grep -Fxq 'Authorization: Bearer ***REDACTED*** 10>out' "$line_file" || exit 406
+grep -Fq 'SYNTHFDSCHEMED10' "$line_file" && exit 407
+# The marker on the first value must not stop the later bare value from masking.
+grep -Fxq 'Authorization: ***REDACTED*** 2>err; Authorization: ***REDACTED***' "$line_file" || exit 408
+grep -Fq 'SYNTHFDSPLIT' "$line_file" && exit 409
+grep -Fq 'SYNTHFDBARE' "$line_file" && exit 410
+# Digits inside a credential stay masked; only fd digits before an operator are kept.
+grep -Fxq 'Authorization: ***REDACTED*** 2>err' "$line_file" || exit 411
+grep -Fq 'SYNTHFDNUM123' "$line_file" && exit 412
+grep -Fxq 'Authorization: ***REDACTED***>out' "$line_file" || exit 413
+grep -Fq 'SYNTHFDTAIL456' "$line_file" && exit 414
+# Three-digit and spaced fd forms keep the full redirect boundary.
+grep -Fxq 'Authorization: ***REDACTED*** 123>out' "$line_file" || exit 415
+grep -Fq 'SYNTHFDFD123' "$line_file" && exit 416
+grep -Fxq 'Authorization: Bearer ***REDACTED*** 123>out' "$line_file" || exit 417
+grep -Fq 'SYNTHFDSCHEMED123' "$line_file" && exit 418
+grep -Fxq 'Authorization: ***REDACTED*** 2 >err' "$line_file" || exit 419
+grep -Fq 'SYNTHFDGAP' "$line_file" && exit 420
+grep -Fxq 'Authorization: Bearer ***REDACTED*** 2 >err' "$line_file" || exit 421
+grep -Fq 'SYNTHFDSCHEMEGAP' "$line_file" && exit 422
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
