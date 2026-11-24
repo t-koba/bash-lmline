@@ -920,7 +920,7 @@ threshold_255=$(LMLINE_CLIP_USERINFO_MIN=255 bash -c 'source "$1"; printf "https
 grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$threshold_255" || fail "userinfo threshold 255 output"
 for invalid_userinfo_min in 256 32768 100000 invalid; do
   fallback_userinfo=$(LMLINE_CLIP_USERINFO_MIN="$invalid_userinfo_min" bash -c 'source "$1"; printf "https://abcdefghijkl@example.test/x\n" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash") || fail "invalid userinfo threshold $invalid_userinfo_min broke redaction"
-  grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$fallback_userinfo" || fail "invalid userinfo threshold $invalid_userinfo did not fall back"
+  grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$fallback_userinfo" || fail "invalid userinfo threshold $invalid_userinfo_min did not fall back"
 done
 
 ok "clip cli"
