@@ -149,6 +149,12 @@ printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAU
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT12"<in'
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT13" >out'
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT14"; :'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT15"2>err'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT16"2>&1'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT17"1>>out'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT18"10>out'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT19"& :'
+printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT20"&& :'
 printf '%s\n' "curl -H 'Authorization: Bearer abc'\"'pa\\\"inside space'\"'pb TAILAUDIT02'"
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "payload123" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "user@host" "other" https://x'
@@ -581,6 +587,18 @@ grep -Fq 'TAILAUDIT13' "$line_file" && exit 438
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" >out' "$line_file" || exit 439
 grep -Fq 'TAILAUDIT14' "$line_file" && exit 440
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; :' "$line_file" || exit 441
+grep -Fq 'TAILAUDIT15' "$line_file" && exit 442
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>err' "$line_file" || exit 443
+grep -Fq 'TAILAUDIT16' "$line_file" && exit 444
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>&1' "$line_file" || exit 445
+grep -Fq 'TAILAUDIT17' "$line_file" && exit 446
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"1>>out' "$line_file" || exit 447
+grep -Fq 'TAILAUDIT18' "$line_file" && exit 448
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"10>out' "$line_file" || exit 449
+grep -Fq 'TAILAUDIT19' "$line_file" && exit 450
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"& :' "$line_file" || exit 451
+grep -Fq 'TAILAUDIT20' "$line_file" && exit 452
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"&& :' "$line_file" || exit 453
 grep -Fq 'TAILAUDIT02' "$line_file" && exit 332
 grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'" "$line_file" || exit 333
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "payload123" https://x' "$line_file" || exit 326
@@ -1095,6 +1113,12 @@ quoted_tail_fixtures=(
   'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07">out'
   'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07">>out'
   'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"<in'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"2>err'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"2>&1'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"1>>out'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"10>out'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"& :'
+  'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"&& :'
 )
 for quoted_tail_fixture in "${quoted_tail_fixtures[@]}"; do
   quoted_tail_redacted=$(bash -c 'source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash" "$quoted_tail_fixture") || fail "quoted tail redaction: $quoted_tail_fixture"
