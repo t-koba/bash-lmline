@@ -61,6 +61,16 @@ printf '%s\n' "curl -H 'Authorization: schemeLessQuoted124' https://x"
 printf '%s\n' "curl -H 'Authorization: Basic schemedQuoted125' https://x"
 printf '%s\n' 'Authorization: secretValue127 "payload127"; echo "KEEP4"'
 printf '%s\n' 'Authorization: secretValue130; echo "KEEP5"'
+printf '%s\n' 'Authorization: secretPipe90201 | grep keepPipe90201'
+printf '%s\n' 'Authorization: secretPipeTail90202|grep keepPipeTail90202'
+printf '%s\n' 'Authorization: Bearer secretBearerPipe90203 | grep keepBearerPipe90203'
+printf '%s\n' 'Authorization: Bearer secretBearerPipeTail90204|grep keepBearerPipeTail90204'
+printf '%s\n' 'Authorization: secretAmp90205 && echo keepAmp90205'
+printf '%s\n' 'Authorization: secretAmpTail90206&&echo keepAmpTail90206'
+printf '%s\n' 'Authorization: Bearer secretBearerAmp90207 && echo keepBearerAmp90207'
+printf '%s\n' 'Authorization: Bearer secretBearerAmpTail90208&&echo keepBearerAmpTail90208'
+printf '%s\n' 'Authorization: secretOr90209 || echo keepOr90209'
+printf '%s\n' 'Authorization: Bearer secretBearerOr90210 || echo keepBearerOr90210'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -306,6 +316,16 @@ done
 [[ "$mode" == clip ]] || exit 10
 grep -Fq 'API_KEY=***REDACTED***' "$line_file" || exit 11
 grep -Fq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 12
+grep -Fxq 'Authorization: ***REDACTED*** | grep keepPipe90201' "$line_file" || exit 357
+grep -Fxq 'Authorization: ***REDACTED***|grep keepPipeTail90202' "$line_file" || exit 358
+grep -Fxq 'Authorization: Bearer ***REDACTED*** | grep keepBearerPipe90203' "$line_file" || exit 359
+grep -Fxq 'Authorization: Bearer ***REDACTED***|grep keepBearerPipeTail90204' "$line_file" || exit 360
+grep -Fxq 'Authorization: ***REDACTED*** && echo keepAmp90205' "$line_file" || exit 361
+grep -Fxq 'Authorization: ***REDACTED***&&echo keepAmpTail90206' "$line_file" || exit 362
+grep -Fxq 'Authorization: Bearer ***REDACTED*** && echo keepBearerAmp90207' "$line_file" || exit 363
+grep -Fxq 'Authorization: Bearer ***REDACTED***&&echo keepBearerAmpTail90208' "$line_file" || exit 364
+grep -Fxq 'Authorization: ***REDACTED*** || echo keepOr90209' "$line_file" || exit 365
+grep -Fxq 'Authorization: Bearer ***REDACTED*** || echo keepBearerOr90210' "$line_file" || exit 366
 grep -Fq 'Authorization: Bearer "***REDACTED***"' "$line_file" || exit 74
 grep -Fq "Authorization: Bearer '***REDACTED***'" "$line_file" || exit 75
 grep -Fq 'quoted bearer token value' "$line_file" && exit 76
