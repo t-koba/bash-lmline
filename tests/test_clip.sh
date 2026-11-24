@@ -71,6 +71,14 @@ printf '%s\n' 'Authorization: Bearer secretBearerAmp90207 && echo keepBearerAmp9
 printf '%s\n' 'Authorization: Bearer secretBearerAmpTail90208&&echo keepBearerAmpTail90208'
 printf '%s\n' 'Authorization: secretOr90209 || echo keepOr90209'
 printf '%s\n' 'Authorization: Bearer secretBearerOr90210 || echo keepBearerOr90210'
+printf '%s\n' 'Authorization: secretRedirect123456 > out.txt'
+printf '%s\n' 'Authorization: secretRedirectTail123456>out.txt'
+printf '%s\n' 'Authorization: secretRedirectDouble123456 >> out.txt'
+printf '%s\n' 'Authorization: Bearer secretBearerRedirect123456 > out.txt'
+printf '%s\n' 'Authorization: Bearer secretBearerRedirectTail123456>out.txt'
+printf '%s\n' 'Authorization: secretInput123456 < in.txt'
+printf '%s\n' 'Authorization: Bearer secretHere123456 <<EOF'
+printf '%s\n' 'Authorization: splitRedirect123456 > out.txt; Authorization: splitBare123456'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -326,6 +334,28 @@ grep -Fxq 'Authorization: Bearer ***REDACTED*** && echo keepBearerAmp90207' "$li
 grep -Fxq 'Authorization: Bearer ***REDACTED***&&echo keepBearerAmpTail90208' "$line_file" || exit 364
 grep -Fxq 'Authorization: ***REDACTED*** || echo keepOr90209' "$line_file" || exit 365
 grep -Fxq 'Authorization: Bearer ***REDACTED*** || echo keepBearerOr90210' "$line_file" || exit 366
+grep -Fxq 'Authorization: ***REDACTED*** > out.txt' "$line_file" || exit 367
+grep -Fq 'secretRedirect123456' "$line_file" && exit 368
+grep -Fxq 'Authorization: ***REDACTED***>out.txt' "$line_file" || exit 369
+grep -Fq 'secretRedirectTail123456' "$line_file" && exit 370
+grep -Fxq 'Authorization: ***REDACTED*** >> out.txt' "$line_file" || exit 371
+grep -Fq 'secretRedirectDouble123456' "$line_file" && exit 372
+grep -Fxq 'Authorization: Bearer ***REDACTED*** > out.txt' "$line_file" || exit 373
+grep -Fq 'secretBearerRedirect123456' "$line_file" && exit 374
+grep -Fxq 'Authorization: Bearer ***REDACTED***>out.txt' "$line_file" || exit 375
+grep -Fq 'secretBearerRedirectTail123456' "$line_file" && exit 376
+grep -Fxq 'Authorization: ***REDACTED*** < in.txt' "$line_file" || exit 377
+grep -Fq 'secretInput123456' "$line_file" && exit 378
+grep -Fxq 'Authorization: Bearer ***REDACTED*** <<EOF' "$line_file" || exit 379
+grep -Fq 'secretHere123456' "$line_file" && exit 380
+# A placeholder on the first value must not disable terminal cleanup of the second.
+grep -Fxq 'Authorization: ***REDACTED*** > out.txt; Authorization: ***REDACTED***' "$line_file" || exit 384
+grep -Fq 'splitRedirect123456' "$line_file" && exit 385
+grep -Fq 'splitBare123456' "$line_file" && exit 386
+# The existing URL/query and provider-key fixtures are controls for the narrow rule change.
+grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
+grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
+grep -Fq 'sk_live_***REDACTED***' "$line_file" || exit 383
 grep -Fq 'Authorization: Bearer "***REDACTED***"' "$line_file" || exit 74
 grep -Fq "Authorization: Bearer '***REDACTED***'" "$line_file" || exit 75
 grep -Fq 'quoted bearer token value' "$line_file" && exit 76

@@ -259,6 +259,10 @@ __lmline_redact_clip_text() {
   auth_prefix_quoted_sq="('[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   # Known schemes are shielded so their quoted credentials stay credentials;
   # scheme-less values end at a following quote or shell separator only.
+  # Both separator rules emit a marker that starts with a separator and
+  # contains @: the @-credential rule cannot match its leading separator and
+  # the terminal bare-value rules exclude @, so cleanup still masks a later
+  # bare value on the same line.
   # A late cleanup removes an orphaned bare word between a redaction marker
   # and the next quote; a genuine following argument starts with a quote.
   sed -E \
@@ -300,8 +304,8 @@ __lmline_redact_clip_text() {
     -e "s#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2\3@@LMLINE_REDACTED@@@#g" \
     -e "s/${auth_prefix}(Bearer|Basic|Digest|Token|Negotiate|NTLM|OAuth|AWS4-HMAC-SHA256)([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
     -e "s/${auth_prefix}([^\"'=[:space:];,&|]+)([[:space:]]+)([\"'])/\\1@@LMLINE_REDACTED@@\\3\\4/Ig" \
-    -e "s/${auth_prefix}([^\"'=[:space:];,&|]+)([[:space:]]*([|][|]|&&|[,;|&]))/\\1@@LMLINE_REDACTED@@\\3/Ig" \
-    -e "s/${auth_prefix}==LMLINE_AUTH_SCHEME==${auth_scheme}([^\"'=[:space:];,&|]+)([[:space:]]*)([|][|]|&&|[,;|&])/\1==LMLINE_AUTH_SCHEME==\2;LMLINE_SEP;\4\5/Ig" \
+    -e "s/${auth_prefix}([^\"'=[:space:];,&|<>]+)([[:space:]]*([>][>]|[<][<]|[|][|]|&&|[,;|&<>]))/\\1;@LMLINE_SEP@\\3/Ig" \
+    -e "s/${auth_prefix}==LMLINE_AUTH_SCHEME==${auth_scheme}([^\"'=[:space:];,&|<>]+)([[:space:]]*)([>][>]|[<][<]|[|][|]|&&|[,;|&<>])/\1==LMLINE_AUTH_SCHEME==\2;@LMLINE_SEP@\4\5/Ig" \
     -e 's/==LMLINE_AUTH_SCHEME==//Ig' \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"\"([^\"]*\\\\\"[^\"]*)\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'(\"([^\"]*\\\\\"[^\"]*)\"|'[^']*\\\\.[^']*')[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
@@ -378,7 +382,7 @@ __lmline_redact_clip_text() {
     -e "s#(@@LMLINE_REDACTED@@[\"'])[[:space:]]+[^[:space:]\"']+([\"'])([[:space:],;]|\$)#\\1\\3#g" \
     -e "s/(Authorization:[[:space:]]+@@LMLINE_REDACTED@@)[[:space:]]+\"[^\"]*\"/\\1 @@LMLINE_REDACTED@@/Ig" \
     -e "s/(Authorization:[[:space:]]+@@LMLINE_REDACTED@@)[[:space:]]+'[^']*'/\\1 @@LMLINE_REDACTED@@/Ig" \
-    -e "s/;LMLINE_SEP;/@@LMLINE_REDACTED@@/Ig" \
+    -e "s/;@LMLINE_SEP@/@@LMLINE_REDACTED@@/Ig" \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/g"
 }
 
