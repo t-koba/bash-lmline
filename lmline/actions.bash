@@ -257,6 +257,8 @@ __lmline_redact_clip_text() {
   key_prefix_escaped_sq="(\\\\*[\"']?(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)[A-Za-z0-9_-]*\\\\*[\"']?\\\\*[:=][[:space:]]*\\\\*')"
   auth_prefix_quoted_dq="(\"[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
   auth_prefix_quoted_sq="('[\"']?Authorization[\"']?[[:space:]]*:[[:space:]]*)"
+  # A late cleanup removes an orphaned bare word between a redaction marker
+  # and the next quote; a genuine following argument starts with a quote.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
@@ -365,6 +367,7 @@ __lmline_redact_clip_text() {
     -e 's#@@LMLINE_QUOTED_SEMI@@#;//#g' \
     -e 's#@@LMLINE_QUOTED_COMMA@@#,//#g' \
     -e "s/'@@LMLINE_URL_REDACTED@@'/@@LMLINE_REDACTED@@/g" \
+    -e "s#(@@LMLINE_REDACTED@@[\"'])[[:space:]]+[^[:space:]\"']+([\"'])([[:space:],;]|\$)#\\1\\3#g" \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/g"
 }
 
