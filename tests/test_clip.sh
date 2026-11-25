@@ -371,6 +371,10 @@ printf '%s\n' 'echo \"x://,//user:SYNTHZEROC@host\"'
 printf '%s\n' "echo 'x://;//user:SYNTHSQZERO@host'"
 printf '%s\n' 'echo \"https://ok/x\";//user:SYNTHBQ@host\"'
 printf '%s\n' 'curl \"https://ok/x\";//user:SYNTHBQC@host\"'
+printf '%s\n' 'echo \"https://ok/x\"a;//user:SYNTHBQA@host\"'
+printf '%s\n' 'echo \"https://ok/x\"note;//user:SYNTHBQN@host\"'
+printf '%s\n' 'curl \"https://x/?q=a!;//user:TOKENBANG@host/KEEP\"'
+printf '%s\n' 'echo \"https://x/?q=a*;//user:TOKENSTAR@host/KEEP\"'
 printf '%s\n' 'echo \"see https://x/?q=a;//user:TOKENPREFIX@host/KEEP\"'
 printf '%s\n' 'curl \"--url https://x/?q=a;//user:TOKENARG@host/KEEP\"'
 printf '%s\n' 'echo \"prefix https://x/?q=a,//user:TOKENCOMMA@host/KEEP\"'
@@ -987,6 +991,12 @@ grep -Fq 'SYNTHZEROC' "$line_file" && exit 536
 grep -Fq 'SYNTHSQZERO' "$line_file" && exit 537
 grep -Fq 'SYNTHBQ' "$line_file" && exit 538
 grep -Fq 'SYNTHBQC' "$line_file" && exit 539
+grep -Fxq 'echo \"https://ok/x\"a;//user:***REDACTED***@host\"' "$line_file" || exit 540
+grep -Fxq 'echo \"https://ok/x\"note;//user:***REDACTED***@host\"' "$line_file" || exit 541
+grep -Fxq 'curl \"https://x/?q=a!;//user:TOKENBANG@host/KEEP\"' "$line_file" || exit 542
+grep -Fxq 'echo \"https://x/?q=a*;//user:TOKENSTAR@host/KEEP\"' "$line_file" || exit 543
+grep -Fq 'SYNTHBQA' "$line_file" && exit 544
+grep -Fq 'SYNTHBQN' "$line_file" && exit 545
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
 grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
 grep -q 'Question:' "$line_file" || exit 13
