@@ -386,6 +386,8 @@ printf '%s\n' "echo 'https://ok/x';//user:SYNTHSQLOCK@host'"
 printf '%s\n' 'curl "https://ok/x",//user:SYNTHPLAINCOMMA@host"'
 printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"'
 printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"'
+printf '%s\n' 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"'
+printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN2@host/KEEP"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
 printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
@@ -1023,6 +1025,10 @@ grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"' "$line_file" 
 grep -Fq 'SYNTHMIXCLOSE' "$line_file" || exit 560
 grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"' "$line_file" || exit 561
 grep -Fq 'SYNTHMIXOPEN' "$line_file" || exit 562
+grep -Fxq 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"' "$line_file" || exit 565
+grep -Fq 'SYNTHMIXCLOSE2' "$line_file" || exit 566
+grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN2@host/KEEP"' "$line_file" || exit 567
+grep -Fq 'SYNTHMIXOPEN2' "$line_file" || exit 568
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517

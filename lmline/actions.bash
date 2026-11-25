@@ -266,16 +266,19 @@ __lmline_redact_clip_text() {
   # A late cleanup removes an orphaned bare word between a redaction marker
   # and the next quote; a genuine following argument starts with a quote.
   # A shell operator directly after that quote also ends the orphan word.
+  # A quoted URL token may hold ; or , as data; the separator alternative
+  # stops before ;// or ,// so each authority is handled in turn.
+  # Quote wrappers accept zero or more backslashes on either side.
   # A keyed value before "; " masks only its value; quoting the temporary
   # marker keeps the terminal bare rule from swallowing the separator.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
-    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://[^[:space:];|&#)\\"]+);//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_SEMI@@\5\7"%g' \
-    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\\\+)'([^']*[A-Za-z][A-Za-z0-9+.-]*://[^[:space:];|&#)\\\\']+);//([^']*)(\\\\\\+)'%\\1\\2'\\3@@LMLINE_QUOTED_SEMI@@\\5'%g" \
-    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://[^[:space:];|&#)\\"]+),//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_COMMA@@\5\7"%g' \
-    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\\\+)'([^']*[A-Za-z][A-Za-z0-9+.-]*://[^[:space:];|&#)\\\\']+),//([^']*)(\\\\\\+)'%\\1\\2'\\3@@LMLINE_QUOTED_COMMA@@\\5'%g" \
+    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]|[;,][^/[:space:]\\"])*);//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_SEMI@@\6\8"%g' \
+    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\*)'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']|[;,][^/[:space:]\\\"'])*);//([^']*)(\\\\*)'%\\1\\2'\\3@@LMLINE_QUOTED_SEMI@@\\5\6'%g" \
+    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]|[;,][^/[:space:]\\"])*),//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_COMMA@@\6\8"%g' \
+    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\*)'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']|[;,][^/[:space:]\\\"'])*),//([^']*)(\\\\*)'%\\1\\2'\\3@@LMLINE_QUOTED_COMMA@@\\5\6'%g" \
     -e 't lmline_quote_sep_protect' \
     -e 'h' \
     -e ':lmline_url_sep_norm1' \
