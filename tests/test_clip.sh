@@ -415,6 +415,14 @@ printf '%s\n' 'echo \"x://,//SYNFIXEMPTY06@host\"'
 printf '%s\n' 'curl \"https://x/?q=a=1;b=2;//u:pSYNFIXDATA07@one.example.test\";//u:realSYNFIXREAL07@two.example.test'
 printf '%s\n' 'curl \"https://x/?q=a=1,b=2;//u:pSYNFIXDATA08@one.example.test\",//u:realSYNFIXREAL08@two.example.test'
 printf '%s\n' "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:realSYNFIXREAL09@two.example.test"
+# A separator assignment word shields only after a query marker; before it,
+# the same shape is a shell command and its credential must be redacted.
+printf '%s\n' 'echo \"https://x;a=b;//u:LEAKASSIGN01@host\"'
+printf '%s\n' 'echo \"https://x,k=1;//user:LEAKASSIGN02@host\"'
+printf '%s\n' 'curl \"https://x;cat=1;//user:LEAKASSIGN03@host\" -H \"X: keep\"'
+printf '%s\n' 'curl \"https://x/?q=a=1;b=2;//u:pDATAKEEP11@one.example.test\";//u:realDATAKEEP11@two.example.test'
+printf '%s\n' 'curl \"https://x/?q=a=1,b=2;//u:pDATAKEEP12@one.example.test\",//u:realDATAKEEP12@two.example.test'
+printf '%s\n' "curl 'https://x/?q=a=1;b=2;//u:pDATAKEEP13@one.example.test';//u:realDATAKEEP13@two.example.test"
 printf '%s\n' 'echo \"https://x;ls;//user:SYNFIXCOLON10@host; echo KEEPTAIL10\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
@@ -1107,6 +1115,22 @@ grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:**
 grep -Fq 'SYNFIXREAL09' "$line_file" && exit 615
 grep -Fxq 'echo \"https://x;ls;//user:***REDACTED***@host; echo KEEPTAIL10\"' "$line_file" || exit 616
 grep -Fq 'SYNFIXCOLON10' "$line_file" && exit 617
+# Query-data controls stay byte-for-byte; assignment words before any ? leak nothing.
+grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:pDATAKEEP11@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 618
+grep -Fq 'pDATAKEEP11' "$line_file" || exit 619
+grep -Fq 'realDATAKEEP11' "$line_file" && exit 620
+grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:pDATAKEEP12@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 621
+grep -Fq 'pDATAKEEP12' "$line_file" || exit 622
+grep -Fq 'realDATAKEEP12' "$line_file" && exit 623
+grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pDATAKEEP13@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 624
+grep -Fq 'pDATAKEEP13' "$line_file" || exit 625
+grep -Fq 'realDATAKEEP13' "$line_file" && exit 626
+grep -Fxq 'echo \"https://x;a=b;//u:***REDACTED***@host\"' "$line_file" || exit 627
+grep -Fq 'LEAKASSIGN01' "$line_file" && exit 628
+grep -Fxq 'echo \"https://x,k=1;//user:***REDACTED***@host\"' "$line_file" || exit 629
+grep -Fq 'LEAKASSIGN02' "$line_file" && exit 630
+grep -Fxq 'curl \"https://x;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"' "$line_file" || exit 631
+grep -Fq 'LEAKASSIGN03' "$line_file" && exit 632
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
