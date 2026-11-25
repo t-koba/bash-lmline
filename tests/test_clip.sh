@@ -438,6 +438,15 @@ printf '%s\n' 'echo \"https://x/?q=hello;1=1;//user:LEAKDIGIT644@host\"'
 printf "%s\n" "echo \\'https://x/?q=hello;a=1;//user:SQESC649@host\\'"
 printf '%s\n' "curl 'https://x/?q=hello;cat=1;//u:pSQPLAIN651@one.example.test';//u:realSQPLAIN652@two.example.test"
 printf '%s\n' 'echo \"https://x/?q=a=1;b=2;//u:pDQESC654@one.test"'
+# Bare separator authorities in escaped quotes are shell separators; their
+# credentials must be masked even without query data.
+printf '%s\n' 'echo \"https://x/path;//user:BARE77@host\"'
+printf '%s\n' 'echo \"https://x/path,//user:BARE77@host\"'
+printf "%s\n" "echo \\'https://x/path;//user:BARE77@host\\'"
+printf "%s\n" "echo \\'https://x/path,//user:BARE77@host\\'"
+# POSIX single quotes close at the first following quote; backslash is
+# literal inside them, so the separator after 'a\\' is outside quotes.
+printf '%s\n' "echo 'a\\'b;//user:NORM77@host'"
 printf '%s\n' 'echo \"https://x;ls;//user:SYNFIXCOLON10@host; echo KEEPTAIL10\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
@@ -1024,22 +1033,22 @@ grep -Fxq "echo 'q';echo first;//u:***REDACTED***@example.test" "$line_file" || 
 grep -Fxq 'echo "q";echo foo,//user:***REDACTED***@example.test/path' "$line_file" || exit 267
 grep -Fxq 'echo first;//u:***REDACTED***@example.test "tail"' "$line_file" || exit 268
 grep -Fxq 'echo "q";;//***REDACTED***@example.test' "$line_file" || exit 269
-grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE1@host/KEEPE1\" -H \"X: keepHeader\"' "$line_file" || exit 501
-grep -Fxq 'curl \"https://example.test/?q=a,//user:SYNTHESCAPE2@host/KEEPE2\" -H \"X: keepHeader\"' "$line_file" || exit 502
-grep -Fxq '{\"url\":\"https://x/?q=;//user:SYNTHESCAPE3@host/KEEPE3\",\"keep\":\"keepValue\"}' "$line_file" || exit 503
-grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE4@host/KEEPE4;b=;//user:***REDACTED***@host/KEEPE4B\" -H \"X: keepHeader\"' "$line_file" || exit 504
+grep -Fxq 'curl \"https://example.test/?q=a;//user:***REDACTED***@host/KEEPE1\" -H \"X: keepHeader\"' "$line_file" || exit 501
+grep -Fxq 'curl \"https://example.test/?q=a,//user:***REDACTED***@host/KEEPE2\" -H \"X: keepHeader\"' "$line_file" || exit 502
+grep -Fxq '{\"url\":\"https://x/?q=;//user:***REDACTED***@host/KEEPE3\",\"keep\":\"keepValue\"}' "$line_file" || exit 503
+grep -Fxq 'curl \"https://example.test/?q=a;//user:***REDACTED***@host/KEEPE4;b=;//user:***REDACTED***@host/KEEPE4B\" -H \"X: keepHeader\"' "$line_file" || exit 504
 grep -Fxq 'curl \"https://user:***REDACTED***@host/x?q=KEEPREAL\"' "$line_file" || exit 505
 grep -Fq 'SYNTHREAL' "$line_file" && exit 506
 grep -Fxq 'echo \"q\";//user:***REDACTED***@host/KEEPSEP' "$line_file" || exit 507
 grep -Fq 'SYNTHSEP' "$line_file" && exit 508
 grep -Fxq 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"' "$line_file" || exit 509
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 510
-grep -Fxq 'echo a;\"https://x/?q=a;//user:SYNTHBND1@host/KEEPBND1\"' "$line_file" || exit 511
-grep -Fxq 'echo a|\"https://x/?q=a;//user:SYNTHBND2@host/KEEPBND2\"' "$line_file" || exit 512
-grep -Fxq 'echo a&\"https://x/?q=a;//user:SYNTHBND3@host/KEEPBND3\"' "$line_file" || exit 513
-grep -Fxq 'echo a#\"https://x/?q=a;//user:SYNTHBND4@host/KEEPBND4\"' "$line_file" || exit 514
-grep -Fxq 'foo(\"https://x/?q=a;//user:SYNTHBND5@host/KEEPBND5\")' "$line_file" || exit 515
-grep -Fxq 'echo a;\"https://x/?q=a;//user:SYNTHBNDDATA@one\";//user:***REDACTED***@evil' "$line_file" || exit 516
+grep -Fxq 'echo a;\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND1\"' "$line_file" || exit 511
+grep -Fxq 'echo a|\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND2\"' "$line_file" || exit 512
+grep -Fxq 'echo a&\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND3\"' "$line_file" || exit 513
+grep -Fxq 'echo a#\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND4\"' "$line_file" || exit 514
+grep -Fxq 'foo(\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND5\")' "$line_file" || exit 515
+grep -Fxq 'echo a;\"https://x/?q=a;//user:***REDACTED***@one\";//user:***REDACTED***@evil' "$line_file" || exit 516
 grep -Fxq 'echo \"note;//user:***REDACTED***@host; echo \"' "$line_file" || exit 520
 grep -Fxq 'printf %s \"key;//user:***REDACTED***@host; date\"' "$line_file" || exit 521
 grep -Fxq 'echo \"a,b;//user:***REDACTED***@h\"' "$line_file" || exit 522
@@ -1052,9 +1061,9 @@ grep -Fxq 'echo \"x://,//user:***REDACTED***@host\"' "$line_file" || exit 528
 grep -Fxq "echo 'x://;//user:***REDACTED***@host'" "$line_file" || exit 529
 grep -Fxq 'echo \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 530
 grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 531
-grep -Fxq 'echo \"see https://x/?q=a;//user:TOKENPREFIX@host/KEEP\"' "$line_file" || exit 532
-grep -Fxq 'curl \"--url https://x/?q=a;//user:TOKENARG@host/KEEP\"' "$line_file" || exit 533
-grep -Fxq 'echo \"prefix https://x/?q=a,//user:TOKENCOMMA@host/KEEP\"' "$line_file" || exit 534
+grep -Fxq 'echo \"see https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 532
+grep -Fxq 'curl \"--url https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 533
+grep -Fxq 'echo \"prefix https://x/?q=a,//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 534
 grep -Fq 'SYNTHZERO' "$line_file" && exit 535
 grep -Fq 'SYNTHZEROC' "$line_file" && exit 536
 grep -Fq 'SYNTHSQZERO' "$line_file" && exit 537
@@ -1062,8 +1071,8 @@ grep -Fq 'SYNTHBQ' "$line_file" && exit 538
 grep -Fq 'SYNTHBQC' "$line_file" && exit 539
 grep -Fxq 'echo \"https://ok/x\"a;//user:***REDACTED***@host\"' "$line_file" || exit 540
 grep -Fxq 'echo \"https://ok/x\"note;//user:***REDACTED***@host\"' "$line_file" || exit 541
-grep -Fxq 'curl \"https://x/?q=a!;//user:TOKENBANG@host/KEEP\"' "$line_file" || exit 542
-grep -Fxq 'echo \"https://x/?q=a*;//user:TOKENSTAR@host/KEEP\"' "$line_file" || exit 543
+grep -Fxq 'curl \"https://x/?q=a!;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 542
+grep -Fxq 'echo \"https://x/?q=a*;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 543
 grep -Fq 'SYNTHBQA' "$line_file" && exit 544
 grep -Fq 'SYNTHBQN' "$line_file" && exit 545
 grep -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"' "$line_file" || exit 553
@@ -1072,14 +1081,14 @@ grep -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'" "$line_file" || exit
 grep -Fq 'SYNTHSQLOCK' "$line_file" && exit 556
 grep -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"' "$line_file" || exit 557
 grep -Fq 'SYNTHPLAINCOMMA' "$line_file" && exit 558
-grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"' "$line_file" || exit 559
-grep -Fq 'SYNTHMIXCLOSE' "$line_file" || exit 560
-grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"' "$line_file" || exit 561
-grep -Fq 'SYNTHMIXOPEN' "$line_file" || exit 562
-grep -Fxq 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"' "$line_file" || exit 565
-grep -Fq 'SYNTHMIXCLOSE2' "$line_file" || exit 566
-grep -Fxq 'curl "https://x/?q=a,//user:SYNTHMIXCLOSE3@host/KEEP\"' "$line_file" || exit 567
-grep -Fq 'SYNTHMIXCLOSE3' "$line_file" || exit 568
+grep -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 559
+grep -Fq 'SYNTHMIXCLOSE' "$line_file" && exit 560
+grep -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 561
+grep -Fq 'SYNTHMIXOPEN' "$line_file" && exit 562
+grep -Fxq 'curl "https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 565
+grep -Fq 'SYNTHMIXCLOSE2' "$line_file" && exit 566
+grep -Fxq 'curl "https://x/?q=a,//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 567
+grep -Fq 'SYNTHMIXCLOSE3' "$line_file" && exit 568
 # Paired boundary battery: exact preservation or exact redaction, no leak.
 grep -Fxq 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"' "$line_file" || exit 570
 grep -Fq 'SYNBATDQDSEM' "$line_file" || exit 571
@@ -1097,16 +1106,16 @@ grep -Fxq "echo 'https://x/?q=a,//user:SYNBATSQDCOM@host/KEEPSQDCOM'" "$line_fil
 grep -Fq 'SYNBATSQDCOM' "$line_file" || exit 583
 grep -Fxq "echo 'https://ok/x',//user:***REDACTED***@host'" "$line_file" || exit 584
 grep -Fq 'SYNBATSQCLP' "$line_file" && exit 585
-grep -Fxq 'curl \"https://x/?q=a;//user:SYNBATEQDSEM@host/KEEPEQDSEM\"' "$line_file" || exit 586
-grep -Fq 'SYNBATEQDSEM' "$line_file" || exit 587
+grep -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEPEQDSEM\"' "$line_file" || exit 586
+grep -Fq 'SYNBATEQDSEM' "$line_file" && exit 587
 grep -Fxq 'echo \"q\";//user:***REDACTED***@host\"' "$line_file" || exit 588
 grep -Fq 'SYNBATEQDSLP' "$line_file" && exit 589
-grep -Fxq 'curl \"https://x/?q=a,//user:SYNBATEQDCOM@host/KEEPEQDCOM\"' "$line_file" || exit 590
-grep -Fq 'SYNBATEQDCOM' "$line_file" || exit 591
+grep -Fxq 'curl \"https://x/?q=a,//user:***REDACTED***@host/KEEPEQDCOM\"' "$line_file" || exit 590
+grep -Fq 'SYNBATEQDCOM' "$line_file" && exit 591
 grep -Fxq 'echo \"q\",//user:***REDACTED***@host\"' "$line_file" || exit 592
 grep -Fq 'SYNBATEQCLP' "$line_file" && exit 593
-grep -Fxq 'curl "https://x/?q=a;//user:leadSYNBATMIXD@host/KEEPMIXD\"' "$line_file" || exit 594
-grep -Fq 'SYNBATMIXD' "$line_file" || exit 595
+grep -Fxq 'curl "https://x/?q=a;//user:***REDACTED***@host/KEEPMIXD\"' "$line_file" || exit 594
+grep -Fq 'SYNBATMIXD' "$line_file" && exit 595
 grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 596
 grep -Fq 'SYNBATMIXL' "$line_file" && exit 597
 # Exact outputs for the separator leak probes and their data controls.
@@ -1170,6 +1179,15 @@ grep -Fq 'pSQPLAIN651' "$line_file" || exit 652
 grep -Fq 'realSQPLAIN652' "$line_file" && exit 653
 grep -Fxq 'echo \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.test"' "$line_file" || exit 654
 grep -Fq 'DQESC654' "$line_file" && exit 655
+# Bare escaped authorities redact exactly; the credential never appears.
+grep -Fxq 'echo \"https://x/path;//user:***REDACTED***@host\"' "$line_file" || exit 656
+grep -Fxq 'echo \"https://x/path,//user:***REDACTED***@host\"' "$line_file" || exit 657
+grep -Fxq "echo \\'https://x/path;//user:***REDACTED***@host\\'" "$line_file" || exit 658
+grep -Fxq "echo \\'https://x/path,//user:***REDACTED***@host\\'" "$line_file" || exit 659
+grep -Fq 'BARE77' "$line_file" && exit 660
+# POSIX single-quote close redacts the outside authority exactly.
+grep -Fxq "echo 'a\\'b;//user:***REDACTED***@host'" "$line_file" || exit 661
+grep -Fq 'NORM77' "$line_file" && exit 662
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
