@@ -404,6 +404,18 @@ printf '%s\n' 'curl \"https://x/?q=a,//user:SYNBATEQDCOM@host/KEEPEQDCOM\"'
 printf '%s\n' 'echo \"q\",//user:SYNBATEQCLP@host\"'
 printf '%s\n' 'curl "https://x/?q=a;//user:leadSYNBATMIXD@host/KEEPMIXD\"'
 printf '%s\n' 'curl \"https://ok/x\";//user:leadSYNBATMIXL@host\"'
+# Separator leak probes: a bare command word or an empty token must not shield
+# the following authority, while key=value URL data stays byte-for-byte.
+printf '%s\n' 'echo \"https://x;cat;//SYNFIXBARE01@host\"'
+printf '%s\n' 'curl \"https://ok/x;cat;//user:SYNFIXCOLON02@host\" -H \"X: keepHeader\"'
+printf '%s\n' 'echo \"https://x;echo;//SYNFIXBARE03@host\"'
+printf '%s\n' 'echo \"https://x,ls;//user:SYNFIXCOLON04@host\"'
+printf '%s\n' 'echo \"x://;//SYNFIXEMPTY05@host\"'
+printf '%s\n' 'echo \"x://,//SYNFIXEMPTY06@host\"'
+printf '%s\n' 'curl \"https://x/?q=a=1;b=2;//u:pSYNFIXDATA07@one.example.test\";//u:realSYNFIXREAL07@two.example.test'
+printf '%s\n' 'curl \"https://x/?q=a=1,b=2;//u:pSYNFIXDATA08@one.example.test\",//u:realSYNFIXREAL08@two.example.test'
+printf '%s\n' "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:realSYNFIXREAL09@two.example.test"
+printf '%s\n' 'echo \"https://x;ls;//user:SYNFIXCOLON10@host; echo KEEPTAIL10\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
 printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
@@ -1074,6 +1086,27 @@ grep -Fxq 'curl "https://x/?q=a;//user:leadSYNBATMIXD@host/KEEPMIXD\"' "$line_fi
 grep -Fq 'SYNBATMIXD' "$line_file" || exit 595
 grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 596
 grep -Fq 'SYNBATMIXL' "$line_file" && exit 597
+# Exact outputs for the separator leak probes and their data controls.
+grep -Fxq 'echo \"https://x;cat;//***REDACTED***@host\"' "$line_file" || exit 598
+grep -Fq 'SYNFIXBARE01' "$line_file" && exit 599
+grep -Fxq 'curl \"https://ok/x;cat;//user:***REDACTED***@host\" -H \"X: keepHeader\"' "$line_file" || exit 600
+grep -Fq 'SYNFIXCOLON02' "$line_file" && exit 601
+grep -Fxq 'echo \"https://x;echo;//***REDACTED***@host\"' "$line_file" || exit 602
+grep -Fq 'SYNFIXBARE03' "$line_file" && exit 603
+grep -Fxq 'echo \"https://x,ls;//user:***REDACTED***@host\"' "$line_file" || exit 604
+grep -Fq 'SYNFIXCOLON04' "$line_file" && exit 605
+grep -Fxq 'echo \"x://;//***REDACTED***@host\"' "$line_file" || exit 606
+grep -Fq 'SYNFIXEMPTY05' "$line_file" && exit 607
+grep -Fxq 'echo \"x://,//***REDACTED***@host\"' "$line_file" || exit 608
+grep -Fq 'SYNFIXEMPTY06' "$line_file" && exit 609
+grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:pSYNFIXDATA07@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 610
+grep -Fq 'SYNFIXREAL07' "$line_file" && exit 611
+grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:pSYNFIXDATA08@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 612
+grep -Fq 'SYNFIXREAL08' "$line_file" && exit 613
+grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 614
+grep -Fq 'SYNFIXREAL09' "$line_file" && exit 615
+grep -Fxq 'echo \"https://x;ls;//user:***REDACTED***@host; echo KEEPTAIL10\"' "$line_file" || exit 616
+grep -Fq 'SYNFIXCOLON10' "$line_file" && exit 617
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
