@@ -101,6 +101,8 @@ printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMEGAP 2 >err'
 printf '%s\n' 'Authorization: Basic dXNlcjpwYXNz== > out'
 printf '%s\n' 'Authorization: Bearer SYNTHAUTHPAD1==; echo KEEPAUTHPAD1'
 printf '%s\n' 'Authorization: Bearer SYNTHAUTHPAD2== 2>err; echo KEEPAUTHPAD2'
+printf '%s\n' 'Authorization: Bearer SYNTHMIXAUTH1;token=SYNTHMIXAUTH2; echo KEEPMIXAUTH'
+printf '%s\n' 'Authorization: Bearer SYNTHMIXAUTH3,token=SYNTHMIXAUTH4; echo KEEPMIXAUTH2'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -561,6 +563,11 @@ grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPAUTHPAD1' "$line_file"
 grep -Fq 'SYNTHAUTHPAD1' "$line_file" && exit 703
 grep -Fxq 'Authorization: Bearer ***REDACTED*** 2>err; echo KEEPAUTHPAD2' "$line_file" || exit 704
 grep -Fq 'SYNTHAUTHPAD2' "$line_file" && exit 705
+# A keyed chain after an Authorization marker keeps both boundaries.
+grep -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED***; echo KEEPMIXAUTH' "$line_file" || exit 706
+grep -Fq 'SYNTHMIXAUTH2' "$line_file" && exit 707
+grep -Fxq 'Authorization: Bearer ***REDACTED***,token=***REDACTED***; echo KEEPMIXAUTH2' "$line_file" || exit 708
+grep -Fq 'SYNTHMIXAUTH4' "$line_file" && exit 709
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382

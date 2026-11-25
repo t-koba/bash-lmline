@@ -383,6 +383,7 @@ __lmline_redact_clip_text() {
     -e ':lmline_key_chain_mark_loop' \
     -e "s/${key_prefix}([^'\"[:space:];,&|<>]+)([;,|&])([\"']?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)/\1\7;@LMLINE_CHAIN_KEY@\8:\9/Ig" \
     -e 't lmline_key_chain_mark_loop' \
+    -e "s/${key_prefix_url}([^\"'[:space:];,&|<>]+)([;,|&][[:space:]])/\\1'@@LMLINE_URL_REDACTED@@'\\8/Ig" \
     -e "s/(${key_prefix_url})([^[:space:]\"'#&?]+)(\?[A-Za-z_][A-Za-z0-9_-]*=)/\1'@@LMLINE_URL_REDACTED@@'\9/Ig" \
     -e "s/${key_prefix_url}([^[:space:]\"'#&]+)/\1'@@LMLINE_URL_REDACTED@@'/Ig" \
     -e 's/;@LMLINE_CHAIN_KEY@([;,|&]):/\1/g' \
