@@ -381,6 +381,12 @@ printf '%s\n' 'echo \"https://x/?q=a*;//user:TOKENSTAR@host/KEEP\"'
 printf '%s\n' 'echo \"see https://x/?q=a;//user:TOKENPREFIX@host/KEEP\"'
 printf '%s\n' 'curl \"--url https://x/?q=a;//user:TOKENARG@host/KEEP\"'
 printf '%s\n' 'echo \"prefix https://x/?q=a,//user:TOKENCOMMA@host/KEEP\"'
+printf '%s\n' 'curl "https://ok/x";//user:SYNTHPLAINLEAK@host"'
+printf '%s\n' "echo 'https://ok/x';//user:SYNTHSQLOCK@host'"
+printf '%s\n' 'curl "https://ok/x",//user:SYNTHPLAINCOMMA@host"'
+printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"'
+printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"'
+printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
 printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
 printf '%s\n' 'x=1;url=//user:passSemiAssign@example.test/path'
@@ -1007,6 +1013,18 @@ grep -Fxq 'curl \"https://x/?q=a!;//user:TOKENBANG@host/KEEP\"' "$line_file" || 
 grep -Fxq 'echo \"https://x/?q=a*;//user:TOKENSTAR@host/KEEP\"' "$line_file" || exit 543
 grep -Fq 'SYNTHBQA' "$line_file" && exit 544
 grep -Fq 'SYNTHBQN' "$line_file" && exit 545
+grep -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"' "$line_file" || exit 553
+grep -Fq 'SYNTHPLAINLEAK' "$line_file" && exit 554
+grep -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'" "$line_file" || exit 555
+grep -Fq 'SYNTHSQLOCK' "$line_file" && exit 556
+grep -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"' "$line_file" || exit 557
+grep -Fq 'SYNTHPLAINCOMMA' "$line_file" && exit 558
+grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"' "$line_file" || exit 559
+grep -Fq 'SYNTHMIXCLOSE' "$line_file" || exit 560
+grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"' "$line_file" || exit 561
+grep -Fq 'SYNTHMIXOPEN' "$line_file" || exit 562
+grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
+grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
 grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
 grep -q 'Question:' "$line_file" || exit 13
