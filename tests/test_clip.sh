@@ -846,9 +846,9 @@ grep -Fxq 'token=***REDACTED***' "$line_file" || exit 465
 grep -Fq 'defFIX' "$line_file" && exit 475
 grep -Fxq 'token=***REDACTED***; password=***REDACTED***; echo KEEP_TWO' "$line_file" || exit 466
 grep -Fxq 'token=***REDACTED***; password=***REDACTED***; key=***REDACTED***; echo KEEP_MULTI' "$line_file" || exit 467
-grep -Fxq 'token=***REDACTED***;token2=***REDACTED*** echo KEEPDOUBLEFIX' "$line_file" || exit 468
+grep -Fxq 'token=***REDACTED***;token2=***REDACTED***; echo KEEPDOUBLEFIX' "$line_file" || exit 468
 grep -Fq 'SYNTHSEMIKEY' "$line_file" && exit 469
-grep -Fxq 'echo token=***REDACTED***;token2=***REDACTED*** echo KEEPCHAIN' "$line_file" || exit 546
+grep -Fxq 'echo token=***REDACTED***;token2=***REDACTED***; echo KEEPCHAIN' "$line_file" || exit 546
 grep -Fq 'SYNTHCHAIN' "$line_file" && exit 547
 grep -Fxq 'echo token=***REDACTED***' "$line_file" || exit 548
 grep -Fq 'defFIX' "$line_file" && exit 549
