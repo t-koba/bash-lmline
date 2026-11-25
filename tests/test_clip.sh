@@ -97,6 +97,10 @@ printf '%s\n' 'Authorization: SYNTHFDFD123 123>out'
 printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMED123 123>out'
 printf '%s\n' 'Authorization: SYNTHFDGAP 2 >err'
 printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMEGAP 2 >err'
+# Padded base64 values end at the shell operator; the tail must stay visible.
+printf '%s\n' 'Authorization: Basic dXNlcjpwYXNz== > out'
+printf '%s\n' 'Authorization: Bearer SYNTHAUTHPAD1==; echo KEEPAUTHPAD1'
+printf '%s\n' 'Authorization: Bearer SYNTHAUTHPAD2== 2>err; echo KEEPAUTHPAD2'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -550,6 +554,13 @@ grep -Fxq 'Authorization: ***REDACTED*** 2 >err' "$line_file" || exit 419
 grep -Fq 'SYNTHFDGAP' "$line_file" && exit 420
 grep -Fxq 'Authorization: Bearer ***REDACTED*** 2 >err' "$line_file" || exit 421
 grep -Fq 'SYNTHFDSCHEMEGAP' "$line_file" && exit 422
+# A padded value must not swallow the operator or the following words.
+grep -Fxq 'Authorization: Basic ***REDACTED*** > out' "$line_file" || exit 700
+grep -Fq 'dXNlcjpwYXNz==' "$line_file" && exit 701
+grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPAUTHPAD1' "$line_file" || exit 702
+grep -Fq 'SYNTHAUTHPAD1' "$line_file" && exit 703
+grep -Fxq 'Authorization: Bearer ***REDACTED*** 2>err; echo KEEPAUTHPAD2' "$line_file" || exit 704
+grep -Fq 'SYNTHAUTHPAD2' "$line_file" && exit 705
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
