@@ -423,6 +423,12 @@ printf '%s\n' 'curl \"https://x;cat=1;//user:LEAKASSIGN03@host\" -H \"X: keep\"'
 printf '%s\n' 'curl \"https://x/?q=a=1;b=2;//u:pDATAKEEP11@one.example.test\";//u:realDATAKEEP11@two.example.test'
 printf '%s\n' 'curl \"https://x/?q=a=1,b=2;//u:pDATAKEEP12@one.example.test\",//u:realDATAKEEP12@two.example.test'
 printf '%s\n' "curl 'https://x/?q=a=1;b=2;//u:pDATAKEEP13@one.example.test';//u:realDATAKEEP13@two.example.test"
+# Long assignment words in a query stay shell separators; the later authority must be masked.
+printf '%s\n' 'curl \"https://api.example.test/v1?verbose=1;cat=1;//user:LEAKQUERY01@host\" -H \"X: keep\"'
+printf '%s\n' 'echo \"https://x/?q=hello;cat=1;//user:LEAKQUERY02@host\"'
+printf '%s\n' 'echo \"https://x/?q=hello,cmd=1;//user:LEAKQUERY04@host\"'
+# Path matrix segments are not exempt: separators before ? remain shell separators.
+printf '%s\n' 'echo \"https://x/path;v=1;b=2;//user:PATHREDACT03@host\"'
 printf '%s\n' 'echo \"https://x;ls;//user:SYNFIXCOLON10@host; echo KEEPTAIL10\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
@@ -1131,6 +1137,14 @@ grep -Fxq 'echo \"https://x,k=1;//user:***REDACTED***@host\"' "$line_file" || ex
 grep -Fq 'LEAKASSIGN02' "$line_file" && exit 630
 grep -Fxq 'curl \"https://x;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"' "$line_file" || exit 631
 grep -Fq 'LEAKASSIGN03' "$line_file" && exit 632
+grep -Fxq 'curl \"https://api.example.test/v1?verbose=1;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"' "$line_file" || exit 633
+grep -Fq 'LEAKQUERY01' "$line_file" && exit 634
+grep -Fxq 'echo \"https://x/?q=hello;cat=1;//user:***REDACTED***@host\"' "$line_file" || exit 635
+grep -Fq 'LEAKQUERY02' "$line_file" && exit 636
+grep -Fxq 'echo \"https://x/?q=hello,cmd=1;//user:***REDACTED***@host\"' "$line_file" || exit 637
+grep -Fq 'LEAKQUERY04' "$line_file" && exit 638
+grep -Fxq 'echo \"https://x/path;v=1;b=2;//user:***REDACTED***@host\"' "$line_file" || exit 639
+grep -Fq 'PATHREDACT03' "$line_file" && exit 640
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
