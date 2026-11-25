@@ -388,6 +388,22 @@ printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"'
 printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"'
 printf '%s\n' 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"'
 printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN2@host/KEEP"'
+# Paired boundary battery: quoted URL data stays byte-for-byte; the same
+# separator after a closed quote fully redacts its paired token.
+printf '%s\n' 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"'
+printf '%s\n' 'curl "https://ok/x";//user:SYNBATDQDSLP@host"'
+printf '%s\n' 'curl "https://x/?q=a,//user:SYNBATDQDCOM@host/KEEPDQDCOM"'
+printf '%s\n' 'curl "https://ok/x",//user:SYNBATDQDCLP@host"'
+printf '%s\n' "echo 'https://x/?q=a;//user:SYNBATSQDSEM@host/KEEPSQDSEM'"
+printf '%s\n' "echo 'https://ok/x';//user:SYNBATSQLP@host'"
+printf '%s\n' "echo 'https://x/?q=a,//user:SYNBATSQDCOM@host/KEEPSQDCOM'"
+printf '%s\n' "echo 'https://ok/x',//user:SYNBATSQCLP@host'"
+printf '%s\n' 'curl \"https://x/?q=a;//user:SYNBATEQDSEM@host/KEEPEQDSEM\"'
+printf '%s\n' 'echo \"q\";//user:SYNBATEQDSLP@host\"'
+printf '%s\n' 'curl \"https://x/?q=a,//user:SYNBATEQDCOM@host/KEEPEQDCOM\"'
+printf '%s\n' 'echo \"q\",//user:SYNBATEQCLP@host\"'
+printf '%s\n' 'curl "https://x/?q=a;//user:leadSYNBATMIXD@host/KEEPMIXD\"'
+printf '%s\n' 'curl \"https://ok/x\";//user:leadSYNBATMIXL@host\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
 printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
@@ -1029,6 +1045,35 @@ grep -Fxq 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"' "$line_file" 
 grep -Fq 'SYNTHMIXCLOSE2' "$line_file" || exit 566
 grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN2@host/KEEP"' "$line_file" || exit 567
 grep -Fq 'SYNTHMIXOPEN2' "$line_file" || exit 568
+# Paired boundary battery: exact preservation or exact redaction, no leak.
+grep -Fxq 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"' "$line_file" || exit 570
+grep -Fq 'SYNBATDQDSEM' "$line_file" || exit 571
+grep -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"' "$line_file" || exit 572
+grep -Fq 'SYNBATDQDSLP' "$line_file" && exit 573
+grep -Fxq 'curl "https://x/?q=a,//user:SYNBATDQDCOM@host/KEEPDQDCOM"' "$line_file" || exit 574
+grep -Fq 'SYNBATDQDCOM' "$line_file" || exit 575
+grep -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"' "$line_file" || exit 576
+grep -Fq 'SYNBATDQDCLP' "$line_file" && exit 577
+grep -Fxq "echo 'https://x/?q=a;//user:SYNBATSQDSEM@host/KEEPSQDSEM'" "$line_file" || exit 578
+grep -Fq 'SYNBATSQDSEM' "$line_file" || exit 579
+grep -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'" "$line_file" || exit 580
+grep -Fq 'SYNBATSQLP' "$line_file" && exit 581
+grep -Fxq "echo 'https://x/?q=a,//user:SYNBATSQDCOM@host/KEEPSQDCOM'" "$line_file" || exit 582
+grep -Fq 'SYNBATSQDCOM' "$line_file" || exit 583
+grep -Fxq "echo 'https://ok/x',//user:***REDACTED***@host'" "$line_file" || exit 584
+grep -Fq 'SYNBATSQCLP' "$line_file" && exit 585
+grep -Fxq 'curl \"https://x/?q=a;//user:SYNBATEQDSEM@host/KEEPEQDSEM\"' "$line_file" || exit 586
+grep -Fq 'SYNBATEQDSEM' "$line_file" || exit 587
+grep -Fxq 'echo \"q\";//user:***REDACTED***@host\"' "$line_file" || exit 588
+grep -Fq 'SYNBATEQDSLP' "$line_file" && exit 589
+grep -Fxq 'curl \"https://x/?q=a,//user:SYNBATEQDCOM@host/KEEPEQDCOM\"' "$line_file" || exit 590
+grep -Fq 'SYNBATEQDCOM' "$line_file" || exit 591
+grep -Fxq 'echo \"q\",//user:***REDACTED***@host\"' "$line_file" || exit 592
+grep -Fq 'SYNBATEQCLP' "$line_file" && exit 593
+grep -Fxq 'curl "https://x/?q=a;//user:leadSYNBATMIXD@host/KEEPMIXD\"' "$line_file" || exit 594
+grep -Fq 'SYNBATMIXD' "$line_file" || exit 595
+grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 596
+grep -Fq 'SYNBATMIXL' "$line_file" && exit 597
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
