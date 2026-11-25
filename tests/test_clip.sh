@@ -429,6 +429,12 @@ printf '%s\n' 'echo \"https://x/?q=hello;cat=1;//user:LEAKQUERY02@host\"'
 printf '%s\n' 'echo \"https://x/?q=hello,cmd=1;//user:LEAKQUERY04@host\"'
 # Path matrix segments are not exempt: separators before ? remain shell separators.
 printf '%s\n' 'echo \"https://x/path;v=1;b=2;//user:PATHREDACT03@host\"'
+# Escaped single-character and empty assignments are shell separators;
+# credentials after them must be masked even though the key is short.
+printf '%s\n' 'echo \"https://x/?q=hello;a=1;//user:LEAKONE641@host\"'
+printf '%s\n' 'echo \"https://x/?q=hello,b=1;//user:LEAKCOMMA642@host\"'
+printf '%s\n' 'echo \"https://x/?q=hello;=1;//user:LEAKEMPTY643@host\"'
+printf '%s\n' 'echo \"https://x/?q=hello;1=1;//user:LEAKDIGIT644@host\"'
 printf '%s\n' 'echo \"https://x;ls;//user:SYNFIXCOLON10@host; echo KEEPTAIL10\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
@@ -1018,7 +1024,7 @@ grep -Fxq 'echo "q";;//***REDACTED***@example.test' "$line_file" || exit 269
 grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE1@host/KEEPE1\" -H \"X: keepHeader\"' "$line_file" || exit 501
 grep -Fxq 'curl \"https://example.test/?q=a,//user:SYNTHESCAPE2@host/KEEPE2\" -H \"X: keepHeader\"' "$line_file" || exit 502
 grep -Fxq '{\"url\":\"https://x/?q=;//user:SYNTHESCAPE3@host/KEEPE3\",\"keep\":\"keepValue\"}' "$line_file" || exit 503
-grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE4@host/KEEPE4;b=;//user:SYNTHESCAPE4B@host/KEEPE4B\" -H \"X: keepHeader\"' "$line_file" || exit 504
+grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE4@host/KEEPE4;b=;//user:***REDACTED***@host/KEEPE4B\" -H \"X: keepHeader\"' "$line_file" || exit 504
 grep -Fxq 'curl \"https://user:***REDACTED***@host/x?q=KEEPREAL\"' "$line_file" || exit 505
 grep -Fq 'SYNTHREAL' "$line_file" && exit 506
 grep -Fxq 'echo \"q\";//user:***REDACTED***@host/KEEPSEP' "$line_file" || exit 507
@@ -1113,20 +1119,20 @@ grep -Fxq 'echo \"x://;//***REDACTED***@host\"' "$line_file" || exit 606
 grep -Fq 'SYNFIXEMPTY05' "$line_file" && exit 607
 grep -Fxq 'echo \"x://,//***REDACTED***@host\"' "$line_file" || exit 608
 grep -Fq 'SYNFIXEMPTY06' "$line_file" && exit 609
-grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:pSYNFIXDATA07@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 610
+grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 610
 grep -Fq 'SYNFIXREAL07' "$line_file" && exit 611
-grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:pSYNFIXDATA08@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 612
+grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:***REDACTED***@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 612
 grep -Fq 'SYNFIXREAL08' "$line_file" && exit 613
 grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 614
 grep -Fq 'SYNFIXREAL09' "$line_file" && exit 615
 grep -Fxq 'echo \"https://x;ls;//user:***REDACTED***@host; echo KEEPTAIL10\"' "$line_file" || exit 616
 grep -Fq 'SYNFIXCOLON10' "$line_file" && exit 617
 # Query-data controls stay byte-for-byte; assignment words before any ? leak nothing.
-grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:pDATAKEEP11@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 618
-grep -Fq 'pDATAKEEP11' "$line_file" || exit 619
+grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 618
+grep -Fq 'pDATAKEEP11' "$line_file" && exit 619
 grep -Fq 'realDATAKEEP11' "$line_file" && exit 620
-grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:pDATAKEEP12@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 621
-grep -Fq 'pDATAKEEP12' "$line_file" || exit 622
+grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:***REDACTED***@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 621
+grep -Fq 'pDATAKEEP12' "$line_file" && exit 622
 grep -Fq 'realDATAKEEP12' "$line_file" && exit 623
 grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pDATAKEEP13@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 624
 grep -Fq 'pDATAKEEP13' "$line_file" || exit 625
@@ -1145,6 +1151,15 @@ grep -Fxq 'echo \"https://x/?q=hello,cmd=1;//user:***REDACTED***@host\"' "$line_
 grep -Fq 'LEAKQUERY04' "$line_file" && exit 638
 grep -Fxq 'echo \"https://x/path;v=1;b=2;//user:***REDACTED***@host\"' "$line_file" || exit 639
 grep -Fq 'PATHREDACT03' "$line_file" && exit 640
+# Escaped short assignments leak nothing: exact redaction plus token absence.
+grep -Fxq 'echo \"https://x/?q=hello;a=1;//user:***REDACTED***@host\"' "$line_file" || exit 641
+grep -Fq 'LEAKONE641' "$line_file" && exit 642
+grep -Fxq 'echo \"https://x/?q=hello,b=1;//user:***REDACTED***@host\"' "$line_file" || exit 643
+grep -Fq 'LEAKCOMMA642' "$line_file" && exit 644
+grep -Fxq 'echo \"https://x/?q=hello;=1;//user:***REDACTED***@host\"' "$line_file" || exit 645
+grep -Fq 'LEAKEMPTY643' "$line_file" && exit 646
+grep -Fxq 'echo \"https://x/?q=hello;1=1;//user:***REDACTED***@host\"' "$line_file" || exit 647
+grep -Fq 'LEAKDIGIT644' "$line_file" && exit 648
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517

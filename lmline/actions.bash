@@ -266,22 +266,29 @@ __lmline_redact_clip_text() {
   # A late cleanup removes an orphaned bare word between a redaction marker
   # and the next quote; a genuine following argument starts with a quote.
   # A shell operator directly after that quote also ends the orphan word.
-  # A quoted URL token may hold ; or , only inside short key=value data
-  # segments after a ? (query data); before any ? a separator is a shell
-  # separator, and so is a separator with a longer assignment word.
-  # The shield is
-  # non-empty and stops before ;// or ,// so each authority is handled in turn.
-  # Quote wrappers accept zero or more backslashes on either side.
+  # A quoted URL token may hold ; or , only inside actual quotes with no
+  # backslashes: the separator exception needs a real quoted URL query
+  # (after ?) with short key=value data segments; with escaped quotes the
+  # quote is literal shell text, so ; and , are shell separators and only
+  # the non-separator URL-token branch shields a following ;// or ,//.
+  # The shield is non-empty and stops before ;// or ,// so each authority
+  # is handled in turn. Generic rules allow only non-separator tokens with
+  # zero or more backslashes on either side; plain-only rules require zero
+  # backslashes at both ends and allow [;,] data assignments.
   # A keyed value before "; " masks only its value; quoting the temporary
   # marker keeps the terminal bare rule from swallowing the separator.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
-    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]+|[^[:space:]|&#)\\";,?]*[?]([^[:space:]|&#)\\";,]|[;,][^/=[:space:]\\"]?=)+));//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_SEMI@@\7\9"%g' \
-    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\*)'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']+|[^[:space:]|&#)\\\",;'?]*[?]([^[:space:]|&#)\\\",;']|[;,][^/=[:space:]\\\"']?=)+));//([^']*)(\\\\*)'%\\1\\2'\\3@@LMLINE_QUOTED_SEMI@@\\6\7'%g" \
-    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]+|[^[:space:]|&#)\\";,?]*[?]([^[:space:]|&#)\\";,]|[;,][^/=[:space:]\\"]?=)+)),//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_COMMA@@\7\9"%g' \
-    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\*)'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']+|[^[:space:]|&#)\\\",;'?]*[?]([^[:space:]|&#)\\\",;']|[;,][^/=[:space:]\\\"']?=)+)),//([^']*)(\\\\*)'%\\1\\2'\\3@@LMLINE_QUOTED_COMMA@@\\6\7'%g" \
+    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]+));//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_SEMI@@\6\8"%g' \
+    -e 's%(^|[[:space:]=:,({;|&#)])(\\*)"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]+)),//(([^\\"\\]|\\.)*)(\\*)"%\1\2"\3@@LMLINE_QUOTED_COMMA@@\6\8"%g' \
+    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\*)'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']+));//([^']*)(\\\\*)'%\\1\\2'\\3@@LMLINE_QUOTED_SEMI@@\\5\\6'%g" \
+    -e "s%(^|[[:space:]=:,({;|&#)])(\\\\*)'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']+)),//([^']*)(\\\\*)'%\\1\\2'\\3@@LMLINE_QUOTED_COMMA@@\\5\\6'%g" \
+    -e 's%(^|[[:space:]=:,({;|&#)])"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]+|[^[:space:]|&#)\\";,?]*[?]([^[:space:]|&#)\\";,]|[;,][^/[:space:]\\"]*=)+));//(([^\\"\\]|\\.)*)"%\1"\2@@LMLINE_QUOTED_SEMI@@\6"%g' \
+    -e 's%(^|[[:space:]=:,({;|&#)])"(([^"\\]|\\.)*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\";,]+|[^[:space:]|&#)\\";,?]*[?]([^[:space:]|&#)\\";,]|[;,][^/[:space:]\\"]*=)+)),//(([^\\"\\]|\\.)*)"%\1"\2@@LMLINE_QUOTED_COMMA@@\6"%g' \
+    -e "s%(^|[[:space:]=:,({;|&#)])'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']+|[^[:space:]|&#)\\\",;'?]*[?]([^[:space:]|&#)\\\",;']|[;,][^/[:space:]\\\"']*=)+));//([^']*)'%\\1'\\2@@LMLINE_QUOTED_SEMI@@\\5'%g" \
+    -e "s%(^|[[:space:]=:,({;|&#)])'([^']*[A-Za-z][A-Za-z0-9+.-]*://([^[:space:]|&#)\\\",;']+|[^[:space:]|&#)\\\",;'?]*[?]([^[:space:]|&#)\\\",;']|[;,][^/[:space:]\\\"']*=)+)),//([^']*)'%\\1'\\2@@LMLINE_QUOTED_COMMA@@\\5'%g" \
     -e 't lmline_quote_sep_protect' \
     -e 'h' \
     -e ':lmline_url_sep_norm1' \
