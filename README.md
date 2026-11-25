@@ -1016,6 +1016,7 @@ untrusted pasted text. Redaction masks these patterns:
 
 ```text
 VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments (spaces around =/: allowed)
+Adjacent keyed assignments keep `;` and `,` boundaries even when the keys are quoted
 Authorization: <scheme> <value> headers, any scheme or bare value (case-insensitive)
 Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
