@@ -248,7 +248,7 @@ __lmline_redact_clip_text() {
   auth_scheme_sq="('[A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)"
   key_word='(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)'
   key_name="(${key_word}[A-Za-z0-9_-]*|[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)"
-  key_prefix="((^|[^A-Za-z0-9_/?@#&=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
+  key_prefix="((^|[^A-Za-z0-9_/?@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   key_prefix_url="(([?&/@#=;,])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   auth_prefix_escaped_dq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*\")"
   auth_prefix_escaped_sq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*')"
@@ -275,6 +275,7 @@ __lmline_redact_clip_text() {
   # is handled in turn. Plain-only rules require zero backslashes at both
   # ends and allow [;,] data assignments.
   # A chained key may be quoted, as in JSON-shaped transcript text.
+  # Single & and | boundaries are kept for recognizable chains; opaque tails fail closed.
   # A keyed value before "; " masks only its value; quoting the temporary
   # marker keeps the terminal bare rule from swallowing the separator.
   sed -E \
@@ -380,17 +381,17 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e ':lmline_key_chain_mark_loop' \
-    -e "s/${key_prefix}([^'\"[:space:];,&|<>]+)([;,])([\"']?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)/\1\7;@LMLINE_CHAIN_KEY@\8:\9/Ig" \
+    -e "s/${key_prefix}([^'\"[:space:];,&|<>]+)([;,|&])([\"']?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)/\1\7;@LMLINE_CHAIN_KEY@\8:\9/Ig" \
     -e 't lmline_key_chain_mark_loop' \
     -e "s/(${key_prefix_url})([^[:space:]\"'#&?]+)(\?[A-Za-z_][A-Za-z0-9_-]*=)/\1'@@LMLINE_URL_REDACTED@@'\9/Ig" \
     -e "s/${key_prefix_url}([^[:space:]\"'#&]+)/\1'@@LMLINE_URL_REDACTED@@'/Ig" \
-    -e 's/;@LMLINE_CHAIN_KEY@([;,]):/\1/g' \
+    -e 's/;@LMLINE_CHAIN_KEY@([;,|&]):/\1/g' \
     -e ':lmline_key_chain_loop' \
-    -e "s/${key_prefix}([^'\"[:space:];,&|<>]+)([;,])([\"']?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)/\1'@@LMLINE_URL_REDACTED@@'\8\9/Ig" \
+    -e "s/${key_prefix}([^'\"[:space:];,&|<>]+)([;,|&])([\"']?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)/\1'@@LMLINE_URL_REDACTED@@'\8\9/Ig" \
     -e 't lmline_key_chain_loop' \
     -e ':lmline_key_sep_loop' \
-    -e "s/${key_prefix}([^\"'[:space:];,&|<>]+)([;,][[:space:]])/\1'@@LMLINE_URL_REDACTED@@'\8/Ig" \
-    -e "s/${key_prefix}([^\"'[:space:];,&|<>]+)([\"\'])([;,][[:space:]])/\1'@@LMLINE_URL_REDACTED@@'\8\9/Ig" \
+    -e "s/${key_prefix}([^\"'[:space:];,&|<>]+)([;,|&][[:space:]])/\1'@@LMLINE_URL_REDACTED@@'\8/Ig" \
+    -e "s/${key_prefix}([^\"'[:space:];,&|<>]+)([\"\'])([;,|&][[:space:]])/\1'@@LMLINE_URL_REDACTED@@'\8\9/Ig" \
     -e 't lmline_key_sep_loop' \
     -e "s/${key_prefix}[^\"'[:space:]][^[:space:]]*/\1@@LMLINE_REDACTED@@/Ig" \
     -e 's/(sk-[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/\1@@LMLINE_REDACTED@@/g' \

@@ -237,6 +237,10 @@ printf '%s\n' 'token = SYNTHSPACE1;token2 = SYNTHSPACE2; echo KEEPSPACEKEY'
 printf '%s\n' '"token":SYNTHDQKEY1;"password":SYNTHDQKEY2; echo KEEPDQKEY'
 printf '%s\n' "'test_key':SYNTHSQKEY1,'api_key':SYNTHSQKEY2, echo KEEPSQKEY"
 printf '%s\n' '"token":SYNTHDQOPAQUE;defTAILQUOTED; echo KEEPQUOTEDOPAQUE'
+printf '%s\n' 'token=SYNTHAMPKEY1&token2=SYNTHAMPKEY2& echo KEEPAMPKEY'
+printf '%s\n' 'token=SYNTHPIPEKEY1|token2=SYNTHPIPEKEY2; echo KEEPPIPEKEY'
+printf '%s\n' 'token=SYNTHAMPOPAQUE&defTAILAMP& echo KEEPAMPOPAQUE'
+printf '%s\n' 'token=SYNTHPIPEOPAQUE|defTAILPIPE; echo KEEPPIPEOPAQUE'
 printf '%s\n' 'token=SYNTHCOMMAOPAQUE,defTAILCOMMA, echo KEEPCOMMAOPAQUE'
 printf '%s\n' 'token=SYNTHOPAQUE;defTAILCHAIN; echo KEEPOPAQUE'
 printf '%s\n' 'token=ghp_SYNTHSEMI; echo KEEPKEYSemiFIX'
@@ -871,6 +875,14 @@ grep -Fxq 'token = ***REDACTED***;token2 = ***REDACTED***; echo KEEPSPACEKEY' "$
 grep -Fq 'SYNTHSPACE1' "$line_file" && exit 674
 grep -Fxq 'token=***REDACTED*** echo KEEPCOMMAOPAQUE' "$line_file" || exit 675
 grep -Fq 'defTAILCOMMA' "$line_file" && exit 676
+grep -Fxq 'token=***REDACTED***&token2=***REDACTED***& echo KEEPAMPKEY' "$line_file" || exit 683
+grep -Fq 'SYNTHAMPKEY' "$line_file" && exit 684
+grep -Fxq 'token=***REDACTED***|token2=***REDACTED***; echo KEEPPIPEKEY' "$line_file" || exit 685
+grep -Fq 'SYNTHPIPEKEY' "$line_file" && exit 686
+grep -Fxq 'token=***REDACTED*** echo KEEPAMPOPAQUE' "$line_file" || exit 687
+grep -Fq 'defTAILAMP' "$line_file" && exit 688
+grep -Fxq 'token=***REDACTED*** echo KEEPPIPEOPAQUE' "$line_file" || exit 689
+grep -Fq 'defTAILPIPE' "$line_file" && exit 690
 grep -Fxq '"token":***REDACTED***;"password":***REDACTED***; echo KEEPDQKEY' "$line_file" || exit 677
 grep -Fq 'SYNTHDQKEY' "$line_file" && exit 678
 grep -Fxq "'test_key':***REDACTED***,'api_key':***REDACTED***, echo KEEPSQKEY" "$line_file" || exit 679
