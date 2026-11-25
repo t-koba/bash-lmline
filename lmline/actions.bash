@@ -266,11 +266,12 @@ __lmline_redact_clip_text() {
   # A late cleanup removes an orphaned bare word between a redaction marker
   # and the next quote; a genuine following argument starts with a quote.
   # A shell operator directly after that quote also ends the orphan word.
-  # A quoted URL token may hold ; or , only inside actual quotes with no
+  # A quoted URL token may hold ; or , only inside real quotes with zero
   # backslashes: the separator exception needs a real quoted URL query
-  # (after ?) with short key=value data segments; with escaped quotes the
-  # quote is literal shell text, so ; and , are shell separators and only
-  # the non-separator URL-token branch shields a following ;// or ,//.
+  # (after ?) with [;,][^/...]*= data segments as URL data; with
+  # backslash-escaped quotes the quote is literal shell text, so ; and ,
+  # are shell separators and only the non-separator URL-token branch shields
+  # a following ;// or ,//.
   # The shield is non-empty and stops before ;// or ,// so each authority
   # is handled in turn. Generic rules allow only non-separator tokens with
   # zero or more backslashes on either side; plain-only rules require zero
@@ -292,7 +293,7 @@ __lmline_redact_clip_text() {
     -e 't lmline_quote_sep_protect' \
     -e 'h' \
     -e ':lmline_url_sep_norm1' \
-    -e "s/'[^']*'|\"([^\"\\\\]|\\\\.)*\"//g" \
+    -e "s/(^|[^\\\\])'([^'\\\\]|\\\\.)*'|\"([^\"\\\\]|\\\\.)*\"/\\1/g" \
     -e 't lmline_url_sep_norm1' \
     -e "s#(^|.)([;,])//([^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\\1\\2//\\3@@LMLINE_REDACTED@@@#g" \
     -e 't lmline_url_sep_apply1' \
@@ -304,7 +305,7 @@ __lmline_redact_clip_text() {
     -e ':lmline_url_sep_done1' \
     -e 'h' \
     -e ':lmline_url_sep_norm2' \
-    -e "s/'[^']*'|\"([^\"\\\\]|\\\\.)*\"//g" \
+    -e "s/(^|[^\\\\])'([^'\\\\]|\\\\.)*'|\"([^\"\\\\]|\\\\.)*\"/\\1/g" \
     -e 't lmline_url_sep_norm2' \
     -e "s#(^|.)([;,])//([^:/?#@[:space:]]{${userinfo_min},})@#\\1\\2//@@LMLINE_REDACTED@@@#g" \
     -e 't lmline_url_sep_apply2' \

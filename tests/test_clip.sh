@@ -435,6 +435,8 @@ printf '%s\n' 'echo \"https://x/?q=hello;a=1;//user:LEAKONE641@host\"'
 printf '%s\n' 'echo \"https://x/?q=hello,b=1;//user:LEAKCOMMA642@host\"'
 printf '%s\n' 'echo \"https://x/?q=hello;=1;//user:LEAKEMPTY643@host\"'
 printf '%s\n' 'echo \"https://x/?q=hello;1=1;//user:LEAKDIGIT644@host\"'
+printf "%s\n" "echo \\'https://x/?q=hello;a=1;//user:SQESC649@host\\'"
+printf '%s\n' "curl 'https://x/?q=hello;cat=1;//u:pSQPLAIN651@one.example.test';//u:realSQPLAIN652@two.example.test"
 printf '%s\n' 'echo \"https://x;ls;//user:SYNFIXCOLON10@host; echo KEEPTAIL10\"'
 printf '%s\n' 'echo "note;//user:SYNTHPLAIN142@host"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
@@ -1160,6 +1162,11 @@ grep -Fxq 'echo \"https://x/?q=hello;=1;//user:***REDACTED***@host\"' "$line_fil
 grep -Fq 'LEAKEMPTY643' "$line_file" && exit 646
 grep -Fxq 'echo \"https://x/?q=hello;1=1;//user:***REDACTED***@host\"' "$line_file" || exit 647
 grep -Fq 'LEAKDIGIT644' "$line_file" && exit 648
+grep -Fxq "echo \\'https://x/?q=hello;a=1;//user:***REDACTED***@host\\'" "$line_file" || exit 649
+grep -Fq 'SQESC649' "$line_file" && exit 650
+grep -Fxq "curl 'https://x/?q=hello;cat=1;//u:pSQPLAIN651@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 651
+grep -Fq 'pSQPLAIN651' "$line_file" || exit 652
+grep -Fq 'realSQPLAIN652' "$line_file" && exit 653
 grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
 grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
