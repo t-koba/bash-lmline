@@ -231,6 +231,10 @@ printf '%s\n' 'echo token=abc;defFIX'
 printf '%s\n' 'echo token=abc;def=SYNTHCHAINLEAK; echo KEEPCHAINLEAK'
 printf '%s\n' 'token=SYNTHCHAIN3A;token2=SYNTHCHAIN3B;token3=SYNTHCHAIN3C; echo KEEPCHAIN3'
 printf '%s\n' 'token=SYNTHCOMMA1,token2=SYNTHCOMMA2, echo KEEPCOMMA'
+printf '%s\n' 'token=SYNTHMIX1,token2=SYNTHMIX2;token3=SYNTHMIX3; echo KEEPMIXCHAIN'
+printf '%s\n' 'token=SYNTHMIX4;token2=SYNTHMIX5,token3=SYNTHMIX6, echo KEEPMIXCHAIN2'
+printf '%s\n' 'token = SYNTHSPACE1;token2 = SYNTHSPACE2; echo KEEPSPACEKEY'
+printf '%s\n' 'token=SYNTHCOMMAOPAQUE,defTAILCOMMA, echo KEEPCOMMAOPAQUE'
 printf '%s\n' 'token=SYNTHOPAQUE;defTAILCHAIN; echo KEEPOPAQUE'
 printf '%s\n' 'token=ghp_SYNTHSEMI; echo KEEPKEYSemiFIX'
 printf '%s\n' 'token=SYNTHPIPE | grep KEEPPIPEFIX'
@@ -856,6 +860,14 @@ grep -Fq 'SYNTHCHAIN' "$line_file" && exit 547
 grep -Fxq 'echo token=***REDACTED***' "$line_file" || exit 548
 grep -Fxq 'token=***REDACTED***;token2=***REDACTED***;token3=***REDACTED***; echo KEEPCHAIN3' "$line_file" || exit 663
 grep -Fq 'SYNTHCHAIN3' "$line_file" && exit 664
+grep -Fxq 'token=***REDACTED***,token2=***REDACTED***;token3=***REDACTED***; echo KEEPMIXCHAIN' "$line_file" || exit 669
+grep -Fq 'SYNTHMIX1' "$line_file" && exit 670
+grep -Fxq 'token=***REDACTED***;token2=***REDACTED***,token3=***REDACTED***, echo KEEPMIXCHAIN2' "$line_file" || exit 671
+grep -Fq 'SYNTHMIX4' "$line_file" && exit 672
+grep -Fxq 'token = ***REDACTED***;token2 = ***REDACTED***; echo KEEPSPACEKEY' "$line_file" || exit 673
+grep -Fq 'SYNTHSPACE1' "$line_file" && exit 674
+grep -Fxq 'token=***REDACTED*** echo KEEPCOMMAOPAQUE' "$line_file" || exit 675
+grep -Fq 'defTAILCOMMA' "$line_file" && exit 676
 grep -Fxq 'token=***REDACTED***,token2=***REDACTED***, echo KEEPCOMMA' "$line_file" || exit 665
 grep -Fq 'SYNTHCOMMA' "$line_file" && exit 666
 grep -Fxq 'token=***REDACTED*** echo KEEPOPAQUE' "$line_file" || exit 667
