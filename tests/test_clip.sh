@@ -108,6 +108,7 @@ printf '%s\n' 'Authorization: Bearer SYNTHMIXAUTH5;token=SYNTHMIXAUTH6;token2=SY
 printf '%s\n' 'Authorization: Bearer SYNTHCASEMARK1;token=SYNTHCASEMARK2;@lmline_chain_key@;:token2=SYNTHCASEMARK3; echo KEEPCASEMARK'
 # A pasted internal URL marker must not survive into the prompt.
 printf '%s\n' 'url=https://u:@@LMLINE_URL_REDACTED@@@host/path; echo KEEPPASTEDURLMARK'
+printf '%s\n' 'url=https://u:@@LmLiNe_Url_ReDaCtEd@@@host/path; echo KEEPPASTEDURLMARKCASE'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -580,6 +581,8 @@ grep -Fqi '@lmline_chain_key@' "$line_file" && exit 713
 grep -Fq 'SYNTHCASEMARK' "$line_file" && exit 714
 grep -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARK' "$line_file" || exit 715
 grep -Fq '@@LMLINE_URL_REDACTED@@' "$line_file" && exit 716
+grep -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARKCASE' "$line_file" || exit 717
+grep -Fqi '@@LMLINE_URL_REDACTED@@' "$line_file" && exit 718
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
