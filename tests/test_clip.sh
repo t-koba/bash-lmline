@@ -347,6 +347,27 @@ printf '%s\n' "echo 'q';echo first;//u:pSquoteSemi987654@example.test"
 printf '%s\n' 'echo "q";echo foo,//user:passQuoteComma987654@example.test/path'
 printf '%s\n' 'echo first;//u:pTrailingQuote987654@example.test "tail"'
 printf '%s\n' 'echo "q";;//BAREabcdefghijkl@example.test'
+printf '%s\n' 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE1@host/KEEPE1\" -H \"X: keepHeader\"'
+printf '%s\n' 'curl \"https://example.test/?q=a,//user:SYNTHESCAPE2@host/KEEPE2\" -H \"X: keepHeader\"'
+printf '%s\n' '{\"url\":\"https://x/?q=;//user:SYNTHESCAPE3@host/KEEPE3\",\"keep\":\"keepValue\"}'
+printf '%s\n' 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE4@host/KEEPE4;b=;//user:SYNTHESCAPE4B@host/KEEPE4B\" -H \"X: keepHeader\"'
+printf '%s\n' 'curl \"https://user:SYNTHREAL@host/x?q=KEEPREAL\"'
+printf '%s\n' 'echo \"q\";//user:SYNTHSEP@host/KEEPSEP'
+printf '%s\n' 'echo a;\"https://x/?q=a;//user:SYNTHBND1@host/KEEPBND1\"'
+printf '%s\n' 'echo a|\"https://x/?q=a;//user:SYNTHBND2@host/KEEPBND2\"'
+printf '%s\n' 'echo a&\"https://x/?q=a;//user:SYNTHBND3@host/KEEPBND3\"'
+printf '%s\n' 'echo a#\"https://x/?q=a;//user:SYNTHBND4@host/KEEPBND4\"'
+printf '%s\n' 'foo(\"https://x/?q=a;//user:SYNTHBND5@host/KEEPBND5\")'
+printf '%s\n' 'echo a;\"https://x/?q=a;//user:SYNTHBNDDATA@one\";//user:SYNTHREALBND@evil'
+printf '%s\n' 'echo \"note;//user:SYNTHURLGATE1@host; echo \"'
+printf '%s\n' 'printf %s \"key;//user:SYNTHURLGATE2@host; date\"'
+printf '%s\n' 'echo \"a,b;//user:SYNTHURLGATE3@h\"'
+printf '%s\n' 'curl \"https://ok/x\" \"note;//user:SYNTHARG@host\"'
+printf '%s\n' 'echo \"https://ok/x; echo note;//user:SYNTHLEAK@host; echo \"'
+printf '%s\n' 'curl \"https://ok/x?q=a\" \"a,b;//user:SYNTHARG3@h\"'
+printf '%s\n' 'echo \"x:// ;//user:SYNTHDEGEN@host\"'
+printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
+printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
 printf '%s\n' 'x=1;url=//user:passSemiAssign@example.test/path'
 printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
 printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
@@ -725,7 +746,7 @@ json_count=0
 while IFS= read -r json_line; do
   printf '%s' "$json_line" | jq -e . >/dev/null 2>&1 || exit 68
   ((json_count += 1))
-done < <(grep '^{' "$line_file")
+done < <(grep '^{"' "$line_file")
 ((json_count >= 4)) || exit 67
 grep -Fq 'BearerSuffix1234567890' "$line_file" && exit 69
 grep -Fq 'json_bearer_value' "$line_file" && exit 52
@@ -922,6 +943,30 @@ grep -Fxq "echo 'q';echo first;//u:***REDACTED***@example.test" "$line_file" || 
 grep -Fxq 'echo "q";echo foo,//user:***REDACTED***@example.test/path' "$line_file" || exit 267
 grep -Fxq 'echo first;//u:***REDACTED***@example.test "tail"' "$line_file" || exit 268
 grep -Fxq 'echo "q";;//***REDACTED***@example.test' "$line_file" || exit 269
+grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE1@host/KEEPE1\" -H \"X: keepHeader\"' "$line_file" || exit 501
+grep -Fxq 'curl \"https://example.test/?q=a,//user:SYNTHESCAPE2@host/KEEPE2\" -H \"X: keepHeader\"' "$line_file" || exit 502
+grep -Fxq '{\"url\":\"https://x/?q=;//user:SYNTHESCAPE3@host/KEEPE3\",\"keep\":\"keepValue\"}' "$line_file" || exit 503
+grep -Fxq 'curl \"https://example.test/?q=a;//user:SYNTHESCAPE4@host/KEEPE4;b=;//user:SYNTHESCAPE4B@host/KEEPE4B\" -H \"X: keepHeader\"' "$line_file" || exit 504
+grep -Fxq 'curl \"https://user:***REDACTED***@host/x?q=KEEPREAL\"' "$line_file" || exit 505
+grep -Fq 'SYNTHREAL' "$line_file" && exit 506
+grep -Fxq 'echo \"q\";//user:***REDACTED***@host/KEEPSEP' "$line_file" || exit 507
+grep -Fq 'SYNTHSEP' "$line_file" && exit 508
+grep -Fxq 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"' "$line_file" || exit 509
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 510
+grep -Fxq 'echo a;\"https://x/?q=a;//user:SYNTHBND1@host/KEEPBND1\"' "$line_file" || exit 511
+grep -Fxq 'echo a|\"https://x/?q=a;//user:SYNTHBND2@host/KEEPBND2\"' "$line_file" || exit 512
+grep -Fxq 'echo a&\"https://x/?q=a;//user:SYNTHBND3@host/KEEPBND3\"' "$line_file" || exit 513
+grep -Fxq 'echo a#\"https://x/?q=a;//user:SYNTHBND4@host/KEEPBND4\"' "$line_file" || exit 514
+grep -Fxq 'foo(\"https://x/?q=a;//user:SYNTHBND5@host/KEEPBND5\")' "$line_file" || exit 515
+grep -Fxq 'echo a;\"https://x/?q=a;//user:SYNTHBNDDATA@one\";//user:***REDACTED***@evil' "$line_file" || exit 516
+grep -Fxq 'echo \"note;//user:***REDACTED***@host; echo \"' "$line_file" || exit 520
+grep -Fxq 'printf %s \"key;//user:***REDACTED***@host; date\"' "$line_file" || exit 521
+grep -Fxq 'echo \"a,b;//user:***REDACTED***@h\"' "$line_file" || exit 522
+grep -Fxq 'curl \"https://ok/x\" \"note;//user:***REDACTED***@host\"' "$line_file" || exit 523
+grep -Fxq 'echo \"https://ok/x; echo note;//user:***REDACTED***@host; echo \"' "$line_file" || exit 524
+grep -Fxq 'curl \"https://ok/x?q=a\" \"a,b;//user:***REDACTED***@h\"' "$line_file" || exit 525
+grep -Fxq 'echo \"x:// ;//user:***REDACTED***@host\"' "$line_file" || exit 526
+grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
 grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
 grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
