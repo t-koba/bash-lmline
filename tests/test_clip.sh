@@ -366,6 +366,14 @@ printf '%s\n' 'curl \"https://ok/x\" \"note;//user:SYNTHARG@host\"'
 printf '%s\n' 'echo \"https://ok/x; echo note;//user:SYNTHLEAK@host; echo \"'
 printf '%s\n' 'curl \"https://ok/x?q=a\" \"a,b;//user:SYNTHARG3@h\"'
 printf '%s\n' 'echo \"x:// ;//user:SYNTHDEGEN@host\"'
+printf '%s\n' 'echo \"x://;//user:SYNTHZERO@host\"'
+printf '%s\n' 'echo \"x://,//user:SYNTHZEROC@host\"'
+printf '%s\n' "echo 'x://;//user:SYNTHSQZERO@host'"
+printf '%s\n' 'echo \"https://ok/x\";//user:SYNTHBQ@host\"'
+printf '%s\n' 'curl \"https://ok/x\";//user:SYNTHBQC@host\"'
+printf '%s\n' 'echo \"see https://x/?q=a;//user:TOKENPREFIX@host/KEEP\"'
+printf '%s\n' 'curl \"--url https://x/?q=a;//user:TOKENARG@host/KEEP\"'
+printf '%s\n' 'echo \"prefix https://x/?q=a,//user:TOKENCOMMA@host/KEEP\"'
 printf '%s\n' 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
 printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
 printf '%s\n' 'x=1;url=//user:passSemiAssign@example.test/path'
@@ -966,6 +974,19 @@ grep -Fxq 'curl \"https://ok/x\" \"note;//user:***REDACTED***@host\"' "$line_fil
 grep -Fxq 'echo \"https://ok/x; echo note;//user:***REDACTED***@host; echo \"' "$line_file" || exit 524
 grep -Fxq 'curl \"https://ok/x?q=a\" \"a,b;//user:***REDACTED***@h\"' "$line_file" || exit 525
 grep -Fxq 'echo \"x:// ;//user:***REDACTED***@host\"' "$line_file" || exit 526
+grep -Fxq 'echo \"x://;//user:***REDACTED***@host\"' "$line_file" || exit 527
+grep -Fxq 'echo \"x://,//user:***REDACTED***@host\"' "$line_file" || exit 528
+grep -Fxq "echo 'x://;//user:***REDACTED***@host'" "$line_file" || exit 529
+grep -Fxq 'echo \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 530
+grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 531
+grep -Fxq 'echo \"see https://x/?q=a;//user:TOKENPREFIX@host/KEEP\"' "$line_file" || exit 532
+grep -Fxq 'curl \"--url https://x/?q=a;//user:TOKENARG@host/KEEP\"' "$line_file" || exit 533
+grep -Fxq 'echo \"prefix https://x/?q=a,//user:TOKENCOMMA@host/KEEP\"' "$line_file" || exit 534
+grep -Fq 'SYNTHZERO' "$line_file" && exit 535
+grep -Fq 'SYNTHZEROC' "$line_file" && exit 536
+grep -Fq 'SYNTHSQZERO' "$line_file" && exit 537
+grep -Fq 'SYNTHBQ' "$line_file" && exit 538
+grep -Fq 'SYNTHBQC' "$line_file" && exit 539
 grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
 grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
 grep -q 'Question:' "$line_file" || exit 13
