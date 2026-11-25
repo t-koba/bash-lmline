@@ -387,7 +387,7 @@ printf '%s\n' 'curl "https://ok/x",//user:SYNTHPLAINCOMMA@host"'
 printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXCLOSE@host/KEEP\"'
 printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"'
 printf '%s\n' 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"'
-printf '%s\n' 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN2@host/KEEP"'
+printf '%s\n' 'curl "https://x/?q=a,//user:SYNTHMIXCLOSE3@host/KEEP\"'
 # Paired boundary battery: quoted URL data stays byte-for-byte; the same
 # separator after a closed quote fully redacts its paired token.
 printf '%s\n' 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"'
@@ -1055,8 +1055,8 @@ grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN@host/KEEP\"' "$line_file" |
 grep -Fq 'SYNTHMIXOPEN' "$line_file" || exit 562
 grep -Fxq 'curl "https://x/?q=a;//user:SYNTHMIXCLOSE2@host/KEEP\"' "$line_file" || exit 565
 grep -Fq 'SYNTHMIXCLOSE2' "$line_file" || exit 566
-grep -Fxq 'curl \"https://x/?q=a;//user:SYNTHMIXOPEN2@host/KEEP"' "$line_file" || exit 567
-grep -Fq 'SYNTHMIXOPEN2' "$line_file" || exit 568
+grep -Fxq 'curl "https://x/?q=a,//user:SYNTHMIXCLOSE3@host/KEEP\"' "$line_file" || exit 567
+grep -Fq 'SYNTHMIXCLOSE3' "$line_file" || exit 568
 # Paired boundary battery: exact preservation or exact redaction, no leak.
 grep -Fxq 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"' "$line_file" || exit 570
 grep -Fq 'SYNBATDQDSEM' "$line_file" || exit 571
