@@ -1133,6 +1133,8 @@ candidate=${(q)candidate}"
       command chmod 700 "$lock_dir" 2>/dev/null || true
       # Publish the owner before stale cleanup so a live creator is never displaced.
       { printf '%s\n' "$$" >"$lock_dir/pid"; } 2>/dev/null || true
+      # A private claim survives a momentarily empty pid but not displacement.
+      { printf '%s\n' "$$" >"$lock_dir/claim.$$"; } 2>/dev/null || true
       # A killed reclamation may leave a renamed lock; it never blocks mkdir.
       command rm -rf "$lock_dir".stale.*(N) 2>/dev/null || true
       break
@@ -1192,24 +1194,20 @@ candidate=${(q)candidate}"
     esac
   done
   ((attempt < attempt_limit)) || return 0
-  # A stalled creator can be displaced before its pid is visible. Never
-  # append or clean up after losing the lock to a later owner.
-  owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
-  [[ $owner == "$$" ]] || return 0
+  # A stalled creator can be displaced before its pid is visible. The private
+  # claim proves the active lock is still ours even if pid reads transiently empty.
+  [[ -e "$lock_dir/claim.$$" ]] || return 0
   bytes=$(command wc -c 2>/dev/null <<<"$record") || {
-    owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
-    if [[ $owner == "$$" ]]; then
-      command rm -f "$lock_dir/pid" 2>/dev/null || true
+    if [[ -e "$lock_dir/claim.$$" ]]; then
+      command rm -f "$lock_dir/pid" "$lock_dir/claim.$$" 2>/dev/null || true
       command rmdir "$lock_dir" 2>/dev/null || true
     fi
     return 0
   }
-  owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
-  [[ $owner == "$$" ]] || return 0
+  [[ -e "$lock_dir/claim.$$" ]] || return 0
   command dd "obs=$((bytes))" >>"$LMLINE_HISTORY_DIR/suggestions.log" 2>/dev/null <<<"$record" || true
-  owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
-  if [[ $owner == "$$" ]]; then
-    command rm -f "$lock_dir/pid" 2>/dev/null || true
+  if [[ -e "$lock_dir/claim.$$" ]]; then
+    command rm -f "$lock_dir/pid" "$lock_dir/claim.$$" 2>/dev/null || true
     command rmdir "$lock_dir" 2>/dev/null || true
   fi
 }

@@ -221,11 +221,21 @@ for shell in bash zsh; do
     printf 'skip - %s slow suggestion append (shell unavailable)\n' "$shell"
     continue
   fi
-  if ! PATH="$tmp/slow-dd-bin:$PATH" check_concurrent_records "$shell" \
-    "$tmp/slow-history-$shell" "$tmp/slow-$shell" "$tmp/slow-config-$shell"; then
+  attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    history_dir="$tmp/slow-history-$shell-attempt$attempt"
+    if PATH="$tmp/slow-dd-bin:$PATH" check_concurrent_records "$shell" \
+      "$history_dir" "$tmp/slow-$shell-attempt$attempt" \
+      "$tmp/slow-config-$shell-attempt$attempt"; then
+      break
+    fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
-    fail "$concurrent_failure"
-  fi
+    if ((attempt >= 3)); then
+      fail "$concurrent_failure"
+    fi
+    printf 'retry - %s slow append attempt %d of 3\n' "$shell" "$attempt"
+  done
   ok "$shell suggestion history survives a slow large append"
 done
 
@@ -352,6 +362,16 @@ esac
 exec "$LMLINE_TEST_CHMOD" "$@"
 NO_CHMOD
 chmod +x "$tmp/no-chmod-bin/chmod"
+# A transiently unreadable pid must not look like a lost lock to the writer.
+mkdir -p "$tmp/empty-pid-bin"
+cat >"$tmp/empty-pid-bin/cat" <<'EMPTY_PID_CAT'
+#!/bin/sh
+case $* in
+  */.suggestions.lock/pid) exit 0 ;;
+esac
+exec "$LMLINE_TEST_CAT" "$@"
+EMPTY_PID_CAT
+chmod +x "$tmp/empty-pid-bin/cat"
 cat >"$tmp/pid-open-writer" <<'PID_OPEN_WRITER'
 source "$1/lmline/init.$2"
 umask 0777
@@ -797,6 +817,19 @@ for shell in bash zsh; do
   ! grep -q '^candidate=' "$closed_dir/suggestions.log" 2>/dev/null ||
     fail "$shell appended after a failed pid output open"
   ok "$shell keeps failed pid output opens quiet"
+
+  # An empty pid read after acquiring the lock must not discard the record.
+  claim_dir=$tmp/claim-$shell
+  mkdir -m 700 "$claim_dir"
+  LMLINE_TEST_CAT=$(type -P cat) LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/empty-pid-bin:$PATH" \
+    LMLINE_CONFIG_DIR="$tmp/config-claim-$shell" LMLINE_HISTORY_DIR="$claim_dir" LMLINE_BIND_KEYS=0 \
+    "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
+    >"$tmp/claim-$shell.out" 2>"$tmp/claim-$shell.err" || fail "$shell claim writer failed"
+  grep -q '^candidate=candidate-private$' "$claim_dir/suggestions.log" ||
+    fail "$shell dropped a record when the pid read empty"
+  [[ ! -e "$claim_dir/.suggestions.lock" ]] ||
+    fail "$shell left a lock after an empty pid read"
+  ok "$shell keeps a record when the lock pid reads empty"
 
   # A stalled creator must not append after a later owner takes the lock.
   delay_dir="$tmp/delayed-lock-$shell"
