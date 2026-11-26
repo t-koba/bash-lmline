@@ -743,10 +743,8 @@ grep -Fq 'SYNTHESCADJ1' "$line_file" && exit 801
 grep -Fxq -- 'url=https://x/?"token"=***REDACTED***"***REDACTED***' "$line_file" || exit 802
 grep -Fq 'KEEPESCADJ1' "$line_file" && exit 803
 grep -Fq 'SYNTHESCADJ2' "$line_file" && exit 804
-grep -Fxq -- 'url=https://x/?"token"=***REDACTED***"***REDACTED***' "$line_file" || exit 805
 grep -Fq 'KEEPESCADJ2' "$line_file" && exit 806
 grep -Fq 'SYNTHESCADJ3' "$line_file" && exit 807
-grep -Fxq -- 'url=https://x/?"token"=***REDACTED***"***REDACTED***' "$line_file" || exit 808
 grep -Fq 'KEEPESCADJ3' "$line_file" && exit 809
 grep -Fq 'SYNTHESCADJ4' "$line_file" && exit 810
 grep -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***" "$line_file" || exit 811
