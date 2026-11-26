@@ -170,6 +170,11 @@ printf '%s\n' 'url=https://x/?token=\\"a\\"\\"SYNTHADJPLAIN1\\"&y=1; echo KEEPAD
 printf "%s\n" "url=https://x/?token=\\\\'a\\\\'\\\\'SYNTHADJPLAIN2\\\\'&y=2; echo KEEPADJPLAIN2"
 printf '%s\n' 'url=https://x/?token=\\"a&b\\"&y=3; echo KEEPADJPLAIN3'
 printf '%s\n' 'url=https://x/?token=\\"a\\"&other_token=\\"b\\"&y=4; echo KEEPADJPLAIN4'
+# Doubled credential-key separators must still mask the quoted value.
+printf '%s\n' 'url=https://x/?token:="SYNTHDOUBLE1"'
+printf '%s\n' 'url=https://x/?token:="SYNTHDOUBLE2"&y=1; echo KEEPTAIL'
+printf "%s\n" "url=https://x/?token=='SYNTHDOUBLE3'"
+printf '%s\n' 'url=https://x/?api_key::"SYNTHDOUBLE4"&y=2; echo KEEPDOUBLE4'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -744,6 +749,14 @@ grep -Fq 'SYNTHADJPLAIN3' "$line_file" && exit 854
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPADJPLAIN3' "$line_file" || exit 855
 grep -Fq 'SYNTHADJPLAIN4' "$line_file" && exit 856
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&other_token="***REDACTED***"&y=4; echo KEEPADJPLAIN4' "$line_file" || exit 857
+grep -Fq 'SYNTHDOUBLE1' "$line_file" && exit 860
+grep -Fxq -- 'url=https://x/?token:"***REDACTED***"' "$line_file" || exit 861
+grep -Fq 'SYNTHDOUBLE2' "$line_file" && exit 862
+grep -Fxq -- 'url=https://x/?token:"***REDACTED***"&y=1; echo KEEPTAIL' "$line_file" || exit 863
+grep -Fq 'SYNTHDOUBLE3' "$line_file" && exit 864
+grep -Fxq -- "url=https://x/?token='***REDACTED***'" "$line_file" || exit 865
+grep -Fq 'SYNTHDOUBLE4' "$line_file" && exit 866
+grep -Fxq -- 'url=https://x/?api_key:"***REDACTED***"&y=2; echo KEEPDOUBLE4' "$line_file" || exit 867
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
