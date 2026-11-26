@@ -48,6 +48,13 @@ printf '%s\n' 'authorization: bearer lowercaseBearerTokenValue1234567890'
 printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
 printf '%s\n' 'TOKEN=*starredSecretValue*'
 printf '%s\n' 'Authorization: Bearer @secretAtValue123'
+printf '%s\n' 'Authorization: my_scheme: SECRETZZ9; echo TAILZZ9'
+printf '%s\n' 'Authorization: 2Scheme: SECRETZZ10; echo TAILZZ10'
+printf '%s\n' 'Authorization: x~y: SECRETZZ11; echo TAILZZ11'
+printf '%s\n' 'Authorization: my_scheme=\"SYNTHE12\"; echo TAILZZ12'
+printf '%s\n' 'Authorization: 2Scheme=\"SYNTHE13\"; echo TAILZZ13'
+printf '%s\n' 'Authorization: my_scheme \"SYNTHSP2\"; echo TAILZZSP2'
+printf '%s\n' 'Authorization: 2Scheme \"SYNTHSP3\"; echo TAILZZSP3'
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
@@ -1298,6 +1305,20 @@ grep -Fxq 'curl -H "Authorization: ***REDACTED***" "payload903" https://x; echo 
 grep -Fq SYNTHARG903 "$line_file" && exit 1028
 grep -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' '"'"'payload904'"'"' https://x; echo KEEPARGTAIL4' "$line_file" || exit 1025
 grep -Fq SYNTHARG904 "$line_file" && exit 1029
+grep -Fxq 'Authorization: ***REDACTED***; echo TAILZZ9' "$line_file" || exit 9301
+grep -Fq SECRETZZ9 "$line_file" && exit 9302
+grep -Fxq 'Authorization: ***REDACTED***; echo TAILZZ10' "$line_file" || exit 9303
+grep -Fq SECRETZZ10 "$line_file" && exit 9304
+grep -Fxq 'Authorization: ***REDACTED***; echo TAILZZ11' "$line_file" || exit 9305
+grep -Fq SECRETZZ11 "$line_file" && exit 9306
+grep -Fxq 'Authorization: my_scheme=\"***REDACTED***\"; echo TAILZZ12' "$line_file" || exit 9307
+grep -Fq SYNTHE12 "$line_file" && exit 9308
+grep -Fxq 'Authorization: 2Scheme=\"***REDACTED***\"; echo TAILZZ13' "$line_file" || exit 9309
+grep -Fq SYNTHE13 "$line_file" && exit 9310
+grep -Fxq 'Authorization: my_scheme \"***REDACTED***\"; echo TAILZZSP2' "$line_file" || exit 9311
+grep -Fq SYNTHSP2 "$line_file" && exit 9312
+grep -Fxq 'Authorization: 2Scheme \"***REDACTED***\"; echo TAILZZSP3' "$line_file" || exit 9313
+grep -Fq SYNTHSP3 "$line_file" && exit 9314
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2171,7 +2192,7 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTE
 
 # Mutation check: removing all generalized scheme rules must leak the custom
 # headers while leaving the URL realm and Digest controls unchanged.
-generalized_rule='${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)'
+generalized_rule='${auth_prefix}(${auth_scheme_token}+)([:=]+)'
 [[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 4 ]] || fail "expected four generalized scheme rules"
 grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
 scheme_mutation_fixtures=(
@@ -2221,7 +2242,7 @@ for mutation_index in 0 1 2 3; do
 done
 
 bare_mixed_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)['\"]([^[:space:];,&|\\\\]|\\\\.)*/\1\2/Ig" \
+    -e "s/(^|[[:space:]])(Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)['\"]([^[:space:];,&|\\\\]|\\\\.)*/\1\2/Ig" \
 RULE
 )
 
@@ -2241,11 +2262,11 @@ A="$staged_tail_rule" awk 'BEGIN{a=ENVIRON["A"]} { while ((i=index($0,a))) $0=su
 # Mutation check: removing the two mixed-quote residue rules must leak both
 # credentials, while the shipped redactor masks them.
 mixed_dq_rule=$(cat <<'RULE'
-    -e "s/(\"Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\4/Ig" \
+    -e "s/(\"Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\4/Ig" \
 RULE
 )
 mixed_sq_rule=$(cat <<'RULE'
-    -e "s/('Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\3/Ig" \
+    -e "s/('Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\3/Ig" \
 RULE
 )
 [[ $(grep -cF "$mixed_dq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed double-quote residue rule"
@@ -2287,11 +2308,11 @@ done
 
 # Mutation check: the terminal quoted-Authorization tail rules must stop at shell separators.
 tail_rule1=$(cat <<'RULE'
-    -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
 RULE
 )
 tail_rule2=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 for rule in "$tail_rule1" "$tail_rule2"; do
@@ -2364,11 +2385,11 @@ done
 # Mutation check: restoring the loose line-wide guard together with removing the
 # shield resurrects both fail-open inputs; the shipped guard masks both.
 loose_rule1=$(cat <<'RULE'
-    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
 RULE
 )
 loose_rule2=$(cat <<'RULE'
-    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 terminal_rule_line1=$(grep -nF "$tail_rule1" "$cfg_tmp/actions-no-shield.bash" | cut -d: -f1)
@@ -2408,7 +2429,7 @@ scheme_space_rule=$(cat <<'RULE'
 RULE
 )
 scheme_space_generic_rule=$(cat <<'RULE'
-    -e "s/${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)[[:space:]]+/\1\2\3/Ig" \
+    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+/\1\2\3/Ig" \
 RULE
 )
 [[ $(grep -cF "$scheme_space_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one scheme-separator whitespace rule"
@@ -2628,5 +2649,35 @@ awk '!(index($0,"##LMLINE_REDACTED##") && index($0,"Authorization:"))' "$repo_di
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-no-auth-shield.bash" 'curl -H "Authorization: Bearer SYNTHGLUE101";echo KEEPGLUE101') || fail "auth shield mutation redaction"
 grep -Fq ';echo KEEPGLUE101' <<<"$mutated" && fail "auth shield mutation dropped the glued tail"
+
+# Narrowing the shared auth-scheme token class back to URI-scheme syntax must
+# reopen every custom-scheme case; the shipped class masks all of them.
+[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 28 ]] || fail "expected twenty-eight shared auth-scheme token uses"
+sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
+  >"$cfg_tmp/actions-uri-scheme-class.bash" || fail "auth-scheme class mutation copy"
+grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-scheme-class.bash" && fail "auth-scheme class mutation did not apply"
+token_fixtures=(
+  'Authorization: my_scheme: SECRETZZ9; echo TAILZZ9'
+  'Authorization: 2Scheme: SECRETZZ10; echo TAILZZ10'
+  'Authorization: x~y: SECRETZZ11; echo TAILZZ11'
+  'Authorization: my_scheme=\"SYNTHE12\"; echo TAILZZ12'
+  'Authorization: 2Scheme \"SYNTHSP3\"; echo TAILZZSP3'
+)
+token_secrets=(SECRETZZ9 SECRETZZ10 SECRETZZ11 SYNTHE12 SYNTHSP3)
+token_expected=(
+  'Authorization: ***REDACTED***; echo TAILZZ9'
+  'Authorization: ***REDACTED***; echo TAILZZ10'
+  'Authorization: ***REDACTED***; echo TAILZZ11'
+  'Authorization: my_scheme=\"***REDACTED***\"; echo TAILZZ12'
+  'Authorization: 2Scheme \"***REDACTED***\"; echo TAILZZSP3'
+)
+for mutation_index in "${!token_fixtures[@]}"; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-uri-scheme-class.bash" "${token_fixtures[$mutation_index]}") || fail "narrowed auth-scheme class redaction $mutation_index"
+  grep -Fq "${token_secrets[$mutation_index]}" <<<"$mutated" || fail "narrowed auth-scheme class $mutation_index did not leak"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${token_fixtures[$mutation_index]}") || fail "shipped auth-scheme class redaction $mutation_index"
+  grep -Fxq "${token_expected[$mutation_index]}" <<<"$shipped" || fail "shipped auth-scheme class $mutation_index did not mask"
+done
 
 ok "clip cli"
