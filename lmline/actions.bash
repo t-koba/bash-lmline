@@ -251,6 +251,7 @@ __lmline_redact_clip_text() {
   key_name="(${key_word}[A-Za-z0-9_-]*|[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)"
   key_prefix="((^|[^A-Za-z0-9_/?@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   key_prefix_url="(([?&/@#=;,])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
+  key_prefix_keep_url="(([?&/@#=;,])\\\\*[\"']?${key_word}[A-Za-z0-9_-]*\\\\*[\"']?[[:space:]]*[=:][[:space:]]*)"
   auth_prefix_escaped_dq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*\")"
   auth_prefix_escaped_sq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*')"
   auth_scheme_optional="${auth_scheme}?"
@@ -283,6 +284,8 @@ __lmline_redact_clip_text() {
   # Escaped-key values are masked before their key quotes are canonicalized,
   # so adjacent escaped segments cannot leak.
   # Adjacent escaped segments are consumed as one value.
+  # An escaped credential value stops at the next credential key, so that
+  # field boundary and its value both survive redaction.
   # Doubled credential-key separators are canonicalized before URL value rules.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
@@ -355,6 +358,8 @@ __lmline_redact_clip_text() {
     -e "s/([?&/@#=;,])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)([[:space:]]*)([:=])([[:space:]]*)([:=])([[:space:]]*)/\1\2\4\5\8/Ig" \
     -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${key_prefix_keep_url}(\\\\+)\"([^\"\\\\]|\\\\.)*(\\\\+)\"([;,|&])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*)/\1\"@@LMLINE_REDACTED@@\"\7\8/Ig" \
+    -e "s/${key_prefix_keep_url}(\\\\+)'([^\'\\\\]|\\\\.)*(\\\\+)'([;,|&])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*)/\1'@@LMLINE_REDACTED@@'\7\8/Ig" \
     -e "s/${key_prefix_url}((\\\\+)\"([^\"\\\\]|\\\\.)*(\\\\+)\")+/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}((\\\\+)'([^'\\\\]|\\\\.)*(\\\\+)')+/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\

@@ -186,6 +186,16 @@ printf '%s\n' 'url=https://x/?Authorization="SYNTHAUTHURL2"&y=1; echo KEEPTAIL'
 printf '%s\n' 'url=https://x/?Authorization=SYNTHAUTHURL3'
 printf '%s\n' 'url=https://x/?Authorization : = SYNTHAUTHURL4'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
+# A credential value with unequal escape depth still leaves the next credential field intact.
+printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
+# Escaped credential keys leave the following credential field intact in both quote families.
+printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPESCQ1\"&password=SYNTHKEEPESCQ2; echo KEEPESCQ'
+printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPSEMI\";password=SYNTHKEEPSEMIV; echo KEEPSEMI'
+printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPCOMMA\",password=SYNTHKEEPCOMMAV; echo KEEPCOMMA'
+printf "%s\n" "url=https://x/?\\'token\\'=\\'SYNTHKEEPESCSQ1\\'&password=SYNTHKEEPESCSQ2; echo KEEPESCSQ"
+# Fresh synthetic secrets in adjacent escaped segments must be consumed fail closed.
+printf '%s\n' 'url=https://x/?\"token\"=\"a\"\"SYNTHADJGUARD1\"&y=1; echo KEEPADJGUARD1'
+printf "%s\n" "url=https://x/?\\'token\\'=\\'a\\'\\'SYNTHADJGUARD2\\'&y=2; echo KEEPADJGUARD2"
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -749,6 +759,24 @@ grep -Fq 'KEEPESCADJ3' "$line_file" && exit 809
 grep -Fq 'SYNTHESCADJ4' "$line_file" && exit 810
 grep -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***" "$line_file" || exit 811
 grep -Fq 'KEEPESCADJ4' "$line_file" && exit 812
+# Chained credential keys keep their field boundaries; adjacent segments stay masked.
+grep -Fq 'SYNTHKEEPUNEQ1' "$line_file" && exit 890
+grep -Fq 'SYNTHKEEPUNEQ2' "$line_file" && exit 891
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"&password="***REDACTED***"&y=2; echo KEEPUNEQ' "$line_file" || exit 892
+grep -Fq 'SYNTHKEEPESCQ1' "$line_file" && exit 893
+grep -Fq 'SYNTHKEEPESCQ2' "$line_file" && exit 894
+grep -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\"&password=***REDACTED***; echo KEEPESCQ" "$line_file" || exit 895
+grep -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\";password=***REDACTED***; echo KEEPSEMI" "$line_file" || exit 905
+grep -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\",password=***REDACTED***; echo KEEPCOMMA" "$line_file" || exit 906
+grep -Fq 'SYNTHKEEPESCSQ1' "$line_file" && exit 896
+grep -Fq 'SYNTHKEEPESCSQ2' "$line_file" && exit 897
+grep -Fxq -- "url=https://x/?'token'='***REDACTED***'&password=***REDACTED***; echo KEEPESCSQ" "$line_file" || exit 898
+grep -Fq 'SYNTHADJGUARD1' "$line_file" && exit 899
+grep -Fq 'KEEPADJGUARD1' "$line_file" && exit 900
+grep -Fxq -- "url=https://x/?\"token\"=***REDACTED***\"***REDACTED***" "$line_file" || exit 901
+grep -Fq 'SYNTHADJGUARD2' "$line_file" && exit 902
+grep -Fq 'KEEPADJGUARD2' "$line_file" && exit 903
+grep -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***" "$line_file" || exit 904
 # A plain key must consume adjacent escaped segments; a second keyed field stays separate.
 grep -Fq 'SYNTHADJPLAIN1' "$line_file" && exit 850
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPADJPLAIN1' "$line_file" || exit 851
@@ -1695,6 +1723,24 @@ quoted_tail_fixtures=(
 for quoted_tail_fixture in "${quoted_tail_fixtures[@]}"; do
   quoted_tail_redacted=$(bash -c 'source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash" "$quoted_tail_fixture") || fail "quoted tail redaction: $quoted_tail_fixture"
   printf '%s\n' "$quoted_tail_redacted" | bash -n || fail "quoted tail redaction is not valid shell text: $quoted_tail_redacted"
+done
+
+# Mutation check: deleting the chained-key rules must break the exact preservation
+# assertions above; the unfixed redactor consumes the following credential field.
+grep -v 'key_prefix_keep_url' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-keep.bash" || fail "redaction mutation copy"
+mutation_fixtures=(
+  'url=https://x/?\"token\"=\"SYNTHKEEPESCQ1\"&password=SYNTHKEEPESCQ2; echo KEEPESCQ'
+  "url=https://x/?\\'token\\'=\\'SYNTHKEEPESCSQ1\\'&password=SYNTHKEEPESCSQ2; echo KEEPESCSQ"
+)
+mutation_expected=(
+  'url=https://x/?"token"="***REDACTED***"&password=***REDACTED***; echo KEEPESCQ'
+  "url=https://x/?'token'='***REDACTED***'&password=***REDACTED***; echo KEEPESCSQ"
+)
+for mutation_index in 0 1; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-keep.bash" "${mutation_fixtures[$mutation_index]}") || fail "mutated redaction $mutation_index"
+  grep -Fxq "${mutation_expected[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index still passes the exact assertion"
+  grep -Fq '&password=' <<<"$mutated" && fail "mutated rule $mutation_index kept the field boundary"
 done
 
 ok "clip cli"
