@@ -362,6 +362,7 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${key_prefix_keep_url}(\\\\+)\"([^\"\\\\]|\\\\.)*(\\\\+)\"([;,|&])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*)/\1\"@@LMLINE_REDACTED@@\"\7\8/Ig" \
+    -e "s/(${key_prefix_url})(\\\\+[\"']|[\"'])(\\\\+[\"']|[\"'])[^[:space:]&,;|]*/\1@@LMLINE_REDACTED@@/Ig" \
     -e "s/${key_prefix_keep_url}(\\\\+)'([^\'\\\\]|\\\\.)*(\\\\+)'([;,|&])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*)/\1'@@LMLINE_REDACTED@@'\7\8/Ig" \
     -e "s/${key_prefix_url}((\\\\+)\"([^\"\\\\]|\\\\.)*(\\\\+)\")+/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}((\\\\+)'([^'\\\\]|\\\\.)*(\\\\+)')+/\1'@@LMLINE_REDACTED@@'/Ig" \

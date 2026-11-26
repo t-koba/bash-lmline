@@ -194,6 +194,8 @@ printf '%s\n' 'url=https://x/?Authorization : = SYNTHAUTHURL4'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
+printf '%s\n' 'url=https://x/?token=\"FRST\"&password=\\"\\"SECNEXT\\"&y=1; echo KEEPESEMPTYDQ'
+printf '%s\n' "url=https://x/?token=\\\\'FRST\\\\'&secret=\\\\'\\\\'SECNEXTE\\\\'&y=2; echo KEEPESEMPTYSQ"
 # Escaped credential keys leave the following credential field intact in both quote families.
 printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPESCQ1\"&password=SYNTHKEEPESCQ2; echo KEEPESCQ'
 printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPSEMI\";password=SYNTHKEEPSEMIV; echo KEEPSEMI'
@@ -768,6 +770,10 @@ grep -Fq 'KEEPESCADJ4' "$line_file" && exit 812
 # Chained credential keys keep their field boundaries; adjacent segments stay masked.
 grep -Fq 'SYNTHKEEPUNEQ1' "$line_file" && exit 890
 grep -Fq 'SYNTHKEEPUNEQ2' "$line_file" && exit 891
+grep -Fq 'SECNEXT' "$line_file" && exit 913
+grep -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPESEMPTYDQ' "$line_file" || exit 914
+grep -Fq 'SECNEXTE' "$line_file" && exit 915
+grep -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPESEMPTYSQ" "$line_file" || exit 916
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&password="***REDACTED***"&y=2; echo KEEPUNEQ' "$line_file" || exit 892
 grep -Fq 'SYNTHKEEPESCQ1' "$line_file" && exit 893
 grep -Fq 'SYNTHKEEPESCQ2' "$line_file" && exit 894
