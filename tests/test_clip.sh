@@ -2000,10 +2000,10 @@ RULE
 [[ $(grep -cF "$mixed_sq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed single-quote residue rule"
 grep -vF -e "$mixed_dq_rule" -e "$mixed_sq_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-mixed-quote.bash" || fail "redaction mutation copy"
 mixed_quote_fixtures=(
-  'curl -H "Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
-  'curl -H '"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo MIRRORTAIL'
-  'curl -H"Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
-  'curl -H'"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo KEEPTAIL'
+  "curl -H \"Authorization: Bearer:abc\\'\\\"'SECRETZZ\\'\"X; echo KEEPTAIL"
+  "curl -H 'Authorization: Bearer:abc\\\"\\'\"SECRETMM\\\"'X; echo MIRRORTAIL"
+  "curl -H\"Authorization: Bearer:abc\\'\\\"'SECRETZZ\\'\"X; echo KEEPTAIL"
+  "curl -H'Authorization: Bearer:abc\\\"\\'\"SECRETMM\\\"'X; echo KEEPTAIL"
 )
 mixed_quote_secrets=(SECRETZZ SECRETMM SECRETZZ SECRETMM)
 for mutation_index in 0 1 2 3; do
@@ -2020,8 +2020,8 @@ done
 [[ $(grep -cF "$bare_mixed_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one bare mixed-quote residue rule"
 grep -vF "$bare_mixed_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-bare-mixed.bash" || fail "redaction mutation copy"
 bare_mixed_fixtures=(
-  'Authorization: Bearer:abc\'"'"'\"'"'"'LEAKMIN987\'"'"'\" -H "X: keep" https://x; echo KEEPTAIL'
-  'Authorization: Bearer:abc\"\'"'"'"LEAKMIRROR988\"\'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL'
+  "Authorization: Bearer:abc\\'\\\"'LEAKMIN987\\'\\\" -H \"X: keep\" https://x; echo KEEPTAIL"
+  "Authorization: Bearer:abc\\\"\\'\"LEAKMIRROR988\\\"\\' -H 'X: keep' https://x; echo KEEPTAIL"
 )
 bare_mixed_secrets=(LEAKMIN987 LEAKMIRROR988)
 for mutation_index in 0 1; do
