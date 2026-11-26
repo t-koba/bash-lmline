@@ -667,6 +667,11 @@ printf '%s\n' 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927'
 printf '%s\n' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928'
 printf '%s\n' 'curl --password SYNTHFLAG929|grep KEEPFLAG929'
 printf '%s\n' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933'
+printf '%s\n' 'curl -H "Authorization: Bearer SYNTHGLUE101";echo KEEPGLUE101'
+printf "%s\\n" "curl -H 'Authorization: Bearer SYNTHGLUE102'&&echo KEEPGLUE102"
+printf '%s\n' 'curl -H "Authorization: Bearer SYNTHGLUE103"&echo KEEPGLUE103'
+printf '%s\n' 'curl -H "Authorization: Bearer SYNTHGLUE104"2>err;echo KEEPGLUE104'
+printf '%s\n' 'curl -H "Authorization: Bearer SYNTHGLUE105"; echo KEEPGLUE105'
 printf '%s\n' 'mysql -uadmin -pSYNTHP941; echo KEEPP941'
 printf '%s\n' 'mysqldump -pSYNTHP942&&echo KEEPP942'
 printf '%s\n' 'bash -p; echo KEEPP943'
@@ -1170,12 +1175,12 @@ grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE' "$line_f
 grep -Fq "'tSECRET" "$line_file" && exit 978
 grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' "$line_file" || exit 979
 grep -Fq 'SECRETADJ' "$line_file" && exit 980
-grep -Fxq 'curl -H "Authorization: ***REDACTED***">err; echo KEEPTAILADJQ' "$line_file" || exit 981
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'>err; echo KEEPTAILADJS" "$line_file" || exit 982
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILADJQ' "$line_file" || exit 981
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'2>err; echo KEEPTAILADJS" "$line_file" || exit 982
 grep -Fq 'SECRETADJPQ' "$line_file" && exit 983
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'>err; echo KEEPTAILADJPQ" "$line_file" || exit 984
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'2>err; echo KEEPTAILADJPQ" "$line_file" || exit 984
 grep -Fq 'SECRETADJSQ' "$line_file" && exit 985
-grep -Fxq 'curl -H "Authorization: ***REDACTED***">err; echo KEEPTAILADJSQ' "$line_file" || exit 986
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILADJSQ' "$line_file" || exit 986
 grep -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$line_file" || exit 990
 grep -Fxq 'curl -H '"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo MIRRORTAIL' "$line_file" || exit 991
 grep -Fq SECRETZZ "$line_file" && exit 992
@@ -1188,8 +1193,8 @@ grep -Fxq 'Authorization: Bearer:***REDACTED*** -H "X: keep" https://x; echo KEE
 grep -Fxq 'Authorization: Bearer:***REDACTED*** -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL' "$line_file" || exit 995
 grep -Fq LEAKMIN987 "$line_file" && exit 996
 grep -Fq LEAKMIRROR988 "$line_file" && exit 997
-grep -Fxq 'curl -H "Authorization: ***REDACTED***">err; echo KEEPTAILCLOSURE1' "$line_file" || exit 1002
-grep -Fxq 'curl -H"Authorization: ***REDACTED***">err; echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE1' "$line_file" || exit 1002
+grep -Fxq 'curl -H"Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAILCLOSURE3' "$line_file" || exit 1004
 grep -Fq SYNTHCLOSURE901 "$line_file" && exit 1005
 grep -Fq SYNTHCLOSURE902 "$line_file" && exit 1006
@@ -1775,6 +1780,16 @@ grep -Fxq 'mysql -p"***REDACTED***" https://x; echo KEEPP945' "$line_file" || ex
 grep -Fq 'SYNTHP945' "$line_file" && exit 9142
 grep -Fxq "mysql -p'***REDACTED***' https://x; echo KEEPP946" "$line_file" || exit 9143
 grep -Fq 'SYNTHP946' "$line_file" && exit 9144
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***";echo KEEPGLUE101' "$line_file" || exit 9145
+grep -Fq 'SYNTHGLUE101' "$line_file" && exit 9146
+grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'&&echo KEEPGLUE102" "$line_file" || exit 9147
+grep -Fq 'SYNTHGLUE102' "$line_file" && exit 9148
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"&echo KEEPGLUE103' "$line_file" || exit 9149
+grep -Fq 'SYNTHGLUE103' "$line_file" && exit 9150
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>err;echo KEEPGLUE104' "$line_file" || exit 9151
+grep -Fq 'SYNTHGLUE104' "$line_file" && exit 9152
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPGLUE105' "$line_file" || exit 9153
+grep -Fq 'SYNTHGLUE105' "$line_file" && exit 9154
 printf 'clip answer\n'
 EOF
 chmod +x "$clip_test_dir/engine"
@@ -2156,11 +2171,11 @@ done
 
 # Mutation check: the malformed-header tail class must stop at shell separators.
 tail_rule1=$(cat <<'RULE'
-    -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>0-9]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
 RULE
 )
 tail_rule2=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>0-9]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 for rule in "$tail_rule1" "$tail_rule2"; do
@@ -2351,5 +2366,12 @@ for mutation_index in 0 1; do
     "$repo_dir/lmline/actions.bash" "${p_fixtures[$mutation_index]}") || fail "shipped attached password redaction $mutation_index"
   grep -Fq "${p_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped attached password rule $mutation_index leaked"
 done
+
+# Without the quoted-header shield, a later terminal Authorization rule eats
+# the closing quote and the glued command.
+awk '!(index($0,"##LMLINE_REDACTED##") && index($0,"Authorization:"))' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-auth-shield.bash" || fail "auth shield mutation removal"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-auth-shield.bash" 'curl -H "Authorization: Bearer SYNTHGLUE101";echo KEEPGLUE101') || fail "auth shield mutation redaction"
+grep -Fq ';echo KEEPGLUE101' <<<"$mutated" && fail "auth shield mutation dropped the glued tail"
 
 ok "clip cli"
