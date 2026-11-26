@@ -72,6 +72,8 @@ printf '%s\n' 'Authorization: my_scheme:"SYNTHSEPAMP1"&Authorization: 2scheme:"S
 printf '%s\n' 'Authorization: my_scheme:"SYNTHSEPSEMI1";Authorization: 2scheme:"SYNTHSEPSEMI2"; echo KEEPSEPSEMI'
 printf '%s\n' 'Authorization: my_scheme:"SYNTHSEPCOMMA1",Authorization: 2scheme:"SYNTHSEPCOMMA2"; echo KEEPSEPCOMMA'
 printf "%s\\n" "Authorization: my_scheme:'SYNTHSEPAMPSQ1'&Authorization: 2scheme:'SYNTHSEPAMPSQ2'; echo KEEPSEPAMPSQ"
+printf '%s\n' 'echo "note Authorization: SYNTHNATQ1 tail"; echo KEEPNATQ1'
+printf "%s\\n" "echo 'note Authorization: SYNTHNATS1 tail'; echo KEEPNATS1"
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
@@ -1430,6 +1432,10 @@ grep -Fq SYNTHSEPCOMMA2 "$line_file" && exit 9441
 grep -Fxq "Authorization: my_scheme:'***REDACTED***'&Authorization: 2scheme:'***REDACTED***'; echo KEEPSEPAMPSQ" "$line_file" || exit 9442
 grep -Fq SYNTHSEPAMPSQ1 "$line_file" && exit 9443
 grep -Fq SYNTHSEPAMPSQ2 "$line_file" && exit 9444
+grep -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1' "$line_file" || exit 9445
+grep -Fq KEEPNATQ1 "$line_file" || exit 9446
+grep -Fxq "echo 'note Authorization: SYNTHNATS1 ***REDACTED***'; echo KEEPNATS1" "$line_file" || exit 9447
+grep -Fq KEEPNATS1 "$line_file" || exit 9448
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2429,7 +2435,10 @@ RULE
 for rule in "$tail_rule1" "$tail_rule2"; do
   [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one malformed-header tail rule"
 done
-grep -vF -e "$tail_rule1" -e "$tail_rule2" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-tail.bash" || fail "malformed-header tail mutation copy"
+natural_tail_rule1=$(grep -F 's/(\"[^\";,&|<>]*Authorization:' "$repo_dir/lmline/actions.bash")
+natural_tail_rule2=$(grep -F "s/('[^';,&|<>]*Authorization:" "$repo_dir/lmline/actions.bash")
+[[ -n $natural_tail_rule1 && -n $natural_tail_rule2 ]] || fail "missing natural-prefix tail rules"
+grep -vF -e "$tail_rule1" -e "$tail_rule2" -e "$natural_tail_rule1" -e "$natural_tail_rule2" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-tail.bash" || fail "malformed-header tail mutation copy"
 tail_fixture='curl -H "Authorization: Bearer: SYNTHQSEP931"; echo KEEPQSEPTAIL31'
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-wide-tail.bash" "$tail_fixture") || fail "mutated tail redaction"
@@ -2531,7 +2540,7 @@ for mutation_index in 0 1 2 3; do
     "$cfg_tmp/actions-suffix-shield.bash" "${suffix_fixtures[$mutation_index]}") || fail "suffix shield mutation redaction $mutation_index"
   grep -Fq "REALSECRET$((941 + mutation_index))" <<<"$mutated" || fail "suffix shield mutation $mutation_index did not leak the credential"
 done
-grep -vF -e "$shield_rule1" -e "$shield_rule2" -e "$shield_rule3" -e "$shield_rule4" \
+grep -vF -e "$shield_rule1" -e "$shield_rule2" -e "$shield_rule3" -e "$shield_rule4" -e "$natural_tail_rule1" -e "$natural_tail_rule2" \
   "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-shield.bash" || fail "marker shield mutation copy"
 second_header_fixtures=(
   'curl -H "Authorization: Bearer: ***REDACTED***" -H "Authorization: Bearer: REALSECRET89"; echo KEEPZZ9'
@@ -2868,7 +2877,7 @@ done
 
 # Narrowing the shared auth-scheme token class back to URI-scheme syntax must
 # reopen every custom-scheme case; the shipped class masks all of them.
-[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 32 ]] || fail "expected thirty-two shared auth-scheme token uses"
+[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 34 ]] || fail "expected thirty-four shared auth-scheme token uses"
 sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
   >"$cfg_tmp/actions-uri-scheme-class.bash" || fail "auth-scheme class mutation copy"
 grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-scheme-class.bash" && fail "auth-scheme class mutation did not apply"
@@ -3038,5 +3047,19 @@ grep -Fq SYNTHSEPAMP1 <<<"$widened_sep" || fail "widened URL rules did not leak 
 shipped_sep=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$repo_dir/lmline/actions.bash" "$sep_fixture") || fail "shipped glued-shell-header redaction"
 grep -Fxq 'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP' <<<"$shipped_sep" || fail "shipped URL rules damaged the glued shell header"
+
+# Mutation check: natural quoted prefixes must not let the fallback eat the command tail.
+dq_rule_line=$(grep -nF 's/(\"[^\";,&|<>]*Authorization:' "$repo_dir/lmline/actions.bash" | cut -d: -f1)
+sq_rule_line=$(grep -nF "s/('[^';,&|<>]*Authorization:" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
+[[ -n $dq_rule_line && -n $sq_rule_line ]] || fail "missing natural quoted-prefix rules"
+awk -v d="$dq_rule_line" -v s="$sq_rule_line" 'NR!=d && NR!=s' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-natural-prefix.bash" || fail "natural-prefix mutation copy"
+natural_fixture='echo "note Authorization: SYNTHNATQ1 tail"; echo KEEPNATQ1'
+broken_tail=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-natural-prefix.bash" "$natural_fixture") || fail "natural-prefix mutation redaction"
+grep -Fq KEEPNATQ1 <<<"$broken_tail" && fail "natural-prefix mutation preserved the command tail"
+shipped_tail=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$repo_dir/lmline/actions.bash" "$natural_fixture") || fail "shipped natural-prefix redaction"
+grep -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1' <<<"$shipped_tail" || fail "shipped natural-prefix rule dropped the command tail"
 
 ok "clip cli"
