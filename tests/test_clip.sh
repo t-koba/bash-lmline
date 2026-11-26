@@ -165,6 +165,11 @@ printf '%s\n' 'url=https://x/?\"token\"=\"a\"\"SYNTHESCADJ1\"&y=1; echo KEEPESCA
 printf '%s\n' 'url=https://x/?\"token\"=\"\"\"SYNTHESCADJ2\"&y=2; echo KEEPESCADJ2'
 printf '%s\n' 'url=https://x/?\"token\"=\"prefix\"\"SYNTHESCADJ3\"&y=3; echo KEEPESCADJ3'
 printf "%s\n" "url=https://x/?\\'token\\'=\\'a\\'\\'SYNTHESCADJ4\\'&y=4; echo KEEPESCADJ4"
+# Plain URL keys: adjacent escaped quoted segments are one value.
+printf '%s\n' 'url=https://x/?token=\\"a\\"\\"SYNTHADJPLAIN1\\"&y=1; echo KEEPADJPLAIN1'
+printf "%s\n" "url=https://x/?token=\\\\'a\\\\'\\\\'SYNTHADJPLAIN2\\\\'&y=2; echo KEEPADJPLAIN2"
+printf '%s\n' 'url=https://x/?token=\\"a&b\\"&y=3; echo KEEPADJPLAIN3'
+printf '%s\n' 'url=https://x/?token=\\"a\\"&other_token=\\"b\\"&y=4; echo KEEPADJPLAIN4'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -730,6 +735,15 @@ grep -Fq 'KEEPESCADJ3' "$line_file" && exit 809
 grep -Fq 'SYNTHESCADJ4' "$line_file" && exit 810
 grep -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***" "$line_file" || exit 811
 grep -Fq 'KEEPESCADJ4' "$line_file" && exit 812
+# A plain key must consume adjacent escaped segments; a second keyed field stays separate.
+grep -Fq 'SYNTHADJPLAIN1' "$line_file" && exit 850
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPADJPLAIN1' "$line_file" || exit 851
+grep -Fq 'SYNTHADJPLAIN2' "$line_file" && exit 852
+grep -Fxq -- "url=https://x/?token='***REDACTED***'&y=2; echo KEEPADJPLAIN2" "$line_file" || exit 853
+grep -Fq 'SYNTHADJPLAIN3' "$line_file" && exit 854
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPADJPLAIN3' "$line_file" || exit 855
+grep -Fq 'SYNTHADJPLAIN4' "$line_file" && exit 856
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"&other_token="***REDACTED***"&y=4; echo KEEPADJPLAIN4' "$line_file" || exit 857
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.

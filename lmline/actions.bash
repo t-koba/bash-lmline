@@ -281,6 +281,7 @@ __lmline_redact_clip_text() {
   # marker keeps the terminal bare rule from swallowing the separator.
   # Escaped-key values are masked before their key quotes are canonicalized,
   # so adjacent escaped segments cannot leak.
+  # Adjacent escaped segments are consumed as one value.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
@@ -350,8 +351,8 @@ __lmline_redact_clip_text() {
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \
-    -e "s/${key_prefix_url}(\\\\+)\"([^\"\\\\]|\\\\[^\"])*(\\\\+)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
-    -e "s/${key_prefix_url}(\\\\+)'([^'\\\\]|\\\\[^'])*(\\\\+)'/\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${key_prefix_url}((\\\\+)\"([^\"\\\\]|\\\\.)*(\\\\+)\")+/\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${key_prefix_url}((\\\\+)'([^'\\\\]|\\\\.)*(\\\\+)')+/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*\\\\?)(\"?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
