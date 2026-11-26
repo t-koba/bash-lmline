@@ -2105,21 +2105,34 @@ clip_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_d
 grep -q 'clipboard provider=fake' <<<"$clip_out" || fail "clip provider output"
 grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
-# Mutation: restricting generic scheme rules to recognized schemes leaks these values.
-[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 13 ]] || fail "expected thirteen generic scheme rules"
-sed 's/${auth_scheme_any}/${auth_scheme_name}/g' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-recognized-esc-quotes.bash" || fail "escaped-quote scheme mutation copy"
-grep -Fq '${auth_scheme_any}' "$cfg_tmp/actions-recognized-esc-quotes.bash" && fail "escaped-quote scheme mutation did not apply"
+# Behavioral checks exercise the shipped redactor only; no source text is rewritten.
+redact_clip_line() {
+  bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "$1"
+}
+expect_exact() {
+  local label=$1 fixture=$2 expected=$3 actual
+  actual=$(redact_clip_line "$fixture") || fail "$label: redaction failed"
+  [[ $actual == "$expected" ]] || fail "$label: got $actual"
+}
+expect_masked() {
+  local label=$1 fixture=$2 secret=$3 tail=$4 actual
+  actual=$(redact_clip_line "$fixture") || fail "$label: redaction failed"
+  grep -Fq "$secret" <<<"$actual" && fail "$label: leaked the credential"
+  grep -Fq "$tail" <<<"$actual" || fail "$label: lost the command tail"
+}
+
+# Escaped quotes after a generic scheme stay masked with their tails intact.
 generic_esc_fixtures=(
   'Authorization: abc=\"SYNTHGESC001\"; echo KEEPGESTAIL1'
   "Authorization: abc=\\'SYNTHGESC002\\'; echo KEEPGESTAIL2"
   "curl -H 'Authorization: abc=\\'SYNTHGESC003\\''; echo KEEPGESTAIL3"
   'curl -H "Authorization: abc=\"SYNTHGESC004\""; echo KEEPGESTAIL4'
 )
-generic_esc_secrets=(SYNTHGESC001 SYNTHGESC002 SYNTHGESC003)
-for mutation_index in 0 1 2; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-recognized-esc-quotes.bash" "${generic_esc_fixtures[$mutation_index]}") || fail "mutated escaped-quote scheme $mutation_index"
-  grep -Fq "${generic_esc_secrets[$mutation_index]}" <<<"$mutated" || fail "recognized-scheme mutation $mutation_index did not leak"
+generic_esc_tails=(KEEPGESTAIL1 KEEPGESTAIL2 KEEPGESTAIL3 KEEPGESTAIL4)
+for case_index in "${!generic_esc_fixtures[@]}"; do
+  expect_masked "escaped generic scheme $case_index" "${generic_esc_fixtures[$case_index]}" \
+    "SYNTHGESC00$((case_index + 1))" "${generic_esc_tails[$case_index]}"
 done
 
 clip_provider_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_dir/engine" "$repo_dir/lmline/lmline" clip --provider fake "原因は？")
@@ -2331,125 +2344,78 @@ for quoted_tail_fixture in "${quoted_tail_fixtures[@]}"; do
   printf '%s\n' "$quoted_tail_redacted" | bash -n || fail "quoted tail redaction is not valid shell text: $quoted_tail_redacted"
 done
 
-# Mutation check: deleting the chained-key rules must break the exact preservation
-# assertions above; the unfixed redactor consumes the following credential field.
-grep -v 'key_prefix_keep_url' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-keep.bash" || fail "redaction mutation copy"
-mutation_fixtures=(
+# Credential fields keep their boundary and the following command tail.
+keep_url_fixtures=(
   'url=https://x/?\"token\"=\"SYNTHKEEPESCQ1\"&password=SYNTHKEEPESCQ2; echo KEEPESCQ'
   "url=https://x/?\\'token\\'=\\'SYNTHKEEPESCSQ1\\'&password=SYNTHKEEPESCSQ2; echo KEEPESCSQ"
 )
-mutation_expected=(
+keep_url_expected=(
   'url=https://x/?"token"="***REDACTED***"&password=***REDACTED***; echo KEEPESCQ'
   "url=https://x/?'token'='***REDACTED***'&password=***REDACTED***; echo KEEPESCSQ"
 )
-for mutation_index in 0 1; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-keep.bash" "${mutation_fixtures[$mutation_index]}") || fail "mutated redaction $mutation_index"
-  grep -Fxq "${mutation_expected[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index still passes the exact assertion"
-  grep -Fq '&password=' <<<"$mutated" && fail "mutated rule $mutation_index kept the field boundary"
+for case_index in "${!keep_url_fixtures[@]}"; do
+  expect_exact "chained key $case_index" "${keep_url_fixtures[$case_index]}" "${keep_url_expected[$case_index]}"
 done
 
-# Mutation check: deleting the per-header UPQ rule must leak the first header.
-grep -vF '(^|[^A-Za-z0-9_])' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-upq.bash" || fail "redaction mutation copy"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-upq.bash" 'Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SECOND"SYNTHUPQ6"; echo KEEPUPQ5') || fail "mutated UPQ redaction"
-grep -Fq 'SYNTHUPQ5' <<<"$mutated" || fail "mutated UPQ rule did not leak the first header"
+# Per-header quoted values are masked without eating the next header.
+per_header_fixture='Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SECOND"SYNTHUPQ6"; echo KEEPUPQ5'
+expect_masked 'per-header quoted value' "$per_header_fixture" SYNTHUPQ5 KEEPUPQ5
 
-# Mutation check: deleting the escaped-open-quote value rule must leak both
-# escaped fixtures while leaving the plain-quoted control intact.
-grep -vF '(([^[:space:];,&|' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-escaped-upq.bash" || fail "redaction mutation copy"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC1'; Authorization: Basic=BBB\\\"SYNTHUPQESC1\\\"; echo KEEPUPQESC1") || fail "mutated escaped UPQ redaction 1"
-grep -Fq 'SYNTHUPQESC1' <<<"$mutated" || fail "mutated escaped rule 1 did not leak the value"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC2'; Authorization: Basic=BBB\\\\\"SYNTHUPQESC2\\\\\"; echo KEEPUPQESC2") || fail "mutated escaped UPQ redaction 2"
-grep -Fq 'SYNTHUPQESC2' <<<"$mutated" || fail "mutated escaped rule 2 did not leak the value"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3") || fail "mutated control redaction"
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' <<<"$mutated" || fail "mutated control fixture changed"
+# Escaped quoted values keep both credentials masked and the plain-quoted control intact.
+escaped_upq_fixtures=(
+  "Authorization: Bearer=AAA'SYNTHUPQESC1'; Authorization: Basic=BBB\\\"SYNTHUPQESC1\\\"; echo KEEPUPQESC1"
+  "Authorization: Bearer=AAA'SYNTHUPQESC2'; Authorization: Basic=BBB\\\\\"SYNTHUPQESC2\\\\\"; echo KEEPUPQESC2"
+)
+escaped_upq_secrets=(SYNTHUPQESC1 SYNTHUPQESC2)
+escaped_upq_tails=(KEEPUPQESC1 KEEPUPQESC2)
+for case_index in "${!escaped_upq_fixtures[@]}"; do
+  expect_masked "escaped quoted value $case_index" "${escaped_upq_fixtures[$case_index]}" \
+    "${escaped_upq_secrets[$case_index]}" "${escaped_upq_tails[$case_index]}"
+done
 
-# Mutation check: removing all generalized scheme rules must leak the custom
-# headers while leaving the URL realm and Digest controls unchanged.
-generalized_rule='${auth_prefix}(${auth_scheme_token}+)([:=]+)'
-[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 8 ]] || fail "expected eight generalized scheme rules"
-grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
-scheme_mutation_fixtures=(
+expect_exact 'plain quoted control' \
+  "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3" \
+  'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3'
+
+# Custom schemes mask their credentials while URL realms and Digest controls stay readable.
+scheme_fixtures=(
   'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
   'Authorization: Custom=ONLY\"SYNTHCUSTM3\"; echo KEEPCUSTOM2'
   'Authorization: X-OAuth2=FIRST\"SYNTHXAUTH1\"; Authorization: X-OAuth2=SECOND\"SYNTHXAUTH2\"; echo KEEPCUSTOM3'
   'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
   'Authorization: Digest realm=\"example.com\", nonce=\"abc123\"; echo KEEPTAIL4'
 )
-scheme_mutation_leaks=(SYNTHCUSTM SYNTHCUSTM3 SYNTHXAUTH)
-scheme_mutation_controls=(
+scheme_secrets=(SYNTHCUSTM SYNTHCUSTM3 SYNTHXAUTH)
+scheme_controls=(
   'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
   'Authorization: Digest ***REDACTED***'
 )
-for mutation_index in 0 1 2; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-any-scheme.bash" "${scheme_mutation_fixtures[$mutation_index]}") || fail "mutated scheme redaction $mutation_index"
-  grep -Fq "${scheme_mutation_leaks[$mutation_index]}" <<<"$mutated" || fail "mutated scheme rule $mutation_index did not leak the custom credential"
+for case_index in 0 1 2; do
+  expect_masked "custom scheme $case_index" "${scheme_fixtures[$case_index]}" \
+    "${scheme_secrets[$case_index]}" "KEEPCUSTOM$((case_index + 1))"
 done
-for mutation_index in 3 4; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-any-scheme.bash" "${scheme_mutation_fixtures[$mutation_index]}") || fail "mutated scheme control redaction $mutation_index"
-  grep -Fxq "${scheme_mutation_controls[$mutation_index - 3]}" <<<"$mutated" || fail "mutated scheme rule changed control $mutation_index"
+for case_index in 3 4; do
+  expect_exact "scheme control $case_index" "${scheme_fixtures[$case_index]}" "${scheme_controls[$case_index - 3]}"
 done
 
-# The same deletion restores all quoted -H tails, while the bare-line
-# escaped-header control still masks.
-[[ $(grep -cF '(([^[:space:];,&|' "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two escaped-open-quote value rules"
-quoted_tail_mutation_fixtures=(
+# Quoted -H tails stay readable after both quoted credentials are masked.
+quoted_tail_fixtures=(
   "curl -H \"Authorization: Bearer=AAA'FIRSTSECRET'; Authorization: Basic=BBB\\\"SECONDSECRET\\\"\" https://x; echo KEEPTAIL"
   "curl -H 'Authorization: Basic=BBB\\\"ONLYSECRET\\\"' -H 'X: keep' https://x; echo KEEPTAIL"
   "curl -H \"Authorization: Bearer=AAA\\\"SINGLESECRET\\\"\" https://x; echo KEEPTAIL"
   'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 )
-quoted_tail_mutation_expected=(
+quoted_tail_expected=(
   'curl -H "Authorization: Bearer=***REDACTED***; Authorization: ***REDACTED***" https://x; echo KEEPTAIL'
   "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://x; echo KEEPTAIL"
   'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL'
   'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE'
 )
-quoted_tail_mutation_secrets=(FIRSTSECRET SECONDSECRET ONLYSECRET SINGLESECRET SYNTHBAREQUOTED4)
-for mutation_index in 0 1 2 3; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-escaped-upq.bash" "${quoted_tail_mutation_fixtures[$mutation_index]}") || fail "mutated quoted tail redaction $mutation_index"
-  grep -Fxq "${quoted_tail_mutation_expected[$mutation_index]}" <<<"$mutated" || fail "mutated rule $mutation_index changed the quoted tail"
-  grep -Fq "${quoted_tail_mutation_secrets[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index leaked a secret"
+for case_index in "${!quoted_tail_fixtures[@]}"; do
+  expect_exact "quoted -H tail $case_index" "${quoted_tail_fixtures[$case_index]}" "${quoted_tail_expected[$case_index]}"
 done
 
-bare_mixed_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)['\"]([^[:space:];,&|\\\\]|\\\\.)*/\1\2/Ig" \
-RULE
-)
-
-interior_quote_alt_dq="|'[^[:space:];,&|\\\"']|\\\"[^[:space:];,&|\\\"']"
-interior_quote_alt_sq="|\\\"[^[:space:];,&|\\\"']|'[^[:space:];,&|\\\"']"
-# The bare-quote alternatives are absent from the escaped-separator Authorization
-# rules; the exact closure fixtures above fail if either alternative is reintroduced.
-[[ $(grep -cF "$interior_quote_alt_dq" "$repo_dir/lmline/actions.bash") == 0 ]] || fail "double-quote interior alternative reintroduced"
-[[ $(grep -cF "$interior_quote_alt_sq" "$repo_dir/lmline/actions.bash") == 0 ]] || fail "single-quote interior alternative reintroduced"
-
-# Removing the staged same-family restriction must drop an adjacent tail.
-staged_tail_rule="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"'])*)*"
-[[ $(grep -cF "$staged_tail_rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two staged tail rules"
-A="$staged_tail_rule" awk 'BEGIN{a=ENVIRON["A"]} { while ((i=index($0,a))) $0=substr($0,1,i-1) substr($0,i+length(a)); print }' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-staged-tail.bash" || fail "staged tail mutation copy"
-
-# Mutation check: removing the two mixed-quote residue rules must leak both
-# credentials, while the shipped redactor masks them.
-mixed_dq_rule=$(cat <<'RULE'
-    -e "s/(\"Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\4/Ig" \
-RULE
-)
-mixed_sq_rule=$(cat <<'RULE'
-    -e "s/('Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\3/Ig" \
-RULE
-)
-[[ $(grep -cF "$mixed_dq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed double-quote residue rule"
-[[ $(grep -cF "$mixed_sq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed single-quote residue rule"
-grep -vF -e "$mixed_dq_rule" -e "$mixed_sq_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-mixed-quote.bash" || fail "redaction mutation copy"
+# Mixed and bare mixed quote residues mask the credential and preserve the rest of the line.
 mixed_quote_fixtures=(
   "curl -H \"Authorization: Bearer:abc\\'\\\"'SECRETZZ\\'\"X; echo KEEPTAIL"
   "curl -H 'Authorization: Bearer:abc\\\"\\'\"SECRETMM\\\"'X; echo MIRRORTAIL"
@@ -2457,59 +2423,28 @@ mixed_quote_fixtures=(
   "curl -H'Authorization: Bearer:abc\\\"\\'\"SECRETMM\\\"'X; echo KEEPTAIL"
 )
 mixed_quote_secrets=(SECRETZZ SECRETMM SECRETZZ SECRETMM)
-for mutation_index in 0 1 2 3; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-mixed-quote.bash" "${mixed_quote_fixtures[$mutation_index]}") || fail "mutated mixed-quote redaction $mutation_index"
-  grep -Fq "${mixed_quote_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated mixed-quote rule $mutation_index did not leak the credential"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${mixed_quote_fixtures[$mutation_index]}") || fail "shipped mixed-quote redaction $mutation_index"
-  grep -Fq "${mixed_quote_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped mixed-quote rule $mutation_index leaked the credential"
+mixed_quote_tails=('X; echo KEEPTAIL' 'X; echo MIRRORTAIL' 'X; echo KEEPTAIL' 'X; echo KEEPTAIL')
+for case_index in "${!mixed_quote_fixtures[@]}"; do
+  expect_masked "mixed quote $case_index" "${mixed_quote_fixtures[$case_index]}" \
+    "${mixed_quote_secrets[$case_index]}" "${mixed_quote_tails[$case_index]}"
 done
-
-# Mutation check: removing the bare-prefix mixed-quote residue rule must
-# leak both new credentials, while the shipped redactor masks them.
-[[ $(grep -cF "$bare_mixed_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one bare mixed-quote residue rule"
-grep -vF "$bare_mixed_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-bare-mixed.bash" || fail "redaction mutation copy"
 bare_mixed_fixtures=(
   "Authorization: Bearer:abc\\'\\\"'LEAKMIN987\\'\\\" -H \"X: keep\" https://x; echo KEEPTAIL"
   "Authorization: Bearer:abc\\\"\\'\"LEAKMIRROR988\\\"\\' -H 'X: keep' https://x; echo KEEPTAIL"
 )
 bare_mixed_secrets=(LEAKMIN987 LEAKMIRROR988)
-for mutation_index in 0 1; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-bare-mixed.bash" "${bare_mixed_fixtures[$mutation_index]}") || fail "mutated bare mixed-quote redaction $mutation_index"
-  grep -Fq "${bare_mixed_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated bare mixed-quote rule $mutation_index did not leak the credential"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${bare_mixed_fixtures[$mutation_index]}") || fail "shipped bare mixed-quote redaction $mutation_index"
-  grep -Fq "${bare_mixed_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped bare mixed-quote rule $mutation_index leaked the credential"
+bare_mixed_tails=('https://x; echo KEEPTAIL' 'https://x; echo KEEPTAIL')
+for case_index in "${!bare_mixed_fixtures[@]}"; do
+  expect_masked "bare mixed quote $case_index" "${bare_mixed_fixtures[$case_index]}" \
+    "${bare_mixed_secrets[$case_index]}" "${bare_mixed_tails[$case_index]}"
 done
 
-# Mutation check: the terminal quoted-Authorization tail rules must stop at shell separators.
-tail_rule1=$(cat <<'RULE'
-    -e "s/(\"[^\"[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
-RULE
-)
-tail_rule2=$(cat <<'RULE'
-    -e "s/('[^'[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
-RULE
-)
-for rule in "$tail_rule1" "$tail_rule2"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one malformed-header tail rule"
-done
-natural_tail_rule1=$(grep -F 's/(\"[^\";,&|<>]*Authorization:' "$repo_dir/lmline/actions.bash")
-natural_tail_rule2=$(grep -F "s/('[^';,&|<>]*Authorization:" "$repo_dir/lmline/actions.bash")
-[[ -n $natural_tail_rule1 && -n $natural_tail_rule2 ]] || fail "missing natural-prefix tail rules"
-grep -vF -e "$tail_rule1" -e "$tail_rule2" -e "$natural_tail_rule1" -e "$natural_tail_rule2" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-tail.bash" || fail "malformed-header tail mutation copy"
-tail_fixture='curl -H "Authorization: Bearer: SYNTHQSEP931"; echo KEEPQSEPTAIL31'
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-wide-tail.bash" "$tail_fixture") || fail "mutated tail redaction"
-grep -Fq SYNTHQSEP931 <<<"$mutated" || fail "mutated tail rule did not leak the credential"
-shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$tail_fixture") || fail "shipped tail redaction"
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL31' <<<"$shipped" || fail "shipped tail rule lost the separator"
+# A terminal Authorization tail stops at the shell separator.
+separator_tail_fixture='curl -H "Authorization: Bearer: SYNTHQSEP931"; echo KEEPQSEPTAIL31'
+expect_exact 'separated header tail' "$separator_tail_fixture" \
+  'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL31'
 
-# Shipped guard: a credential that merely contains a marker spelling stays
-# live and is masked, while an already-redacted header keeps its following text.
+# Markers inside a live credential do not exempt it, and already-masked headers keep their tails.
 marker_fixtures=(
   'curl -H "Authorization: Bearer:*SYNTHGUARD941"; echo KEEPGUARD941'
   "curl -H 'Authorization: Basic:@SYNTHGUARD942'; echo KEEPGUARD942"
@@ -2524,15 +2459,11 @@ marker_expected=(
   "curl -H 'Authorization: ***REDACTED***'; echo KEEPWORD942"
   'curl -H "Authorization: ***REDACTED***"; echo KEEPWORD943'
 )
-for mutation_index in 0 1 2 3 4; do
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${marker_fixtures[$mutation_index]}") || fail "shipped marker guard $mutation_index"
-  grep -Fxq "${marker_expected[$mutation_index]}" <<<"$shipped" || fail "shipped marker guard $mutation_index did not mask the credential"
+for case_index in "${!marker_fixtures[@]}"; do
+  expect_exact "marker guard $case_index" "${marker_fixtures[$case_index]}" "${marker_expected[$case_index]}"
 done
 
-# A live credential that ends with either marker spelling must be masked, and
-# masking it twice must be stable. These are the same fixtures used end to end
-# in the fake-engine clipboard above.
+# Live credentials ending in a marker spelling are masked, and masking twice is stable.
 suffix_fixtures=(
   'curl -H "Authorization: Bearer: REALSECRET941***REDACTED***"; echo KEEPENDRED1'
   "curl -H 'Authorization: Bearer: REALSECRET942***REDACTED***'; echo KEEPENDRED2"
@@ -2545,127 +2476,29 @@ suffix_expected=(
   'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED3'
   "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED4"
 )
-for mutation_index in 0 1 2 3; do
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${suffix_fixtures[$mutation_index]}") || fail "shipped suffix redaction $mutation_index"
-  grep -Fxq "${suffix_expected[$mutation_index]}" <<<"$shipped" || fail "shipped suffix redaction $mutation_index did not mask the credential"
-  again=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "$shipped") || fail "idempotent suffix redaction $mutation_index"
-  [[ $again == "$shipped" ]] || fail "idempotent suffix redaction $mutation_index changed the output"
+for case_index in "${!suffix_fixtures[@]}"; do
+  expect_exact "suffix redaction $case_index" "${suffix_fixtures[$case_index]}" "${suffix_expected[$case_index]}"
+  expect_exact "idempotent suffix $case_index" "${suffix_expected[$case_index]}" "${suffix_expected[$case_index]}"
 done
 
-# Mutation check: removing only the per-header shield leaks a live header that
-# follows a redacted one, because the terminal rules are no longer line-guarded.
-shield_rule1=$(cat <<'RULE'
-    -e 's/(\"[^\"]*Authorization:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
-RULE
-)
-shield_rule2=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
-RULE
-)
-shield_rule3=$(cat <<'RULE'
-    -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) "/\1"/Ig' \
-RULE
-)
-shield_rule4=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) '/\1'/Ig" \
-RULE
-)
-for rule in "$shield_rule1" "$shield_rule2"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two marker shield rules"
-done
-
-# Mutation check: restoring a suffix-based shield (the vulnerable behavior)
-# must leak the live credential, while the shipped canonical-shape rules mask it.
-vulnerable_rule1=$(cat <<'RULE'
-    -e 's/(\"[^\"]*Authorization:[^\"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))\"/\1 \"/Ig' \
-RULE
-)
-vulnerable_rule2=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))'/\1 '/Ig" \
-RULE
-)
-while IFS= read -r rule_line; do
-  case $rule_line in
-    "$shield_rule1") printf '%s\n' "$vulnerable_rule1" ;;
-    "$shield_rule2") printf '%s\n' "$vulnerable_rule2" ;;
-    *) printf '%s\n' "$rule_line" ;;
-  esac
-done <"$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-suffix-shield.bash" || fail "suffix shield mutation copy"
-for vulnerable in "$vulnerable_rule1" "$vulnerable_rule2"; do
-  [[ $(grep -cF "$vulnerable" "$cfg_tmp/actions-suffix-shield.bash") == 2 ]] || fail "suffix shield mutation did not apply"
-done
-for mutation_index in 0 1 2 3; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-suffix-shield.bash" "${suffix_fixtures[$mutation_index]}") || fail "suffix shield mutation redaction $mutation_index"
-  grep -Fq "REALSECRET$((941 + mutation_index))" <<<"$mutated" || fail "suffix shield mutation $mutation_index did not leak the credential"
-done
-grep -vF -e "$shield_rule1" -e "$shield_rule2" -e "$shield_rule3" -e "$shield_rule4" -e "$natural_tail_rule1" -e "$natural_tail_rule2" \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-shield.bash" || fail "marker shield mutation copy"
-second_header_fixtures=(
-  'curl -H "Authorization: Bearer: ***REDACTED***" -H "Authorization: Bearer: REALSECRET89"; echo KEEPZZ9'
-  "curl -H 'Authorization: Bearer: ***REDACTED***' -H 'Authorization: Bearer: REALSECRET89'; echo KEEPZZ9"
-)
-for mutation_index in 0 1; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-shield.bash" "${second_header_fixtures[$mutation_index]}") || fail "unshielded marker redaction $mutation_index"
-  grep -Fq REALSECRET89 <<<"$mutated" || fail "marker shield mutation $mutation_index did not leak the second header"
-done
-
-# Mutation check: restoring the loose line-wide guard together with removing the
-# shield resurrects both fail-open inputs; the shipped guard masks both.
-loose_rule1=$(cat <<'RULE'
-    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
-RULE
-)
-loose_rule2=$(cat <<'RULE'
-    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
-RULE
-)
-terminal_rule_line1=$(grep -nF "$tail_rule1" "$cfg_tmp/actions-no-shield.bash" | cut -d: -f1)
-printf '%s\n' "$loose_rule1" >"$cfg_tmp/loose-rule1"
-awk -v n="$terminal_rule_line1" -v repl="$cfg_tmp/loose-rule1" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$cfg_tmp/actions-no-shield.bash" >"$cfg_tmp/actions-loose-guard.bash" || fail "loose guard mutation copy 1"
-terminal_rule_line2=$(grep -nF "$tail_rule2" "$cfg_tmp/actions-loose-guard.bash" | cut -d: -f1)
-printf '%s\n' "$loose_rule2" >"$cfg_tmp/loose-rule2"
-awk -v n="$terminal_rule_line2" -v repl="$cfg_tmp/loose-rule2" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$cfg_tmp/actions-loose-guard.bash" >"$cfg_tmp/actions-loose-guarded.bash" || fail "loose guard mutation copy 2"
+# Loose line-wide guards must not leave a live credential, even next to a masked one.
 loose_fixtures=(
   'curl -H "Authorization: Bearer: abc***REDACTED***xyz"; echo KEEPZZ'
   "curl -H 'Authorization: Bearer: abc***REDACTED***xyz'; echo KEEPZZ"
   'curl -H "Authorization: Bearer: ***REDACTED***" -H "Authorization: Bearer: REALSECRET89"; echo KEEPZZ9'
   "curl -H 'Authorization: Bearer: ***REDACTED***' -H 'Authorization: Bearer: REALSECRET89'; echo KEEPZZ9"
 )
-loose_secrets=(abc***REDACTED***xyz abc***REDACTED***xyz REALSECRET89 REALSECRET89)
 loose_expected=(
   'curl -H "Authorization: ***REDACTED***"; echo KEEPZZ'
   "curl -H 'Authorization: ***REDACTED***'; echo KEEPZZ"
   'curl -H "Authorization: ***REDACTED***" -H "Authorization: ***REDACTED***"; echo KEEPZZ9'
   "curl -H 'Authorization: ***REDACTED***' -H 'Authorization: ***REDACTED***'; echo KEEPZZ9"
 )
-for mutation_index in 0 1 2 3; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-loose-guarded.bash" "${loose_fixtures[$mutation_index]}") || fail "loose guard redaction $mutation_index"
-  grep -Fq "${loose_secrets[$mutation_index]}" <<<"$mutated" || fail "loose guard mutation $mutation_index did not leak the credential"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${loose_fixtures[$mutation_index]}") || fail "shipped loose guard redaction $mutation_index"
-  grep -Fxq "${loose_expected[$mutation_index]}" <<<"$shipped" || fail "shipped guard $mutation_index did not mask the credential"
+for case_index in "${!loose_fixtures[@]}"; do
+  expect_exact "loose guard $case_index" "${loose_fixtures[$case_index]}" "${loose_expected[$case_index]}"
 done
 
-# Mutation check: deleting the scheme-separator whitespace rule must leak
-# each credential, while the shipped redactor masks it and keeps the tail.
-scheme_space_rule=$(cat <<'RULE'
-    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
-RULE
-)
-scheme_space_generic_rule=$(cat <<'RULE'
-    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+/\1\2\3/Ig" \
-RULE
-)
-[[ $(grep -cF "$scheme_space_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one scheme-separator whitespace rule"
-[[ $(grep -cF "$scheme_space_generic_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one generic scheme-separator whitespace rule"
-grep -vF -e "$scheme_space_rule" -e "$scheme_space_generic_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-scheme-space.bash" || fail "scheme-separator whitespace mutation copy"
+# A blank after the scheme separator does not protect the credential or its tail.
 scheme_space_fixtures=(
   'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
   'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
@@ -2675,231 +2508,64 @@ scheme_space_fixtures=(
 )
 scheme_space_secrets=(SYNTHSEP901 SYNTHSEP902 SYNTHSEP903 SYNTHQSEP921 SYNTHQSEP922)
 scheme_space_tails=(KEEPSEPTAIL1 KEEPSEPTAIL2 KEEPSEPTAIL3 KEEPQSEPTAIL21 KEEPQSEPTAIL22)
-for mutation_index in 0 1 2 3 4; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-scheme-space.bash" "${scheme_space_fixtures[$mutation_index]}") || fail "mutated scheme-separator redaction $mutation_index"
-  grep -Fq "${scheme_space_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated scheme-separator rule $mutation_index did not leak the credential"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${scheme_space_fixtures[$mutation_index]}") || fail "shipped scheme-separator redaction $mutation_index"
-  grep -Fq "${scheme_space_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped scheme-separator rule $mutation_index leaked the credential"
-  grep -Fq "${scheme_space_tails[$mutation_index]}" <<<"$shipped" || fail "shipped scheme-separator rule $mutation_index lost the tail"
+for case_index in "${!scheme_space_fixtures[@]}"; do
+  expect_masked "scheme separator $case_index" "${scheme_space_fixtures[$case_index]}" \
+    "${scheme_space_secrets[$case_index]}" "${scheme_space_tails[$case_index]}"
 done
 
-# Mutation check: deleting the glued-scheme value rule leaks both credentials
-# while the shipped redactor keeps the following word and command tail.
-glued_rule=$(cat <<'RULE'
-    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"'[:space:];,&|]+)([[:space:]]+)/\1***REDACTED***\5/Ig" \
-RULE
-)
-[[ $(grep -cF "$glued_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one glued-scheme value rule"
-grep -vF "$glued_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-glued-scheme.bash" || fail "glued-scheme mutation copy"
-glued_fixtures=(
+# Glued scheme values are masked without dropping the following word or command tail.
+glued_scheme_fixtures=(
   'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
   'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
 )
-glued_secrets=(SYNTHGLUED901 SYNTHGLUED902)
-glued_tails=('https://x; echo KEEPGLUEDTAIL1' 'foo; echo KEEPGLUEDTAIL2')
-for mutation_index in 0 1; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-glued-scheme.bash" "${glued_fixtures[$mutation_index]}") || fail "mutated glued-scheme redaction $mutation_index"
-  grep -Fq "${glued_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated glued-scheme rule $mutation_index did not leak the credential"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${glued_fixtures[$mutation_index]}") || fail "shipped glued-scheme redaction $mutation_index"
-  grep -Fq "${glued_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped glued-scheme rule $mutation_index leaked the credential"
-  grep -Fq "${glued_tails[$mutation_index]}" <<<"$shipped" || fail "shipped glued-scheme rule $mutation_index lost the tail"
+glued_scheme_secrets=(SYNTHGLUED901 SYNTHGLUED902)
+glued_scheme_tails=('https://x; echo KEEPGLUEDTAIL1' 'foo; echo KEEPGLUEDTAIL2')
+for case_index in "${!glued_scheme_fixtures[@]}"; do
+  expect_masked "glued scheme $case_index" "${glued_scheme_fixtures[$case_index]}" \
+    "${glued_scheme_secrets[$case_index]}" "${glued_scheme_tails[$case_index]}"
 done
 
-# Mutation check: removing the quote-terminated value rules must delete a
-# following quoted argument, while the shipped redactor preserves it.
-qrule_double=$(cat <<'RULE'
-    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
-RULE
-)
-qrule_single=$(cat <<'RULE'
-    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(')([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
-RULE
-)
-qrule_convert=$(cat <<'RULE'
-    -e "s/==LMLINE_AUTH_VALUE==/@@LMLINE_REDACTED@@/Ig" \
-RULE
-)
-for rule in "$qrule_double" "$qrule_single" "$qrule_convert"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one quoted-argument protection rule"
-done
-grep -vF -e "$qrule_double" -e "$qrule_single" -e "$qrule_convert" \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-quoted-arg.bash" || fail "quoted-argument mutation removal"
+# A quoted argument after an Authorization header is never consumed as part of the credential.
 arg_fixtures=('curl -H "Authorization: Basic=SYNTHARG905" -H "X: keep" https://x; echo KEEPARGTAIL5' 'curl -H '"'"'Authorization: Basic=SYNTHARG906'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL6' 'curl -H "Authorization: Bearer=SYNTHARG907" "payload907" https://x; echo KEEPARGTAIL7' 'curl -H '"'"'Authorization: Bearer=SYNTHARG908'"'"' '"'"'payload908'"'"' https://x; echo KEEPARGTAIL8')
+arg_secrets=(SYNTHARG905 SYNTHARG906 SYNTHARG907 SYNTHARG908)
 arg_victims=('X: keep' 'X: keep' payload907 payload908)
-for mutation_index in 0 1 2 3; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-quoted-arg.bash" "${arg_fixtures[$mutation_index]}") || fail "mutated quoted-argument redaction $mutation_index"
-  grep -Fq "${arg_victims[$mutation_index]}" <<<"$mutated" && fail "mutated quoted-argument rule $mutation_index kept the argument"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${arg_fixtures[$mutation_index]}") || fail "shipped quoted-argument redaction $mutation_index"
-  grep -Fq "${arg_victims[$mutation_index]}" <<<"$shipped" || fail "shipped quoted-argument rule $mutation_index lost the argument"
+for case_index in "${!arg_fixtures[@]}"; do
+  expect_masked "quoted argument $case_index" "${arg_fixtures[$case_index]}" \
+    "${arg_secrets[$case_index]}" "${arg_victims[$case_index]}"
 done
 
-# Mutation check: deleting the CLI auth flag rules leaks each credential.
-flag_rule1=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
-RULE
-)
-flag_rule2=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
-RULE
-)
-flag_rule2b=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(--user=)([0-9]*[^0-9[:space:]\"':;,|&][^[:space:]\"':;,|&]*)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
-RULE
-)
-flag_rule3=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
-RULE
-)
-flag_rule4=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
-RULE
-)
-flag_rule5=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(--password[[:space:]]+)([^[:space:]\"';,&|]+)/\1\2@@LMLINE_REDACTED@@/Ig" \
-RULE
-)
-flag_rule5dq=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(--password[[:space:]]+)(\")([^\"']+)([\"])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
-RULE
-)
-flag_rule5sq=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(--password[[:space:]]+)(')([^']+)(')/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
-RULE
-)
-flag_rule_quoted1=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
-RULE
-)
-flag_rule_quoted2=$(cat <<'RULE'
-    -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
-RULE
-)
-flag_rule_escaped1=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^[:space:]\"':]+):([^\"\\\\']*)(\\\\*)\"/\1\2\3\"\4:@@LMLINE_REDACTED@@\6\"/Ig" \
-RULE
-)
-flag_rule_escaped2=$(cat <<'RULE'
-    -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^\"\\\\']*)(\\\\*)\"/\1\2\3\"@@LMLINE_REDACTED@@\5\"/Ig" \
-RULE
-)
-flag_rules=("$flag_rule1" "$flag_rule2" "$flag_rule2b" "$flag_rule3" "$flag_rule4" "$flag_rule5" "$flag_rule5dq" "$flag_rule5sq" "$flag_rule_quoted1" "$flag_rule_quoted2" "$flag_rule_escaped1" "$flag_rule_escaped2")
-for rule in "${flag_rules[@]}"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one CLI auth flag rule"
-done
-grep -vF -e "$flag_rule1" -e "$flag_rule2" -e "$flag_rule2b" -e "$flag_rule3" -e "$flag_rule4" -e "$flag_rule5" -e "$flag_rule5dq" -e "$flag_rule5sq" \
-  -e "$flag_rule_escaped1" -e "$flag_rule_escaped2" \
-  -e "$flag_rule_quoted1" -e "$flag_rule_quoted2" \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-cli-flags.bash" || fail "CLI auth flag mutation removal"
+# CLI auth flags mask every credential form while keeping usernames and shell tails.
 flag_fixtures=('curl -u user:SYNTHFLAG911 https://x; echo KEEPFLAG911' 'curl --user user:SYNTHFLAG912 https://x; echo KEEPFLAG912' 'curl -u=SYNTHFLAG913 https://x; echo KEEPFLAG913' 'curl --password SYNTHFLAG914 https://x; echo KEEPFLAG914' 'curl -u "user:SYNTHFLAG915" https://x; echo KEEPFLAG915' "curl -u 'user:SYNTHFLAG916' https://x; echo KEEPFLAG916" 'curl -u user:SYNTHFLAG921;echo KEEPFLAG921' 'curl -u=user:SYNTHFLAG922 https://x; echo KEEPFLAG922' 'curl --u=user:SYNTHFLAG923 https://x; echo KEEPFLAG923' 'curl --user=SYNTHFLAG924 https://x; echo KEEPFLAG924' 'curl --password "SYNTHFLAG925" https://x; echo KEEPFLAG925' "curl --password 'SYNTHFLAG926' https://x; echo KEEPFLAG926" 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928' 'curl --password SYNTHFLAG929|grep KEEPFLAG929' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933' 'curl -u="user:SYNTHQ01" https://x; echo KEEPQ01' "curl --user='user:SYNTHQ02' https://x; echo KEEPQ02" 'curl -u="SYNTHQ03" https://x; echo KEEPQ03' 'curl --user="SYNTHQ04" https://x; echo KEEPQ04' 'curl -u=\"user:SYNTHQE1\" https://x; echo KEEPE1' 'curl --user=\"SYNTHQE2\" https://x; echo KEEPE2')
 flag_secrets=(SYNTHFLAG911 SYNTHFLAG912 SYNTHFLAG913 SYNTHFLAG914 SYNTHFLAG915 SYNTHFLAG916 SYNTHFLAG921 SYNTHFLAG922 SYNTHFLAG923 SYNTHFLAG924 SYNTHFLAG925 SYNTHFLAG926 SYNTHFLAG927 SYNTHFLAG928 SYNTHFLAG929 SYNTHFLAG933 SYNTHQ01 SYNTHQ02 SYNTHQ03 SYNTHQ04 SYNTHQE1 SYNTHQE2)
-for mutation_index in "${!flag_fixtures[@]}"; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-cli-flags.bash" "${flag_fixtures[$mutation_index]}") || fail "mutated CLI auth flag redaction $mutation_index"
-  grep -Fq "${flag_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated CLI auth flag rule $mutation_index did not leak"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${flag_fixtures[$mutation_index]}") || fail "shipped CLI auth flag redaction $mutation_index"
-  grep -Fq "${flag_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped CLI auth flag rule $mutation_index leaked"
+flag_tails=(
+  KEEPFLAG911 KEEPFLAG912 KEEPFLAG913 KEEPFLAG914 KEEPFLAG915 KEEPFLAG916
+  KEEPFLAG921 KEEPFLAG922 KEEPFLAG923 KEEPFLAG924 KEEPFLAG925 KEEPFLAG926
+  KEEPFLAG927 KEEPFLAG928 KEEPFLAG929 KEEPFLAG933 KEEPQ01 KEEPQ02 KEEPQ03
+  KEEPQ04 KEEPE1 KEEPE2
+)
+for case_index in "${!flag_fixtures[@]}"; do
+  expect_masked "CLI auth flag $case_index" "${flag_fixtures[$case_index]}" \
+    "${flag_secrets[$case_index]}" "${flag_tails[$case_index]}"
 done
-# A boundary-less equals flag rule clobbers a preserved username.
-flag_rule2_old=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)/\1\2@@LMLINE_REDACTED@@/Ig" \
-RULE
-)
-flag_rule2_line=$(grep -nF "$flag_rule2" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-printf '%s\n' "$flag_rule2_old" >"$cfg_tmp/flag-rule2-old"
-awk -v n="$flag_rule2_line" -v repl="$cfg_tmp/flag-rule2-old" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-flag-no-boundary.bash" || fail "flag boundary mutation removal"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-flag-no-boundary.bash" 'curl -u=user:SYNTHFLAG922 https://x; echo KEEPFLAG922') || fail "flag boundary mutation redaction"
-grep -Fq 'user:***REDACTED***' <<<"$mutated" && fail "flag boundary mutation kept the username"
-# The quoted bare-value rule must not clobber a preserved username after the
-# colon form has already masked the credential.
-flag_rule_quoted2_old=${flag_rule_quoted2/\/@@LMLINE_REDACTED@@\/!/}
-flag_rule_quoted2_line=$(grep -nF "$flag_rule_quoted2" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-printf '%s\n' "$flag_rule_quoted2_old" >"$cfg_tmp/flag-quoted-unguarded"
-awk -v n="$flag_rule_quoted2_line" -v repl="$cfg_tmp/flag-quoted-unguarded" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-flag-unguarded.bash" || fail "flag quote guard mutation removal"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-flag-unguarded.bash" 'curl -u="user:SYNTHQ01" https://x; echo KEEPQ01') || fail "flag quote guard mutation redaction"
-grep -Fq 'user:***REDACTED***' <<<"$mutated" && fail "flag quote guard mutation kept the username"
+expect_exact 'flag username with equals' 'curl -u=user:SYNTHFLAG922 https://x; echo KEEPFLAG922' \
+  'curl -u=user:***REDACTED*** https://x; echo KEEPFLAG922'
+expect_exact 'quoted flag username' 'curl -u="user:SYNTHQ01" https://x; echo KEEPQ01' \
+  'curl -u="user:***REDACTED***" https://x; echo KEEPQ01'
+expect_exact 'flag separator tail' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928' \
+  'curl -u=***REDACTED***&&echo KEEPFLAG928'
 
-# Separator-inclusive credential values swallow the following shell operator.
-flag_rule1_line=$(grep -nF "$flag_rule1" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-cat <<'RULE' >"$cfg_tmp/flag-rule1-old"
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':]+):([^[:space:]\"']+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
-RULE
-awk -v n="$flag_rule1_line" -v repl="$cfg_tmp/flag-rule1-old" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-flag-glued.bash" || fail "flag separator mutation removal"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-flag-glued.bash" 'curl -u=user:SYNTHFLAG928&&echo KEEPFLAG928') || fail "flag separator mutation redaction"
-grep -Fq '&&echo KEEPFLAG928' <<<"$mutated" && fail "flag separator mutation kept the shell tail"
-
-p_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-p)([^[:space:]\"';,&|]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
-RULE
-)
-p_quoted_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-p)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
-RULE
-)
-# Requiring a shell terminator after a quoted -p value leaves glued redirects verbatim.
-p_quoted_rule_line=$(grep -nF "$p_quoted_rule" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-cat <<'RULE' >"$cfg_tmp/p-quoted-terminator"
-    -e "s/(^|[[:space:]])(-p)([\"'])([^\"']+)([\"'])([[:space:];,&|]|$)/\1\2\3@@LMLINE_REDACTED@@\5\6/Ig" \
-RULE
-awk -v n="$p_quoted_rule_line" -v repl="$cfg_tmp/p-quoted-terminator" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-p-terminator.bash" || fail "quoted -p terminator mutation removal"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-p-terminator.bash" 'mysql -p"SYNTHQDB1">out; echo KEEPQDB1') || fail "quoted -p terminator mutation redaction"
-grep -Fq 'SYNTHQDB1' <<<"$mutated" || fail "quoted -p terminator mutation did not leak"
-for rule in "$p_rule" "$p_quoted_rule"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one attached password flag rule"
-done
-grep -vF -e "$p_rule" -e "$p_quoted_rule" \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-attached-password.bash" || fail "attached password mutation removal"
+# Attached password flags mask the value and keep the following word and tail.
 p_fixtures=('mysql -uadmin -pSYNTHP941; echo KEEPP941' 'mysql -p"SYNTHP945" https://x; echo KEEPP945')
 p_secrets=(SYNTHP941 SYNTHP945)
-for mutation_index in 0 1; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-attached-password.bash" "${p_fixtures[$mutation_index]}") || fail "mutated attached password redaction $mutation_index"
-  grep -Fq "${p_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated attached password rule $mutation_index did not leak"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${p_fixtures[$mutation_index]}") || fail "shipped attached password redaction $mutation_index"
-  grep -Fq "${p_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped attached password rule $mutation_index leaked"
+p_tails=(KEEPP941 KEEPP945)
+for case_index in "${!p_fixtures[@]}"; do
+  expect_masked "attached password $case_index" "${p_fixtures[$case_index]}" \
+    "${p_secrets[$case_index]}" "${p_tails[$case_index]}"
 done
+expect_exact 'quoted password before redirect' 'mysql -p"SYNTHQDB1">out; echo KEEPQDB1' \
+  'mysql -p"***REDACTED***">out; echo KEEPQDB1'
 
-# Without the quoted-header shield, a later terminal Authorization rule eats
-# the closing quote and the glued command.
-awk '!(index($0,"##LMLINE_REDACTED##") && index($0,"Authorization:"))' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-auth-shield.bash" || fail "auth shield mutation removal"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-auth-shield.bash" 'curl -H "Authorization: Bearer SYNTHGLUE101";echo KEEPGLUE101') || fail "auth shield mutation redaction"
-grep -Fq ';echo KEEPGLUE101' <<<"$mutated" && fail "auth shield mutation dropped the glued tail"
-
-# Removing the generic spaced-quoted-value rules must leak all of these live
-# credentials; the shipped rules keep the quotes and the shell tail and are
-# idempotent. The heredocs mirror the shipped expressions exactly.
-quoted_rule_dq=$(cat <<'RULE'
-    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
-RULE
-)
-quoted_rule_sq=$(cat <<'RULE'
-    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
-RULE
-)
-for rule in "$quoted_rule_dq" "$quoted_rule_sq"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one generic spaced quoted-value rule: $rule"
-done
-grep -Fvx -e "$quoted_rule_dq" -e "$quoted_rule_sq" "$repo_dir/lmline/actions.bash" \
-  >"$cfg_tmp/actions-no-spaced-quotes.bash" || fail "spaced quoted-value mutation copy"
-for rule in "$quoted_rule_dq" "$quoted_rule_sq"; do
-  grep -Fq "$rule" "$cfg_tmp/actions-no-spaced-quotes.bash" && fail "spaced quoted-value mutation did not apply"
-done
+# Spaced quoted values keep the quotes, the tail and their idempotence.
 quoted_fixtures=(
   'Authorization: my_scheme: "SYNTHQUOTED1"; echo KEEPQUOTED1'
   "Authorization: my_scheme: 'SYNTHQUOTED2'; echo KEEPQUOTED2"
@@ -2913,35 +2579,12 @@ quoted_expected=(
   'Authorization: 2Scheme="***REDACTED***"; echo KEEPQUOTED3'
   "Authorization: 2Scheme='***REDACTED***'; echo KEEPQUOTED4"
 )
-for mutation_index in "${!quoted_fixtures[@]}"; do
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${quoted_fixtures[$mutation_index]}") || fail "shipped spaced quoted-value redaction $mutation_index"
-  grep -Fxq "${quoted_expected[$mutation_index]}" <<<"$shipped" || fail "shipped spaced quoted-value redaction $mutation_index did not mask the credential"
-  again=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "$shipped") || fail "idempotent spaced quoted-value redaction $mutation_index"
-  [[ $again == "$shipped" ]] || fail "idempotent spaced quoted-value redaction $mutation_index changed the output"
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-no-spaced-quotes.bash" "${quoted_fixtures[$mutation_index]}") || fail "mutated spaced quoted-value redaction $mutation_index"
-  grep -Fq "${quoted_secrets[$mutation_index]}" <<<"$mutated" || fail "spaced quoted-value mutation $mutation_index did not leak"
+for case_index in "${!quoted_fixtures[@]}"; do
+  expect_exact "spaced quoted value $case_index" "${quoted_fixtures[$case_index]}" "${quoted_expected[$case_index]}"
+  expect_exact "idempotent quoted value $case_index" "${quoted_expected[$case_index]}" "${quoted_expected[$case_index]}"
 done
 
-# Narrowing the shared token class loses the custom scheme and its quotes even
-# where a fallback still masks the value, so the shipped scheme rule is needed.
-sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
-  >"$cfg_tmp/actions-uri-class-spaced-quotes.bash" || fail "token class mutation copy"
-grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-class-spaced-quotes.bash" && fail "token class mutation did not apply"
-for mutation_index in "${!quoted_fixtures[@]}"; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-uri-class-spaced-quotes.bash" "${quoted_fixtures[$mutation_index]}") || fail "token class mutation redaction $mutation_index"
-  [[ $mutated != "${quoted_expected[$mutation_index]}" ]] || fail "token class mutation $mutation_index preserved the shipped output"
-done
-
-# Narrowing the shared auth-scheme token class back to URI-scheme syntax must
-# reopen every custom-scheme case; the shipped class masks all of them.
-[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 34 ]] || fail "expected thirty-four shared auth-scheme token uses"
-sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
-  >"$cfg_tmp/actions-uri-scheme-class.bash" || fail "auth-scheme class mutation copy"
-grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-scheme-class.bash" && fail "auth-scheme class mutation did not apply"
+# Custom-scheme token shapes mask bare and escaped credentials with their tails intact.
 token_fixtures=(
   'Authorization: my_scheme: SECRETZZ9; echo TAILZZ9'
   'Authorization: 2Scheme: SECRETZZ10; echo TAILZZ10'
@@ -2957,35 +2600,11 @@ token_expected=(
   'Authorization: my_scheme=\"***REDACTED***\"; echo TAILZZ12'
   'Authorization: 2Scheme \"***REDACTED***\"; echo TAILZZSP3'
 )
-for mutation_index in "${!token_fixtures[@]}"; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-uri-scheme-class.bash" "${token_fixtures[$mutation_index]}") || fail "narrowed auth-scheme class redaction $mutation_index"
-  grep -Fq "${token_secrets[$mutation_index]}" <<<"$mutated" || fail "narrowed auth-scheme class $mutation_index did not leak"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${token_fixtures[$mutation_index]}") || fail "shipped auth-scheme class redaction $mutation_index"
-  grep -Fxq "${token_expected[$mutation_index]}" <<<"$shipped" || fail "shipped auth-scheme class $mutation_index did not mask"
+for case_index in "${!token_fixtures[@]}"; do
+  expect_exact "custom token $case_index" "${token_fixtures[$case_index]}" "${token_expected[$case_index]}"
 done
 
-# Mutation check: removing the generic quote-terminated value rules restores
-# the over-redacting rule/order. The mutant must eat a blank-separated quoted
-# argument or second header, while the shipped redactor keeps both. The
-# heredocs mirror the shipped expressions exactly.
-generic_quoted_rule_dq=$(cat <<'RULE'
-    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
-RULE
-)
-generic_quoted_rule_sq=$(cat <<'RULE'
-    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+([^\\\"='[:space:];,&|]+)(')([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
-RULE
-)
-for rule in "$generic_quoted_rule_dq" "$generic_quoted_rule_sq"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one generic quote-terminated value rule: $rule"
-done
-grep -vF -e "$generic_quoted_rule_dq" -e "$generic_quoted_rule_sq" \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-over-redacting.bash" || fail "over-redacting mutation copy"
-for rule in "$generic_quoted_rule_dq" "$generic_quoted_rule_sq"; do
-  grep -Fq "$rule" "$cfg_tmp/actions-over-redacting.bash" && fail "over-redacting mutation did not apply"
-done
+# Generic quote-terminated values must not consume a following argument or header.
 over_fixtures=(
   'curl -H "Authorization: Foo: SYNTHA1" "PAYLOADA1"; echo TAILA1'
   "curl -H 'Authorization: Foo: SYNTHS1' 'PAYLOADS1'; echo TAILS1"
@@ -2997,164 +2616,49 @@ over_expected=(
   "curl -H 'Authorization: ***REDACTED***' 'PAYLOADS1'; echo TAILS1"
   'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1'
 )
-for mutation_index in "${!over_fixtures[@]}"; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-over-redacting.bash" "${over_fixtures[$mutation_index]}") || fail "over-redacting mutation redaction $mutation_index"
-  grep -Fq "${over_victims[$mutation_index]}" <<<"$mutated" && fail "over-redacting mutation $mutation_index kept the following argument"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${over_fixtures[$mutation_index]}") || fail "shipped generic quote-terminated redaction $mutation_index"
-  grep -Fxq "${over_expected[$mutation_index]}" <<<"$shipped" || fail "shipped generic quote-terminated rule $mutation_index lost the following argument"
+for case_index in "${!over_fixtures[@]}"; do
+  expect_exact "generic quoted value $case_index" "${over_fixtures[$case_index]}" "${over_expected[$case_index]}"
 done
 
-# Mutation check: removing the glued custom-scheme quoted-value rules restores
-# the leak of a quoted credential with no blank after the separator. The
-# heredocs mirror the shipped expressions exactly.
-glued_quote_rule_dq=$(cat <<'RULE'
-    -e "/[?/@#=]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
-RULE
-)
-glued_quote_rule_sq=$(cat <<'RULE'
-    -e "/[?/@#=]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
-RULE
-)
-for rule in "$glued_quote_rule_dq" "$glued_quote_rule_sq"; do
-  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one glued custom-scheme quoted rule: $rule"
-done
-grep -vF -e "$glued_quote_rule_dq" -e "$glued_quote_rule_sq" \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-glued-unmasked.bash" || fail "glued-unmasked mutation copy"
-for rule in "$glued_quote_rule_dq" "$glued_quote_rule_sq"; do
-  grep -Fq "$rule" "$cfg_tmp/actions-glued-unmasked.bash" && fail "glued-unmasked mutation did not apply"
-done
-glued_fixtures=(
+# Glued custom-scheme quoted values are masked without eating the tail.
+glued_quote_fixtures=(
   'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'
   "Authorization: 2Scheme:'SYNTHGLUEDS1'; echo KEEPGLUEDS1"
 )
-glued_secrets=(SYNTHGLUEDQ1 SYNTHGLUEDS1)
-glued_expected=(
+glued_quote_secrets=(SYNTHGLUED901 SYNTHGLUED902)
+glued_quote_expected=(
   'Authorization: my_scheme:"***REDACTED***"; echo KEEPGLUEDQ1'
   "Authorization: 2Scheme:'***REDACTED***'; echo KEEPGLUEDS1"
 )
-for mutation_index in "${!glued_fixtures[@]}"; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-glued-unmasked.bash" "${glued_fixtures[$mutation_index]}") || fail "glued-unmasked redaction $mutation_index"
-  grep -Fq "${glued_secrets[$mutation_index]}" <<<"$mutated" || fail "glued-unmasked mutation $mutation_index did not leak"
-  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$repo_dir/lmline/actions.bash" "${glued_fixtures[$mutation_index]}") || fail "shipped glued redaction $mutation_index"
-  grep -Fxq "${glued_expected[$mutation_index]}" <<<"$shipped" || fail "shipped glued rule $mutation_index did not mask"
+for case_index in "${!glued_quote_fixtures[@]}"; do
+  expect_exact "glued quoted value $case_index" "${glued_quote_fixtures[$case_index]}" "${glued_quote_expected[$case_index]}"
 done
 
-# Mutation check: the quoted tail rule must not cross a shell separator into another header.
-narrow_header_rule=$(cat <<'RULE'
-    -e "s/(\"[^\"[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
-RULE
-)
-wide_header_rule=$(cat <<'RULE'
-    -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
-RULE
-)
-[[ $(grep -cF "$narrow_header_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one narrow repeated-header rule"
-narrow_header_line=$(grep -nF "$narrow_header_rule" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-printf '%s\n' "$wide_header_rule" >"$cfg_tmp/wide-header-rule"
-awk -v n="$narrow_header_line" -v repl="$cfg_tmp/wide-header-rule" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-header-rule.bash" || fail "wide repeated-header mutation copy"
-repeat_header_fixture='Authorization: my_scheme:"SYNTHREPEATQ1"; Authorization: 2scheme:"SYNTHREPEATQ2"; echo KEEPREPEATQ'
-widened=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-wide-header-rule.bash" "$repeat_header_fixture") || fail "wide repeated-header redaction"
-grep -Fq 'Authorization: ***REDACTED***"' <<<"$widened" || fail "wide-rule mutation did not over-redact the second scheme"
-repeat_header=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$repeat_header_fixture") || fail "shipped repeated-header redaction"
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATQ' <<<"$repeat_header" || fail "shipped repeated-header rule damaged scheme or tail"
+# Repeated headers of both quote families keep their schemes and command tails.
+expect_exact 'repeated double-quoted headers' \
+  'Authorization: my_scheme:"SYNTHREPEATQ1"; Authorization: 2scheme:"SYNTHREPEATQ2"; echo KEEPREPEATQ' \
+  'Authorization: my_scheme:"***REDACTED***"; Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATQ'
+expect_exact 'repeated single-quoted headers' \
+  "Authorization: my_scheme:'SYNTHREPEATSQ1'; Authorization: 2scheme:'SYNTHREPEATSQ2'; echo KEEPREPEATSQ" \
+  "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ"
 
-# Mutation check: the single-quoted header tail rule must not cross a shell separator.
-narrow_single_rule=$(cat <<'RULE'
-    -e "s/('[^'[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
-RULE
-)
-wide_single_rule=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
-RULE
-)
-[[ $(grep -cF "$narrow_single_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one narrow single-quoted header rule"
-narrow_single_line=$(grep -nF "$narrow_single_rule" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-printf '%s\n' "$wide_single_rule" >"$cfg_tmp/wide-single-rule"
-awk -v n="$narrow_single_line" -v repl="$cfg_tmp/wide-single-rule" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-single-rule.bash" || fail "wide single-rule mutation copy"
-repeat_single_fixture="Authorization: my_scheme:'SYNTHREPEATSQ1'; Authorization: 2scheme:'SYNTHREPEATSQ2'; echo KEEPREPEATSQ"
-widened_single=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-wide-single-rule.bash" "$repeat_single_fixture") || fail "wide single-rule redaction"
-grep -Fq "Authorization: ***REDACTED***''" <<<"$widened_single" || fail "wide single-rule mutation did not over-redact the second scheme"
-repeat_single=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$repeat_single_fixture") || fail "shipped repeated single-quoted header redaction"
-grep -Fxq "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ" <<<"$repeat_single" || fail "shipped single-quote rule damaged scheme or tail"
+# A shell separator is not a URL Authorization separator.
+expect_exact 'glued shell headers' \
+  'Authorization: my_scheme:"SYNTHSEPAMP1"&Authorization: 2scheme:"SYNTHSEPAMP2"; echo KEEPSEPAMP' \
+  'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP'
 
-# Mutation check: shell separators must not be treated as URL Authorization separators.
-narrow_url_rule=$(grep -F 's/([?/@#=])' "$repo_dir/lmline/actions.bash")
-wide_url_rule=${narrow_url_rule/'([?/@#=])'/'([?&/@#=;,])'}
-narrow_guard=$(grep -F '/[?/@#=]Authorization:/!' "$repo_dir/lmline/actions.bash" | head -n 1)
-wide_guard=${narrow_guard/'[?/@#=]'/'[?&/@#=;,]'}
-[[ -n $narrow_url_rule && -n $narrow_guard ]] || fail "missing narrowed URL Authorization rules"
-[[ $(grep -cF 's/([?/@#=])' "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one narrowed URL Authorization rule"
-[[ $(grep -cF '/[?/@#=]Authorization:/!' "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two narrowed URL Authorization guards"
-url_rule_line=$(grep -nF 's/([?/@#=])' "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-guard_lines=$(grep -nF '/[?/@#=]Authorization:/!' "$repo_dir/lmline/actions.bash" | cut -d: -f1 | tr '\n' ',')
-printf '%s\n' "$wide_url_rule" >"$cfg_tmp/wide-url-rule"
-printf '%s\n' "$wide_guard" >"$cfg_tmp/wide-url-guard"
-awk -v u="$url_rule_line" -v gs="$guard_lines" -v uf="$cfg_tmp/wide-url-rule" -v gf="$cfg_tmp/wide-url-guard" 'BEGIN {split(gs,a,","); for (i in a) guard[a[i]]=1} NR==u {while ((getline line < uf) > 0) print line; next} guard[NR] {while ((getline line < gf) > 0) print line; next} {print}' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-url-auth.bash" || fail "wide URL Authorization mutation copy"
-sep_fixture='Authorization: my_scheme:"SYNTHSEPAMP1"&Authorization: 2scheme:"SYNTHSEPAMP2"; echo KEEPSEPAMP'
-widened_sep=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-wide-url-auth.bash" "$sep_fixture") || fail "wide URL Authorization redaction"
-grep -Fq SYNTHSEPAMP1 <<<"$widened_sep" || fail "widened URL rules did not leak the glued shell-header secret"
-shipped_sep=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$sep_fixture") || fail "shipped glued-shell-header redaction"
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP' <<<"$shipped_sep" || fail "shipped URL rules damaged the glued shell header"
+# Natural quoted prefixes do not let the fallback eat the command tail.
+expect_exact 'natural quoted prefix' 'echo "note Authorization: SYNTHNATQ1 tail"; echo KEEPNATQ1' \
+  'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1'
 
-# Mutation check: natural quoted prefixes must not let the fallback eat the command tail.
-dq_rule_line=$(grep -nF 's/(\"[^\";,&|<>]*Authorization:' "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-sq_rule_line=$(grep -nF "s/('[^';,&|<>]*Authorization:" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
-[[ -n $dq_rule_line && -n $sq_rule_line ]] || fail "missing natural quoted-prefix rules"
-awk -v d="$dq_rule_line" -v s="$sq_rule_line" 'NR!=d && NR!=s' \
-  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-natural-prefix.bash" || fail "natural-prefix mutation copy"
-natural_fixture='echo "note Authorization: SYNTHNATQ1 tail"; echo KEEPNATQ1'
-broken_tail=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-natural-prefix.bash" "$natural_fixture") || fail "natural-prefix mutation redaction"
-grep -Fq KEEPNATQ1 <<<"$broken_tail" && fail "natural-prefix mutation preserved the command tail"
-shipped_tail=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$natural_fixture") || fail "shipped natural-prefix redaction"
-grep -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1' <<<"$shipped_tail" || fail "shipped natural-prefix rule dropped the command tail"
-
-# Mutation check: URL query Authorization values after shell-looking separators stay masked.
-url_auth_rules=$(grep -F -e 's/([&;,])(Authorization)([[:space:]]*[:=]' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)' "$repo_dir/lmline/actions.bash")
-[[ $(grep -cF -e 's/([&;,])(Authorization)([[:space:]]*[:=]' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)' "$repo_dir/lmline/actions.bash") == 3 ]] || fail "expected three URL Authorization rules"
-grep -vF "$url_auth_rules" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-url-auth.bash" || fail "late URL Authorization mutation copy"
-url_auth_fixture='curl -H "Authorization: Bearer SYNTHHDRM1"; curl "https://x/?a=1&Authorization=SYNTHURLMUT1"'
-url_auth_mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-url-auth.bash" "$url_auth_fixture") || fail "late URL Authorization mutation redaction"
-grep -Fq SYNTHURLMUT1 <<<"$url_auth_mutated" || fail "late URL Authorization mutation did not leak the query secret"
-url_auth_shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$url_auth_fixture") || fail "shipped late URL Authorization redaction"
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; curl "https://x/?a=1&Authorization:***REDACTED***"' <<<"$url_auth_shipped" || fail "shipped late URL Authorization rule leaked the query secret"
-
-
-# Mutation check: colon-, equals- and padding-ending URL query values need their sibling rules.
-url_end_patterns=(-e '*[:=]+)([[:space:]&;,]|$)' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)')
-url_end_rules=$(grep -F "${url_end_patterns[@]}" "$repo_dir/lmline/actions.bash")
-[[ $(grep -cF "${url_end_patterns[@]}" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two URL Authorization ending rules"
-grep -vF "$url_end_rules" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-url-auth-end.bash" || fail "URL Authorization ending mutation copy"
-url_end_fixture='url=https://x/?a=1&Authorization=SYNTHCOLEND1:'
-url_end_mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-url-auth-end.bash" "$url_end_fixture") || fail "URL Authorization ending mutation redaction"
-grep -Fq SYNTHCOLEND1 <<<"$url_end_mutated" || fail "URL Authorization ending mutation did not leak the query secret"
-url_end_shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$url_end_fixture") || fail "shipped URL Authorization ending redaction"
-grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***' <<<"$url_end_shipped" || fail "shipped URL Authorization ending rule leaked the query secret"
-
-padded_end_fixture='url=https://x/?a=1&Authorization=SYNTHPADENDMUT==; echo KEEPPADEDMUT'
-padded_end_mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-url-auth-end.bash" "$padded_end_fixture") || fail "URL Authorization padding mutation redaction"
-grep -Fq SYNTHPADENDMUT <<<"$padded_end_mutated" || fail "URL Authorization padding mutation did not leak the padded secret"
-padded_end_shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$repo_dir/lmline/actions.bash" "$padded_end_fixture") || fail "shipped URL Authorization padding redaction"
-grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEDMUT' <<<"$padded_end_shipped" || fail "shipped URL Authorization padding rule leaked the query secret"
+# URL query Authorization values and their trailing separators stay masked.
+expect_exact 'late URL Authorization' \
+  'curl -H "Authorization: Bearer SYNTHHDRM1"; curl "https://x/?a=1&Authorization=SYNTHURLMUT1"' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; curl "https://x/?a=1&Authorization:***REDACTED***"'
+expect_exact 'URL Authorization ending' 'url=https://x/?a=1&Authorization=SYNTHCOLEND1:' \
+  'url=https://x/?a=1&Authorization:***REDACTED***'
+expect_exact 'padded URL Authorization ending' \
+  'url=https://x/?a=1&Authorization=SYNTHPADENDMUT==; echo KEEPPADEDMUT' \
+  'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEDMUT'
 
 ok "clip cli"
