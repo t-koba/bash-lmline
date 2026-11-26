@@ -145,6 +145,12 @@ printf '%s\n' 'url=https://x/?token=\"SYNTHQURL3\"&y=3; echo KEEPQURL3'
 printf "%s\n" "url=https://x/?api_key=\'SYNTHQURL4\'&y=4; echo KEEPQURL4"
 printf '%s\n' 'curl "https://x/?token=\"SYNTHQURL5\"&y=5"; echo KEEPQURL5'
 printf '%s\n' 'url=https://x/?token=\"SYNTHQURL6\"'
+# Credential keys may be wrapped in literal escaped quotes in URLs.
+printf '%s\n' 'url=https://x/?\"token\"="SYNTHESCKQ1"&y=1; echo KEEPESCKQ1'
+printf '%s\n' 'url=https://x/?\'"'"'secret\'"'"'='"'"'SYNTHESCKQ2'"'"'&y=2; echo KEEPESCKQ2'
+printf '%s\n' 'url=https://x/?\"api_key\"='"'"'SYNTHESCKQ3'"'"'&y=3; echo KEEPESCKQ3'
+printf '%s\n' 'curl "https://x/?\"token\"="SYNTHESCKQ4"&y=4"; echo KEEPESCKQ4'
+printf '%s\n' 'url=https://x/?\"token\"=SYNTHESCKQ5&y=5; echo KEEPESCKQ5'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -676,6 +682,16 @@ grep -Fxq -- "url=https://x/?api_key='***REDACTED***'&y=4; echo KEEPQURL4" "$lin
 grep -Fq 'SYNTHQURL5' "$line_file" && exit 771
 grep -Fxq -- 'curl "https://x/?token="***REDACTED***"&y=5"; echo KEEPQURL5' "$line_file" || exit 772
 grep -Fq 'SYNTHQURL6' "$line_file" && exit 773
+grep -Fq 'SYNTHESCKQ1' "$line_file" && exit 779
+grep -Fxq -- 'url=https://x/?"token"="***REDACTED***"&y=1; echo KEEPESCKQ1' "$line_file" || exit 780
+grep -Fq 'SYNTHESCKQ2' "$line_file" && exit 780
+grep -Fxq -- 'url=https://x/?'"'"'secret'"'"'='"'"'***REDACTED***'"'"'&y=2; echo KEEPESCKQ2' "$line_file" || exit 781
+grep -Fq 'SYNTHESCKQ3' "$line_file" && exit 781
+grep -Fxq -- 'url=https://x/?"api_key"='"'"'***REDACTED***'"'"'&y=3; echo KEEPESCKQ3' "$line_file" || exit 782
+grep -Fq 'SYNTHESCKQ4' "$line_file" && exit 782
+grep -Fxq -- 'curl "https://x/?"token"="***REDACTED***"&y=4"; echo KEEPESCKQ4' "$line_file" || exit 783
+grep -Fq 'SYNTHESCKQ5' "$line_file" && exit 783
+grep -Fxq -- 'url=https://x/?"token"=***REDACTED***&y=5; echo KEEPESCKQ5' "$line_file" || exit 784
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"' "$line_file" || exit 774
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
