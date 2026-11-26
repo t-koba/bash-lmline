@@ -413,7 +413,9 @@ __lmline_redact_clip_text() {
     -e "s/(Authorization:[[:space:]]+@@LMLINE_REDACTED@@)[[:space:]]+\"[^\"]*\"/\\1 @@LMLINE_REDACTED@@/Ig" \
     -e "s/(Authorization:[[:space:]]+@@LMLINE_REDACTED@@)[[:space:]]+'[^']*'/\\1 @@LMLINE_REDACTED@@/Ig" \
     -e "s/;@LMLINE_SEP@/@@LMLINE_REDACTED@@/Ig" \
-    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/g"
+    -e "s/@LMLINE_CHAIN_KEY@/@@LMLINE_REDACTED@@/Ig" \
+    -e "s/@LMLINE_SEP@/@@LMLINE_REDACTED@@/Ig" \
+    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig"
 }
 
 __lmline_prepare_clip_input() {

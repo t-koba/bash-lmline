@@ -109,6 +109,10 @@ printf '%s\n' 'Authorization: Bearer SYNTHCASEMARK1;token=SYNTHCASEMARK2;@lmline
 # A pasted internal URL marker must not survive into the prompt.
 printf '%s\n' 'url=https://u:@@LMLINE_URL_REDACTED@@@host/path; echo KEEPPASTEDURLMARK'
 printf '%s\n' 'url=https://u:@@LmLiNe_Url_ReDaCtEd@@@host/path; echo KEEPPASTEDURLMARKCASE'
+# Pasted internal markers must not reach the model prompt, in any casing.
+printf '%s\n' 'echo KEEPPASTEDREDMARK @@LmLINE_Redacted@@ KEEPPASTEDREDTAIL'
+printf '%s\n' 'echo KEEPPASTEDCHAINMARK @LmLINE_ChAiN_kEy@ KEEPPASTEDCHAINTAIL'
+printf '%s\n' 'echo KEEPPASTEDSEPMARK @LmLINE_SeP@ KEEPPASTEDSEPTAIL'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -583,6 +587,12 @@ grep -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARK' "$lin
 grep -Fq '@@LMLINE_URL_REDACTED@@' "$line_file" && exit 716
 grep -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARKCASE' "$line_file" || exit 717
 grep -Fqi '@@LMLINE_URL_REDACTED@@' "$line_file" && exit 718
+grep -Fxq 'echo KEEPPASTEDREDMARK ***REDACTED*** KEEPPASTEDREDTAIL' "$line_file" || exit 719
+grep -Fqi '@@LmLINE_Redacted@@' "$line_file" && exit 720
+grep -Fxq 'echo KEEPPASTEDCHAINMARK ***REDACTED*** KEEPPASTEDCHAINTAIL' "$line_file" || exit 721
+grep -Fqi '@LmLINE_ChAiN_kEy@' "$line_file" && exit 722
+grep -Fxq 'echo KEEPPASTEDSEPMARK ***REDACTED*** KEEPPASTEDSEPTAIL' "$line_file" || exit 723
+grep -Fqi '@LmLINE_SeP@' "$line_file" && exit 724
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
