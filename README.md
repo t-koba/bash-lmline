@@ -1029,6 +1029,7 @@ Adjacent quoted segments after an Authorization scheme separator are one value a
 Repeated Authorization headers with glued custom-scheme quoted values, including glued shell separators, are each masked, with scheme words, quotes and command tails preserved
 Adjacent shell word pieces of a quoted Authorization value, including repeated quoted pieces, are masked with the value
 URL userinfo credentials (user:password@host, network-path //user:password@host) are masked at the URL authority
+URL query parameters named Authorization after `&`, `;` or `,` are masked while the separator is kept
 Bare colonless userinfo is masked when the token reaches `LMLINE_CLIP_USERINFO_MIN` characters (default `8`); shorter tokens are kept as usernames
 Scheme, host, port, path, query and fragment are kept outside the authority; //user:password@host is masked at a URL start or after a shell separator outside quotes (even when other arguments on the line are quoted). The separator exception applies only inside real quotes with zero backslashes around an already quoted URL query (after `?`) and only to `;k=v`/`,k=v` data segments with any key length (`[^/...]*=`) as URL data; separators with backslash-escaped quotes or before `?` are shell separators and credentials after them are masked.
 At-prefixed Authorization values are masked through unterminated quotes

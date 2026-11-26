@@ -246,6 +246,10 @@ printf '%s\n' 'url=https://x/?Authorization:="SYNTHAUTHURL1"'
 printf '%s\n' 'url=https://x/?Authorization="SYNTHAUTHURL2"&y=1; echo KEEPTAIL'
 printf '%s\n' 'url=https://x/?Authorization=SYNTHAUTHURL3'
 printf '%s\n' 'url=https://x/?Authorization : = SYNTHAUTHURL4'
+printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHURLAMP1'
+printf '%s\n' 'url=https://x/?a=1;Authorization=SYNTHURLSEMI1'
+printf '%s\n' 'url=https://x/?a=1,Authorization=SYNTHURLCOMMA1'
+printf '%s\n' 'url=https://x/?a=1&Authorization=Bearer%20SYNTHURLBEARER1'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
@@ -1007,6 +1011,14 @@ grep -Fxq -- 'url=https://x/?Authorization:***REDACTED***' "$line_file" || exit 
 grep -Fq 'SYNTHAUTHURL4' "$line_file" && exit 886
 grep -Fxq -- 'url=https://x/?Authorization: ***REDACTED***' "$line_file" || exit 887
 grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPURLAUTH' "$line_file" || exit 888
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 889
+grep -Fq SYNTHURLAMP1 "$line_file" && exit 890
+grep -Fxq -- 'url=https://x/?a=1;Authorization:***REDACTED***' "$line_file" || exit 891
+grep -Fq SYNTHURLSEMI1 "$line_file" && exit 892
+grep -Fxq -- 'url=https://x/?a=1,Authorization:***REDACTED***' "$line_file" || exit 893
+grep -Fq SYNTHURLCOMMA1 "$line_file" && exit 894
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 895
+grep -Fq SYNTHURLBEARER1 "$line_file" && exit 896
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
@@ -3061,5 +3073,18 @@ grep -Fq KEEPNATQ1 <<<"$broken_tail" && fail "natural-prefix mutation preserved 
 shipped_tail=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$repo_dir/lmline/actions.bash" "$natural_fixture") || fail "shipped natural-prefix redaction"
 grep -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1' <<<"$shipped_tail" || fail "shipped natural-prefix rule dropped the command tail"
+
+# Mutation check: URL query Authorization values after shell-looking separators stay masked.
+url_auth_rule=$(grep -F '/\*\*\*REDACTED\*\*\*/!s/([&;,])(Authorization' "$repo_dir/lmline/actions.bash")
+[[ -n $url_auth_rule ]] || fail "missing late URL Authorization rule"
+[[ $(grep -cF "$url_auth_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one late URL Authorization rule"
+grep -vF "$url_auth_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-url-auth.bash" || fail "late URL Authorization mutation copy"
+url_auth_fixture='url=https://x/?a=1&Authorization=SYNTHURLAMP1'
+url_auth_mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-url-auth.bash" "$url_auth_fixture") || fail "late URL Authorization mutation redaction"
+grep -Fq SYNTHURLAMP1 <<<"$url_auth_mutated" || fail "late URL Authorization mutation did not leak the query secret"
+url_auth_shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$repo_dir/lmline/actions.bash" "$url_auth_fixture") || fail "shipped late URL Authorization redaction"
+grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***' <<<"$url_auth_shipped" || fail "shipped late URL Authorization rule leaked the query secret"
 
 ok "clip cli"
