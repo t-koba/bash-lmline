@@ -399,6 +399,7 @@ __lmline_redact_clip_text() {
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?(([^\"\\\\]|\\\\.)*\\\\\"([^\"\\\\]|\\\\.)*)(\"|$)/\\1\\2@@LMLINE_REDACTED@@\\6/Ig" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?(([^\"\\\\]|\\\\.)+)(\"[[:space:]]|$)/\\1\\2@@LMLINE_REDACTED@@\\5/Ig" \
     -e "s/(^|[[:space:]])(\"Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\2\5/Ig" \
+    -e "s/(^|[[:space:]])(Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)['\"]([^[:space:];,&|\\\\]|\\\\.)*/\1\2/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^']+)('[[:space:]]|$)/\\1\\2@@LMLINE_REDACTED@@\\4/Ig" \
     -e "s/(^|[[:space:]])('Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\2\4/Ig" \
     -e "s/${auth_prefix}${auth_scheme}[^@\"'[:space:];].*$/\1\2@@LMLINE_REDACTED@@/Ig" \
