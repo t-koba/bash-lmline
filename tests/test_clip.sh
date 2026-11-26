@@ -287,6 +287,12 @@ printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAU
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT19"& :'
 printf '%s\n' 'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT20"&& :'
 printf '%s\n' "curl -H 'Authorization: Bearer abc'\"'pa\\\"inside space'\"'pb TAILAUDIT02'"
+# An escaped quoted value ends at the unescaped quote that closes the header:
+# the closing quote, URL and trailing command must survive redaction.
+printf '%s\n' 'curl -H "Authorization: Bearer=AAA'"'"'FIRSTSECRET'"'"'; Authorization: Basic=BBB\"SECONDSECRET\"" https://x; echo KEEPTAIL'
+printf '%s\n' 'curl -H '"'"'Authorization: Basic=BBB\"ONLYSECRET\"'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL'
+printf '%s\n' 'curl -H "Authorization: Bearer=AAA\"SINGLESECRET\"" https://x; echo KEEPTAIL'
+printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "payload123" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "user@host" "other" https://x'
 printf '%s\n' "curl -H 'Authorization: abc'\"pa\\\"insideEsc9033\"\"pb\" -H \"X: keep\" https://sqesc9033.example.test"
@@ -1075,6 +1081,14 @@ grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "payload123" https://x
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "user@host" "other" https://x' "$line_file" || exit 327
 grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
+grep -Fq 'FIRSTSECRET' "$line_file" && exit 970
+grep -Fq 'SECONDSECRET' "$line_file" && exit 971
+grep -Fq 'ONLYSECRET' "$line_file" && exit 972
+grep -Fq 'SINGLESECRET' "$line_file" && exit 973
+grep -Fxq 'curl -H "Authorization: Bearer=***REDACTED***; Authorization: ***REDACTED***" https://x; echo KEEPTAIL' "$line_file" || exit 974
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://x; echo KEEPTAIL" "$line_file" || exit 975
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL' "$line_file" || exit 976
+grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE' "$line_file" || exit 977
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -1828,9 +1842,9 @@ mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() {
   "$cfg_tmp/actions-no-upq.bash" 'Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SECOND"SYNTHUPQ6"; echo KEEPUPQ5') || fail "mutated UPQ redaction"
 grep -Fq 'SYNTHUPQ5' <<<"$mutated" || fail "mutated UPQ rule did not leak the first header"
 
-# Mutation check: deleting the escaped-scheme-separator rule must leak both
+# Mutation check: deleting the escaped-open-quote value rule must leak both
 # escaped fixtures while leaving the plain-quoted control intact.
-grep -vF '([^[:space:];,&|]*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-escaped-upq.bash" || fail "redaction mutation copy"
+grep -vF '(([^[:space:];,&|' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-escaped-upq.bash" || fail "redaction mutation copy"
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC1'; Authorization: Basic=BBB\\\"SYNTHUPQESC1\\\"; echo KEEPUPQESC1") || fail "mutated escaped UPQ redaction 1"
 grep -Fq 'SYNTHUPQESC1' <<<"$mutated" || fail "mutated escaped rule 1 did not leak the value"
@@ -1867,6 +1881,29 @@ for mutation_index in 3 4; do
   mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$cfg_tmp/actions-no-any-scheme.bash" "${scheme_mutation_fixtures[$mutation_index]}") || fail "mutated scheme control redaction $mutation_index"
   grep -Fxq "${scheme_mutation_controls[$mutation_index - 3]}" <<<"$mutated" || fail "mutated scheme rule changed control $mutation_index"
+done
+
+# The same deletion restores all quoted -H tails, while the bare-line
+# escaped-header control still masks.
+[[ $(grep -cF '(([^[:space:];,&|' "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one escaped-open-quote value rule"
+quoted_tail_mutation_fixtures=(
+  "curl -H \"Authorization: Bearer=AAA'FIRSTSECRET'; Authorization: Basic=BBB\\\"SECONDSECRET\\\"\" https://x; echo KEEPTAIL"
+  "curl -H 'Authorization: Basic=BBB\\\"ONLYSECRET\\\"' -H 'X: keep' https://x; echo KEEPTAIL"
+  "curl -H \"Authorization: Bearer=AAA\\\"SINGLESECRET\\\"\" https://x; echo KEEPTAIL"
+  'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
+)
+quoted_tail_mutation_expected=(
+  'curl -H "Authorization: Bearer=***REDACTED***; Authorization: ***REDACTED***" https://x; echo KEEPTAIL'
+  "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://x; echo KEEPTAIL"
+  'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL'
+  'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE'
+)
+quoted_tail_mutation_secrets=(FIRSTSECRET SECONDSECRET ONLYSECRET SINGLESECRET SYNTHBAREQUOTED4)
+for mutation_index in 0 1 2 3; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-escaped-upq.bash" "${quoted_tail_mutation_fixtures[$mutation_index]}") || fail "mutated quoted tail redaction $mutation_index"
+  grep -Fxq "${quoted_tail_mutation_expected[$mutation_index]}" <<<"$mutated" || fail "mutated rule $mutation_index changed the quoted tail"
+  grep -Fq "${quoted_tail_mutation_secrets[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index leaked a secret"
 done
 
 ok "clip cli"
