@@ -275,6 +275,7 @@ __lmline_redact_clip_text() {
   # The shield is non-empty and stops before ;// or ,// so each authority
   # is handled in turn. Plain-only rules require zero backslashes at both
   # ends and allow [;,] data assignments.
+  # URL-embedded Authorization separators are canonicalized before header rules.
   # A chained key may be quoted, as in JSON-shaped transcript text.
   # Single & and | boundaries are kept for recognizable chains; opaque tails fail closed.
   # A keyed value before "; " masks only its value; quoting the temporary
@@ -321,6 +322,7 @@ __lmline_redact_clip_text() {
     -e "s#(([A-Za-z][A-Za-z0-9+.-]*:)//)[^:/?#@[:space:]]{${userinfo_min},}@#\1@@LMLINE_REDACTED@@@#g" \
     -e "s#(^|[^A-Za-z0-9_./?@#&=:;,-])(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2@@LMLINE_REDACTED@@@#g" \
     -e "s#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2\3@@LMLINE_REDACTED@@@#g" \
+    -e "s/([?&/@#=;,])(\"[']?)?(Authorization)(\"[']?)?([[:space:]]*)[:=]([[:space:]]*)([:=])?([[:space:]]*)/\1\2\3\4:\8/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\\1\\2\\3\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)'(([^'\\\\]|\\\\.)*)'/\\1\\2\\3'@@LMLINE_REDACTED@@'/Ig" \

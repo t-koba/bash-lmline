@@ -180,6 +180,12 @@ printf '%s\n' 'url=https://x/?token : = SYNTHSPACED1'
 printf '%s\n' 'url=https://x/?token : = "SYNTHSPACED2"&y=1; echo KEEPTAIL'
 printf "%s\n" "url=https://x/?api_key :: 'SYNTHSPACED3'"
 printf '%s\n' 'url=https://x/?realm : = "example.com"; echo KEEPREALM'
+# URL-embedded Authorization keys must mask values after any separator form.
+printf '%s\n' 'url=https://x/?Authorization:="SYNTHAUTHURL1"'
+printf '%s\n' 'url=https://x/?Authorization="SYNTHAUTHURL2"&y=1; echo KEEPTAIL'
+printf '%s\n' 'url=https://x/?Authorization=SYNTHAUTHURL3'
+printf '%s\n' 'url=https://x/?Authorization : = SYNTHAUTHURL4'
+printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -769,6 +775,15 @@ grep -Fxq -- 'url=https://x/?token : "***REDACTED***"&y=1; echo KEEPTAIL' "$line
 grep -Fq 'SYNTHSPACED3' "$line_file" && exit 874
 grep -Fxq -- "url=https://x/?api_key : '***REDACTED***'" "$line_file" || exit 875
 grep -Fxq -- 'url=https://x/?realm : = "example.com"; echo KEEPREALM' "$line_file" || exit 876
+grep -Fq 'SYNTHAUTHURL1' "$line_file" && exit 880
+grep -Fxq -- 'url=https://x/?Authorization:"***REDACTED***"' "$line_file" || exit 881
+grep -Fq 'SYNTHAUTHURL2' "$line_file" && exit 882
+grep -Fxq -- 'url=https://x/?Authorization:"***REDACTED***"&y=1; echo KEEPTAIL' "$line_file" || exit 883
+grep -Fq 'SYNTHAUTHURL3' "$line_file" && exit 884
+grep -Fxq -- 'url=https://x/?Authorization:***REDACTED***' "$line_file" || exit 885
+grep -Fq 'SYNTHAUTHURL4' "$line_file" && exit 886
+grep -Fxq -- 'url=https://x/?Authorization: ***REDACTED***' "$line_file" || exit 887
+grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPURLAUTH' "$line_file" || exit 888
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
