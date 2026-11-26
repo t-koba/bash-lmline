@@ -342,6 +342,7 @@ __lmline_redact_clip_text() {
     -e "s/([?&/@#=;,])(\"[']?)?(Authorization)(\"[']?)?([[:space:]]*)[:=]([[:space:]]*)([:=])?([[:space:]]*)/\1\2\3\4:\8/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
+    -e "s/${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)[[:space:]]+/\1\2\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:]+)([^\\\"'[:space:];,&|<>]*)([\"'])$/\1\2\3***REDACTED***\5/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"'[:space:];,&|]+)([[:space:]]+)/\1***REDACTED***\5/Ig" \
     -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \

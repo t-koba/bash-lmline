@@ -337,6 +337,8 @@ printf '%s\n' 'curl -H "Authorization: Bearer: @@SYNTHAT914"; echo KEEPAT914'
 printf '%s\n' 'curl -H "Authorization: Bearer=*SYNTHSTAR921"; echo KEEP921'
 printf "%s\\n" "curl -H 'Authorization: Basic:*SYNTHSTAR922'; echo KEEP922"
 printf "%s\\n" "curl -H 'Authorization: Basic:@SYNTHAT923'; echo KEEP923"
+printf '%s\n' 'Authorization: abc: SYNTHGENSC901; echo KEEPGENSC901'
+printf '%s\n' 'curl -H "Authorization: abc: SYNTHGENSC902"; echo KEEPGENSC902'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHARG901" -H "X: keep" https://x; echo KEEPARGTAIL1'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHEOL1001"'
 printf '%s\n' 'curl -H "Authorization: Bearer "1234567890; echo KEEPNUM1'
@@ -1269,6 +1271,10 @@ grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP923" "$line_file" |
 grep -Fq SYNTHSTAR921 "$line_file" && exit 1071
 grep -Fq SYNTHSTAR922 "$line_file" && exit 1072
 grep -Fq SYNTHAT923 "$line_file" && exit 1073
+grep -Fxq 'Authorization: ***REDACTED***; echo KEEPGENSC901' "$line_file" || exit 1074
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGENSC902' "$line_file" || exit 1075
+grep -Fq SYNTHGENSC901 "$line_file" && exit 1076
+grep -Fq SYNTHGENSC902 "$line_file" && exit 1077
 grep -Fq SYNTHEOL1003 "$line_file" && exit 1028
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM1' "$line_file" || exit 1029
 grep -Fq 1234567890 "$line_file" && exit 1030
@@ -2130,7 +2136,7 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTE
 # Mutation check: removing all generalized scheme rules must leak the custom
 # headers while leaving the URL realm and Digest controls unchanged.
 generalized_rule='${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)'
-[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 3 ]] || fail "expected three generalized scheme rules"
+[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 4 ]] || fail "expected four generalized scheme rules"
 grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
 scheme_mutation_fixtures=(
   'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
@@ -2291,8 +2297,13 @@ scheme_space_rule=$(cat <<'RULE'
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
 RULE
 )
+scheme_space_generic_rule=$(cat <<'RULE'
+    -e "s/${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)[[:space:]]+/\1\2\3/Ig" \
+RULE
+)
 [[ $(grep -cF "$scheme_space_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one scheme-separator whitespace rule"
-grep -vF "$scheme_space_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-scheme-space.bash" || fail "scheme-separator whitespace mutation copy"
+[[ $(grep -cF "$scheme_space_generic_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one generic scheme-separator whitespace rule"
+grep -vF -e "$scheme_space_rule" -e "$scheme_space_generic_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-scheme-space.bash" || fail "scheme-separator whitespace mutation copy"
 scheme_space_fixtures=(
   'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
   'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
