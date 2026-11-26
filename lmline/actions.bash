@@ -237,7 +237,7 @@ __lmline_redact_clip_text() {
   local key_word key_name key_prefix_url
   local auth_prefix_escaped_dq auth_prefix_escaped_sq auth_scheme_optional
   local key_prefix_escaped_dq key_prefix_escaped_sq
-  local auth_prefix_quoted_dq auth_prefix_quoted_sq
+  local auth_prefix_quoted_dq auth_prefix_quoted_sq auth_marker auth_redacted_value
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
   if [[ ! $userinfo_min =~ ^[1-9][0-9]{0,2}$ ]] || (( 10#$userinfo_min > 255 )); then
     userinfo_min=8
@@ -252,6 +252,11 @@ __lmline_redact_clip_text() {
   auth_scheme="(${auth_scheme_token}+[[:space:]]+)"
   auth_scheme_dq="(\"${auth_scheme_token}+[[:space:]]+)"
   auth_scheme_sq="('${auth_scheme_token}+[[:space:]]+)"
+  auth_marker='(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)'
+  # Only a canonical already-redacted value is shielded: the marker alone, or
+  # one RFC-token scheme followed by separators and the marker. A live
+  # credential that ends in a marker spelling is not a redacted value.
+  auth_redacted_value="(${auth_scheme_any}([[:space:]]+|[:=]+))?[:=]*[[:space:]]*${auth_marker}"
   key_word='(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)'
   key_name="(${key_word}[A-Za-z0-9_-]*|[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)"
   key_prefix="((^|[^A-Za-z0-9_/?@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
@@ -292,11 +297,11 @@ __lmline_redact_clip_text() {
   # An escaped credential value stops at the next credential key, so that
   # field boundary and its value both survive redaction.
   # Doubled credential-key separators are canonicalized before URL value rules.
-  # A complete marker at the end of a quoted Authorization value means that
-  # header is already redacted. Shield its closing quote with a space before
-  # both the quoted-argument and terminal rules so neither can eat the next
-  # argument or a second live header. Credentials that merely contain a
-  # marker stay live; the shield is removed after the terminal rules.
+  # A canonical already-redacted quoted Authorization value shields its
+  # closing quote with a space before both the quoted-argument and terminal
+  # rules so neither can eat the next argument or a second live header. The
+  # shape is structural, not a marker suffix: live credentials that contain
+  # or end with a marker stay live and are masked. The shield is then removed.
   # A spaced escaped-quote value keeps its quotes and the shell tail; only
   # the credential between them is masked.
   sed -E \
@@ -380,8 +385,8 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]+[0-9]+[[:space:]]*([>][>]|[<][<]|[<>]))/\\1;@LMLINE_SEP@\\3/Ig" \
     -e "s/${auth_prefix}==LMLINE_AUTH_SCHEME==${auth_scheme}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]+[0-9]+[[:space:]]*)([>][>]|[<][<]|[<>])/\1==LMLINE_AUTH_SCHEME==\2;@LMLINE_SEP@\4\5/Ig" \
     -e 's/==LMLINE_AUTH_SCHEME==//Ig' \
-    -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))"/\1 "/Ig' \
-    -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))'/\1 '/Ig" \
+    -e 's/(\"[^\"]*Authorization:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
+    -e "s/('[^']*Authorization:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
     -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\"'=[:space:];,&|][^\\\"'[:space:];,&|]*)((\"[^\"']*\"|'[^']*'))+([^[:space:]\"';,&|]*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\\\"'=[:space:];,&|][^\\\\\"'[:space:];,&|]*)(\\\\+[\"])(([^[:space:];,&|\"'])*(\\\\+[\"']([^[:space:];,&|\"'])*)*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\\\"'=[:space:];,&|][^\\\\\"'[:space:];,&|]*)(\\\\+['])(([^[:space:];,&|\"'])*(\\\\+[\"']([^[:space:];,&|\"'])*)*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
@@ -395,8 +400,8 @@ __lmline_redact_clip_text() {
     -e 't auth_adjacent_loop' \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"([0-9]+)([><])/\\1\\2@@LMLINE_REDACTED@@\\\"\\4\\5/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'([0-9]+)([><])/\\1\\2@@LMLINE_REDACTED@@'\\4\\5/Ig" \
-    -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))"/\1 "/Ig' \
-    -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))'/\1 '/Ig" \
+    -e 's/(\"[^\"]*Authorization:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
+    -e "s/('[^']*Authorization:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
     -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) "/\1"/Ig' \

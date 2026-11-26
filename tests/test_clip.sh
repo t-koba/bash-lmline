@@ -356,6 +356,12 @@ printf '%s\n' 'curl -H "Authorization: Bearer: abc***REDACTED***xyz"; echo KEEPZ
 printf "%s\\n" "curl -H 'Authorization: Bearer: abc***REDACTED***xyz'; echo KEEPZZ"
 printf '%s\n' 'curl -H "Authorization: Bearer: ***REDACTED***" -H "Authorization: Bearer: REALSECRET89"; echo KEEPZZ9'
 printf "%s\\n" "curl -H 'Authorization: Bearer: ***REDACTED***' -H 'Authorization: Bearer: REALSECRET89'; echo KEEPZZ9"
+# A credential may end with a marker spelling; only a canonical already-redacted
+# value is exempt from redaction. The shell tail must survive in every case.
+printf '%s\n' 'curl -H "Authorization: Bearer: REALSECRET941***REDACTED***"; echo KEEPENDRED1'
+printf "%s\\n" "curl -H 'Authorization: Bearer: REALSECRET942***REDACTED***'; echo KEEPENDRED2"
+printf '%s\n' 'curl -H "Authorization: Bearer: REALSECRET943@@LMLINE_REDACTED@@"; echo KEEPENDRED3'
+printf "%s\\n" "curl -H 'Authorization: Bearer: REALSECRET944@@LMLINE_REDACTED@@'; echo KEEPENDRED4"
 printf '%s\n' 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x; echo KEEP88'
 printf '%s\n' 'curl -H "Authorization: Bearer "1234567890; echo KEEPNUM1'
 printf "%s\\n" "curl -H 'Authorization: Bearer '1234567890; echo KEEPNUM2"
@@ -1271,6 +1277,14 @@ grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPZZ" "$line_file" ||
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "Authorization: ***REDACTED***"; echo KEEPZZ9' "$line_file" || exit 9172
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'Authorization: ***REDACTED***'; echo KEEPZZ9" "$line_file" || exit 9173
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x; echo KEEP88' "$line_file" || exit 9174
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED1' "$line_file" || exit 9180
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED2" "$line_file" || exit 9181
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED3' "$line_file" || exit 9182
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED4" "$line_file" || exit 9183
+grep -Fq REALSECRET941 "$line_file" && exit 9184
+grep -Fq REALSECRET942 "$line_file" && exit 9185
+grep -Fq REALSECRET943 "$line_file" && exit 9186
+grep -Fq REALSECRET944 "$line_file" && exit 9187
 grep -Fxq "curl -H 'Authorization: Bearer:***REDACTED***'" "$line_file" || exit 1025
 grep -Fq SYNTHEOL1002 "$line_file" && exit 1026
 grep -Fxq 'curl -H "Authorization: Basic:***REDACTED***"' "$line_file" || exit 1027
@@ -1928,7 +1942,7 @@ grep -q 'clipboard provider=fake' <<<"$clip_out" || fail "clip provider output"
 grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
 # Mutation: restricting escaped-quote rules to recognized schemes leaks these values.
-[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 10 ]] || fail "expected ten generic scheme escaped-quote rules"
+[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 11 ]] || fail "expected eleven generic scheme escaped-quote rules"
 sed 's/${auth_scheme_any}/${auth_scheme_name}/g' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-recognized-esc-quotes.bash" || fail "escaped-quote scheme mutation copy"
 grep -Fq '${auth_scheme_any}' "$cfg_tmp/actions-recognized-esc-quotes.bash" && fail "escaped-quote scheme mutation did not apply"
 generic_esc_fixtures=(
@@ -2349,14 +2363,38 @@ for mutation_index in 0 1 2 3 4; do
   grep -Fxq "${marker_expected[$mutation_index]}" <<<"$shipped" || fail "shipped marker guard $mutation_index did not mask the credential"
 done
 
+# A live credential that ends with either marker spelling must be masked, and
+# masking it twice must be stable. These are the same fixtures used end to end
+# in the fake-engine clipboard above.
+suffix_fixtures=(
+  'curl -H "Authorization: Bearer: REALSECRET941***REDACTED***"; echo KEEPENDRED1'
+  "curl -H 'Authorization: Bearer: REALSECRET942***REDACTED***'; echo KEEPENDRED2"
+  'curl -H "Authorization: Bearer: REALSECRET943@@LMLINE_REDACTED@@"; echo KEEPENDRED3'
+  "curl -H 'Authorization: Bearer: REALSECRET944@@LMLINE_REDACTED@@'; echo KEEPENDRED4"
+)
+suffix_expected=(
+  'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED1'
+  "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED2"
+  'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED3'
+  "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED4"
+)
+for mutation_index in 0 1 2 3; do
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${suffix_fixtures[$mutation_index]}") || fail "shipped suffix redaction $mutation_index"
+  grep -Fxq "${suffix_expected[$mutation_index]}" <<<"$shipped" || fail "shipped suffix redaction $mutation_index did not mask the credential"
+  again=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "$shipped") || fail "idempotent suffix redaction $mutation_index"
+  [[ $again == "$shipped" ]] || fail "idempotent suffix redaction $mutation_index changed the output"
+done
+
 # Mutation check: removing only the per-header shield leaks a live header that
 # follows a redacted one, because the terminal rules are no longer line-guarded.
 shield_rule1=$(cat <<'RULE'
-    -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))"/\1 "/Ig' \
+    -e 's/(\"[^\"]*Authorization:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
 RULE
 )
 shield_rule2=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))'/\1 '/Ig" \
+    -e "s/('[^']*Authorization:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
 RULE
 )
 shield_rule3=$(cat <<'RULE'
@@ -2369,6 +2407,32 @@ RULE
 )
 for rule in "$shield_rule1" "$shield_rule2"; do
   [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two marker shield rules"
+done
+
+# Mutation check: restoring a suffix-based shield (the vulnerable behavior)
+# must leak the live credential, while the shipped canonical-shape rules mask it.
+vulnerable_rule1=$(cat <<'RULE'
+    -e 's/(\"[^\"]*Authorization:[^\"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))\"/\1 \"/Ig' \
+RULE
+)
+vulnerable_rule2=$(cat <<'RULE'
+    -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@))'/\1 '/Ig" \
+RULE
+)
+while IFS= read -r rule_line; do
+  case $rule_line in
+    "$shield_rule1") printf '%s\n' "$vulnerable_rule1" ;;
+    "$shield_rule2") printf '%s\n' "$vulnerable_rule2" ;;
+    *) printf '%s\n' "$rule_line" ;;
+  esac
+done <"$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-suffix-shield.bash" || fail "suffix shield mutation copy"
+for vulnerable in "$vulnerable_rule1" "$vulnerable_rule2"; do
+  [[ $(grep -cF "$vulnerable" "$cfg_tmp/actions-suffix-shield.bash") == 2 ]] || fail "suffix shield mutation did not apply"
+done
+for mutation_index in 0 1 2 3; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-suffix-shield.bash" "${suffix_fixtures[$mutation_index]}") || fail "suffix shield mutation redaction $mutation_index"
+  grep -Fq "REALSECRET$((941 + mutation_index))" <<<"$mutated" || fail "suffix shield mutation $mutation_index did not leak the credential"
 done
 grep -vF -e "$shield_rule1" -e "$shield_rule2" -e "$shield_rule3" -e "$shield_rule4" \
   "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-shield.bash" || fail "marker shield mutation copy"
