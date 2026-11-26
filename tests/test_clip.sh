@@ -305,6 +305,8 @@ printf '%s\n' "curl -H 'Authorization: Bearer=abc\\\\'tokSECRETADJS\\\\''2>err; 
 # A shell quote immediately after an escaped pair must also keep its tail.
 printf '%s\n' "curl -H 'Authorization: Bearer=abc\\\"tokSECRETADJPQ\\\"'2>err; echo KEEPTAILADJPQ"
 printf '%s\n' "curl -H \"Authorization: Bearer=abc\\'tokSECRETADJSQ\\'\"2>err; echo KEEPTAILADJSQ"
+printf '%s\n' 'curl -H "Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
+printf '%s\n' 'curl -H '"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo MIRRORTAIL'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 # An interior bare quote is part of the escaped value, not its closing quote.
 printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
@@ -1123,6 +1125,10 @@ grep -Fq 'SECRETADJPQ' "$line_file" && exit 983
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' echo KEEPTAILADJPQ" "$line_file" || exit 984
 grep -Fq 'SECRETADJSQ' "$line_file" && exit 985
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILADJSQ' "$line_file" || exit 986
+grep -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$line_file" || exit 990
+grep -Fxq 'curl -H '"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo MIRRORTAIL' "$line_file" || exit 991
+grep -Fq SECRETZZ "$line_file" && exit 992
+grep -Fq SECRETMM "$line_file" && exit 993
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -1962,5 +1968,32 @@ staged_tail_rule="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"'])*)*"
 [[ $(grep -cF "$staged_tail_rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two staged tail rules"
 A="$staged_tail_rule" awk 'BEGIN{a=ENVIRON["A"]} { while ((i=index($0,a))) $0=substr($0,1,i-1) substr($0,i+length(a)); print }' \
   "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-staged-tail.bash" || fail "staged tail mutation copy"
+
+# Mutation check: removing the two mixed-quote residue rules must leak both
+# credentials, while the shipped redactor masks them.
+mixed_dq_rule=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(\"Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\2\5/Ig" \
+RULE
+)
+mixed_sq_rule=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])('Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\2\4/Ig" \
+RULE
+)
+[[ $(grep -cF "$mixed_dq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed double-quote residue rule"
+[[ $(grep -cF "$mixed_sq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed single-quote residue rule"
+grep -vF -e "$mixed_dq_rule" -e "$mixed_sq_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-mixed-quote.bash" || fail "redaction mutation copy"
+mixed_quote_fixtures=(
+  'curl -H "Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
+  'curl -H '"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo MIRRORTAIL'
+)
+mixed_quote_secrets=(SECRETZZ SECRETMM)
+for mutation_index in 0 1; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-mixed-quote.bash" "${mixed_quote_fixtures[$mutation_index]}") || fail "mutated mixed-quote redaction $mutation_index"
+  grep -Fq "${mixed_quote_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated mixed-quote rule $mutation_index did not leak the credential"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${mixed_quote_fixtures[$mutation_index]}") || fail "shipped mixed-quote redaction $mutation_index"
+  grep -Fq "${mixed_quote_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped mixed-quote rule $mutation_index leaked the credential"
+done
 
 ok "clip cli"
