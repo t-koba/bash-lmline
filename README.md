@@ -1020,6 +1020,7 @@ Adjacent keyed assignments preserve `;`, `,`, `&` and `|` only when the next fie
 Authorization: <scheme> <value> headers, any scheme or bare value (case-insensitive)
 Authorization: <recognized scheme><sep> <value> headers, quoted or unquoted, with the separator followed by spaces (case-insensitive; shell separators after the closing quote are kept)
 Command-line auth flags `-u`/`--user` with `user:password` or `-u=SECRET`/`--user=SECRET`, and `--password` values (quoted or unquoted); usernames, quote characters and glued shell operators are kept, while unrelated `-p` flags and numeric `--user=1000` are left alone
+Attached `-pPASSWORD` and `-p"PASSWORD"` values used by database clients are masked; standalone `-p` and spaced `-p` arguments are preserved.
 Glued Authorization scheme values followed by a separate word are masked while that word and the command tail survive
 Quoted Authorization headers with spaced or glued values are masked without consuming a following quoted argument
 Quoted Authorization headers keep their quotes and surrounding command text

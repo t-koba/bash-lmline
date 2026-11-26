@@ -667,6 +667,12 @@ printf '%s\n' 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927'
 printf '%s\n' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928'
 printf '%s\n' 'curl --password SYNTHFLAG929|grep KEEPFLAG929'
 printf '%s\n' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933'
+printf '%s\n' 'mysql -uadmin -pSYNTHP941; echo KEEPP941'
+printf '%s\n' 'mysqldump -pSYNTHP942&&echo KEEPP942'
+printf '%s\n' 'bash -p; echo KEEPP943'
+printf '%s\n' 'ls -p /tmp; echo KEEPP944'
+printf '%s\n' 'mysql -p"SYNTHP945" https://x; echo KEEPP945'
+printf "%s\\n" "mysql -p'SYNTHP946' https://x; echo KEEPP946"
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -1759,6 +1765,16 @@ grep -Fxq 'curl --password ***REDACTED***|grep KEEPFLAG929' "$line_file" || exit
 grep -Fq 'SYNTHFLAG929' "$line_file" && exit 9132
 grep -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG933' "$line_file" || exit 9133
 grep -Fq 'SYNTHFLAG933' "$line_file" && exit 9134
+grep -Fxq 'mysql -uadmin -p***REDACTED***; echo KEEPP941' "$line_file" || exit 9135
+grep -Fq 'SYNTHP941' "$line_file" && exit 9136
+grep -Fxq 'mysqldump -p***REDACTED***&&echo KEEPP942' "$line_file" || exit 9137
+grep -Fq 'SYNTHP942' "$line_file" && exit 9138
+grep -Fxq 'bash -p; echo KEEPP943' "$line_file" || exit 9139
+grep -Fxq 'ls -p /tmp; echo KEEPP944' "$line_file" || exit 9140
+grep -Fxq 'mysql -p"***REDACTED***" https://x; echo KEEPP945' "$line_file" || exit 9141
+grep -Fq 'SYNTHP945' "$line_file" && exit 9142
+grep -Fxq "mysql -p'***REDACTED***' https://x; echo KEEPP946" "$line_file" || exit 9143
+grep -Fq 'SYNTHP946' "$line_file" && exit 9144
 printf 'clip answer\n'
 EOF
 chmod +x "$clip_test_dir/engine"
@@ -2311,5 +2327,29 @@ awk -v n="$flag_rule1_line" -v repl="$cfg_tmp/flag-rule1-old" 'NR==n {while ((ge
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-flag-glued.bash" 'curl -u=user:SYNTHFLAG928&&echo KEEPFLAG928') || fail "flag separator mutation redaction"
 grep -Fq '&&echo KEEPFLAG928' <<<"$mutated" && fail "flag separator mutation kept the shell tail"
+
+p_rule=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-p)([^[:space:]\"';,&|]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
+RULE
+)
+p_quoted_rule=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-p)([\"'])([^\"']+)([\"'])([[:space:];,&|]|$)/\1\2\3@@LMLINE_REDACTED@@\5\6/Ig" \
+RULE
+)
+for rule in "$p_rule" "$p_quoted_rule"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one attached password flag rule"
+done
+grep -vF -e "$p_rule" -e "$p_quoted_rule" \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-attached-password.bash" || fail "attached password mutation removal"
+p_fixtures=('mysql -uadmin -pSYNTHP941; echo KEEPP941' 'mysql -p"SYNTHP945" https://x; echo KEEPP945')
+p_secrets=(SYNTHP941 SYNTHP945)
+for mutation_index in 0 1; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-attached-password.bash" "${p_fixtures[$mutation_index]}") || fail "mutated attached password redaction $mutation_index"
+  grep -Fq "${p_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated attached password rule $mutation_index did not leak"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${p_fixtures[$mutation_index]}") || fail "shipped attached password redaction $mutation_index"
+  grep -Fq "${p_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped attached password rule $mutation_index leaked"
+done
 
 ok "clip cli"
