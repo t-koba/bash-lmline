@@ -279,6 +279,8 @@ __lmline_redact_clip_text() {
   # Single & and | boundaries are kept for recognizable chains; opaque tails fail closed.
   # A keyed value before "; " masks only its value; quoting the temporary
   # marker keeps the terminal bare rule from swallowing the separator.
+  # Escaped-key values are masked before their key quotes are canonicalized,
+  # so adjacent escaped segments cannot leak.
   sed -E \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
@@ -346,8 +348,6 @@ __lmline_redact_clip_text() {
     -e 't auth_adjacent_loop' \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
-    -e "s/([?&/@#=;,])(\\\\+)\"([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)(\\\\+)\"/\1\"\3\"/Ig" \
-    -e "s/([?&/@#=;,])(\\\\+)'([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)(\\\\+)'/\1'\3'/Ig" \
     -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${key_prefix_url}(\\\\+)\"([^\"\\\\]|\\\\[^\"])*(\\\\+)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
@@ -360,6 +360,8 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix_escaped_sq}${auth_scheme_optional}(([^'\\]|\\\\.|'[[:alnum:]])*\\\\?)('?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.|'[[:alnum:]])*)(\\\\*')([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
     -e "s/${key_prefix_escaped_sq}(([^'\\]|\\\\.|'[[:alnum:]])*\\\\?)('?)$/\1@@LMLINE_REDACTED@@\5/Ig" \
+    -e "s/([?&/@#=;,])(\\\\+)\"([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)(\\\\+)\"/\1\"\3\"/Ig" \
+    -e "s/([?&/@#=;,])(\\\\+)'([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)(\\\\+)'/\1'\3'/Ig" \
     -e "s/${auth_prefix}${auth_scheme}\"(([^\"\\\\]|\\\\.)*)\"/\1\2\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}${auth_scheme_dq}(([^\"\\\\]|\\\\.)*)\"/\1\2@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}${auth_scheme}'(([^'\\\\]|\\\\.)*)'/\1\2'@@LMLINE_REDACTED@@'/Ig" \
