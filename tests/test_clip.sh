@@ -123,6 +123,12 @@ printf '%s\n' "Authorization: Bearer='SYNTHEQUNTERM2"
 printf '%s\n' 'Authorization: Bearer="SYNTHEQTBACK1\'
 printf '%s\n' "Authorization: Bearer='SYNTHEQTBACK2\\"
 printf '%s\n' 'Authorization: Bearer="SYNTHEQCHAIN1";token=SYNTHEQCHAIN2; echo KEEPEQCHAIN'
+# Contiguous quoted segments after a known scheme are one credential value.
+printf '%s\n' 'Authorization: Bearer=\"SYNTHAUDSEG1\"\"SYNTHAUDSEG2\"; echo KEEPAUDSEG1'
+printf '%s\n' "Authorization: Bearer=\\'SYNTHAUDSEG3\\'\\'SYNTHAUDSEG4\\'; echo KEEPAUDSEG2"
+printf '%s\n' 'Authorization: Bearer="SYNTHAUDSEG5""SYNTHAUDSEG6"; echo KEEPAUDSEG3'
+printf '%s\n' "Authorization: Bearer='SYNTHAUDSEG7''SYNTHAUDSEG8'; echo KEEPAUDSEG4"
+printf '%s\n' 'Authorization: Bearer="SYNTHAUDSEG9";token=SYNTHAUDSEG10; echo KEEPAUDSEG5'
 # The separator between a known scheme and its quoted value may be ':' or repeated.
 printf '%s\n' 'Authorization: Bearer:"SYNTHCOLSDQ1"; echo KEEPCOLSDQ1'
 printf '%s\n' "Authorization: Basic=='SYNTHCOLSQ2'; echo KEEPCOLSQ2"
@@ -812,6 +818,12 @@ grep -Fxq -- 'url=https://x/?Authorization: ***REDACTED***' "$line_file" || exit
 grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPURLAUTH' "$line_file" || exit 888
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
+grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
+grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
+grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
+grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPAUDSEG3' "$line_file" || exit 910
+grep -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPAUDSEG4" "$line_file" || exit 911
+grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPAUDSEG5' "$line_file" || exit 912
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382

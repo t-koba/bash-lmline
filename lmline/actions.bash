@@ -335,6 +335,9 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)(\\\\+)\"(([^\"\\\\]|\\\\([^\"]))*\\\\)\$/\1\2\3\4\"@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)(\\\\+)'(([^'\\\\]|\\\\([^']))*)\$/\1\2\3\4'@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)(\\\\+)'(([^'\\\\]|\\\\([^']))*\\\\)\$/\1\2\3\4'@@LMLINE_REDACTED@@/Ig" \
+    -e ':lmline_auth_scheme_seg_loop' \
+    -e "s/(@@LMLINE_REDACTED@@(\\\\*[\"']|[\"']))(((\\\\*[\"']|[\"']))[^[:space:]\"']*(\\\\*[\"']|[\"']))+/\1/Ig" \
+    -e 't lmline_auth_scheme_seg_loop' \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*)$/\\1\\2\\3\"@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*\\\\)$/\\1\\2\\3\"@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)'(([^'\\\\]|\\\\.)*)$/\\1\\2\\3'@@LMLINE_REDACTED@@/Ig" \
