@@ -276,6 +276,8 @@ printf '%s\n' 'url=https://x/?Authorization=U1lOVEhCQVFCMw===; echo TAILFQ3'
 printf '%s\n' 'url=https://x/?Authorization=U1lOVEhCQVFCNDo:; echo TAILFQ4'
 printf '%s\n' 'curl "https://x/?Authorization=YWI="; echo TAILB64ONE'
 printf '%s\n' "curl 'https://x/?Authorization=YWJjZGVmZ2hpamtsbW5vcHE='; echo TAILB64LONG"
+printf '%s\n' 'curl "https://x/?Authorization=SYNTHSINGLEEQ4="; echo TAILSINGLE4'
+printf '%s\n' "curl 'https://x/?Authorization=SYNTHSINGLEEQ5='; echo TAILSINGLE5"
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
@@ -1097,6 +1099,10 @@ grep -Fq YWI= "$line_file" && exit 1232
 grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILB64ONE' "$line_file" || exit 1233
 grep -Fq YWJjZGVmZ2hpamtsbW5vcHE= "$line_file" && exit 1234
 grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILB64LONG" "$line_file" || exit 1235
+grep -Fq SYNTHSINGLEEQ4= "$line_file" && exit 1236
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILSINGLE4' "$line_file" || exit 1237
+grep -Fq SYNTHSINGLEEQ5= "$line_file" && exit 1238
+grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILSINGLE5" "$line_file" || exit 1239
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
 grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
 grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
