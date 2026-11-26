@@ -415,7 +415,7 @@ __lmline_redact_clip_text() {
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'([0-9]+)([><])/\\1\\2@@LMLINE_REDACTED@@'\\4\\5/Ig" \
     -e 's/(\"[^\"]*Authorization:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
     -e "s/('[^']*Authorization:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
-    -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "s/(\"[^\"[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
     -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) "/\1"/Ig' \
     -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) '/\1'/Ig" \
