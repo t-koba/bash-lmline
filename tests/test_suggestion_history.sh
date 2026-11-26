@@ -206,6 +206,29 @@ for shell in bash zsh; do
   ok "$shell suggestion history keeps concurrent records intact"
 done
 
+# A large append can take seconds on a loaded runner. Contenders must wait
+# for the live lock instead of silently dropping their own records.
+mkdir -p "$tmp/slow-dd-bin"
+real_dd=$(type -P dd)
+cat >"$tmp/slow-dd-bin/dd" <<SLOW_DD
+#!/bin/sh
+sleep 1.2
+exec "$real_dd" "\$@"
+SLOW_DD
+chmod +x "$tmp/slow-dd-bin/dd"
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s slow suggestion append (shell unavailable)\n' "$shell"
+    continue
+  fi
+  if ! PATH="$tmp/slow-dd-bin:$PATH" check_concurrent_records "$shell" \
+    "$tmp/slow-history-$shell" "$tmp/slow-$shell" "$tmp/slow-config-$shell"; then
+    [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
+    fail "$concurrent_failure"
+  fi
+  ok "$shell suggestion history survives a slow large append"
+done
+
 # Zsh must keep shell-quoted newlines and backslashes escaped in the record;
 # reinterpreting them would add a stray physical line to the history log.
 if command -v zsh >/dev/null; then

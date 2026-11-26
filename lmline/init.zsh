@@ -1123,13 +1123,18 @@ candidate=${(q)candidate}"
   # dd only reads the shell-backed here-string, it does not make the append atomic.
   # The pid file lets a later record reclaim a lock whose owner died.
   local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt owner current stale_dir
-  for ((attempt = 0; attempt < 40; attempt++)); do
+  # A large record can keep a live owner busy for seconds on a loaded runner.
+  # Size the wait so contenders finish that append instead of dropping theirs.
+  local attempt_limit=40
+  (( ${#record} > 4096 )) && attempt_limit=$(( 40 + ${#record} / 40 ))
+  for ((attempt = 0; attempt < attempt_limit; attempt++)); do
     if command mkdir "$lock_dir" 2>/dev/null; then
       # A restrictive umask must not make the new lock unwritable.
       command chmod 700 "$lock_dir" 2>/dev/null || true
+      # Publish the owner before stale cleanup so a live creator is never displaced.
+      { printf '%s\n' "$$" >"$lock_dir/pid"; } 2>/dev/null || true
       # A killed reclamation may leave a renamed lock; it never blocks mkdir.
       command rm -rf "$lock_dir".stale.*(N) 2>/dev/null || true
-      { printf '%s\n' "$$" >"$lock_dir/pid"; } 2>/dev/null || true
       break
     fi
     owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
@@ -1186,7 +1191,7 @@ candidate=${(q)candidate}"
         ;;
     esac
   done
-  ((attempt < 40)) || return 0
+  ((attempt < attempt_limit)) || return 0
   # A stalled creator can be displaced before its pid is visible. Never
   # append or clean up after losing the lock to a later owner.
   owner=$(command cat "$lock_dir/pid" 2>/dev/null) || owner=
