@@ -293,6 +293,8 @@ printf '%s\n' 'curl -H "Authorization: Bearer=AAA'"'"'FIRSTSECRET'"'"'; Authoriz
 printf '%s\n' 'curl -H '"'"'Authorization: Basic=BBB\"ONLYSECRET\"'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL'
 printf '%s\n' 'curl -H "Authorization: Bearer=AAA\"SINGLESECRET\"" https://x; echo KEEPTAIL'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
+# An interior bare quote is part of the escaped value, not its closing quote.
+printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "payload123" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer secret123456" "user@host" "other" https://x'
 printf '%s\n' "curl -H 'Authorization: abc'\"pa\\\"insideEsc9033\"\"pb\" -H \"X: keep\" https://sqesc9033.example.test"
@@ -1089,6 +1091,8 @@ grep -Fxq 'curl -H "Authorization: Bearer=***REDACTED***; Authorization: ***REDA
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://x; echo KEEPTAIL" "$line_file" || exit 975
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL' "$line_file" || exit 976
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE' "$line_file" || exit 977
+grep -Fq "'tSECRET" "$line_file" && exit 978
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' "$line_file" || exit 979
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -1904,6 +1908,20 @@ for mutation_index in 0 1 2 3; do
     "$cfg_tmp/actions-no-escaped-upq.bash" "${quoted_tail_mutation_fixtures[$mutation_index]}") || fail "mutated quoted tail redaction $mutation_index"
   grep -Fxq "${quoted_tail_mutation_expected[$mutation_index]}" <<<"$mutated" || fail "mutated rule $mutation_index changed the quoted tail"
   grep -Fq "${quoted_tail_mutation_secrets[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index leaked a secret"
+# Removing only the interior-quote alternative must leak that one case while
+# the three quoted -H controls keep their byte-for-byte tails.
+interior_quote_alt="|[\\\"'][^[:space:];,&|\\\"']"
+[[ $(grep -cF "$interior_quote_alt" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one interior-quote alternative"
+grep -vF "$interior_quote_alt" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-interior-quote.bash" || fail "redaction mutation copy"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-interior-quote.bash" 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6') || fail "mutated interior-quote redaction"
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' <<<"$mutated" && fail "mutated interior-quote rule still masked the value"
+grep -Fq "'tSECRET" <<<"$mutated" || fail "mutated interior-quote rule did not leak the value"
+for mutation_index in 0 1 2; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-interior-quote.bash" "${quoted_tail_mutation_fixtures[$mutation_index]}") || fail "mutated interior-quote redaction $mutation_index"
+  grep -Fxq "${quoted_tail_mutation_expected[$mutation_index]}" <<<"$mutated" || fail "mutated interior-quote rule changed quoted tail $mutation_index"
+done
 done
 
 ok "clip cli"
