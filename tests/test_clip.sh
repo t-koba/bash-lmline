@@ -135,6 +135,9 @@ printf '%s\n' 'Authorization: Bearer==\"SYNTHESESDQ2\" | echo KEEPESESDQ2'
 printf "%s\n" "Authorization: Bearer:\'SYNTHESESQ2\' >> out; echo KEEPESESQ2"
 printf '%s\n' 'authorization: bearer=\"SYNTHESESDQCASE\" && echo KEEPESESDQCASE'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHESESDQ3\"'
+# Unterminated escaped quotes after a known scheme still mask the credential.
+printf '%s\n' 'Authorization: Bearer=\"SYNTHUNTERMDPQ1'
+printf "%s\n" "Authorization: Bearer=\\'SYNTHUNTERMSQ1"
 # URL query key values may be plain or backslash-escaped quotes.
 printf '%s\n' 'url=https://x/?token="SYNTHQURL1"&y=1; echo KEEPQURL1'
 printf "%s\n" "url=https://x/?secret='SYNTHQURL2'&y=2; echo KEEPQURL2"
@@ -658,6 +661,10 @@ grep -Fxq 'authorization: bearer=\"***REDACTED***\" && echo KEEPESESDQCASE' "$li
 grep -Fq 'SYNTHESESDQCASE' "$line_file" && exit 760
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"' "$line_file" || exit 761
 grep -Fq 'SYNTHESESDQ3' "$line_file" && exit 762
+grep -Fq 'SYNTHUNTERMDPQ1' "$line_file" && exit 775
+grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 776
+grep -Fq 'SYNTHUNTERMSQ1' "$line_file" && exit 777
+grep -Fxq "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 778
 grep -Fq 'SYNTHQURL1' "$line_file" && exit 763
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPQURL1' "$line_file" || exit 764
 grep -Fq 'SYNTHQURL2' "$line_file" && exit 765
