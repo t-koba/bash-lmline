@@ -685,23 +685,15 @@ grep -Fq 'SYNTHUNTERMDPQ1' "$line_file" && exit 775
 grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 776
 grep -Fq 'SYNTHUNTERMSQ1' "$line_file" && exit 777
 grep -Fxq "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 778
-# Every trailing-backslash parity masks the credential and consumes the dangling slash.
-# The closed-quote and keyed-value controls above stay exact and untouched.
-grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 785
+# Every trailing-backslash parity masks the credential and consumes the dangling slash;
+# all four parities share the exact output asserted above.
 grep -Fq 'SYNTHTRAILDDQ0' "$line_file" && exit 786
-grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 787
 grep -Fq 'SYNTHTRAILDDQ1' "$line_file" && exit 788
-grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 789
 grep -Fq 'SYNTHTRAILDDQ2' "$line_file" && exit 790
-grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 791
 grep -Fq 'SYNTHTRAILDDQ3' "$line_file" && exit 792
-grep -Fxq -- "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 793
 grep -Fq 'SYNTHTRAILSQ0' "$line_file" && exit 794
-grep -Fxq -- "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 795
 grep -Fq 'SYNTHTRAILSQ1' "$line_file" && exit 796
-grep -Fxq -- "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 797
 grep -Fq 'SYNTHTRAILSQ2' "$line_file" && exit 798
-grep -Fxq -- "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 799
 grep -Fq 'SYNTHTRAILSQ3' "$line_file" && exit 800
 grep -Fq 'SYNTHQURL1' "$line_file" && exit 763
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPQURL1' "$line_file" || exit 764
