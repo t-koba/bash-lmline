@@ -149,6 +149,9 @@ printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB
 printf '%s\n' 'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
 printf '%s\n' 'Authorization: Custom=ONLY\"SYNTHCUSTM3\"; echo KEEPCUSTOM2'
 printf '%s\n' 'Authorization: X-OAuth2=FIRST\"SYNTHXAUTH1\"; Authorization: X-OAuth2=SECOND\"SYNTHXAUTH2\"; echo KEEPCUSTOM3'
+# Quoted custom-scheme -H tails must survive byte-for-byte in both quote families.
+printf '%s\n' "curl -H 'Authorization: Custom=WORD\\\"SYNTHCUSTOMQH1\\\"' -H 'X: keep' https://example.test; echo KEEPQHCUSTOM1"
+printf '%s\n' 'curl -H "Authorization: Custom=WORD\"SYNTHCUSTOMQH2\"" https://example.test; echo KEEPQHCUSTOM2'
 printf '%s\n' 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
 printf '%s\n' 'Authorization: Digest realm=\"example.com\", nonce=\"abc123\"; echo KEEPTAIL4'
 # The separator between a known scheme and its quoted value may be ':' or repeated.
@@ -897,6 +900,10 @@ grep -Fq 'SYNTHXAUTH' "$line_file" && exit 948
 grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Custom=***REDACTED***; echo KEEPCUSTOM1' "$line_file" || exit 949
 grep -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPCUSTOM2' "$line_file" || exit 950
 grep -Fxq 'Authorization: X-OAuth2=***REDACTED***; Authorization: X-OAuth2=***REDACTED***; echo KEEPCUSTOM3' "$line_file" || exit 951
+grep -Fq 'SYNTHCUSTOMQH1' "$line_file" && exit 954
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://example.test; echo KEEPQHCUSTOM1" "$line_file" || exit 955
+grep -Fq 'SYNTHCUSTOMQH2' "$line_file" && exit 956
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://example.test; echo KEEPQHCUSTOM2' "$line_file" || exit 957
 grep -Fxq 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5' "$line_file" || exit 952
 grep -Fxq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 953
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
