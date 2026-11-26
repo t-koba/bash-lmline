@@ -673,6 +673,8 @@ printf '%s\n' 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927'
 printf '%s\n' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928'
 printf '%s\n' 'curl --password SYNTHFLAG929|grep KEEPFLAG929'
 printf '%s\n' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933'
+printf '%s\n' 'curl -u=\"user:SYNTHQE1\" https://x; echo KEEPE1'
+printf '%s\n' 'curl --user=\"SYNTHQE2\" https://x; echo KEEPE2'
 printf '%s\n' 'curl --user=SECOPS1>out;echo KEEPOPS1'
 printf '%s\n' 'curl -u=user:SECOPS2>>out;echo KEEPOPS2'
 printf '%s\n' 'curl --password SECOPS3<in;echo KEEPOPS3'
@@ -1797,6 +1799,10 @@ grep -Fxq 'curl --password ***REDACTED***|grep KEEPFLAG929' "$line_file" || exit
 grep -Fq 'SYNTHFLAG929' "$line_file" && exit 9132
 grep -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG933' "$line_file" || exit 9133
 grep -Fq 'SYNTHFLAG933' "$line_file" && exit 9134
+grep -Fxq 'curl -u=\"user:***REDACTED***\" https://x; echo KEEPE1' "$line_file" || exit 9166
+grep -Fq 'SYNTHQE1' "$line_file" && exit 9167
+grep -Fxq 'curl --user=\"***REDACTED***\" https://x; echo KEEPE2' "$line_file" || exit 9168
+grep -Fq 'SYNTHQE2' "$line_file" && exit 9169
 grep -Fxq 'curl --user=***REDACTED***;echo KEEPOPS1' "$line_file" || exit 9154
 grep -Fq 'SECOPS1' "$line_file" && exit 9155
 grep -Fxq 'curl -u=user:***REDACTED***;echo KEEPOPS2' "$line_file" || exit 9156
@@ -2359,15 +2365,24 @@ flag_rule_quoted2=$(cat <<'RULE'
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
 RULE
 )
-flag_rules=("$flag_rule1" "$flag_rule2" "$flag_rule2b" "$flag_rule3" "$flag_rule4" "$flag_rule5" "$flag_rule5dq" "$flag_rule5sq" "$flag_rule_quoted1" "$flag_rule_quoted2")
+flag_rule_escaped1=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^[:space:]\"':]+):([^\"\\\\']*)(\\\\*)\"/\1\2\3\"\4:@@LMLINE_REDACTED@@\6\"/Ig" \
+RULE
+)
+flag_rule_escaped2=$(cat <<'RULE'
+    -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^\"\\\\']*)(\\\\*)\"/\1\2\3\"@@LMLINE_REDACTED@@\5\"/Ig" \
+RULE
+)
+flag_rules=("$flag_rule1" "$flag_rule2" "$flag_rule2b" "$flag_rule3" "$flag_rule4" "$flag_rule5" "$flag_rule5dq" "$flag_rule5sq" "$flag_rule_quoted1" "$flag_rule_quoted2" "$flag_rule_escaped1" "$flag_rule_escaped2")
 for rule in "${flag_rules[@]}"; do
   [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one CLI auth flag rule"
 done
 grep -vF -e "$flag_rule1" -e "$flag_rule2" -e "$flag_rule2b" -e "$flag_rule3" -e "$flag_rule4" -e "$flag_rule5" -e "$flag_rule5dq" -e "$flag_rule5sq" \
+  -e "$flag_rule_escaped1" -e "$flag_rule_escaped2" \
   -e "$flag_rule_quoted1" -e "$flag_rule_quoted2" \
   "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-cli-flags.bash" || fail "CLI auth flag mutation removal"
-flag_fixtures=('curl -u user:SYNTHFLAG911 https://x; echo KEEPFLAG911' 'curl --user user:SYNTHFLAG912 https://x; echo KEEPFLAG912' 'curl -u=SYNTHFLAG913 https://x; echo KEEPFLAG913' 'curl --password SYNTHFLAG914 https://x; echo KEEPFLAG914' 'curl -u "user:SYNTHFLAG915" https://x; echo KEEPFLAG915' "curl -u 'user:SYNTHFLAG916' https://x; echo KEEPFLAG916" 'curl -u user:SYNTHFLAG921;echo KEEPFLAG921' 'curl -u=user:SYNTHFLAG922 https://x; echo KEEPFLAG922' 'curl --u=user:SYNTHFLAG923 https://x; echo KEEPFLAG923' 'curl --user=SYNTHFLAG924 https://x; echo KEEPFLAG924' 'curl --password "SYNTHFLAG925" https://x; echo KEEPFLAG925' "curl --password 'SYNTHFLAG926' https://x; echo KEEPFLAG926" 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928' 'curl --password SYNTHFLAG929|grep KEEPFLAG929' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933' 'curl -u="user:SYNTHQ01" https://x; echo KEEPQ01' "curl --user='user:SYNTHQ02' https://x; echo KEEPQ02" 'curl -u="SYNTHQ03" https://x; echo KEEPQ03' 'curl --user="SYNTHQ04" https://x; echo KEEPQ04')
-flag_secrets=(SYNTHFLAG911 SYNTHFLAG912 SYNTHFLAG913 SYNTHFLAG914 SYNTHFLAG915 SYNTHFLAG916 SYNTHFLAG921 SYNTHFLAG922 SYNTHFLAG923 SYNTHFLAG924 SYNTHFLAG925 SYNTHFLAG926 SYNTHFLAG927 SYNTHFLAG928 SYNTHFLAG929 SYNTHFLAG933 SYNTHQ01 SYNTHQ02 SYNTHQ03 SYNTHQ04)
+flag_fixtures=('curl -u user:SYNTHFLAG911 https://x; echo KEEPFLAG911' 'curl --user user:SYNTHFLAG912 https://x; echo KEEPFLAG912' 'curl -u=SYNTHFLAG913 https://x; echo KEEPFLAG913' 'curl --password SYNTHFLAG914 https://x; echo KEEPFLAG914' 'curl -u "user:SYNTHFLAG915" https://x; echo KEEPFLAG915' "curl -u 'user:SYNTHFLAG916' https://x; echo KEEPFLAG916" 'curl -u user:SYNTHFLAG921;echo KEEPFLAG921' 'curl -u=user:SYNTHFLAG922 https://x; echo KEEPFLAG922' 'curl --u=user:SYNTHFLAG923 https://x; echo KEEPFLAG923' 'curl --user=SYNTHFLAG924 https://x; echo KEEPFLAG924' 'curl --password "SYNTHFLAG925" https://x; echo KEEPFLAG925' "curl --password 'SYNTHFLAG926' https://x; echo KEEPFLAG926" 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928' 'curl --password SYNTHFLAG929|grep KEEPFLAG929' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933' 'curl -u="user:SYNTHQ01" https://x; echo KEEPQ01' "curl --user='user:SYNTHQ02' https://x; echo KEEPQ02" 'curl -u="SYNTHQ03" https://x; echo KEEPQ03' 'curl --user="SYNTHQ04" https://x; echo KEEPQ04' 'curl -u=\"user:SYNTHQE1\" https://x; echo KEEPE1' 'curl --user=\"SYNTHQE2\" https://x; echo KEEPE2')
+flag_secrets=(SYNTHFLAG911 SYNTHFLAG912 SYNTHFLAG913 SYNTHFLAG914 SYNTHFLAG915 SYNTHFLAG916 SYNTHFLAG921 SYNTHFLAG922 SYNTHFLAG923 SYNTHFLAG924 SYNTHFLAG925 SYNTHFLAG926 SYNTHFLAG927 SYNTHFLAG928 SYNTHFLAG929 SYNTHFLAG933 SYNTHQ01 SYNTHQ02 SYNTHQ03 SYNTHQ04 SYNTHQE1 SYNTHQE2)
 for mutation_index in "${!flag_fixtures[@]}"; do
   mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$cfg_tmp/actions-no-cli-flags.bash" "${flag_fixtures[$mutation_index]}") || fail "mutated CLI auth flag redaction $mutation_index"
