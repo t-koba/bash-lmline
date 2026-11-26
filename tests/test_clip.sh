@@ -324,6 +324,12 @@ printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHSEP904" https://x; echo KEEP
 printf '%s\n' 'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
 printf '%s\n' 'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
 # Quoted headers must keep the following quoted argument while masking the value.
+# A quoted header with a spaced separator must mask even at EOL or before a shell operator.
+printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHQSEP911"; echo KEEPQSEPTAIL11'
+printf '%s\n' "curl -H 'Authorization: Basic= SYNTHQSEP912'; echo KEEPQSEPTAIL12"
+printf '%s\n' 'curl -H"Authorization: Bearer: SYNTHQSEP913"; echo KEEPQSEPTAIL13'
+printf '%s\n' "curl -H'Authorization: Token= SYNTHQSEP914'; echo KEEPQSEPTAIL14"
+printf '%s\n' 'curl -H "Authorization: Basic: SYNTHQSEP915"'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHARG901" -H "X: keep" https://x; echo KEEPARGTAIL1'
 printf '%s\n' 'curl -H '"'"'Authorization: Basic=SYNTHARG902'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2'
 printf '%s\n' 'curl -H "Authorization: Basic: SYNTHARG903" "payload903" https://x; echo KEEPARGTAIL3'
@@ -1148,12 +1154,12 @@ grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE' "$line_f
 grep -Fq "'tSECRET" "$line_file" && exit 978
 grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' "$line_file" || exit 979
 grep -Fq 'SECRETADJ' "$line_file" && exit 980
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILADJQ' "$line_file" || exit 981
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' echo KEEPTAILADJS" "$line_file" || exit 982
+grep -Fxq 'curl -H "Authorization: ***REDACTED***">err; echo KEEPTAILADJQ' "$line_file" || exit 981
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'>err; echo KEEPTAILADJS" "$line_file" || exit 982
 grep -Fq 'SECRETADJPQ' "$line_file" && exit 983
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' echo KEEPTAILADJPQ" "$line_file" || exit 984
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'>err; echo KEEPTAILADJPQ" "$line_file" || exit 984
 grep -Fq 'SECRETADJSQ' "$line_file" && exit 985
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILADJSQ' "$line_file" || exit 986
+grep -Fxq 'curl -H "Authorization: ***REDACTED***">err; echo KEEPTAILADJSQ' "$line_file" || exit 986
 grep -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$line_file" || exit 990
 grep -Fxq 'curl -H '"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo MIRRORTAIL' "$line_file" || exit 991
 grep -Fq SECRETZZ "$line_file" && exit 992
@@ -1166,8 +1172,8 @@ grep -Fxq 'Authorization: Bearer:***REDACTED*** -H "X: keep" https://x; echo KEE
 grep -Fxq 'Authorization: Bearer:***REDACTED*** -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL' "$line_file" || exit 995
 grep -Fq LEAKMIN987 "$line_file" && exit 996
 grep -Fq LEAKMIRROR988 "$line_file" && exit 997
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILCLOSURE1' "$line_file" || exit 1002
-grep -Fxq 'curl -H"Authorization: ***REDACTED***" echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
+grep -Fxq 'curl -H "Authorization: ***REDACTED***">err; echo KEEPTAILCLOSURE1' "$line_file" || exit 1002
+grep -Fxq 'curl -H"Authorization: ***REDACTED***">err; echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAILCLOSURE3' "$line_file" || exit 1004
 grep -Fq SYNTHCLOSURE901 "$line_file" && exit 1005
 grep -Fq SYNTHCLOSURE902 "$line_file" && exit 1006
@@ -1180,6 +1186,19 @@ grep -Fq SYNTHSEP901 "$line_file" && exit 1014
 grep -Fq SYNTHSEP902 "$line_file" && exit 1015
 grep -Fq SYNTHSEP903 "$line_file" && exit 1016
 grep -Fq SYNTHSEP904 "$line_file" && exit 1017
+grep -Fq SYNTHQSEP911 "$line_file" && exit 1030
+grep -Fq SYNTHQSEP912 "$line_file" && exit 1031
+grep -Fq SYNTHQSEP913 "$line_file" && exit 1032
+grep -Fq SYNTHQSEP914 "$line_file" && exit 1033
+grep -Fq SYNTHQSEP915 "$line_file" && exit 1034
+grep -Fq KEEPQSEPTAIL11 "$line_file" || exit 1040
+grep -Fq KEEPQSEPTAIL12 "$line_file" || exit 1041
+grep -Fq KEEPQSEPTAIL13 "$line_file" || exit 1042
+grep -Fq KEEPQSEPTAIL14 "$line_file" || exit 1043
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL11' "$line_file" || exit 1051
+grep -Fxq 'curl -H '\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL12' "$line_file" || exit 1052
+grep -Fxq 'curl -H"Authorization: ***REDACTED***"; echo KEEPQSEPTAIL13' "$line_file" || exit 1053
+grep -Fxq 'curl -H'\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL14' "$line_file" || exit 1054
 grep -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1' "$line_file" || exit 1018
 grep -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2' "$line_file" || exit 1019
 grep -Fq SYNTHGLUED901 "$line_file" && exit 1020
@@ -2088,10 +2107,31 @@ for mutation_index in 0 1; do
   grep -Fq "${bare_mixed_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped bare mixed-quote rule $mutation_index leaked the credential"
 done
 
+# Mutation check: the malformed-header tail class must stop at shell separators.
+tail_rule1=$(cat <<'RULE'
+    -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+RULE
+)
+tail_rule2=$(cat <<'RULE'
+    -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+RULE
+)
+for rule in "$tail_rule1" "$tail_rule2"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one malformed-header tail rule"
+done
+grep -vF -e "$tail_rule1" -e "$tail_rule2" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-tail.bash" || fail "malformed-header tail mutation copy"
+tail_fixture='curl -H "Authorization: Bearer: SYNTHQSEP931"; echo KEEPQSEPTAIL31'
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-wide-tail.bash" "$tail_fixture") || fail "mutated tail redaction"
+grep -Fq SYNTHQSEP931 <<<"$mutated" || fail "mutated tail rule did not leak the credential"
+shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$repo_dir/lmline/actions.bash" "$tail_fixture") || fail "shipped tail redaction"
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL31' <<<"$shipped" || fail "shipped tail rule lost the separator"
+
 # Mutation check: deleting the scheme-separator whitespace rule must leak
 # each credential, while the shipped redactor masks it and keeps the tail.
 scheme_space_rule=$(cat <<'RULE'
-    -e "s/(^|[^\\\"'])(Authorization[[:space:]]*:[[:space:]]*)${auth_scheme_name}([:=]+)([[:space:]]+)/\1\2\3\4/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
 RULE
 )
 [[ $(grep -cF "$scheme_space_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one scheme-separator whitespace rule"
@@ -2100,10 +2140,12 @@ scheme_space_fixtures=(
   'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
   'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
   'Authorization: Basic: SYNTHSEP903; echo KEEPSEPTAIL3'
+  'curl -H "Authorization: Bearer: SYNTHQSEP921"; echo KEEPQSEPTAIL21'
+  "curl -H 'Authorization: Basic= SYNTHQSEP922'; echo KEEPQSEPTAIL22"
 )
-scheme_space_secrets=(SYNTHSEP901 SYNTHSEP902 SYNTHSEP903)
-scheme_space_tails=(KEEPSEPTAIL1 KEEPSEPTAIL2 KEEPSEPTAIL3)
-for mutation_index in 0 1 2; do
+scheme_space_secrets=(SYNTHSEP901 SYNTHSEP902 SYNTHSEP903 SYNTHQSEP921 SYNTHQSEP922)
+scheme_space_tails=(KEEPSEPTAIL1 KEEPSEPTAIL2 KEEPSEPTAIL3 KEEPQSEPTAIL21 KEEPQSEPTAIL22)
+for mutation_index in 0 1 2 3 4; do
   mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$cfg_tmp/actions-no-scheme-space.bash" "${scheme_space_fixtures[$mutation_index]}") || fail "mutated scheme-separator redaction $mutation_index"
   grep -Fq "${scheme_space_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated scheme-separator rule $mutation_index did not leak the credential"

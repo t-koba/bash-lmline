@@ -1018,7 +1018,7 @@ untrusted pasted text. Redaction masks these patterns:
 VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments (spaces around =/: allowed)
 Adjacent keyed assignments preserve `;`, `,`, `&` and `|` only when the next field is a recognized credential key; an opaque tail is masked with its separator (fail closed)
 Authorization: <scheme> <value> headers, any scheme or bare value (case-insensitive)
-Authorization: <recognized scheme><sep> <value> on an unquoted line, with the separator followed by spaces (case-insensitive)
+Authorization: <recognized scheme><sep> <value> headers, quoted or unquoted, with the separator followed by spaces (case-insensitive; shell separators after the closing quote are kept)
 Command-line auth flags `-u`/`--user` with `user:password` or `-u=SECRET`, and `--password SECRET` values; usernames, quote characters and command tails are kept, while unrelated `-p` flags are left alone
 Glued Authorization scheme values followed by a separate word are masked while that word and the command tail survive
 Quoted Authorization headers with spaced or glued values are masked without consuming a following quoted argument
