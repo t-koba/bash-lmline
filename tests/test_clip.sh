@@ -144,6 +144,13 @@ printf "%s\n" "Authorization: Bearer=FIRST'SYNTHUPQ10'; Authorization: Basic=SEC
 printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC1'; Authorization: Basic=BBB\\\"SYNTHUPQESC1\\\"; echo KEEPUPQESC1"
 printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC2'; Authorization: Basic=BBB\\\\\"SYNTHUPQESC2\\\\\"; echo KEEPUPQESC2"
 printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3"
+# Repeated headers with any scheme token must each be masked, including a
+# single custom header; URL realm keys and Digest parameters are controls.
+printf '%s\n' 'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
+printf '%s\n' 'Authorization: Custom=ONLY\"SYNTHCUSTM3\"; echo KEEPCUSTOM2'
+printf '%s\n' 'Authorization: X-OAuth2=FIRST\"SYNTHXAUTH1\"; Authorization: X-OAuth2=SECOND\"SYNTHXAUTH2\"; echo KEEPCUSTOM3'
+printf '%s\n' 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
+printf '%s\n' 'Authorization: Digest realm=\"example.com\", nonce=\"abc123\"; echo KEEPTAIL4'
 # The separator between a known scheme and its quoted value may be ':' or repeated.
 printf '%s\n' 'Authorization: Bearer:"SYNTHCOLSDQ1"; echo KEEPCOLSDQ1'
 printf '%s\n' "Authorization: Basic=='SYNTHCOLSQ2'; echo KEEPCOLSQ2"
@@ -877,6 +884,13 @@ grep -Fq 'SYNTHUPQESC2' "$line_file" && exit 943
 grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC2' "$line_file" || exit 944
 grep -Fq 'SYNTHUPQESC3' "$line_file" && exit 945
 grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' "$line_file" || exit 946
+grep -Fq 'SYNTHCUSTM' "$line_file" && exit 947
+grep -Fq 'SYNTHXAUTH' "$line_file" && exit 948
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Custom=***REDACTED***; echo KEEPCUSTOM1' "$line_file" || exit 949
+grep -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPCUSTOM2' "$line_file" || exit 950
+grep -Fxq 'Authorization: X-OAuth2=***REDACTED***; Authorization: X-OAuth2=***REDACTED***; echo KEEPCUSTOM3' "$line_file" || exit 951
+grep -Fxq 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5' "$line_file" || exit 952
+grep -Fxq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 953
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
@@ -1826,5 +1840,33 @@ grep -Fq 'SYNTHUPQESC2' <<<"$mutated" || fail "mutated escaped rule 2 did not le
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3") || fail "mutated control redaction"
 grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' <<<"$mutated" || fail "mutated control fixture changed"
+
+# Mutation check: removing both generalized scheme rules must leak the custom
+# headers while leaving the URL realm and Digest controls unchanged.
+generalized_rule='${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)'
+[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two generalized scheme rules"
+grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
+scheme_mutation_fixtures=(
+  'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
+  'Authorization: Custom=ONLY\"SYNTHCUSTM3\"; echo KEEPCUSTOM2'
+  'Authorization: X-OAuth2=FIRST\"SYNTHXAUTH1\"; Authorization: X-OAuth2=SECOND\"SYNTHXAUTH2\"; echo KEEPCUSTOM3'
+  'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
+  'Authorization: Digest realm=\"example.com\", nonce=\"abc123\"; echo KEEPTAIL4'
+)
+scheme_mutation_leaks=(SYNTHCUSTM SYNTHCUSTM3 SYNTHXAUTH)
+scheme_mutation_controls=(
+  'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
+  'Authorization: Digest ***REDACTED***'
+)
+for mutation_index in 0 1 2; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-any-scheme.bash" "${scheme_mutation_fixtures[$mutation_index]}") || fail "mutated scheme redaction $mutation_index"
+  grep -Fq "${scheme_mutation_leaks[$mutation_index]}" <<<"$mutated" || fail "mutated scheme rule $mutation_index did not leak the custom credential"
+done
+for mutation_index in 3 4; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-any-scheme.bash" "${scheme_mutation_fixtures[$mutation_index]}") || fail "mutated scheme control redaction $mutation_index"
+  grep -Fxq "${scheme_mutation_controls[$mutation_index - 3]}" <<<"$mutated" || fail "mutated scheme rule changed control $mutation_index"
+done
 
 ok "clip cli"
