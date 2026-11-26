@@ -315,13 +315,14 @@ __lmline_redact_clip_text() {
   # separator. Mask padding, a single trailing equals, or a colon-terminated
   # value before quoted-value rules can consume the closing quote and the
   # following shell command. Any character after the closing quote is
-  # tolerated, so a glued suffix cannot hide the credential; a realm field
-  # is shielded briefly because its quoted value is not a secret.
+  # tolerated, so a glued suffix cannot hide the credential. A realm field
+  # is shielded with a distinctive case-preserving marker because its quoted
+  # value is not a secret; the marker is restored only in that key context.
   sed -E \
-    -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)realm=/\1\2\3LMLINE_REALM_EQ_SENTINEL/Ig" \
+    -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3@@LMLINE_REALM_SHIELD_\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*={2,}|[^[:space:]&;,=\"']*:+|([A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\7/Ig" \
-    -e "s/LMLINE_REALM_EQ_SENTINEL/realm=/Ig" \
+    -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)@@LMLINE_REALM_SHIELD_([A-Za-z]+)@@/\1\2\3\4=/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
     -e "s/(^|[[:space:]])(--user=)([0-9]*[^0-9[:space:]\"':;,|&][^[:space:]\"':;,|&]*)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \

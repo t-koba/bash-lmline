@@ -286,6 +286,10 @@ printf '%s\n' 'curl "https://x/?Authorization=U1lOVEhCQVFCMA=="]; echo KEEPBASE1
 printf '%s\n' 'curl "https://x/?Authorization=U1lOVEhCQVFCMA=="?x=1; echo KEEPBASE2'
 printf '%s\n' 'curl "https://x/?Authorization=SYNTHSUFFIX1="]; echo TAILSUFFIX1'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
+printf '%s\n' 'Note LMLINE_REALM_EQ_SENTINEL is only a temporary marker.'
+printf '%s\n' 'Note @@LMLINE_REALM_SHIELD_FOO@@ stays intact.'
+printf '%s\n' '?Authorization:REALM="example.com"; echo KEEPREALMCASE'
+printf '%s\n' 'url=https://x/?Authorization:=realm="example.com"; echo KEEPCOLONEQREALM'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
 printf '%s\n' 'url=https://x/?token=\"FRST\"&password=\\"\\"SECNEXT\\"&y=1; echo KEEPESEMPTYDQ'
@@ -1046,6 +1050,10 @@ grep -Fxq -- 'url=https://x/?Authorization:***REDACTED***' "$line_file" || exit 
 grep -Fq 'SYNTHAUTHURL4' "$line_file" && exit 886
 grep -Fxq -- 'url=https://x/?Authorization: ***REDACTED***' "$line_file" || exit 887
 grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPURLAUTH' "$line_file" || exit 888
+grep -Fxq 'Note LMLINE_REALM_EQ_SENTINEL is only a temporary marker.' "$line_file" || exit 1253
+grep -Fxq 'Note @@LMLINE_REALM_SHIELD_FOO@@ stays intact.' "$line_file" || exit 1254
+grep -Fxq '?Authorization:REALM="example.com"; echo KEEPREALMCASE' "$line_file" || exit 1255
+grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPCOLONEQREALM' "$line_file" || exit 1256
 grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 889
 grep -Fq SYNTHURLAMP1 "$line_file" && exit 890
 grep -Fxq -- 'url=https://x/?a=1;Authorization:***REDACTED***' "$line_file" || exit 891
