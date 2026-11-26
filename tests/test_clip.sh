@@ -332,6 +332,9 @@ printf '%s\n' "curl -H'Authorization: Token= SYNTHQSEP914'; echo KEEPQSEPTAIL14"
 printf '%s\n' 'curl -H "Authorization: Basic: SYNTHQSEP915"'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHARG901" -H "X: keep" https://x; echo KEEPARGTAIL1'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHEOL1001"'
+printf '%s\n' 'curl -H "Authorization: Bearer "1234567890; echo KEEPNUM1'
+printf "%s\\n" "curl -H 'Authorization: Bearer '1234567890; echo KEEPNUM2"
+printf '%s\n' 'curl -H "Authorization: Bearer "SECRETABC123; echo KEEPNUM3'
 printf "%s\\n" "curl -H 'Authorization: Bearer: SYNTHEOL1002'"
 printf '%s\n' 'curl -H "Authorization: Basic: SYNTHEOL1003"'
 printf '%s\n' 'curl -H '"'"'Authorization: Basic=SYNTHARG902'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2'
@@ -1197,7 +1200,7 @@ grep -Fxq 'Authorization: Bearer:***REDACTED*** -H '"'"'X: keep'"'"' https://x; 
 grep -Fq LEAKMIN987 "$line_file" && exit 996
 grep -Fq LEAKMIRROR988 "$line_file" && exit 997
 grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE1' "$line_file" || exit 1002
-grep -Fxq 'curl -H"Authorization: Bearer:***REDACTED***"2>err; echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
+grep -Fxq 'curl -H"Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAILCLOSURE3' "$line_file" || exit 1004
 grep -Fq SYNTHCLOSURE901 "$line_file" && exit 1005
 grep -Fq SYNTHCLOSURE902 "$line_file" && exit 1006
@@ -1234,6 +1237,11 @@ grep -Fxq "curl -H 'Authorization: Bearer:***REDACTED***'" "$line_file" || exit 
 grep -Fq SYNTHEOL1002 "$line_file" && exit 1026
 grep -Fxq 'curl -H "Authorization: Basic:***REDACTED***"' "$line_file" || exit 1027
 grep -Fq SYNTHEOL1003 "$line_file" && exit 1028
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM1' "$line_file" || exit 1029
+grep -Fq 1234567890 "$line_file" && exit 1030
+grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'; echo KEEPNUM2" "$line_file" || exit 1031
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM3' "$line_file" || exit 1032
+grep -Fq SECRETABC123 "$line_file" && exit 1033
 grep -Fq SYNTHARG901 "$line_file" && exit 1026
 grep -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2' "$line_file" || exit 1023
 grep -Fq SYNTHARG902 "$line_file" && exit 1027
@@ -2180,11 +2188,11 @@ done
 
 # Mutation check: the malformed-header tail class must stop at shell separators.
 tail_rule1=$(cat <<'RULE'
-    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[\*@]+/!s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"*]*)\"[^[:space:]';,&:<>0-9*]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*[[:space:]]*[:=]?[[:space:]]*[*@]+/!s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
 RULE
 )
 tail_rule2=$(cat <<'RULE'
-    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[\*@]+/!s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\'*]*)'[^[:space:]';,&:<>0-9*]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*[[:space:]]*[:=]?[[:space:]]*[*@]+/!s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 for rule in "$tail_rule1" "$tail_rule2"; do
