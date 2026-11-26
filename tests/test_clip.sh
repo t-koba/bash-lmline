@@ -175,6 +175,11 @@ printf '%s\n' 'url=https://x/?token:="SYNTHDOUBLE1"'
 printf '%s\n' 'url=https://x/?token:="SYNTHDOUBLE2"&y=1; echo KEEPTAIL'
 printf "%s\n" "url=https://x/?token=='SYNTHDOUBLE3'"
 printf '%s\n' 'url=https://x/?api_key::"SYNTHDOUBLE4"&y=2; echo KEEPDOUBLE4'
+# Spaced doubled credential-key separators must still mask the value.
+printf '%s\n' 'url=https://x/?token : = SYNTHSPACED1'
+printf '%s\n' 'url=https://x/?token : = "SYNTHSPACED2"&y=1; echo KEEPTAIL'
+printf "%s\n" "url=https://x/?api_key :: 'SYNTHSPACED3'"
+printf '%s\n' 'url=https://x/?realm : = "example.com"; echo KEEPREALM'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -757,6 +762,13 @@ grep -Fq 'SYNTHDOUBLE3' "$line_file" && exit 864
 grep -Fxq -- "url=https://x/?token='***REDACTED***'" "$line_file" || exit 865
 grep -Fq 'SYNTHDOUBLE4' "$line_file" && exit 866
 grep -Fxq -- 'url=https://x/?api_key:"***REDACTED***"&y=2; echo KEEPDOUBLE4' "$line_file" || exit 867
+grep -Fq 'SYNTHSPACED1' "$line_file" && exit 870
+grep -Fxq -- 'url=https://x/?token : ***REDACTED***' "$line_file" || exit 871
+grep -Fq 'SYNTHSPACED2' "$line_file" && exit 872
+grep -Fxq -- 'url=https://x/?token : "***REDACTED***"&y=1; echo KEEPTAIL' "$line_file" || exit 873
+grep -Fq 'SYNTHSPACED3' "$line_file" && exit 874
+grep -Fxq -- "url=https://x/?api_key : '***REDACTED***'" "$line_file" || exit 875
+grep -Fxq -- 'url=https://x/?realm : = "example.com"; echo KEEPREALM' "$line_file" || exit 876
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
