@@ -141,6 +141,9 @@ printf '%s\n' 'Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SEC
 printf '%s\n' 'Authorization: Bearer=FIRST"SYNTHUPQ7" | grep KEEPUPQ7'
 printf '%s\n' 'Authorization: Bearer=FIRST"SYNTHUPQ8""SYNTHUPQ9"; echo KEEPUPQ8'
 printf "%s\n" "Authorization: Bearer=FIRST'SYNTHUPQ10'; Authorization: Basic=SECOND'SYNTHUPQ11'; echo KEEPUPQ10"
+printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC1'; Authorization: Basic=BBB\\\"SYNTHUPQESC1\\\"; echo KEEPUPQESC1"
+printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC2'; Authorization: Basic=BBB\\\\\"SYNTHUPQESC2\\\\\"; echo KEEPUPQESC2"
+printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3"
 # The separator between a known scheme and its quoted value may be ':' or repeated.
 printf '%s\n' 'Authorization: Bearer:"SYNTHCOLSDQ1"; echo KEEPCOLSDQ1'
 printf '%s\n' "Authorization: Basic=='SYNTHCOLSQ2'; echo KEEPCOLSQ2"
@@ -868,6 +871,12 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ8' "$line_file" || 
 grep -Fq 'SYNTHUPQ10' "$line_file" && exit 938
 grep -Fq 'SYNTHUPQ11' "$line_file" && exit 939
 grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQ10' "$line_file" || exit 940
+grep -Fq 'SYNTHUPQESC1' "$line_file" && exit 941
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC1' "$line_file" || exit 942
+grep -Fq 'SYNTHUPQESC2' "$line_file" && exit 943
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC2' "$line_file" || exit 944
+grep -Fq 'SYNTHUPQESC3' "$line_file" && exit 945
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' "$line_file" || exit 946
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
@@ -1804,5 +1813,18 @@ grep -vF '(^|[^A-Za-z0-9_])' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-no-upq.bash" 'Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SECOND"SYNTHUPQ6"; echo KEEPUPQ5') || fail "mutated UPQ redaction"
 grep -Fq 'SYNTHUPQ5' <<<"$mutated" || fail "mutated UPQ rule did not leak the first header"
+
+# Mutation check: deleting the escaped-scheme-separator rule must leak both
+# escaped fixtures while leaving the plain-quoted control intact.
+grep -vF '([^[:space:];,&|]*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-escaped-upq.bash" || fail "redaction mutation copy"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC1'; Authorization: Basic=BBB\\\"SYNTHUPQESC1\\\"; echo KEEPUPQESC1") || fail "mutated escaped UPQ redaction 1"
+grep -Fq 'SYNTHUPQESC1' <<<"$mutated" || fail "mutated escaped rule 1 did not leak the value"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC2'; Authorization: Basic=BBB\\\\\"SYNTHUPQESC2\\\\\"; echo KEEPUPQESC2") || fail "mutated escaped UPQ redaction 2"
+grep -Fq 'SYNTHUPQESC2' <<<"$mutated" || fail "mutated escaped rule 2 did not leak the value"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3") || fail "mutated control redaction"
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' <<<"$mutated" || fail "mutated control fixture changed"
 
 ok "clip cli"
