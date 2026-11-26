@@ -128,6 +128,13 @@ printf '%s\n' 'Authorization: Bearer:"SYNTHCOLSDQ1"; echo KEEPCOLSDQ1'
 printf '%s\n' "Authorization: Basic=='SYNTHCOLSQ2'; echo KEEPCOLSQ2"
 printf '%s\n' 'Authorization: Digest:="SYNTHCOLREP3"; echo KEEPCOLREP3'
 printf '%s\n' 'Authorization: Bearer:"SYNTHCOLUNTERM4'
+# A known scheme separator may precede a literal backslash-escaped quote.
+printf '%s\n' 'Authorization: Bearer=\"SYNTHESESDQ1\"; echo KEEPESESDQ1'
+printf "%s\n" "Authorization: Bearer=\\'SYNTHESESQ1\\'; echo KEEPESESQ1"
+printf '%s\n' 'Authorization: Bearer==\"SYNTHESESDQ2\" | echo KEEPESESDQ2'
+printf "%s\n" "Authorization: Bearer:\'SYNTHESESQ2\' >> out; echo KEEPESESQ2"
+printf '%s\n' 'authorization: bearer=\"SYNTHESESDQCASE\" && echo KEEPESESDQCASE'
+printf '%s\n' 'Authorization: Bearer=\"SYNTHESESDQ3\"'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -632,6 +639,18 @@ grep -Fxq 'Authorization: Digest:="***REDACTED***"; echo KEEPCOLREP3' "$line_fil
 grep -Fq 'SYNTHCOLREP3' "$line_file" && exit 748
 grep -Fxq 'Authorization: Bearer:"***REDACTED***' "$line_file" || exit 749
 grep -Fq 'SYNTHCOLUNTERM4' "$line_file" && exit 750
+grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPESESDQ1' "$line_file" || exit 751
+grep -Fq 'SYNTHESESDQ1' "$line_file" && exit 752
+grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPESESQ1" "$line_file" || exit 753
+grep -Fq 'SYNTHESESQ1' "$line_file" && exit 754
+grep -Fxq 'Authorization: Bearer==\"***REDACTED***\" | echo KEEPESESDQ2' "$line_file" || exit 755
+grep -Fq 'SYNTHESESDQ2' "$line_file" && exit 756
+grep -Fxq "Authorization: Bearer:\'***REDACTED***\' >> out; echo KEEPESESQ2" "$line_file" || exit 757
+grep -Fq 'SYNTHESESQ2' "$line_file" && exit 758
+grep -Fxq 'authorization: bearer=\"***REDACTED***\" && echo KEEPESESDQCASE' "$line_file" || exit 759
+grep -Fq 'SYNTHESESDQCASE' "$line_file" && exit 760
+grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"' "$line_file" || exit 761
+grep -Fq 'SYNTHESESDQ3' "$line_file" && exit 762
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
