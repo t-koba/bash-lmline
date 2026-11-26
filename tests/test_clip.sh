@@ -673,6 +673,9 @@ printf '%s\n' 'curl -u "user:pass wordSYNTHFLAG927" https://x; echo KEEPFLAG927'
 printf '%s\n' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928'
 printf '%s\n' 'curl --password SYNTHFLAG929|grep KEEPFLAG929'
 printf '%s\n' 'curl --user=1SYNTHFLAG933 https://x; echo KEEPFLAG933'
+printf '%s\n' 'curl --user=SECOPS1>out;echo KEEPOPS1'
+printf '%s\n' 'curl -u=user:SECOPS2>>out;echo KEEPOPS2'
+printf '%s\n' 'curl --password SECOPS3<in;echo KEEPOPS3'
 printf '%s\n' 'curl -u="user:SYNTHQ01" https://x; echo KEEPQ01'
 printf "%s\n" "curl --user='user:SYNTHQ02' https://x; echo KEEPQ02"
 printf '%s\n' 'curl -u="SYNTHQ03" https://x; echo KEEPQ03'
@@ -1791,6 +1794,12 @@ grep -Fxq 'curl --password ***REDACTED***|grep KEEPFLAG929' "$line_file" || exit
 grep -Fq 'SYNTHFLAG929' "$line_file" && exit 9132
 grep -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG933' "$line_file" || exit 9133
 grep -Fq 'SYNTHFLAG933' "$line_file" && exit 9134
+grep -Fxq 'curl --user=***REDACTED***;echo KEEPOPS1' "$line_file" || exit 9154
+grep -Fq 'SECOPS1' "$line_file" && exit 9155
+grep -Fxq 'curl -u=user:***REDACTED***;echo KEEPOPS2' "$line_file" || exit 9156
+grep -Fq 'SECOPS2' "$line_file" && exit 9157
+grep -Fxq 'curl --password ***REDACTED***;echo KEEPOPS3' "$line_file" || exit 9158
+grep -Fq 'SECOPS3' "$line_file" && exit 9159
 grep -Fxq 'mysql -uadmin -p***REDACTED***; echo KEEPP941' "$line_file" || exit 9135
 grep -Fq 'SYNTHP941' "$line_file" && exit 9136
 grep -Fxq 'curl -u="user:***REDACTED***" https://x; echo KEEPQ01' "$line_file" || exit 9146
