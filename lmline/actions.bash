@@ -291,6 +291,8 @@ __lmline_redact_clip_text() {
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
     -e "s/(^|[[:space:]])(--user=)([0-9]*[^0-9[:space:]\"':;,|&][^[:space:]\"':;,|&]*)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
+    -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)([^[:space:]\"';,&|]+)/\1\2@@LMLINE_REDACTED@@/Ig" \
