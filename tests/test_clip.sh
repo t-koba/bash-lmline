@@ -307,6 +307,8 @@ printf '%s\n' "curl -H 'Authorization: Bearer=abc\\\"tokSECRETADJPQ\\\"'2>err; e
 printf '%s\n' "curl -H \"Authorization: Bearer=abc\\'tokSECRETADJSQ\\'\"2>err; echo KEEPTAILADJSQ"
 printf '%s\n' 'curl -H "Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
 printf '%s\n' 'curl -H '"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo MIRRORTAIL'
+printf '%s\n' 'curl -H"Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
+printf '%s\n' 'curl -H'"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo KEEPTAIL'
 printf '%s\n' 'Authorization: Bearer:abc\'"'"'\"'"'"'LEAKMIN987\'"'"'\" -H "X: keep" https://x; echo KEEPTAIL'
 printf '%s\n' 'Authorization: Bearer:abc\"\'"'"'"LEAKMIRROR988\"\'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
@@ -1131,6 +1133,10 @@ grep -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$lin
 grep -Fxq 'curl -H '"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo MIRRORTAIL' "$line_file" || exit 991
 grep -Fq SECRETZZ "$line_file" && exit 992
 grep -Fq SECRETMM "$line_file" && exit 993
+grep -Fxq 'curl -H"Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$line_file" || exit 998
+grep -Fxq 'curl -H'"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo KEEPTAIL' "$line_file" || exit 999
+grep -Fq SECRETZZ "$line_file" && exit 1000
+grep -Fq SECRETMM "$line_file" && exit 1001
 grep -Fxq 'Authorization: Bearer:***REDACTED*** -H "X: keep" https://x; echo KEEPTAIL' "$line_file" || exit 994
 grep -Fxq 'Authorization: Bearer:***REDACTED*** -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL' "$line_file" || exit 995
 grep -Fq LEAKMIN987 "$line_file" && exit 996
@@ -1984,11 +1990,11 @@ A="$staged_tail_rule" awk 'BEGIN{a=ENVIRON["A"]} { while ((i=index($0,a))) $0=su
 # Mutation check: removing the two mixed-quote residue rules must leak both
 # credentials, while the shipped redactor masks them.
 mixed_dq_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(\"Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\2\5/Ig" \
+    -e "s/(\"Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)'([^\"\\\\]|\\\\.)*((\")|\\\\?\$)/\1\4/Ig" \
 RULE
 )
 mixed_sq_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])('Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\2\4/Ig" \
+    -e "s/('Authorization:[[:space:]]+[A-Za-z][A-Za-z0-9+.-]*[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\3/Ig" \
 RULE
 )
 [[ $(grep -cF "$mixed_dq_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one mixed double-quote residue rule"
@@ -1997,9 +2003,11 @@ grep -vF -e "$mixed_dq_rule" -e "$mixed_sq_rule" "$repo_dir/lmline/actions.bash"
 mixed_quote_fixtures=(
   'curl -H "Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
   'curl -H '"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo MIRRORTAIL'
+  'curl -H"Authorization: Bearer:abc\'"'"'\"'"'"'SECRETZZ\'"'"'"X; echo KEEPTAIL'
+  'curl -H'"'"'Authorization: Bearer:abc\"\'"'"'"SECRETMM\"'"'"'X; echo KEEPTAIL'
 )
-mixed_quote_secrets=(SECRETZZ SECRETMM)
-for mutation_index in 0 1; do
+mixed_quote_secrets=(SECRETZZ SECRETMM SECRETZZ SECRETMM)
+for mutation_index in 0 1 2 3; do
   mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$cfg_tmp/actions-no-mixed-quote.bash" "${mixed_quote_fixtures[$mutation_index]}") || fail "mutated mixed-quote redaction $mutation_index"
   grep -Fq "${mixed_quote_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated mixed-quote rule $mutation_index did not leak the credential"
