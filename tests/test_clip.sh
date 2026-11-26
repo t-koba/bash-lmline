@@ -315,6 +315,11 @@ printf '%s\n' 'Authorization: Bearer:abc\"\'"'"'"LEAKMIRROR988\"\'"'"' -H '"'"'X
 printf '%s\n' 'curl -H "Authorization: Bearer=abc\">SYNTHCLOSURE901"2>err; echo KEEPTAILCLOSURE1'
 printf '%s\n' 'curl -H"Authorization: Bearer:abc\">SYNTHCLOSURE902"2>err; echo KEEPTAILCLOSURE2'
 printf '%s\n' 'curl -H "Authorization: Custom=abc\">SYNTHCLOSURE903" https://x; echo KEEPTAILCLOSURE3'
+# A scheme separator followed by spaces still masks the Authorization value.
+printf '%s\n' 'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
+printf '%s\n' 'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
+printf '%s\n' 'Authorization: Basic: SYNTHSEP903; echo KEEPSEPTAIL3'
+printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHSEP904" https://x; echo KEEPSEPTAIL4'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 # An interior bare quote is part of the escaped value, not its closing quote.
 printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
@@ -1151,6 +1156,14 @@ grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAILCLOSU
 grep -Fq SYNTHCLOSURE901 "$line_file" && exit 1005
 grep -Fq SYNTHCLOSURE902 "$line_file" && exit 1006
 grep -Fq SYNTHCLOSURE903 "$line_file" && exit 1007
+grep -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL1' "$line_file" || exit 1010
+grep -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL2' "$line_file" || exit 1011
+grep -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL3' "$line_file" || exit 1012
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPSEPTAIL4' "$line_file" || exit 1013
+grep -Fq SYNTHSEP901 "$line_file" && exit 1014
+grep -Fq SYNTHSEP902 "$line_file" && exit 1015
+grep -Fq SYNTHSEP903 "$line_file" && exit 1016
+grep -Fq SYNTHSEP904 "$line_file" && exit 1017
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2031,6 +2044,31 @@ for mutation_index in 0 1; do
   shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$repo_dir/lmline/actions.bash" "${bare_mixed_fixtures[$mutation_index]}") || fail "shipped bare mixed-quote redaction $mutation_index"
   grep -Fq "${bare_mixed_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped bare mixed-quote rule $mutation_index leaked the credential"
+done
+
+# Mutation check: deleting the scheme-separator whitespace rule must leak
+# each credential, while the shipped redactor masks it and keeps the tail.
+scheme_space_rule=$(cat <<'RULE'
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
+RULE
+)
+[[ $(grep -cF "$scheme_space_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one scheme-separator whitespace rule"
+grep -vF "$scheme_space_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-scheme-space.bash" || fail "scheme-separator whitespace mutation copy"
+scheme_space_fixtures=(
+  'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
+  'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
+  'Authorization: Basic: SYNTHSEP903; echo KEEPSEPTAIL3'
+)
+scheme_space_secrets=(SYNTHSEP901 SYNTHSEP902 SYNTHSEP903)
+scheme_space_tails=(KEEPSEPTAIL1 KEEPSEPTAIL2 KEEPSEPTAIL3)
+for mutation_index in 0 1 2; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-scheme-space.bash" "${scheme_space_fixtures[$mutation_index]}") || fail "mutated scheme-separator redaction $mutation_index"
+  grep -Fq "${scheme_space_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated scheme-separator rule $mutation_index did not leak the credential"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${scheme_space_fixtures[$mutation_index]}") || fail "shipped scheme-separator redaction $mutation_index"
+  grep -Fq "${scheme_space_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped scheme-separator rule $mutation_index leaked the credential"
+  grep -Fq "${scheme_space_tails[$mutation_index]}" <<<"$shipped" || fail "shipped scheme-separator rule $mutation_index lost the tail"
 done
 
 ok "clip cli"
