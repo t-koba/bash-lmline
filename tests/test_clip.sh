@@ -254,6 +254,9 @@ printf '%s\n' 'curl -H "Authorization: Bearer SYNTHURLHDR2"; curl "https://x/?a=
 printf '%s\n' 'curl "https://x/?a=1&Authorization=SYNTHURLDQ2"'
 printf '%s\n' "curl 'https://x/?a=1&Authorization=SYNTHURLSQ2'"
 printf '%s\n' 'curl "https://x/?a=1&Authorization=Bearer SYNTHURLSP2"'
+printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHCOLEND1:'
+printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHEQEND1='
+printf '%s\n' "curl 'https://x/?a=1&Authorization=SYNTHCOLQUOTE1:'"
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
@@ -1033,6 +1036,12 @@ grep -Fq SYNTHURLSQ2 "$line_file" && exit 902
 grep -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"' "$line_file" || exit 903
 grep -Fq SYNTHURLSP2 "$line_file" && exit 904
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 905
+grep -Fq SYNTHCOLEND1 "$line_file" && exit 906
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 907
+grep -Fq SYNTHEQEND1 "$line_file" && exit 908
+grep -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'" "$line_file" || exit 909
+grep -Fq SYNTHCOLQUOTE1 "$line_file" && exit 910
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
 grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
 grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
@@ -3087,10 +3096,9 @@ shipped_tail=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_messag
 grep -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1' <<<"$shipped_tail" || fail "shipped natural-prefix rule dropped the command tail"
 
 # Mutation check: URL query Authorization values after shell-looking separators stay masked.
-url_auth_rule=$(grep -F 's/([&;,])(Authorization)([[:space:]]*[:=]' "$repo_dir/lmline/actions.bash")
-[[ -n $url_auth_rule ]] || fail "missing late URL Authorization rule"
-[[ $(grep -cF "$url_auth_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one late URL Authorization rule"
-grep -vF "$url_auth_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-url-auth.bash" || fail "late URL Authorization mutation copy"
+url_auth_rules=$(grep -F -e 's/([&;,])(Authorization)([[:space:]]*[:=]' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)' "$repo_dir/lmline/actions.bash")
+[[ $(grep -cF -e 's/([&;,])(Authorization)([[:space:]]*[:=]' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)' "$repo_dir/lmline/actions.bash") == 3 ]] || fail "expected three URL Authorization rules"
+grep -vF "$url_auth_rules" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-url-auth.bash" || fail "late URL Authorization mutation copy"
 url_auth_fixture='curl -H "Authorization: Bearer SYNTHHDRM1"; curl "https://x/?a=1&Authorization=SYNTHURLMUT1"'
 url_auth_mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-no-url-auth.bash" "$url_auth_fixture") || fail "late URL Authorization mutation redaction"
@@ -3098,5 +3106,18 @@ grep -Fq SYNTHURLMUT1 <<<"$url_auth_mutated" || fail "late URL Authorization mut
 url_auth_shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$repo_dir/lmline/actions.bash" "$url_auth_fixture") || fail "shipped late URL Authorization redaction"
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; curl "https://x/?a=1&Authorization:***REDACTED***"' <<<"$url_auth_shipped" || fail "shipped late URL Authorization rule leaked the query secret"
+
+
+# Mutation check: colon- and equals-ending URL query values need their sibling rules.
+url_end_rules=$(grep -F -e '*[:=])([[:space:]&;,]|$)' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)' "$repo_dir/lmline/actions.bash")
+[[ $(grep -cF -e '*[:=])([[:space:]&;,]|$)' -e 's/([?][^[:space:]&;,]*)([&;,])(Authorization)' "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two URL Authorization ending rules"
+grep -vF "$url_end_rules" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-url-auth-end.bash" || fail "URL Authorization ending mutation copy"
+url_end_fixture='url=https://x/?a=1&Authorization=SYNTHCOLEND1:'
+url_end_mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-url-auth-end.bash" "$url_end_fixture") || fail "URL Authorization ending mutation redaction"
+grep -Fq SYNTHCOLEND1 <<<"$url_end_mutated" || fail "URL Authorization ending mutation did not leak the query secret"
+url_end_shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$repo_dir/lmline/actions.bash" "$url_end_fixture") || fail "shipped URL Authorization ending redaction"
+grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***' <<<"$url_end_shipped" || fail "shipped URL Authorization ending rule leaked the query secret"
 
 ok "clip cli"
