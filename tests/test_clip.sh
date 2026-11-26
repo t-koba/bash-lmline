@@ -270,6 +270,10 @@ printf '%s\n' "curl 'https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ5==='; echo KEE
 printf '%s\n' 'curl "https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ6="; echo KEEPSINGLEEQ1'
 printf '%s\n' "curl 'https://x/?a=1;Authorization=U1lOVEhCQVNFNjQ7='; echo KEEPSINGLEEQ2"
 printf '%s\n' 'curl "https://x/?a=1,Authorization=U1lOVEhCQVNFNjQ8="; echo KEEPSINGLEEQ3'
+printf '%s\n' 'curl "https://x/?Authorization=U1lOVEhCQVFCMQ=="; echo TAILFQ1'
+printf '%s\n' "curl 'https://x/?Authorization=U1lOVEhCQVFCMg=='; echo TAILFQ2"
+printf '%s\n' 'url=https://x/?Authorization=U1lOVEhCQVFCMw===; echo TAILFQ3'
+printf '%s\n' 'url=https://x/?Authorization=U1lOVEhCQVFCNDo:; echo TAILFQ4'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
@@ -1079,6 +1083,14 @@ grep -Fq U1lOVEhCQVNFNjQ7= "$line_file" && exit 1220
 grep -Fxq "curl 'https://x/?a=1;Authorization:***REDACTED***'; echo KEEPSINGLEEQ2" "$line_file" || exit 1221
 grep -Fq U1lOVEhCQVNFNjQ8= "$line_file" && exit 1222
 grep -Fxq 'curl "https://x/?a=1,Authorization:***REDACTED***"; echo KEEPSINGLEEQ3' "$line_file" || exit 1223
+grep -Fq U1lOVEhCQVFCMQ== "$line_file" && exit 1224
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILFQ1' "$line_file" || exit 1225
+grep -Fq U1lOVEhCQVFCMg== "$line_file" && exit 1226
+grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILFQ2" "$line_file" || exit 1227
+grep -Fq U1lOVEhCQVFCMw=== "$line_file" && exit 1228
+grep -Fxq 'url=https://x/?Authorization:***REDACTED***; echo TAILFQ3' "$line_file" || exit 1229
+grep -Fq U1lOVEhCQVFCNDo: "$line_file" && exit 1230
+grep -Fxq 'url=https://x/?Authorization:***REDACTED***; echo TAILFQ4' "$line_file" || exit 1231
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
 grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
 grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
