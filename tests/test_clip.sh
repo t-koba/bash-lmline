@@ -204,6 +204,8 @@ printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUT
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
 printf '%s\n' 'url=https://x/?token=\"FRST\"&password=\\"\\"SECNEXT\\"&y=1; echo KEEPESEMPTYDQ'
 printf '%s\n' "url=https://x/?token=\\\\'FRST\\\\'&secret=\\\\'\\\\'SECNEXTE\\\\'&y=2; echo KEEPESEMPTYSQ"
+printf '%s\n' 'url=https://x/?token=\\"FRST\\"&password=\\\\"\\\\"SECNEXT WITH SPACE\\\\"&y=1; echo KEEPURLDQSPACE'
+printf '%s\n' "url=https://x/?token=\\\\'FRST\\\\'&secret=\\\\'\\\\'SECNEXT SQ SPACE\\\\'&y=2; echo KEEPURLSQSPACE"
 # Escaped credential keys leave the following credential field intact in both quote families.
 printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPESCQ1\"&password=SYNTHKEEPESCQ2; echo KEEPESCQ'
 printf '%s\n' 'url=https://x/?\"token\"=\"SYNTHKEEPSEMI\";password=SYNTHKEEPSEMIV; echo KEEPSEMI'
@@ -782,6 +784,10 @@ grep -Fq 'SECNEXT' "$line_file" && exit 913
 grep -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPESEMPTYDQ' "$line_file" || exit 914
 grep -Fq 'SECNEXTE' "$line_file" && exit 915
 grep -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPESEMPTYSQ" "$line_file" || exit 916
+grep -Fq 'SECNEXT WITH SPACE' "$line_file" && exit 926
+grep -Fq 'SECNEXT SQ SPACE' "$line_file" && exit 927
+grep -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPURLDQSPACE' "$line_file" || exit 928
+grep -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPURLSQSPACE" "$line_file" || exit 929
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&password="***REDACTED***"&y=2; echo KEEPUNEQ' "$line_file" || exit 892
 grep -Fq 'SYNTHKEEPESCQ1' "$line_file" && exit 893
 grep -Fq 'SYNTHKEEPESCQ2' "$line_file" && exit 894
