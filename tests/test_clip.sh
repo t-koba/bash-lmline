@@ -299,6 +299,9 @@ printf '%s\n' "curl -H 'Authorization: Bearer abc'\"'pa\\\"inside space'\"'pb TA
 printf '%s\n' 'curl -H "Authorization: Bearer=AAA'"'"'FIRSTSECRET'"'"'; Authorization: Basic=BBB\"SECONDSECRET\"" https://x; echo KEEPTAIL'
 printf '%s\n' 'curl -H '"'"'Authorization: Basic=BBB\"ONLYSECRET\"'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL'
 printf '%s\n' 'curl -H "Authorization: Bearer=AAA\"SINGLESECRET\"" https://x; echo KEEPTAIL'
+# An adjacent tail after the closing header quote must survive.
+printf '%s\n' 'curl -H "Authorization: Bearer=abc\\\"tokSECRETADJQ\\\""2>err; echo KEEPTAILADJQ'
+printf '%s\n' "curl -H 'Authorization: Bearer=abc\\\\'tokSECRETADJS\\\\''2>err; echo KEEPTAILADJS"
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 # An interior bare quote is part of the escaped value, not its closing quote.
 printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
@@ -1110,6 +1113,9 @@ grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL' "$l
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE' "$line_file" || exit 977
 grep -Fq "'tSECRET" "$line_file" && exit 978
 grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' "$line_file" || exit 979
+grep -Fq 'SECRETADJ' "$line_file" && exit 980
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILADJQ' "$line_file" || exit 981
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' echo KEEPTAILADJS" "$line_file" || exit 982
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -1876,10 +1882,10 @@ mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() {
   "$cfg_tmp/actions-no-escaped-upq.bash" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB'SYNTHUPQESC3'; echo KEEPUPQESC3") || fail "mutated control redaction"
 grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' <<<"$mutated" || fail "mutated control fixture changed"
 
-# Mutation check: removing both generalized scheme rules must leak the custom
+# Mutation check: removing all generalized scheme rules must leak the custom
 # headers while leaving the URL realm and Digest controls unchanged.
 generalized_rule='${auth_prefix}([A-Za-z][A-Za-z0-9+.-]*)([:=]+)'
-[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two generalized scheme rules"
+[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 3 ]] || fail "expected three generalized scheme rules"
 grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
 scheme_mutation_fixtures=(
   'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
@@ -1906,7 +1912,7 @@ done
 
 # The same deletion restores all quoted -H tails, while the bare-line
 # escaped-header control still masks.
-[[ $(grep -cF '(([^[:space:];,&|' "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one escaped-open-quote value rule"
+[[ $(grep -cF '(([^[:space:];,&|' "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two escaped-open-quote value rules"
 quoted_tail_mutation_fixtures=(
   "curl -H \"Authorization: Bearer=AAA'FIRSTSECRET'; Authorization: Basic=BBB\\\"SECONDSECRET\\\"\" https://x; echo KEEPTAIL"
   "curl -H 'Authorization: Basic=BBB\\\"ONLYSECRET\\\"' -H 'X: keep' https://x; echo KEEPTAIL"
@@ -1927,9 +1933,12 @@ for mutation_index in 0 1 2 3; do
   grep -Fq "${quoted_tail_mutation_secrets[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index leaked a secret"
 # Removing only the interior-quote alternative must leak that one case while
 # the three quoted -H controls keep their byte-for-byte tails.
-interior_quote_alt="|[\\\"'][^[:space:];,&|\\\"']"
-[[ $(grep -cF "$interior_quote_alt" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one interior-quote alternative"
-grep -vF "$interior_quote_alt" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-interior-quote.bash" || fail "redaction mutation copy"
+interior_quote_alt_dq="|'[^[:space:];,&|\\\"']|\\\"[^[:space:];,&|\\\"']"
+interior_quote_alt_sq="|\\\"[^[:space:];,&|\\\"']|'[^[:space:];,&|\\\"']"
+[[ $(grep -cF "$interior_quote_alt_dq" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one double-quote interior alternative"
+[[ $(grep -cF "$interior_quote_alt_sq" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one single-quote interior alternative"
+A="$interior_quote_alt_dq" B="$interior_quote_alt_sq" awk 'BEGIN{a=ENVIRON["A"]; b=ENVIRON["B"]} { while ((i=index($0,a))) $0=substr($0,1,i-1) substr($0,i+length(a)); while ((i=index($0,b))) $0=substr($0,1,i-1) substr($0,i+length(b)); print }' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-interior-quote.bash" || fail "redaction mutation copy"
 mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$cfg_tmp/actions-no-interior-quote.bash" 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6') || fail "mutated interior-quote redaction"
 grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' <<<"$mutated" && fail "mutated interior-quote rule still masked the value"
@@ -1940,5 +1949,16 @@ for mutation_index in 0 1 2; do
   grep -Fxq "${quoted_tail_mutation_expected[$mutation_index]}" <<<"$mutated" || fail "mutated interior-quote rule changed quoted tail $mutation_index"
 done
 done
+
+# Removing the staged same-family restriction must drop an adjacent tail.
+staged_tail_dq="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"']|'[^[:space:];,&|\\\"'])*)*"
+staged_tail_sq="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"']|\\\"[^[:space:];,&|\\\"'])*)*"
+[[ $(grep -cF "$staged_tail_dq" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one double-quote staged tail rule"
+[[ $(grep -cF "$staged_tail_sq" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one single-quote staged tail rule"
+A="$staged_tail_dq" B="$staged_tail_sq" awk 'BEGIN{a=ENVIRON["A"]; b=ENVIRON["B"]} { while ((i=index($0,a))) $0=substr($0,1,i-1) substr($0,i+length(a)); while ((i=index($0,b))) $0=substr($0,1,i-1) substr($0,i+length(b)); print }' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-staged-tail.bash" || fail "staged tail mutation copy"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-staged-tail.bash" 'curl -H "Authorization: Bearer=abc\\\"tokSECRETADJQ\\\"\"2>err; echo KEEPTAILADJQ') || fail "mutated staged tail redaction"
+grep -Fq 'KEEPTAILADJQ' <<<"$mutated" && fail "mutated staged rule kept the adjacent tail"
 
 ok "clip cli"
