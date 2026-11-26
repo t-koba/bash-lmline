@@ -307,6 +307,10 @@ __lmline_redact_clip_text() {
   # quote bounds the credential, so a following shell word is untouched.
   # A spaced escaped-quote value keeps its quotes and the shell tail; only
   # the credential between them is masked.
+  # A generic-scheme value ending at a shell quote keeps that quote: the
+  # blank after it starts a new word, so a following argument or header is
+  # not part of the credential. Glued quoted pieces have no blank and stay
+  # one credential value.
   sed -E \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
@@ -364,6 +368,8 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
     -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
+    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
+    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+([^\\\"='[:space:];,&|]+)(')([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
     -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+/\1\2\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:]+)([^\\\"'[:space:];,&|<>]*)([\"'])$/\1\2\3***REDACTED***\5/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"'[:space:];,&|]+)([[:space:]]+)/\1***REDACTED***\5/Ig" \

@@ -331,6 +331,20 @@ printf '%s\n' 'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
 printf '%s\n' 'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
 printf '%s\n' 'Authorization: Basic: SYNTHSEP903; echo KEEPSEPTAIL3'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHSEP904" https://x; echo KEEPSEPTAIL4'
+# A generic RFC-token scheme ends at the closing shell quote: the next word
+# or header is a separate word and must survive redaction (seq240).
+printf '%s\n' 'curl -H "Authorization: Foo: SYNTHA1" "PAYLOADA1"; echo TAILA1'
+printf '%s\n' "curl -H 'Authorization: Foo: SYNTHS1' 'PAYLOADS1'; echo TAILS1"
+printf '%s\n' 'curl -H "Authorization: X-OAuth2: SYNTHX1" --data "DATAX1"; echo TAILX1'
+printf '%s\n' 'curl -H "Authorization: Foo: SYNTHC1" -H "X: KEEPC1" https://x; echo TAILC1'
+printf '%s\n' "curl -H 'Authorization: X-OAuth2: SYNTHX2' -H 'X: KEEPX2' https://x; echo TAILX2"
+printf '%s\n' 'curl -H "Authorization: my_scheme: SYNTHM1" https://x; echo TAILM1'
+printf '%s\n' 'curl -H "Authorization: 2Scheme: SYNTH2" 2>err; echo TAIL2'
+# A glued adjacent quoted piece is part of the same word and stays masked.
+printf '%s\n' 'curl -H "Authorization: Foo: SYNTHG1""GLUEDG1"; echo TAILG1'
+# Known schemes are the control for the same shell shapes.
+printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHB1" "PAYLOADB1"; echo TAILB1'
+printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHBC1" -H "X: KEEPC1" https://x; echo TAILC1'
 # A glued scheme value followed by another word keeps that word and the tail.
 printf '%s\n' 'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
 printf '%s\n' 'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
@@ -1269,6 +1283,28 @@ grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL11' "$line_
 grep -Fxq 'curl -H '\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL12' "$line_file" || exit 1052
 grep -Fxq 'curl -H"Authorization: ***REDACTED***"; echo KEEPQSEPTAIL13' "$line_file" || exit 1053
 grep -Fxq 'curl -H'\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL14' "$line_file" || exit 1054
+# Generic schemes must mask the credential and keep the following shell word.
+grep -Fq SYNTHA1 "$line_file" && exit 9501
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADA1"; echo TAILA1' "$line_file" || exit 9502
+grep -Fq SYNTHS1 "$line_file" && exit 9503
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' 'PAYLOADS1'; echo TAILS1" "$line_file" || exit 9504
+grep -Fq SYNTHX1 "$line_file" && exit 9505
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" --data "DATAX1"; echo TAILX1' "$line_file" || exit 9506
+grep -Fq SYNTHC1 "$line_file" && exit 9507
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1' "$line_file" || exit 9508
+grep -Fq SYNTHX2 "$line_file" && exit 9509
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: KEEPX2' https://x; echo TAILX2" "$line_file" || exit 9510
+grep -Fq SYNTHM1 "$line_file" && exit 9511
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo TAILM1' "$line_file" || exit 9512
+grep -Fq SYNTH2 "$line_file" && exit 9513
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" 2>err; echo TAIL2' "$line_file" || exit 9514
+grep -Fq SYNTHG1 "$line_file" && exit 9515
+grep -Fq GLUEDG1 "$line_file" && exit 9516
+grep -Fxq 'curl -H "Authorization: Foo:***REDACTED***"; echo TAILG1' "$line_file" || exit 9517
+grep -Fq SYNTHB1 "$line_file" && exit 9518
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADB1"; echo TAILB1' "$line_file" || exit 9519
+grep -Fq SYNTHBC1 "$line_file" && exit 9520
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1' "$line_file" || exit 9521
 grep -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1' "$line_file" || exit 1018
 grep -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2' "$line_file" || exit 1019
 grep -Fq SYNTHGLUED901 "$line_file" && exit 1020
@@ -2219,7 +2255,7 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTE
 # Mutation check: removing all generalized scheme rules must leak the custom
 # headers while leaving the URL realm and Digest controls unchanged.
 generalized_rule='${auth_prefix}(${auth_scheme_token}+)([:=]+)'
-[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 6 ]] || fail "expected six generalized scheme rules"
+[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 8 ]] || fail "expected eight generalized scheme rules"
 grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
 scheme_mutation_fixtures=(
   'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
@@ -2783,7 +2819,7 @@ done
 
 # Narrowing the shared auth-scheme token class back to URI-scheme syntax must
 # reopen every custom-scheme case; the shipped class masks all of them.
-[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 30 ]] || fail "expected thirty shared auth-scheme token uses"
+[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 32 ]] || fail "expected thirty-two shared auth-scheme token uses"
 sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
   >"$cfg_tmp/actions-uri-scheme-class.bash" || fail "auth-scheme class mutation copy"
 grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-scheme-class.bash" && fail "auth-scheme class mutation did not apply"
@@ -2809,6 +2845,46 @@ for mutation_index in "${!token_fixtures[@]}"; do
   shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
     "$repo_dir/lmline/actions.bash" "${token_fixtures[$mutation_index]}") || fail "shipped auth-scheme class redaction $mutation_index"
   grep -Fxq "${token_expected[$mutation_index]}" <<<"$shipped" || fail "shipped auth-scheme class $mutation_index did not mask"
+done
+
+# Mutation check: removing the generic quote-terminated value rules restores
+# the over-redacting rule/order. The mutant must eat a blank-separated quoted
+# argument or second header, while the shipped redactor keeps both. The
+# heredocs mirror the shipped expressions exactly.
+generic_quoted_rule_dq=$(cat <<'RULE'
+    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
+RULE
+)
+generic_quoted_rule_sq=$(cat <<'RULE'
+    -e "/Authorization:[[:space:]]+[A-Za-z0-9+.-]*:[[:space:]]*\*/!s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+([^\\\"='[:space:];,&|]+)(')([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
+RULE
+)
+for rule in "$generic_quoted_rule_dq" "$generic_quoted_rule_sq"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one generic quote-terminated value rule: $rule"
+done
+grep -vF -e "$generic_quoted_rule_dq" -e "$generic_quoted_rule_sq" \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-over-redacting.bash" || fail "over-redacting mutation copy"
+for rule in "$generic_quoted_rule_dq" "$generic_quoted_rule_sq"; do
+  grep -Fq "$rule" "$cfg_tmp/actions-over-redacting.bash" && fail "over-redacting mutation did not apply"
+done
+over_fixtures=(
+  'curl -H "Authorization: Foo: SYNTHA1" "PAYLOADA1"; echo TAILA1'
+  "curl -H 'Authorization: Foo: SYNTHS1' 'PAYLOADS1'; echo TAILS1"
+  'curl -H "Authorization: Foo: SYNTHC1" -H "X: KEEPC1" https://x; echo TAILC1'
+)
+over_victims=(PAYLOADA1 PAYLOADS1 KEEPC1)
+over_expected=(
+  'curl -H "Authorization: ***REDACTED***" "PAYLOADA1"; echo TAILA1'
+  "curl -H 'Authorization: ***REDACTED***' 'PAYLOADS1'; echo TAILS1"
+  'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1'
+)
+for mutation_index in "${!over_fixtures[@]}"; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-over-redacting.bash" "${over_fixtures[$mutation_index]}") || fail "over-redacting mutation redaction $mutation_index"
+  grep -Fq "${over_victims[$mutation_index]}" <<<"$mutated" && fail "over-redacting mutation $mutation_index kept the following argument"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${over_fixtures[$mutation_index]}") || fail "shipped generic quote-terminated redaction $mutation_index"
+  grep -Fxq "${over_expected[$mutation_index]}" <<<"$shipped" || fail "shipped generic quote-terminated rule $mutation_index lost the following argument"
 done
 
 ok "clip cli"
