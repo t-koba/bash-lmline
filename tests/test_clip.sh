@@ -149,6 +149,10 @@ printf "%s\n" "Authorization: Bearer=AAA'SYNTHUPQESC3'; Authorization: Basic=BBB
 printf '%s\n' 'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
 printf '%s\n' 'Authorization: Custom=ONLY\"SYNTHCUSTM3\"; echo KEEPCUSTOM2'
 printf '%s\n' 'Authorization: X-OAuth2=FIRST\"SYNTHXAUTH1\"; Authorization: X-OAuth2=SECOND\"SYNTHXAUTH2\"; echo KEEPCUSTOM3'
+# Opposite-family quotes inside escaped credentials must not split the value.
+printf '%s\n' 'Authorization: Bearer=abc\"tok'\''LEAKAPOSTROPHE987"end; echo KEEPTAIL'
+printf '%s\n' 'Authorization: Custom=abc\"tok'\''LEAKAPOSTROPHE988\"end; echo KEEPTAIL'
+printf '%s\n' "Authorization: Bearer=abc\\'tok\"LEAKDQUOTE989\\'end; echo KEEPTAIL"
 # Quoted custom-scheme -H tails must survive byte-for-byte in both quote families.
 printf '%s\n' "curl -H 'Authorization: Custom=WORD\\\"SYNTHCUSTOMQH1\\\"' -H 'X: keep' https://example.test; echo KEEPQHCUSTOM1"
 printf '%s\n' 'curl -H "Authorization: Custom=WORD\"SYNTHCUSTOMQH2\"" https://example.test; echo KEEPQHCUSTOM2'
@@ -904,6 +908,12 @@ grep -Fq 'SYNTHCUSTOMQH1' "$line_file" && exit 954
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://example.test; echo KEEPQHCUSTOM1" "$line_file" || exit 955
 grep -Fq 'SYNTHCUSTOMQH2' "$line_file" && exit 956
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://example.test; echo KEEPQHCUSTOM2' "$line_file" || exit 957
+grep -Fq 'LEAKAPOSTROPHE987' "$line_file" && exit 958
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPTAIL' "$line_file" || exit 959
+grep -Fq 'LEAKAPOSTROPHE988' "$line_file" && exit 960
+grep -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPTAIL' "$line_file" || exit 961
+grep -Fq 'LEAKDQUOTE989' "$line_file" && exit 962
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPTAIL' "$line_file" || exit 963
 grep -Fxq 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5' "$line_file" || exit 952
 grep -Fxq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 953
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
