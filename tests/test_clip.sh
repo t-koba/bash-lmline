@@ -334,6 +334,9 @@ printf '%s\n' 'curl -H "Authorization: Bearer:*SYNTHSTAR911"; echo KEEPSTAR911'
 printf "%s\\n" "curl -H 'Authorization: Basic:@SYNTHAT912'; echo KEEPAT912"
 printf '%s\n' 'curl -H "Authorization: Bearer:**SYNTHSTAR913"; echo KEEPSTAR913'
 printf '%s\n' 'curl -H "Authorization: Bearer: @@SYNTHAT914"; echo KEEPAT914'
+printf '%s\n' 'curl -H "Authorization: Bearer=*SYNTHSTAR921"; echo KEEP921'
+printf "%s\\n" "curl -H 'Authorization: Basic:*SYNTHSTAR922'; echo KEEP922"
+printf "%s\\n" "curl -H 'Authorization: Basic:@SYNTHAT923'; echo KEEP923"
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHARG901" -H "X: keep" https://x; echo KEEPARGTAIL1'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHEOL1001"'
 printf '%s\n' 'curl -H "Authorization: Bearer "1234567890; echo KEEPNUM1'
@@ -1260,6 +1263,12 @@ grep -Fq SYNTHSTAR911 "$line_file" && exit 1064
 grep -Fq SYNTHAT912 "$line_file" && exit 1065
 grep -Fq SYNTHSTAR913 "$line_file" && exit 1066
 grep -Fq SYNTHAT914 "$line_file" && exit 1067
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEP921' "$line_file" || exit 1068
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP922" "$line_file" || exit 1069
+grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP923" "$line_file" || exit 1070
+grep -Fq SYNTHSTAR921 "$line_file" && exit 1071
+grep -Fq SYNTHSTAR922 "$line_file" && exit 1072
+grep -Fq SYNTHAT923 "$line_file" && exit 1073
 grep -Fq SYNTHEOL1003 "$line_file" && exit 1028
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM1' "$line_file" || exit 1029
 grep -Fq 1234567890 "$line_file" && exit 1030
