@@ -133,6 +133,10 @@ printf '%s\n' 'Authorization: Bearer="SEEDFIRST""SYNTH SPACE1"; echo KEEPSEGSPAC
 printf '%s\n' "Authorization: Bearer='SEEDFIRST''SYNTH SPACE2'; echo KEEPSEGSPACE2"
 printf '%s\n' 'Authorization: Bearer=\\"SEEDFIRST\\"\\"SYNTH SPACE3\\"; echo KEEPSEGSPACE3'
 printf '%s\n' 'Authorization: Bearer="SEEDFIRST""SYNTH SPACE4"; echo "KEEPSEGSPACE4"'
+printf '%s\n' 'Authorization: Bearer=FIRST"SYNTH UPQ1"; echo KEEPUPQ1'
+printf '%s\n' "Authorization: Bearer=FIRST'SYNTH UPQ2'; echo KEEPUPQ2"
+printf '%s\n' 'Authorization: Bearer=FIRST"SYNTH UPQ3"; echo "KEEPUPQ3"'
+printf '%s\n' 'Authorization: Bearer=FIRST"SYNTH UPQ4";token=SYNTHUPQKEY; echo KEEPUPQ4'
 # The separator between a known scheme and its quoted value may be ':' or repeated.
 printf '%s\n' 'Authorization: Bearer:"SYNTHCOLSDQ1"; echo KEEPCOLSDQ1'
 printf '%s\n' "Authorization: Basic=='SYNTHCOLSQ2'; echo KEEPCOLSQ2"
@@ -838,6 +842,11 @@ grep -Fq 'SYNTH SPACE' "$line_file" && exit 917
 grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPSEGSPACE1' "$line_file" || exit 918
 grep -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPSEGSPACE2" "$line_file" || exit 919
 grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo "KEEPSEGSPACE4"' "$line_file" || exit 920
+grep -Fq 'SYNTH UPQ' "$line_file" && exit 921
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ1' "$line_file" || exit 922
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ2' "$line_file" || exit 923
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo "KEEPUPQ3"' "$line_file" || exit 924
+grep -Fxq 'Authorization: Bearer=***REDACTED***;token=***REDACTED***; echo KEEPUPQ4' "$line_file" || exit 925
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
