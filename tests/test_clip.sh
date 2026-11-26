@@ -113,6 +113,16 @@ printf '%s\n' 'url=https://u:@@LmLiNe_Url_ReDaCtEd@@@host/path; echo KEEPPASTEDU
 printf '%s\n' 'echo KEEPPASTEDREDMARK @@LmLINE_Redacted@@ KEEPPASTEDREDTAIL'
 printf '%s\n' 'echo KEEPPASTEDCHAINMARK @LmLINE_ChAiN_kEy@ KEEPPASTEDCHAINTAIL'
 printf '%s\n' 'echo KEEPPASTEDSEPMARK @LmLINE_SeP@ KEEPPASTEDSEPTAIL'
+# A known Authorization scheme may be followed by '=' and a quoted value.
+printf '%s\n' 'Authorization: Bearer="SYNTHEQSDQ1"; echo KEEPEQSDQ1'
+printf '%s\n' "Authorization: Bearer='SYNTHESQSQ1'; echo KEEPEQSQ1"
+printf '%s\n' 'authorization: bearer="SYNTHEQSCASE1" && echo KEEPEQSCASE'
+printf '%s\n' 'Authorization: Basic="SYNTHEQSESC1\"TAIL"; echo KEEPEQSESC'
+printf '%s\n' 'Authorization: Bearer="SYNTHEQUNTERM1'
+printf '%s\n' "Authorization: Bearer='SYNTHEQUNTERM2"
+printf '%s\n' 'Authorization: Bearer="SYNTHEQTBACK1\'
+printf '%s\n' "Authorization: Bearer='SYNTHEQTBACK2\\"
+printf '%s\n' 'Authorization: Bearer="SYNTHEQCHAIN1";token=SYNTHEQCHAIN2; echo KEEPEQCHAIN'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -593,6 +603,24 @@ grep -Fxq 'echo KEEPPASTEDCHAINMARK ***REDACTED*** KEEPPASTEDCHAINTAIL' "$line_f
 grep -Fqi '@LmLINE_ChAiN_kEy@' "$line_file" && exit 722
 grep -Fxq 'echo KEEPPASTEDSEPMARK ***REDACTED*** KEEPPASTEDSEPTAIL' "$line_file" || exit 723
 grep -Fqi '@LmLINE_SeP@' "$line_file" && exit 724
+grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPEQSDQ1' "$line_file" || exit 725
+grep -Fq 'SYNTHEQSDQ1' "$line_file" && exit 726
+grep -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPEQSQ1" "$line_file" || exit 727
+grep -Fq 'SYNTHESQSQ1' "$line_file" && exit 728
+grep -Fxq 'authorization: bearer="***REDACTED***" && echo KEEPEQSCASE' "$line_file" || exit 729
+grep -Fq 'SYNTHEQSCASE1' "$line_file" && exit 730
+grep -Fxq 'Authorization: Basic="***REDACTED***"; echo KEEPEQSESC' "$line_file" || exit 731
+grep -Fq 'SYNTHEQSESC1' "$line_file" && exit 732
+grep -Fxq 'Authorization: Bearer="***REDACTED***' "$line_file" || exit 733
+grep -Fq 'SYNTHEQUNTERM1' "$line_file" && exit 734
+grep -Fxq "Authorization: Bearer='***REDACTED***" "$line_file" || exit 735
+grep -Fq 'SYNTHEQUNTERM2' "$line_file" && exit 736
+grep -Fxq 'Authorization: Bearer="***REDACTED***' "$line_file" || exit 739
+grep -Fq 'SYNTHEQTBACK1' "$line_file" && exit 740
+grep -Fxq "Authorization: Bearer='***REDACTED***" "$line_file" || exit 741
+grep -Fq 'SYNTHEQTBACK2' "$line_file" && exit 742
+grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
+grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
