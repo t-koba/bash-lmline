@@ -59,6 +59,9 @@ printf '%s\n' 'Authorization: my_scheme: "SYNTHQUOTED1"; echo KEEPQUOTED1'
 printf "%s\n" "Authorization: my_scheme: 'SYNTHQUOTED2'; echo KEEPQUOTED2"
 printf '%s\n' 'Authorization: 2Scheme= "SYNTHQUOTED3"; echo KEEPQUOTED3'
 printf "%s\n" "Authorization: 2Scheme= 'SYNTHQUOTED4'; echo KEEPQUOTED4"
+printf '%s\n' 'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'
+printf "%s\n" "Authorization: 2Scheme:'SYNTHGLUEDS1'; echo KEEPGLUEDS1"
+printf '%s\n' 'Authorization: my_scheme:"SYNTHGLUEDQ2" "PAYLOADGLUEDQ2"; echo KEEPGLUEDQ2'
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
@@ -1381,6 +1384,12 @@ grep -Fxq 'Authorization: 2Scheme="***REDACTED***"; echo KEEPQUOTED3' "$line_fil
 grep -Fq SYNTHQUOTED3 "$line_file" && exit 9406
 grep -Fxq "Authorization: 2Scheme='***REDACTED***'; echo KEEPQUOTED4" "$line_file" || exit 9407
 grep -Fq SYNTHQUOTED4 "$line_file" && exit 9408
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; echo KEEPGLUEDQ1' "$line_file" || exit 9409
+grep -Fq SYNTHGLUEDQ1 "$line_file" && exit 9410
+grep -Fxq "Authorization: 2Scheme:'***REDACTED***'; echo KEEPGLUEDS1" "$line_file" || exit 9411
+grep -Fq SYNTHGLUEDS1 "$line_file" && exit 9412
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***" "PAYLOADGLUEDQ2"; echo KEEPGLUEDQ2' "$line_file" || exit 9413
+grep -Fq SYNTHGLUEDQ2 "$line_file" && exit 9414
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -1989,8 +1998,8 @@ clip_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_d
 grep -q 'clipboard provider=fake' <<<"$clip_out" || fail "clip provider output"
 grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
-# Mutation: restricting escaped-quote rules to recognized schemes leaks these values.
-[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 11 ]] || fail "expected eleven generic scheme escaped-quote rules"
+# Mutation: restricting generic scheme rules to recognized schemes leaks these values.
+[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 13 ]] || fail "expected thirteen generic scheme rules"
 sed 's/${auth_scheme_any}/${auth_scheme_name}/g' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-recognized-esc-quotes.bash" || fail "escaped-quote scheme mutation copy"
 grep -Fq '${auth_scheme_any}' "$cfg_tmp/actions-recognized-esc-quotes.bash" && fail "escaped-quote scheme mutation did not apply"
 generic_esc_fixtures=(
@@ -2885,6 +2894,43 @@ for mutation_index in "${!over_fixtures[@]}"; do
   shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$repo_dir/lmline/actions.bash" "${over_fixtures[$mutation_index]}") || fail "shipped generic quote-terminated redaction $mutation_index"
   grep -Fxq "${over_expected[$mutation_index]}" <<<"$shipped" || fail "shipped generic quote-terminated rule $mutation_index lost the following argument"
+done
+
+# Mutation check: removing the glued custom-scheme quoted-value rules restores
+# the leak of a quoted credential with no blank after the separator. The
+# heredocs mirror the shipped expressions exactly.
+glued_quote_rule_dq=$(cat <<'RULE'
+    -e "/[?&/@#=;,]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
+RULE
+)
+glued_quote_rule_sq=$(cat <<'RULE'
+    -e "/[?&/@#=;,]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
+RULE
+)
+for rule in "$glued_quote_rule_dq" "$glued_quote_rule_sq"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one glued custom-scheme quoted rule: $rule"
+done
+grep -vF -e "$glued_quote_rule_dq" -e "$glued_quote_rule_sq" \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-glued-unmasked.bash" || fail "glued-unmasked mutation copy"
+for rule in "$glued_quote_rule_dq" "$glued_quote_rule_sq"; do
+  grep -Fq "$rule" "$cfg_tmp/actions-glued-unmasked.bash" && fail "glued-unmasked mutation did not apply"
+done
+glued_fixtures=(
+  'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'
+  "Authorization: 2Scheme:'SYNTHGLUEDS1'; echo KEEPGLUEDS1"
+)
+glued_secrets=(SYNTHGLUEDQ1 SYNTHGLUEDS1)
+glued_expected=(
+  'Authorization: my_scheme:"***REDACTED***"; echo KEEPGLUEDQ1'
+  "Authorization: 2Scheme:'***REDACTED***'; echo KEEPGLUEDS1"
+)
+for mutation_index in "${!glued_fixtures[@]}"; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-glued-unmasked.bash" "${glued_fixtures[$mutation_index]}") || fail "glued-unmasked redaction $mutation_index"
+  grep -Fq "${glued_secrets[$mutation_index]}" <<<"$mutated" || fail "glued-unmasked mutation $mutation_index did not leak"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${glued_fixtures[$mutation_index]}") || fail "shipped glued redaction $mutation_index"
+  grep -Fxq "${glued_expected[$mutation_index]}" <<<"$shipped" || fail "shipped glued rule $mutation_index did not mask"
 done
 
 ok "clip cli"
