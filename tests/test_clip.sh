@@ -278,6 +278,10 @@ printf '%s\n' 'curl "https://x/?Authorization=YWI="; echo TAILB64ONE'
 printf '%s\n' "curl 'https://x/?Authorization=YWJjZGVmZ2hpamtsbW5vcHE='; echo TAILB64LONG"
 printf '%s\n' 'curl "https://x/?Authorization=SYNTHSINGLEEQ4="; echo TAILSINGLE4'
 printf '%s\n' "curl 'https://x/?Authorization=SYNTHSINGLEEQ5='; echo TAILSINGLE5"
+printf '%s\n' 'curl \"https://x/?Authorization=SYNTHESCAPED1=\"; echo TAILESC'
+printf '%s\n' 'curl "https://x/?Authorization=SYNTHGT1=">out; echo TAILGT'
+printf '%s\n' 'curl "https://x/?Authorization=SYNTHPAR1="); echo TAILPAR'
+printf '%s\n' 'curl "https://x/?Authorization=SYNTHMULTIGT1==">out; echo TAILMULTIGT'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
@@ -1103,6 +1107,14 @@ grep -Fq SYNTHSINGLEEQ4= "$line_file" && exit 1236
 grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILSINGLE4' "$line_file" || exit 1237
 grep -Fq SYNTHSINGLEEQ5= "$line_file" && exit 1238
 grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILSINGLE5" "$line_file" || exit 1239
+grep -Fq SYNTHESCAPED1= "$line_file" && exit 1240
+grep -Fxq 'curl \"https://x/?Authorization:***REDACTED***\"; echo TAILESC' "$line_file" || exit 1241
+grep -Fq SYNTHGT1= "$line_file" && exit 1242
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***">out; echo TAILGT' "$line_file" || exit 1243
+grep -Fq SYNTHPAR1= "$line_file" && exit 1244
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"); echo TAILPAR' "$line_file" || exit 1245
+grep -Fq SYNTHMULTIGT1== "$line_file" && exit 1246
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***">out; echo TAILMULTIGT' "$line_file" || exit 1247
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
 grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
 grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
