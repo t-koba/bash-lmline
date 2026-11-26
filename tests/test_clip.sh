@@ -2599,7 +2599,6 @@ quoted_fixtures=(
   'Authorization: 2Scheme= "SYNTHQUOTED3"; echo KEEPQUOTED3'
   "Authorization: 2Scheme= 'SYNTHQUOTED4'; echo KEEPQUOTED4"
 )
-quoted_secrets=(SYNTHQUOTED1 SYNTHQUOTED2 SYNTHQUOTED3 SYNTHQUOTED4)
 quoted_expected=(
   'Authorization: my_scheme:"***REDACTED***"; echo KEEPQUOTED1'
   "Authorization: my_scheme:'***REDACTED***'; echo KEEPQUOTED2"
@@ -2619,7 +2618,6 @@ token_fixtures=(
   'Authorization: my_scheme=\"SYNTHE12\"; echo TAILZZ12'
   'Authorization: 2Scheme \"SYNTHSP3\"; echo TAILZZSP3'
 )
-token_secrets=(SECRETZZ9 SECRETZZ10 SECRETZZ11 SYNTHE12 SYNTHSP3)
 token_expected=(
   'Authorization: ***REDACTED***; echo TAILZZ9'
   'Authorization: ***REDACTED***; echo TAILZZ10'
@@ -2637,7 +2635,6 @@ over_fixtures=(
   "curl -H 'Authorization: Foo: SYNTHS1' 'PAYLOADS1'; echo TAILS1"
   'curl -H "Authorization: Foo: SYNTHC1" -H "X: KEEPC1" https://x; echo TAILC1'
 )
-over_victims=(PAYLOADA1 PAYLOADS1 KEEPC1)
 over_expected=(
   'curl -H "Authorization: ***REDACTED***" "PAYLOADA1"; echo TAILA1'
   "curl -H 'Authorization: ***REDACTED***' 'PAYLOADS1'; echo TAILS1"
@@ -2652,7 +2649,6 @@ glued_quote_fixtures=(
   'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'
   "Authorization: 2Scheme:'SYNTHGLUEDS1'; echo KEEPGLUEDS1"
 )
-glued_quote_secrets=(SYNTHGLUED901 SYNTHGLUED902)
 glued_quote_expected=(
   'Authorization: my_scheme:"***REDACTED***"; echo KEEPGLUEDQ1'
   "Authorization: 2Scheme:'***REDACTED***'; echo KEEPGLUEDS1"
