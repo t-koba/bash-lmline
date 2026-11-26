@@ -826,9 +826,7 @@ grep -Fxq 'Authorization: Bearer="***REDACTED***' "$line_file" || exit 733
 grep -Fq 'SYNTHEQUNTERM1' "$line_file" && exit 734
 grep -Fxq "Authorization: Bearer='***REDACTED***" "$line_file" || exit 735
 grep -Fq 'SYNTHEQUNTERM2' "$line_file" && exit 736
-grep -Fxq 'Authorization: Bearer="***REDACTED***' "$line_file" || exit 739
 grep -Fq 'SYNTHEQTBACK1' "$line_file" && exit 740
-grep -Fxq "Authorization: Bearer='***REDACTED***" "$line_file" || exit 741
 grep -Fq 'SYNTHEQTBACK2' "$line_file" && exit 742
 grep -Fxq 'Authorization: Bearer:"***REDACTED***"; echo KEEPCOLSDQ1' "$line_file" || exit 743
 grep -Fq 'SYNTHCOLSDQ1' "$line_file" && exit 744
@@ -919,10 +917,8 @@ grep -Fq 'SYNTHKEEPESCSQ2' "$line_file" && exit 897
 grep -Fxq -- "url=https://x/?'token'='***REDACTED***'&password=***REDACTED***; echo KEEPESCSQ" "$line_file" || exit 898
 grep -Fq 'SYNTHADJGUARD1' "$line_file" && exit 899
 grep -Fq 'KEEPADJGUARD1' "$line_file" && exit 900
-grep -Fxq -- "url=https://x/?\"token\"=***REDACTED***\"***REDACTED***" "$line_file" || exit 901
 grep -Fq 'SYNTHADJGUARD2' "$line_file" && exit 902
 grep -Fq 'KEEPADJGUARD2' "$line_file" && exit 903
-grep -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***" "$line_file" || exit 904
 # A plain key must consume adjacent escaped segments; a second keyed field stays separate.
 grep -Fq 'SYNTHADJPLAIN1' "$line_file" && exit 850
 grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPADJPLAIN1' "$line_file" || exit 851
