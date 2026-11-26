@@ -522,7 +522,7 @@ __lmline_redact_clip_text() {
     -e "s/==LMLINE_AUTH_VALUE==/@@LMLINE_REDACTED@@/Ig" \
     -e "s/([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[^[:space:]&;,=\"':=])([\"'[:space:]&;,]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([[:space:]&;,]|$)/\1\2:***REDACTED***\6/Ig" \
-    -e "s/([?][^[:space:]&;,]*)([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?(([^[:space:]&;,=\"']*:)|([^[:space:]&;,=\"']*==))([\"'])/\1\2\3:***REDACTED***\9/Ig" \
+    -e "s/([?][^[:space:]&;,]*)([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?(([^[:space:]&;,=\"']*:)|([^[:space:]&;,=\"']*={2,}))([\"'])/\1\2\3:***REDACTED***\9/Ig" \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig"
 }
 
