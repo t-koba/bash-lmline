@@ -691,6 +691,9 @@ printf '%s\n' 'bash -p; echo KEEPP943'
 printf '%s\n' 'ls -p /tmp; echo KEEPP944'
 printf '%s\n' 'mysql -p"SYNTHP945" https://x; echo KEEPP945'
 printf "%s\\n" "mysql -p'SYNTHP946' https://x; echo KEEPP946"
+printf '%s\n' 'mysql -p"SYNTHQDB1">out; echo KEEPQDB1'
+printf '%s\n' "mysql -p'SYNTHQDB2'<in; echo KEEPQDB2"
+printf '%s\n' 'mysql -p"SYNTHQDB3">>out; echo KEEPQDB3'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -1818,6 +1821,12 @@ grep -Fxq 'mysql -p"***REDACTED***" https://x; echo KEEPP945' "$line_file" || ex
 grep -Fq 'SYNTHP945' "$line_file" && exit 9142
 grep -Fxq "mysql -p'***REDACTED***' https://x; echo KEEPP946" "$line_file" || exit 9143
 grep -Fq 'SYNTHP946' "$line_file" && exit 9144
+grep -Fxq 'mysql -p"***REDACTED***">out; echo KEEPQDB1' "$line_file" || exit 9160
+grep -Fq 'SYNTHQDB1' "$line_file" && exit 9161
+grep -Fxq "mysql -p'***REDACTED***'<in; echo KEEPQDB2" "$line_file" || exit 9162
+grep -Fq 'SYNTHQDB2' "$line_file" && exit 9163
+grep -Fxq 'mysql -p"***REDACTED***">>out; echo KEEPQDB3' "$line_file" || exit 9164
+grep -Fq 'SYNTHQDB3' "$line_file" && exit 9165
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***";echo KEEPGLUE101' "$line_file" || exit 9145
 grep -Fq 'SYNTHGLUE101' "$line_file" && exit 9146
 grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'&&echo KEEPGLUE102" "$line_file" || exit 9147
@@ -2406,9 +2415,19 @@ p_rule=$(cat <<'RULE'
 RULE
 )
 p_quoted_rule=$(cat <<'RULE'
-    -e "s/(^|[[:space:]])(-p)([\"'])([^\"']+)([\"'])([[:space:];,&|]|$)/\1\2\3@@LMLINE_REDACTED@@\5\6/Ig" \
+    -e "s/(^|[[:space:]])(-p)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
 RULE
 )
+# Requiring a shell terminator after a quoted -p value leaves glued redirects verbatim.
+p_quoted_rule_line=$(grep -nF "$p_quoted_rule" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
+cat <<'RULE' >"$cfg_tmp/p-quoted-terminator"
+    -e "s/(^|[[:space:]])(-p)([\"'])([^\"']+)([\"'])([[:space:];,&|]|$)/\1\2\3@@LMLINE_REDACTED@@\5\6/Ig" \
+RULE
+awk -v n="$p_quoted_rule_line" -v repl="$cfg_tmp/p-quoted-terminator" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-p-terminator.bash" || fail "quoted -p terminator mutation removal"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-p-terminator.bash" 'mysql -p"SYNTHQDB1">out; echo KEEPQDB1') || fail "quoted -p terminator mutation redaction"
+grep -Fq 'SYNTHQDB1' <<<"$mutated" || fail "quoted -p terminator mutation did not leak"
 for rule in "$p_rule" "$p_quoted_rule"; do
   [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one attached password flag rule"
 done
