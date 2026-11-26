@@ -643,6 +643,14 @@ printf '%s\n' 'curl -H "Authorization: Bearer SYNTHAUTHPLAIN" https://x'
 printf '%s\n' 'x=1;url=//user:passSemiAssign@example.test/path'
 printf '%s\n' 'echo plain@example.com https://host.example/path:with@at'
 printf "%s\n" "MY_TOKEN\\: \"o'brienKey777\""
+printf '%s\n' 'curl -u user:SYNTHFLAG901 https://x; echo KEEPFLAG901'
+printf '%s\n' 'curl --user user:SYNTHFLAG902 https://x; echo KEEPFLAG902'
+printf '%s\n' 'curl -u=SYNTHFLAG903 https://x; echo KEEPFLAG903'
+printf '%s\n' 'curl --password SYNTHFLAG904 https://x; echo KEEPFLAG904'
+printf '%s\n' 'curl -u "user:SYNTHFLAG905" https://x; echo KEEPFLAG905'
+printf '%s\n' "curl -u 'user:SYNTHFLAG906' https://x; echo KEEPFLAG906"
+printf '%s\n' 'id --user=1000; echo KEEPFLAG907'
+printf '%s\n' 'bash -p; echo KEEPFLAG908'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -1688,6 +1696,20 @@ grep -q 'Question:' "$line_file" || exit 13
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
 printf 'clip answer\n'
+grep -Fxq 'curl -u user:***REDACTED*** https://x; echo KEEPFLAG901' "$line_file" || exit 9101
+grep -Fq 'SYNTHFLAG901' "$line_file" && exit 9102
+grep -Fxq 'curl --user user:***REDACTED*** https://x; echo KEEPFLAG902' "$line_file" || exit 9103
+grep -Fq 'SYNTHFLAG902' "$line_file" && exit 9104
+grep -Fxq 'curl -u=***REDACTED*** https://x; echo KEEPFLAG903' "$line_file" || exit 9105
+grep -Fq 'SYNTHFLAG903' "$line_file" && exit 9106
+grep -Fxq 'curl --password ***REDACTED*** https://x; echo KEEPFLAG904' "$line_file" || exit 9107
+grep -Fq 'SYNTHFLAG904' "$line_file" && exit 9108
+grep -Fxq 'curl -u "user:***REDACTED***" https://x; echo KEEPFLAG905' "$line_file" || exit 9109
+grep -Fq 'SYNTHFLAG905' "$line_file" && exit 9110
+grep -Fxq "curl -u 'user:***REDACTED***' https://x; echo KEEPFLAG906" "$line_file" || exit 9111
+grep -Fq 'SYNTHFLAG906' "$line_file" && exit 9112
+grep -Fxq 'id --user=1000; echo KEEPFLAG907' "$line_file" || exit 9113
+grep -Fxq 'bash -p; echo KEEPFLAG908' "$line_file" || exit 9114
 EOF
 chmod +x "$clip_test_dir/engine"
 clip_status=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" "$repo_dir/lmline/lmline" clip --status)
@@ -2143,6 +2165,43 @@ for mutation_index in 0 1 2 3; do
   shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$repo_dir/lmline/actions.bash" "${arg_fixtures[$mutation_index]}") || fail "shipped quoted-argument redaction $mutation_index"
   grep -Fq "${arg_victims[$mutation_index]}" <<<"$shipped" || fail "shipped quoted-argument rule $mutation_index lost the argument"
+done
+
+# Mutation check: deleting the CLI auth flag rules leaks each credential.
+flag_rule1=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':]+):([^[:space:]\"']+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+RULE
+)
+flag_rule2=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"']+)/\1\2@@LMLINE_REDACTED@@/Ig" \
+RULE
+)
+flag_rule3=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':]+):([^[:space:]\"']+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+RULE
+)
+flag_rule4=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"']+):([^[:space:]\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
+RULE
+)
+flag_rule5=$(cat <<'RULE'
+    -e "s/(^|[[:space:]])(--password[[:space:]]+)([^[:space:]\"']+)/\1\2@@LMLINE_REDACTED@@/Ig" \
+RULE
+)
+for rule in "$flag_rule1" "$flag_rule2" "$flag_rule3" "$flag_rule4" "$flag_rule5"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one CLI auth flag rule"
+done
+grep -vF -e "$flag_rule1" -e "$flag_rule2" -e "$flag_rule3" -e "$flag_rule4" -e "$flag_rule5" \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-cli-flags.bash" || fail "CLI auth flag mutation removal"
+flag_fixtures=('curl -u user:SYNTHFLAG911 https://x; echo KEEPFLAG911' 'curl --user user:SYNTHFLAG912 https://x; echo KEEPFLAG912' 'curl -u=SYNTHFLAG913 https://x; echo KEEPFLAG913' 'curl --password SYNTHFLAG914 https://x; echo KEEPFLAG914' 'curl -u "user:SYNTHFLAG915" https://x; echo KEEPFLAG915' "curl -u 'user:SYNTHFLAG916' https://x; echo KEEPFLAG916")
+flag_secrets=(SYNTHFLAG911 SYNTHFLAG912 SYNTHFLAG913 SYNTHFLAG914 SYNTHFLAG915 SYNTHFLAG916)
+for mutation_index in 0 1 2 3 4 5; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-cli-flags.bash" "${flag_fixtures[$mutation_index]}") || fail "mutated CLI auth flag redaction $mutation_index"
+  grep -Fq "${flag_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated CLI auth flag rule $mutation_index did not leak"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${flag_fixtures[$mutation_index]}") || fail "shipped CLI auth flag redaction $mutation_index"
+  grep -Fq "${flag_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped CLI auth flag rule $mutation_index leaked"
 done
 
 ok "clip cli"

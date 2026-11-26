@@ -288,6 +288,11 @@ __lmline_redact_clip_text() {
   # field boundary and its value both survive redaction.
   # Doubled credential-key separators are canonicalized before URL value rules.
   sed -E \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':]+):([^[:space:]\"']+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"']+)/\1\2@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':]+):([^[:space:]\"']+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"']+):([^[:space:]\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
+    -e "s/(^|[[:space:]])(--password[[:space:]]+)([^[:space:]\"']+)/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
