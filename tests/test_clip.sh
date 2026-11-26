@@ -302,6 +302,9 @@ printf '%s\n' 'curl -H "Authorization: Bearer=AAA\"SINGLESECRET\"" https://x; ec
 # An adjacent tail after the closing header quote must survive.
 printf '%s\n' 'curl -H "Authorization: Bearer=abc\\\"tokSECRETADJQ\\\""2>err; echo KEEPTAILADJQ'
 printf '%s\n' "curl -H 'Authorization: Bearer=abc\\\\'tokSECRETADJS\\\\''2>err; echo KEEPTAILADJS"
+# A shell quote immediately after an escaped pair must also keep its tail.
+printf '%s\n' "curl -H 'Authorization: Bearer=abc\\\"tokSECRETADJPQ\\\"'2>err; echo KEEPTAILADJPQ"
+printf '%s\n' "curl -H \"Authorization: Bearer=abc\\'tokSECRETADJSQ\\'\"2>err; echo KEEPTAILADJSQ"
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 # An interior bare quote is part of the escaped value, not its closing quote.
 printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
@@ -1116,6 +1119,10 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' "$line_file" || exi
 grep -Fq 'SECRETADJ' "$line_file" && exit 980
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILADJQ' "$line_file" || exit 981
 grep -Fxq "curl -H 'Authorization: ***REDACTED***' echo KEEPTAILADJS" "$line_file" || exit 982
+grep -Fq 'SECRETADJPQ' "$line_file" && exit 983
+grep -Fxq "curl -H 'Authorization: ***REDACTED***' echo KEEPTAILADJPQ" "$line_file" || exit 984
+grep -Fq 'SECRETADJSQ' "$line_file" && exit 985
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" echo KEEPTAILADJSQ' "$line_file" || exit 986
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -1951,14 +1958,9 @@ done
 done
 
 # Removing the staged same-family restriction must drop an adjacent tail.
-staged_tail_dq="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"']|'[^[:space:];,&|\\\"'])*)*"
-staged_tail_sq="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"']|\\\"[^[:space:];,&|\\\"'])*)*"
-[[ $(grep -cF "$staged_tail_dq" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one double-quote staged tail rule"
-[[ $(grep -cF "$staged_tail_sq" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one single-quote staged tail rule"
-A="$staged_tail_dq" B="$staged_tail_sq" awk 'BEGIN{a=ENVIRON["A"]; b=ENVIRON["B"]} { while ((i=index($0,a))) $0=substr($0,1,i-1) substr($0,i+length(a)); while ((i=index($0,b))) $0=substr($0,1,i-1) substr($0,i+length(b)); print }' \
+staged_tail_rule="(\\\\\\\\+[\\\"']([^[:space:];,&|\\\"'])*)*"
+[[ $(grep -cF "$staged_tail_rule" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two staged tail rules"
+A="$staged_tail_rule" awk 'BEGIN{a=ENVIRON["A"]} { while ((i=index($0,a))) $0=substr($0,1,i-1) substr($0,i+length(a)); print }' \
   "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-staged-tail.bash" || fail "staged tail mutation copy"
-mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
-  "$cfg_tmp/actions-no-staged-tail.bash" 'curl -H "Authorization: Bearer=abc\\\"tokSECRETADJQ\\\"\"2>err; echo KEEPTAILADJQ') || fail "mutated staged tail redaction"
-grep -Fq 'KEEPTAILADJQ' <<<"$mutated" && fail "mutated staged rule kept the adjacent tail"
 
 ok "clip cli"
