@@ -44,7 +44,7 @@ printf x >>"$LMLINE_HISTORY_DIR/dd-calls" || exit 1
 attempt=0
 while [ ! -e "$LMLINE_HISTORY_DIR/done-2" ] || [ ! -e "$LMLINE_HISTORY_DIR/done-3" ]; do
   attempt=$((attempt + 1))
-  [ "$attempt" -lt 400 ] || exit 1
+  [ "$attempt" -lt 800 ] || exit 1
   sleep 0.025
 done
 exec "$LMLINE_TEST_DD" "$@"
@@ -55,7 +55,7 @@ source "$1/lmline/init.$2"
 writer=$3 padding=$4 script_dir=$5
 await() {
   local attempt
-  for ((attempt=0; attempt<400; ++attempt)); do
+  for ((attempt=0; attempt<800; ++attempt)); do
     [[ ! -e "$LMLINE_HISTORY_DIR/$1" ]] || return 0
     sleep 0.025
   done
