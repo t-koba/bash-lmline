@@ -267,6 +267,12 @@ printf '%s\n' 'curl "https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ2===; echo KEEP
 printf '%s\n' "curl 'https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ3===; echo KEEPPADEQ7'"
 printf '%s\n' 'curl "https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ4=="; echo KEEPPADEQ8'
 printf '%s\n' "curl 'https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ5==='; echo KEEPPADEQ9"
+printf '%s\n' 'curl "https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ6="; echo KEEPSINGLEEQ1'
+printf '%s\n' "curl 'https://x/?a=1;Authorization=U1lOVEhCQVNFNjQ7='; echo KEEPSINGLEEQ2"
+printf '%s\n' 'curl "https://x/?a=1,Authorization=U1lOVEhCQVNFNjQ8="; echo KEEPSINGLEEQ3'
+printf '%s\n' 'curl "https://x/?a=1&Authorization=U1lOVEhCQVNFNjQ6="; echo KEEPSINGLEEQ1'
+printf '%s\n' "curl 'https://x/?a=1;Authorization=U1lOVEhCQVNFNjQ7='; echo KEEPSINGLEEQ2"
+printf '%s\n' 'curl "https://x/?a=1,Authorization=U1lOVEhCQVNFNjQ8="; echo KEEPSINGLEEQ3'
 printf '%s\n' 'url=https://x/?Authorization=realm="example.com"; echo KEEPURLAUTH'
 # A credential value with unequal escape depth still leaves the next credential field intact.
 printf '%s\n' 'url=https://x/?token=\"SYNTHKEEPUNEQ1\"&password=\\\"SYNTHKEEPUNEQ2\"&y=2; echo KEEPUNEQ'
@@ -1070,6 +1076,18 @@ grep -Fq U1lOVEhCQVNFNjQ4== "$line_file" && exit 1214
 grep -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPPADEQ8' "$line_file" || exit 1215
 grep -Fq U1lOVEhCQVNFNjQ5=== "$line_file" && exit 1216
 grep -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPPADEQ9" "$line_file" || exit 1217
+grep -Fq U1lOVEhCQVNFNjQ6= "$line_file" && exit 1218
+grep -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPSINGLEEQ1' "$line_file" || exit 1219
+grep -Fq U1lOVEhCQVNFNjQ7= "$line_file" && exit 1220
+grep -Fxq "curl 'https://x/?a=1;Authorization:***REDACTED***'; echo KEEPSINGLEEQ2" "$line_file" || exit 1221
+grep -Fq U1lOVEhCQVNFNjQ8= "$line_file" && exit 1222
+grep -Fxq 'curl "https://x/?a=1,Authorization:***REDACTED***"; echo KEEPSINGLEEQ3' "$line_file" || exit 1223
+grep -Fq U1lOVEhCQVNFNjQ6= "$line_file" && exit 1218
+grep -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPSINGLEEQ1' "$line_file" || exit 1219
+grep -Fq U1lOVEhCQVNFNjQ7= "$line_file" && exit 1220
+grep -Fxq "curl 'https://x/?a=1;Authorization:***REDACTED***'; echo KEEPSINGLEEQ2" "$line_file" || exit 1221
+grep -Fq U1lOVEhCQVNFNjQ8= "$line_file" && exit 1222
+grep -Fxq 'curl "https://x/?a=1,Authorization:***REDACTED***"; echo KEEPSINGLEEQ3' "$line_file" || exit 1223
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
 grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
 grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
