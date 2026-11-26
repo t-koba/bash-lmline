@@ -135,6 +135,13 @@ printf '%s\n' 'Authorization: Bearer==\"SYNTHESESDQ2\" | echo KEEPESESDQ2'
 printf "%s\n" "Authorization: Bearer:\'SYNTHESESQ2\' >> out; echo KEEPESESQ2"
 printf '%s\n' 'authorization: bearer=\"SYNTHESESDQCASE\" && echo KEEPESESDQCASE'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHESESDQ3\"'
+# URL query key values may be plain or backslash-escaped quotes.
+printf '%s\n' 'url=https://x/?token="SYNTHQURL1"&y=1; echo KEEPQURL1'
+printf "%s\n" "url=https://x/?secret='SYNTHQURL2'&y=2; echo KEEPQURL2"
+printf '%s\n' 'url=https://x/?token=\"SYNTHQURL3\"&y=3; echo KEEPQURL3'
+printf "%s\n" "url=https://x/?api_key=\'SYNTHQURL4\'&y=4; echo KEEPQURL4"
+printf '%s\n' 'curl "https://x/?token=\"SYNTHQURL5\"&y=5"; echo KEEPQURL5'
+printf '%s\n' 'url=https://x/?token=\"SYNTHQURL6\"'
 printf '%s\n' 'Authorization: secretValue131 "payload131"'
 printf '%s\n' 'curl -H "Authorization: secretValue128" "payload128" https://x'
 printf '%s\n' 'Authorization: tokenWithHash#9002 "payload9002"; echo "K9002"'
@@ -651,6 +658,18 @@ grep -Fxq 'authorization: bearer=\"***REDACTED***\" && echo KEEPESESDQCASE' "$li
 grep -Fq 'SYNTHESESDQCASE' "$line_file" && exit 760
 grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"' "$line_file" || exit 761
 grep -Fq 'SYNTHESESDQ3' "$line_file" && exit 762
+grep -Fq 'SYNTHQURL1' "$line_file" && exit 763
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPQURL1' "$line_file" || exit 764
+grep -Fq 'SYNTHQURL2' "$line_file" && exit 765
+grep -Fxq -- "url=https://x/?secret='***REDACTED***'&y=2; echo KEEPQURL2" "$line_file" || exit 766
+grep -Fq 'SYNTHQURL3' "$line_file" && exit 767
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPQURL3' "$line_file" || exit 768
+grep -Fq 'SYNTHQURL4' "$line_file" && exit 769
+grep -Fxq -- "url=https://x/?api_key='***REDACTED***'&y=4; echo KEEPQURL4" "$line_file" || exit 770
+grep -Fq 'SYNTHQURL5' "$line_file" && exit 771
+grep -Fxq -- 'curl "https://x/?token="***REDACTED***"&y=5"; echo KEEPQURL5' "$line_file" || exit 772
+grep -Fq 'SYNTHQURL6' "$line_file" && exit 773
+grep -Fxq -- 'url=https://x/?token="***REDACTED***"' "$line_file" || exit 774
 grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.

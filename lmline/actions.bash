@@ -344,6 +344,10 @@ __lmline_redact_clip_text() {
     -e 't auth_adjacent_loop' \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${key_prefix_url}(\\\\+)\"([^\"\\\\]|\\\\[^\"])*(\\\\+)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${key_prefix_url}(\\\\+)'([^'\\\\]|\\\\[^'])*(\\\\+)'/\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1\2@@LMLINE_REDACTED@@\5\6/Ig"\
     -e "s/${auth_prefix_escaped_dq}${auth_scheme_optional}(([^\"\\\\]|\\\\.)*\\\\?)(\"?)$/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/${key_prefix_escaped_dq}(([^\"\\\\]|\\\\.)*)(\\\\*\")([[:space:]]*[]},])/\1@@LMLINE_REDACTED@@\5\6/Ig"\
