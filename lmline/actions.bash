@@ -327,8 +327,10 @@ __lmline_redact_clip_text() {
     -e "s#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2\3@@LMLINE_REDACTED@@@#g" \
     -e "s/([?&/@#=;,])(\"[']?)?(Authorization)(\"[']?)?([[:space:]]*)[:=]([[:space:]]*)([:=])?([[:space:]]*)/\1\2\3\4:\8/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
+    -e "s/(^|[^\\\"'])(Authorization[[:space:]]*:[[:space:]]*)${auth_scheme_name}([:=]+)([[:space:]]+)/\1\2\3\4/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"'[:space:];,&|]+)([[:space:]]+)/\1***REDACTED***\5/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(')([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\\1\\2\\3\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)'(([^'\\\\]|\\\\.)*)'/\\1\\2\\3'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)(\\\\+)\"(([^\"\\\\]|\\\\([^\"]))*)(\\\\+)\"/\1\2\3\4\"@@LMLINE_REDACTED@@\8\"/Ig" \
@@ -458,6 +460,7 @@ __lmline_redact_clip_text() {
     -e "s/;@LMLINE_SEP@/@@LMLINE_REDACTED@@/Ig" \
     -e "s/@LMLINE_CHAIN_KEY@/@@LMLINE_REDACTED@@/Ig" \
     -e "s/@LMLINE_SEP@/@@LMLINE_REDACTED@@/Ig" \
+    -e "s/==LMLINE_AUTH_VALUE==/@@LMLINE_REDACTED@@/Ig" \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig"
 }
 

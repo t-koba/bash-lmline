@@ -323,6 +323,11 @@ printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHSEP904" https://x; echo KEEP
 # A glued scheme value followed by another word keeps that word and the tail.
 printf '%s\n' 'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
 printf '%s\n' 'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
+# Quoted headers must keep the following quoted argument while masking the value.
+printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHARG901" -H "X: keep" https://x; echo KEEPARGTAIL1'
+printf '%s\n' 'curl -H '"'"'Authorization: Basic=SYNTHARG902'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2'
+printf '%s\n' 'curl -H "Authorization: Basic: SYNTHARG903" "payload903" https://x; echo KEEPARGTAIL3'
+printf '%s\n' 'curl -H '"'"'Authorization: Bearer=SYNTHARG904'"'"' '"'"'payload904'"'"' https://x; echo KEEPARGTAIL4'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 # An interior bare quote is part of the escaped value, not its closing quote.
 printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
@@ -1171,6 +1176,14 @@ grep -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1' "$line_
 grep -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2' "$line_file" || exit 1019
 grep -Fq SYNTHGLUED901 "$line_file" && exit 1020
 grep -Fq SYNTHGLUED902 "$line_file" && exit 1021
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x; echo KEEPARGTAIL1' "$line_file" || exit 1022
+grep -Fq SYNTHARG901 "$line_file" && exit 1026
+grep -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2' "$line_file" || exit 1023
+grep -Fq SYNTHARG902 "$line_file" && exit 1027
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" "payload903" https://x; echo KEEPARGTAIL3' "$line_file" || exit 1024
+grep -Fq SYNTHARG903 "$line_file" && exit 1028
+grep -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' '"'"'payload904'"'"' https://x; echo KEEPARGTAIL4' "$line_file" || exit 1025
+grep -Fq SYNTHARG904 "$line_file" && exit 1029
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2056,7 +2069,7 @@ done
 # Mutation check: deleting the scheme-separator whitespace rule must leak
 # each credential, while the shipped redactor masks it and keeps the tail.
 scheme_space_rule=$(cat <<'RULE'
-    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
+    -e "s/(^|[^\\\"'])(Authorization[[:space:]]*:[[:space:]]*)${auth_scheme_name}([:=]+)([[:space:]]+)/\1\2\3\4/Ig" \
 RULE
 )
 [[ $(grep -cF "$scheme_space_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one scheme-separator whitespace rule"
@@ -2100,6 +2113,36 @@ for mutation_index in 0 1; do
     "$repo_dir/lmline/actions.bash" "${glued_fixtures[$mutation_index]}") || fail "shipped glued-scheme redaction $mutation_index"
   grep -Fq "${glued_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped glued-scheme rule $mutation_index leaked the credential"
   grep -Fq "${glued_tails[$mutation_index]}" <<<"$shipped" || fail "shipped glued-scheme rule $mutation_index lost the tail"
+done
+
+# Mutation check: removing the quote-terminated value rules must delete a
+# following quoted argument, while the shipped redactor preserves it.
+qrule_double=$(cat <<'RULE'
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(\")([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
+RULE
+)
+qrule_single=$(cat <<'RULE'
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"='[:space:];,&|]+)(')([[:space:]]|$)/\1==LMLINE_AUTH_VALUE==\5\6/Ig" \
+RULE
+)
+qrule_convert=$(cat <<'RULE'
+    -e "s/==LMLINE_AUTH_VALUE==/@@LMLINE_REDACTED@@/Ig" \
+RULE
+)
+for rule in "$qrule_double" "$qrule_single" "$qrule_convert"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one quoted-argument protection rule"
+done
+grep -vF -e "$qrule_double" -e "$qrule_single" -e "$qrule_convert" \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-quoted-arg.bash" || fail "quoted-argument mutation removal"
+arg_fixtures=('curl -H "Authorization: Basic=SYNTHARG905" -H "X: keep" https://x; echo KEEPARGTAIL5' 'curl -H '"'"'Authorization: Basic=SYNTHARG906'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL6' 'curl -H "Authorization: Bearer=SYNTHARG907" "payload907" https://x; echo KEEPARGTAIL7' 'curl -H '"'"'Authorization: Bearer=SYNTHARG908'"'"' '"'"'payload908'"'"' https://x; echo KEEPARGTAIL8')
+arg_victims=('X: keep' 'X: keep' payload907 payload908)
+for mutation_index in 0 1 2 3; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-quoted-arg.bash" "${arg_fixtures[$mutation_index]}") || fail "mutated quoted-argument redaction $mutation_index"
+  grep -Fq "${arg_victims[$mutation_index]}" <<<"$mutated" && fail "mutated quoted-argument rule $mutation_index kept the argument"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${arg_fixtures[$mutation_index]}") || fail "shipped quoted-argument redaction $mutation_index"
+  grep -Fq "${arg_victims[$mutation_index]}" <<<"$shipped" || fail "shipped quoted-argument rule $mutation_index lost the argument"
 done
 
 ok "clip cli"

@@ -1018,8 +1018,9 @@ untrusted pasted text. Redaction masks these patterns:
 VAR_TOKEN/SECRET/PASSWORD/KEY=value and key: value assignments (spaces around =/: allowed)
 Adjacent keyed assignments preserve `;`, `,`, `&` and `|` only when the next field is a recognized credential key; an opaque tail is masked with its separator (fail closed)
 Authorization: <scheme> <value> headers, any scheme or bare value (case-insensitive)
-Authorization: <recognized scheme><sep> <value> headers with the separator followed by spaces (case-insensitive)
+Authorization: <recognized scheme><sep> <value> on an unquoted line, with the separator followed by spaces (case-insensitive)
 Glued Authorization scheme values followed by a separate word are masked while that word and the command tail survive
+Quoted Authorization headers with spaced or glued values are masked without consuming a following quoted argument
 Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
 Adjacent quoted segments after an Authorization scheme separator are one value and are masked together
