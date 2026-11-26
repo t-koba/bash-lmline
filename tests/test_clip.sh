@@ -55,6 +55,10 @@ printf '%s\n' 'Authorization: my_scheme=\"SYNTHE12\"; echo TAILZZ12'
 printf '%s\n' 'Authorization: 2Scheme=\"SYNTHE13\"; echo TAILZZ13'
 printf '%s\n' 'Authorization: my_scheme \"SYNTHSP2\"; echo TAILZZSP2'
 printf '%s\n' 'Authorization: 2Scheme \"SYNTHSP3\"; echo TAILZZSP3'
+printf '%s\n' 'Authorization: my_scheme: "SYNTHQUOTED1"; echo KEEPQUOTED1'
+printf "%s\n" "Authorization: my_scheme: 'SYNTHQUOTED2'; echo KEEPQUOTED2"
+printf '%s\n' 'Authorization: 2Scheme= "SYNTHQUOTED3"; echo KEEPQUOTED3'
+printf "%s\n" "Authorization: 2Scheme= 'SYNTHQUOTED4'; echo KEEPQUOTED4"
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
@@ -1333,6 +1337,14 @@ grep -Fxq 'Authorization: my_scheme \"***REDACTED***\"; echo TAILZZSP2' "$line_f
 grep -Fq SYNTHSP2 "$line_file" && exit 9312
 grep -Fxq 'Authorization: 2Scheme \"***REDACTED***\"; echo TAILZZSP3' "$line_file" || exit 9313
 grep -Fq SYNTHSP3 "$line_file" && exit 9314
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; echo KEEPQUOTED1' "$line_file" || exit 9401
+grep -Fq SYNTHQUOTED1 "$line_file" && exit 9402
+grep -Fxq "Authorization: my_scheme:'***REDACTED***'; echo KEEPQUOTED2" "$line_file" || exit 9403
+grep -Fq SYNTHQUOTED2 "$line_file" && exit 9404
+grep -Fxq 'Authorization: 2Scheme="***REDACTED***"; echo KEEPQUOTED3' "$line_file" || exit 9405
+grep -Fq SYNTHQUOTED3 "$line_file" && exit 9406
+grep -Fxq "Authorization: 2Scheme='***REDACTED***'; echo KEEPQUOTED4" "$line_file" || exit 9407
+grep -Fq SYNTHQUOTED4 "$line_file" && exit 9408
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2207,7 +2219,7 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTE
 # Mutation check: removing all generalized scheme rules must leak the custom
 # headers while leaving the URL realm and Digest controls unchanged.
 generalized_rule='${auth_prefix}(${auth_scheme_token}+)([:=]+)'
-[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 4 ]] || fail "expected four generalized scheme rules"
+[[ $(grep -cF "$generalized_rule" "$repo_dir/lmline/actions.bash") == 6 ]] || fail "expected six generalized scheme rules"
 grep -vF "$generalized_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-any-scheme.bash" || fail "redaction mutation copy"
 scheme_mutation_fixtures=(
   'Authorization: Bearer=FIRST\"SYNTHCUSTM1\"; Authorization: Custom=SECOND\"SYNTHCUSTM2\"; echo KEEPCUSTOM1'
@@ -2714,9 +2726,64 @@ mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() {
   "$cfg_tmp/actions-no-auth-shield.bash" 'curl -H "Authorization: Bearer SYNTHGLUE101";echo KEEPGLUE101') || fail "auth shield mutation redaction"
 grep -Fq ';echo KEEPGLUE101' <<<"$mutated" && fail "auth shield mutation dropped the glued tail"
 
+# Removing the generic spaced-quoted-value rules must leak all of these live
+# credentials; the shipped rules keep the quotes and the shell tail and are
+# idempotent. The heredocs mirror the shipped expressions exactly.
+quoted_rule_dq=$(cat <<'RULE'
+    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
+RULE
+)
+quoted_rule_sq=$(cat <<'RULE'
+    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
+RULE
+)
+for rule in "$quoted_rule_dq" "$quoted_rule_sq"; do
+  [[ $(grep -cF "$rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one generic spaced quoted-value rule: $rule"
+done
+grep -Fvx -e "$quoted_rule_dq" -e "$quoted_rule_sq" "$repo_dir/lmline/actions.bash" \
+  >"$cfg_tmp/actions-no-spaced-quotes.bash" || fail "spaced quoted-value mutation copy"
+for rule in "$quoted_rule_dq" "$quoted_rule_sq"; do
+  grep -Fq "$rule" "$cfg_tmp/actions-no-spaced-quotes.bash" && fail "spaced quoted-value mutation did not apply"
+done
+quoted_fixtures=(
+  'Authorization: my_scheme: "SYNTHQUOTED1"; echo KEEPQUOTED1'
+  "Authorization: my_scheme: 'SYNTHQUOTED2'; echo KEEPQUOTED2"
+  'Authorization: 2Scheme= "SYNTHQUOTED3"; echo KEEPQUOTED3'
+  "Authorization: 2Scheme= 'SYNTHQUOTED4'; echo KEEPQUOTED4"
+)
+quoted_secrets=(SYNTHQUOTED1 SYNTHQUOTED2 SYNTHQUOTED3 SYNTHQUOTED4)
+quoted_expected=(
+  'Authorization: my_scheme:"***REDACTED***"; echo KEEPQUOTED1'
+  "Authorization: my_scheme:'***REDACTED***'; echo KEEPQUOTED2"
+  'Authorization: 2Scheme="***REDACTED***"; echo KEEPQUOTED3'
+  "Authorization: 2Scheme='***REDACTED***'; echo KEEPQUOTED4"
+)
+for mutation_index in "${!quoted_fixtures[@]}"; do
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${quoted_fixtures[$mutation_index]}") || fail "shipped spaced quoted-value redaction $mutation_index"
+  grep -Fxq "${quoted_expected[$mutation_index]}" <<<"$shipped" || fail "shipped spaced quoted-value redaction $mutation_index did not mask the credential"
+  again=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "$shipped") || fail "idempotent spaced quoted-value redaction $mutation_index"
+  [[ $again == "$shipped" ]] || fail "idempotent spaced quoted-value redaction $mutation_index changed the output"
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-spaced-quotes.bash" "${quoted_fixtures[$mutation_index]}") || fail "mutated spaced quoted-value redaction $mutation_index"
+  grep -Fq "${quoted_secrets[$mutation_index]}" <<<"$mutated" || fail "spaced quoted-value mutation $mutation_index did not leak"
+done
+
+# Narrowing the shared token class loses the custom scheme and its quotes even
+# where a fallback still masks the value, so the shipped scheme rule is needed.
+sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
+  >"$cfg_tmp/actions-uri-class-spaced-quotes.bash" || fail "token class mutation copy"
+grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-class-spaced-quotes.bash" && fail "token class mutation did not apply"
+for mutation_index in "${!quoted_fixtures[@]}"; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-uri-class-spaced-quotes.bash" "${quoted_fixtures[$mutation_index]}") || fail "token class mutation redaction $mutation_index"
+  [[ $mutated != "${quoted_expected[$mutation_index]}" ]] || fail "token class mutation $mutation_index preserved the shipped output"
+done
+
 # Narrowing the shared auth-scheme token class back to URI-scheme syntax must
 # reopen every custom-scheme case; the shipped class masks all of them.
-[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 28 ]] || fail "expected twenty-eight shared auth-scheme token uses"
+[[ $(grep -Fc '${auth_scheme_token}+' "$repo_dir/lmline/actions.bash") == 30 ]] || fail "expected thirty shared auth-scheme token uses"
 sed 's/${auth_scheme_token}+/[A-Za-z][A-Za-z0-9+.-]*/g' "$repo_dir/lmline/actions.bash" \
   >"$cfg_tmp/actions-uri-scheme-class.bash" || fail "auth-scheme class mutation copy"
 grep -Fq '${auth_scheme_token}' "$cfg_tmp/actions-uri-scheme-class.bash" && fail "auth-scheme class mutation did not apply"

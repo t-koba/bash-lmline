@@ -302,6 +302,9 @@ __lmline_redact_clip_text() {
   # rules so neither can eat the next argument or a second live header. The
   # shape is structural, not a marker suffix: live credentials that contain
   # or end with a marker stay live and are masked. The shield is then removed.
+  # A generic RFC-token scheme with a separator, blanks and a plain quoted
+  # value is masked before the separator is canonicalized; the closing
+  # quote bounds the credential, so a following shell word is untouched.
   # A spaced escaped-quote value keeps its quotes and the shell tail; only
   # the credential between them is masked.
   sed -E \
@@ -359,6 +362,8 @@ __lmline_redact_clip_text() {
     -e "s/([?&/@#=;,])(\"[']?)?(Authorization)(\"[']?)?([[:space:]]*)[:=]([[:space:]]*)([:=])?([[:space:]]*)/\1\2\3\4:\8/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)[[:space:]]+/\1\2\3/Ig" \
+    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)[[:space:]]+/\1\2\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:]+)([^\\\"'[:space:];,&|<>]*)([\"'])$/\1\2\3***REDACTED***\5/Ig" \
     -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"'[:space:];,&|]+)([[:space:]]+)/\1***REDACTED***\5/Ig" \
