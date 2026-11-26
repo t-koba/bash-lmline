@@ -318,12 +318,12 @@ __lmline_redact_clip_text() {
     -e "s#(^|[^A-Za-z0-9_./?@#&=:;,-])(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2@@LMLINE_REDACTED@@@#g" \
     -e "s#(^|[^A-Za-z0-9_/?@#&=:])([[:alnum:]_][[:alnum:]0-9_-]*=)(//)[^:/?#@[:space:]]{${userinfo_min},}@#\1\2\3@@LMLINE_REDACTED@@@#g" \
     -e "s/${auth_prefix}${auth_scheme_name}([[:space:]])/\\1==LMLINE_AUTH_SCHEME==\\2\\3/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}[=]\"(([^\"\\\\]|\\\\.)*)\"/\\1\\2=\"@@LMLINE_REDACTED@@\"/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}[=]'(([^'\\\\]|\\\\.)*)'/\\1\\2='@@LMLINE_REDACTED@@'/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}[=]\"(([^\"\\\\]|\\\\.)*)$/\\1\\2=\"@@LMLINE_REDACTED@@/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}[=]\"(([^\"\\\\]|\\\\.)*\\\\)$/\\1\\2=\"@@LMLINE_REDACTED@@/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}[=]'(([^'\\\\]|\\\\.)*)$/\\1\\2='@@LMLINE_REDACTED@@/Ig" \
-    -e "s/${auth_prefix}${auth_scheme_name}[=]'(([^'\\\\]|\\\\.)*\\\\)$/\\1\\2='@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\\1\\2\\3\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)'(([^'\\\\]|\\\\.)*)'/\\1\\2\\3'@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*)$/\\1\\2\\3\"@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)\"(([^\"\\\\]|\\\\.)*\\\\)$/\\1\\2\\3\"@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)'(([^'\\\\]|\\\\.)*)$/\\1\\2\\3'@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)'(([^'\\\\]|\\\\.)*\\\\)$/\\1\\2\\3'@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}([^\"'=[:space:];,&|][^\"'[:space:];,&|]*)([[:space:]]+)([\"'])/\\1@@LMLINE_REDACTED@@\\3\\4/Ig" \
     -e "s/${auth_prefix}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]*([>][>]|[<][<]|[|][|]|&&|[,;|&<>]))/\\1;@LMLINE_SEP@\\3/Ig" \
     -e "s/${auth_prefix}==LMLINE_AUTH_SCHEME==${auth_scheme}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]*)([>][>]|[<][<]|[|][|]|&&|[,;|&<>])/\1==LMLINE_AUTH_SCHEME==\2;@LMLINE_SEP@\4\5/Ig" \
