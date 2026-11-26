@@ -137,6 +137,10 @@ printf '%s\n' 'Authorization: Bearer=FIRST"SYNTH UPQ1"; echo KEEPUPQ1'
 printf '%s\n' "Authorization: Bearer=FIRST'SYNTH UPQ2'; echo KEEPUPQ2"
 printf '%s\n' 'Authorization: Bearer=FIRST"SYNTH UPQ3"; echo "KEEPUPQ3"'
 printf '%s\n' 'Authorization: Bearer=FIRST"SYNTH UPQ4";token=SYNTHUPQKEY; echo KEEPUPQ4'
+printf '%s\n' 'Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SECOND"SYNTHUPQ6"; echo KEEPUPQ5'
+printf '%s\n' 'Authorization: Bearer=FIRST"SYNTHUPQ7" | grep KEEPUPQ7'
+printf '%s\n' 'Authorization: Bearer=FIRST"SYNTHUPQ8""SYNTHUPQ9"; echo KEEPUPQ8'
+printf "%s\n" "Authorization: Bearer=FIRST'SYNTHUPQ10'; Authorization: Basic=SECOND'SYNTHUPQ11'; echo KEEPUPQ10"
 # The separator between a known scheme and its quoted value may be ':' or repeated.
 printf '%s\n' 'Authorization: Bearer:"SYNTHCOLSDQ1"; echo KEEPCOLSDQ1'
 printf '%s\n' "Authorization: Basic=='SYNTHCOLSQ2'; echo KEEPCOLSQ2"
@@ -853,6 +857,17 @@ grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ1' "$line_file" || 
 grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ2' "$line_file" || exit 923
 grep -Fxq 'Authorization: Bearer=***REDACTED***; echo "KEEPUPQ3"' "$line_file" || exit 924
 grep -Fxq 'Authorization: Bearer=***REDACTED***;token=***REDACTED***; echo KEEPUPQ4' "$line_file" || exit 925
+grep -Fq 'SYNTHUPQ5' "$line_file" && exit 930
+grep -Fq 'SYNTHUPQ6' "$line_file" && exit 931
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Bearer=***REDACTED***; echo KEEPUPQ5' "$line_file" || exit 932
+grep -Fq 'SYNTHUPQ7' "$line_file" && exit 933
+grep -Fxq 'Authorization: Bearer=***REDACTED*** | grep KEEPUPQ7' "$line_file" || exit 934
+grep -Fq 'SYNTHUPQ8' "$line_file" && exit 935
+grep -Fq 'SYNTHUPQ9' "$line_file" && exit 936
+grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ8' "$line_file" || exit 937
+grep -Fq 'SYNTHUPQ10' "$line_file" && exit 938
+grep -Fq 'SYNTHUPQ11' "$line_file" && exit 939
+grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQ10' "$line_file" || exit 940
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
 grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
 grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
@@ -1783,5 +1798,11 @@ for mutation_index in 0 1; do
   grep -Fxq "${mutation_expected[$mutation_index]}" <<<"$mutated" && fail "mutated rule $mutation_index still passes the exact assertion"
   grep -Fq '&password=' <<<"$mutated" && fail "mutated rule $mutation_index kept the field boundary"
 done
+
+# Mutation check: deleting the per-header UPQ rule must leak the first header.
+grep -vF '(^|[^A-Za-z0-9_])' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-upq.bash" || fail "redaction mutation copy"
+mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-no-upq.bash" 'Authorization: Bearer=FIRST"SYNTHUPQ5"; Authorization: Bearer=SECOND"SYNTHUPQ6"; echo KEEPUPQ5') || fail "mutated UPQ redaction"
+grep -Fq 'SYNTHUPQ5' <<<"$mutated" || fail "mutated UPQ rule did not leak the first header"
 
 ok "clip cli"

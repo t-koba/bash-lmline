@@ -1021,6 +1021,7 @@ Authorization: <scheme> <value> headers, any scheme or bare value (case-insensit
 Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
 Adjacent quoted segments after an Authorization scheme separator are one value and are masked together
+Repeated `Authorization: <scheme>=<word>"<value>"` headers on one line are each masked, with command tails preserved
 Adjacent shell word pieces of a quoted Authorization value, including repeated quoted pieces, are masked with the value
 URL userinfo credentials (user:password@host, network-path //user:password@host) are masked at the URL authority
 Bare colonless userinfo is masked when the token reaches `LMLINE_CLIP_USERINFO_MIN` characters (default `8`); shorter tokens are kept as usernames
