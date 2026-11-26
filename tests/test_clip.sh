@@ -2251,11 +2251,11 @@ done
 
 # Mutation check: the malformed-header tail class must stop at shell separators.
 tail_rule1=$(cat <<'RULE'
-    -e "/Authorization:.*REDACTED/!s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/(\"[^\"]*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
 RULE
 )
 tail_rule2=$(cat <<'RULE'
-    -e "/Authorization:.*REDACTED/!s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/('[^']*Authorization:[[:space:]]+)([A-Za-z][A-Za-z0-9+.-]*[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 for rule in "$tail_rule1" "$tail_rule2"; do
@@ -2272,9 +2272,9 @@ grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL31' <<<"$sh
 
 # Mutation check: narrowing the marker guard to a bare star/@ run must leak
 # credentials starting with those characters, while the shipped guard masks them.
-marker_guard='/Authorization:.*REDACTED/!s/'
+marker_guard='/Authorization:.*(@@LMLINE_REDACTED@@|\\*\\*\\*REDACTED\\*\\*\\*)/!s/'
 [[ $(grep -cF "$marker_guard" "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two marker guards"
-sed 's~/Authorization:\.\*REDACTED/!s/~/Authorization:[[:space:]]+[A-Za-z0-9+.-]*[[:space:]]*[:=]?[[:space:]]*[*@]+/!s/~g' \
+sed 's~/Authorization:.*(@@LMLINE_REDACTED@@|.*/!s/~/Authorization:[[:space:]]+[A-Za-z0-9+.-]*[[:space:]]*[:=]?[[:space:]]*[*@]+/!s/~g' \
   "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-narrow-marker-guard.bash" || fail "marker guard mutation copy"
 grep -qF "$marker_guard" "$cfg_tmp/actions-narrow-marker-guard.bash" && fail "marker guard mutation did not apply"
 marker_fixtures=(
@@ -2289,6 +2289,31 @@ for mutation_index in 0 1; do
   shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
     "$repo_dir/lmline/actions.bash" "${marker_fixtures[$mutation_index]}") || fail "shipped marker guard $mutation_index"
   grep -Fq "${marker_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped marker guard $mutation_index leaked the credential"
+done
+
+# Mutation check: a loose REDACTED substring guard must leak credentials that
+# merely contain that word; the shipped complete-marker guard masks them.
+sed 's~/Authorization:.*(@@LMLINE_REDACTED@@|.*/!s/~/Authorization:.*REDACTED/!s/~g' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-loose-marker-guard.bash" || fail "loose guard mutation copy"
+grep -qF "$marker_guard" "$cfg_tmp/actions-loose-marker-guard.bash" && fail "loose guard mutation did not apply"
+redacted_word_fixtures=(
+  'curl -H "Authorization: Bearer: MYREDACTEDTOKEN"; echo KEEPWORD941'
+  "curl -H 'Authorization: Bearer: TOKEN_WITH_REDACTED_PART'; echo KEEPWORD942"
+  'curl -H "Authorization: Bearer: REDACTED"; echo KEEPWORD943'
+)
+redacted_word_secrets=(MYREDACTEDTOKEN TOKEN_WITH_REDACTED_PART REDACTED)
+redacted_word_expected=(
+  'curl -H "Authorization: ***REDACTED***"; echo KEEPWORD941'
+  "curl -H 'Authorization: ***REDACTED***'; echo KEEPWORD942"
+  'curl -H "Authorization: ***REDACTED***"; echo KEEPWORD943'
+)
+for mutation_index in 0 1 2; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-loose-marker-guard.bash" "${redacted_word_fixtures[$mutation_index]}") || fail "mutated loose marker guard $mutation_index"
+  grep -Fq "${redacted_word_secrets[$mutation_index]}" <<<"$mutated" || fail "loose marker guard $mutation_index did not leak the credential"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${redacted_word_fixtures[$mutation_index]}") || fail "shipped loose marker guard $mutation_index"
+  grep -Fxq "${redacted_word_expected[$mutation_index]}" <<<"$shipped" || fail "shipped marker guard $mutation_index did not mask the credential"
 done
 
 # Mutation check: deleting the scheme-separator whitespace rule must leak
