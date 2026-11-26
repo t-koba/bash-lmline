@@ -68,6 +68,10 @@ printf '%s\n' 'Authorization: my_scheme:"SYNTHREPEATREDIR1" >out; Authorization:
 printf "%s\\n" "Authorization: my_scheme:'SYNTHREPEATSQ1'; Authorization: 2scheme:'SYNTHREPEATSQ2'; echo KEEPREPEATSQ"
 printf "%s\\n" "Authorization: my_scheme:'SYNTHREPEATSQPIPE1'|Authorization: 2scheme:'SYNTHREPEATSQPIPE2'; echo KEEPREPEATSQPIPE"
 printf "%s\\n" "Authorization: my_scheme:'SYNTHREPEATSQREDIR1' >out; Authorization: 2scheme:'SYNTHREPEATSQREDIR2' <in; echo KEEPREPEATSQREDIR"
+printf '%s\n' 'Authorization: my_scheme:"SYNTHSEPAMP1"&Authorization: 2scheme:"SYNTHSEPAMP2"; echo KEEPSEPAMP'
+printf '%s\n' 'Authorization: my_scheme:"SYNTHSEPSEMI1";Authorization: 2scheme:"SYNTHSEPSEMI2"; echo KEEPSEPSEMI'
+printf '%s\n' 'Authorization: my_scheme:"SYNTHSEPCOMMA1",Authorization: 2scheme:"SYNTHSEPCOMMA2"; echo KEEPSEPCOMMA'
+printf "%s\\n" "Authorization: my_scheme:'SYNTHSEPAMPSQ1'&Authorization: 2scheme:'SYNTHSEPAMPSQ2'; echo KEEPSEPAMPSQ"
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
@@ -1414,6 +1418,18 @@ grep -Fq SYNTHREPEATSQPIPE2 "$line_file" && exit 9429
 grep -Fxq "Authorization: my_scheme:'***REDACTED***' >out; Authorization: 2scheme:'***REDACTED***' <in; echo KEEPREPEATSQREDIR" "$line_file" || exit 9430
 grep -Fq SYNTHREPEATSQREDIR1 "$line_file" && exit 9431
 grep -Fq SYNTHREPEATSQREDIR2 "$line_file" && exit 9432
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP' "$line_file" || exit 9433
+grep -Fq SYNTHSEPAMP1 "$line_file" && exit 9434
+grep -Fq SYNTHSEPAMP2 "$line_file" && exit 9435
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***";Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPSEMI' "$line_file" || exit 9436
+grep -Fq SYNTHSEPSEMI1 "$line_file" && exit 9437
+grep -Fq SYNTHSEPSEMI2 "$line_file" && exit 9438
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***",Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPCOMMA' "$line_file" || exit 9439
+grep -Fq SYNTHSEPCOMMA1 "$line_file" && exit 9440
+grep -Fq SYNTHSEPCOMMA2 "$line_file" && exit 9441
+grep -Fxq "Authorization: my_scheme:'***REDACTED***'&Authorization: 2scheme:'***REDACTED***'; echo KEEPSEPAMPSQ" "$line_file" || exit 9442
+grep -Fq SYNTHSEPAMPSQ1 "$line_file" && exit 9443
+grep -Fq SYNTHSEPAMPSQ2 "$line_file" && exit 9444
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2924,11 +2940,11 @@ done
 # the leak of a quoted credential with no blank after the separator. The
 # heredocs mirror the shipped expressions exactly.
 glued_quote_rule_dq=$(cat <<'RULE'
-    -e "/[?&/@#=;,]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
+    -e "/[?/@#=]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)\"(([^\"\\\\]|\\\\.)*)\"/\1\2\3\"@@LMLINE_REDACTED@@\"/Ig" \
 RULE
 )
 glued_quote_rule_sq=$(cat <<'RULE'
-    -e "/[?&/@#=;,]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
+    -e "/[?/@#=]Authorization:/!s/${auth_prefix}${auth_scheme_any}([:=]+)'(([^'\\\\]|\\\\.)*)'/\1\2\3'@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 for rule in "$glued_quote_rule_dq" "$glued_quote_rule_sq"; do
@@ -3000,5 +3016,27 @@ grep -Fq "Authorization: ***REDACTED***''" <<<"$widened_single" || fail "wide si
 repeat_single=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$repo_dir/lmline/actions.bash" "$repeat_single_fixture") || fail "shipped repeated single-quoted header redaction"
 grep -Fxq "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ" <<<"$repeat_single" || fail "shipped single-quote rule damaged scheme or tail"
+
+# Mutation check: shell separators must not be treated as URL Authorization separators.
+narrow_url_rule=$(grep -F 's/([?/@#=])' "$repo_dir/lmline/actions.bash")
+wide_url_rule=${narrow_url_rule/'([?/@#=])'/'([?&/@#=;,])'}
+narrow_guard=$(grep -F '/[?/@#=]Authorization:/!' "$repo_dir/lmline/actions.bash" | head -n 1)
+wide_guard=${narrow_guard/'[?/@#=]'/'[?&/@#=;,]'}
+[[ -n $narrow_url_rule && -n $narrow_guard ]] || fail "missing narrowed URL Authorization rules"
+[[ $(grep -cF 's/([?/@#=])' "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one narrowed URL Authorization rule"
+[[ $(grep -cF '/[?/@#=]Authorization:/!' "$repo_dir/lmline/actions.bash") == 2 ]] || fail "expected two narrowed URL Authorization guards"
+url_rule_line=$(grep -nF 's/([?/@#=])' "$repo_dir/lmline/actions.bash" | cut -d: -f1)
+guard_lines=$(grep -nF '/[?/@#=]Authorization:/!' "$repo_dir/lmline/actions.bash" | cut -d: -f1 | tr '\n' ',')
+printf '%s\n' "$wide_url_rule" >"$cfg_tmp/wide-url-rule"
+printf '%s\n' "$wide_guard" >"$cfg_tmp/wide-url-guard"
+awk -v u="$url_rule_line" -v gs="$guard_lines" -v uf="$cfg_tmp/wide-url-rule" -v gf="$cfg_tmp/wide-url-guard" 'BEGIN {split(gs,a,","); for (i in a) guard[a[i]]=1} NR==u {while ((getline line < uf) > 0) print line; next} guard[NR] {while ((getline line < gf) > 0) print line; next} {print}' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-url-auth.bash" || fail "wide URL Authorization mutation copy"
+sep_fixture='Authorization: my_scheme:"SYNTHSEPAMP1"&Authorization: 2scheme:"SYNTHSEPAMP2"; echo KEEPSEPAMP'
+widened_sep=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-wide-url-auth.bash" "$sep_fixture") || fail "wide URL Authorization redaction"
+grep -Fq SYNTHSEPAMP1 <<<"$widened_sep" || fail "widened URL rules did not leak the glued shell-header secret"
+shipped_sep=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$repo_dir/lmline/actions.bash" "$sep_fixture") || fail "shipped glued-shell-header redaction"
+grep -Fxq 'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP' <<<"$shipped_sep" || fail "shipped URL rules damaged the glued shell header"
 
 ok "clip cli"

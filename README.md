@@ -1026,7 +1026,7 @@ Quoted Authorization headers with spaced or glued values are masked without cons
 Quoted Authorization headers keep their quotes and surrounding command text
 Quoted values keep their quote characters, including escaped quotes inside the value
 Adjacent quoted segments after an Authorization scheme separator are one value and are masked together
-Repeated Authorization headers with glued custom-scheme quoted values are each masked, with scheme words, quotes and command tails preserved
+Repeated Authorization headers with glued custom-scheme quoted values, including glued shell separators, are each masked, with scheme words, quotes and command tails preserved
 Adjacent shell word pieces of a quoted Authorization value, including repeated quoted pieces, are masked with the value
 URL userinfo credentials (user:password@host, network-path //user:password@host) are masked at the URL authority
 Bare colonless userinfo is masked when the token reaches `LMLINE_CLIP_USERINFO_MIN` characters (default `8`); shorter tokens are kept as usernames
