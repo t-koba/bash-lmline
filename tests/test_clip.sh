@@ -320,6 +320,9 @@ printf '%s\n' 'Authorization: Bearer: SYNTHSEP901; echo KEEPSEPTAIL1'
 printf '%s\n' 'Authorization: Bearer= SYNTHSEP902; echo KEEPSEPTAIL2'
 printf '%s\n' 'Authorization: Basic: SYNTHSEP903; echo KEEPSEPTAIL3'
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHSEP904" https://x; echo KEEPSEPTAIL4'
+# A glued scheme value followed by another word keeps that word and the tail.
+printf '%s\n' 'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
+printf '%s\n' 'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
 printf '%s\n' 'Authorization: Bearer=\"SYNTHBAREQUOTED4\"; echo KEEPTAILBARE'
 # An interior bare quote is part of the escaped value, not its closing quote.
 printf '%s\n' 'Authorization: Bearer=AAA\"don'"'"'tSECRET\"; echo KEEP6'
@@ -1164,6 +1167,10 @@ grep -Fq SYNTHSEP901 "$line_file" && exit 1014
 grep -Fq SYNTHSEP902 "$line_file" && exit 1015
 grep -Fq SYNTHSEP903 "$line_file" && exit 1016
 grep -Fq SYNTHSEP904 "$line_file" && exit 1017
+grep -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1' "$line_file" || exit 1018
+grep -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2' "$line_file" || exit 1019
+grep -Fq SYNTHGLUED901 "$line_file" && exit 1020
+grep -Fq SYNTHGLUED902 "$line_file" && exit 1021
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2069,6 +2076,30 @@ for mutation_index in 0 1 2; do
     "$repo_dir/lmline/actions.bash" "${scheme_space_fixtures[$mutation_index]}") || fail "shipped scheme-separator redaction $mutation_index"
   grep -Fq "${scheme_space_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped scheme-separator rule $mutation_index leaked the credential"
   grep -Fq "${scheme_space_tails[$mutation_index]}" <<<"$shipped" || fail "shipped scheme-separator rule $mutation_index lost the tail"
+done
+
+# Mutation check: deleting the glued-scheme value rule leaks both credentials
+# while the shipped redactor keeps the following word and command tail.
+glued_rule=$(cat <<'RULE'
+    -e "s/${auth_prefix}${auth_scheme_name}([:=]+)([^\\\"'[:space:];,&|]+)([[:space:]]+)/\1***REDACTED***\5/Ig" \
+RULE
+)
+[[ $(grep -cF "$glued_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one glued-scheme value rule"
+grep -vF "$glued_rule" "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-no-glued-scheme.bash" || fail "glued-scheme mutation copy"
+glued_fixtures=(
+  'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
+  'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
+)
+glued_secrets=(SYNTHGLUED901 SYNTHGLUED902)
+glued_tails=('https://x; echo KEEPGLUEDTAIL1' 'foo; echo KEEPGLUEDTAIL2')
+for mutation_index in 0 1; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-no-glued-scheme.bash" "${glued_fixtures[$mutation_index]}") || fail "mutated glued-scheme redaction $mutation_index"
+  grep -Fq "${glued_secrets[$mutation_index]}" <<<"$mutated" || fail "mutated glued-scheme rule $mutation_index did not leak the credential"
+  shipped=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+    "$repo_dir/lmline/actions.bash" "${glued_fixtures[$mutation_index]}") || fail "shipped glued-scheme redaction $mutation_index"
+  grep -Fq "${glued_secrets[$mutation_index]}" <<<"$shipped" && fail "shipped glued-scheme rule $mutation_index leaked the credential"
+  grep -Fq "${glued_tails[$mutation_index]}" <<<"$shipped" || fail "shipped glued-scheme rule $mutation_index lost the tail"
 done
 
 ok "clip cli"
