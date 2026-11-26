@@ -1803,30 +1803,14 @@ printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
 printf 'clip answer\n'
 # Generic Authorization schemes must mask backslash-escaped quote values.
-grep -Fxq 'Authorization: abc=\"***REDACTED***\"; echo KEEPGESTAIL1' "$line_file" || fail "generic escaped double quote"
-grep -Fq SYNTHGESC001 "$line_file" && fail "generic escaped double quote leaked"
-grep -Fxq "Authorization: abc=\'***REDACTED***\'; echo KEEPGESTAIL2" "$line_file" || fail "generic escaped single quote"
-grep -Fq SYNTHGESC002 "$line_file" && fail "generic escaped single quote leaked"
-grep -Fxq "curl -H 'Authorization: abc=\'***REDACTED***\''; echo KEEPGESTAIL3" "$line_file" || fail "generic escaped single quote in curl"
-grep -Fq SYNTHGESC003 "$line_file" && fail "generic escaped single quote in curl leaked"
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGESTAIL4' "$line_file" || fail "generic escaped double quote in curl"
-grep -Fq SYNTHGESC004 "$line_file" && fail "generic escaped double quote in curl leaked"
-# Mutation: restricting escaped-quote rules to recognized schemes leaks these values.
-[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 11 ]] || fail "expected eleven generic scheme escaped-quote rules"
-sed 's/${auth_scheme_any}/${auth_scheme_name}/g' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-recognized-esc-quotes.bash" || fail "escaped-quote scheme mutation copy"
-grep -Fq '${auth_scheme_any}' "$cfg_tmp/actions-recognized-esc-quotes.bash" && fail "escaped-quote scheme mutation did not apply"
-generic_esc_fixtures=(
-  'Authorization: abc=\"SYNTHGESC001\"; echo KEEPGESTAIL1'
-  "Authorization: abc=\\'SYNTHGESC002\\'; echo KEEPGESTAIL2"
-  "curl -H 'Authorization: abc=\\'SYNTHGESC003\\''; echo KEEPGESTAIL3"
-  'curl -H "Authorization: abc=\"SYNTHGESC004\""; echo KEEPGESTAIL4'
-)
-generic_esc_secrets=(SYNTHGESC001 SYNTHGESC002 SYNTHGESC003 SYNTHGESC004)
-for mutation_index in 0 1 2 3; do
-  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
-    "$cfg_tmp/actions-recognized-esc-quotes.bash" "${generic_esc_fixtures[$mutation_index]}") || fail "mutated escaped-quote scheme $mutation_index"
-  grep -Fq "${generic_esc_secrets[$mutation_index]}" <<<"$mutated" || fail "recognized-scheme mutation $mutation_index did not leak"
-done
+grep -Fxq 'Authorization: abc=\"***REDACTED***\"; echo KEEPGESTAIL1' "$line_file" || exit 9180
+grep -Fq SYNTHGESC001 "$line_file" && exit 9181
+grep -Fxq "Authorization: abc=\'***REDACTED***\'; echo KEEPGESTAIL2" "$line_file" || exit 9182
+grep -Fq SYNTHGESC002 "$line_file" && exit 9183
+grep -Fxq "curl -H 'Authorization: abc=\'***REDACTED***\''; echo KEEPGESTAIL3" "$line_file" || exit 9184
+grep -Fq SYNTHGESC003 "$line_file" && exit 9185
+grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGESTAIL4' "$line_file" || exit 9186
+grep -Fq SYNTHGESC004 "$line_file" && exit 9187
 grep -Fxq 'curl -u user:***REDACTED*** https://x; echo KEEPFLAG901' "$line_file" || exit 9101
 grep -Fq 'SYNTHFLAG901' "$line_file" && exit 9102
 grep -Fxq 'curl --user user:***REDACTED*** https://x; echo KEEPFLAG902' "$line_file" || exit 9103
@@ -1922,6 +1906,23 @@ clip_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_d
 grep -q 'clipboard provider=fake' <<<"$clip_out" || fail "clip provider output"
 grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
+# Mutation: restricting escaped-quote rules to recognized schemes leaks these values.
+[[ $(grep -Fc '${auth_scheme_any}' "$repo_dir/lmline/actions.bash") == 10 ]] || fail "expected ten generic scheme escaped-quote rules"
+sed 's/${auth_scheme_any}/${auth_scheme_name}/g' "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-recognized-esc-quotes.bash" || fail "escaped-quote scheme mutation copy"
+grep -Fq '${auth_scheme_any}' "$cfg_tmp/actions-recognized-esc-quotes.bash" && fail "escaped-quote scheme mutation did not apply"
+generic_esc_fixtures=(
+  'Authorization: abc=\"SYNTHGESC001\"; echo KEEPGESTAIL1'
+  "Authorization: abc=\\'SYNTHGESC002\\'; echo KEEPGESTAIL2"
+  "curl -H 'Authorization: abc=\\'SYNTHGESC003\\''; echo KEEPGESTAIL3"
+  'curl -H "Authorization: abc=\"SYNTHGESC004\""; echo KEEPGESTAIL4'
+)
+generic_esc_secrets=(SYNTHGESC001 SYNTHGESC002 SYNTHGESC003)
+for mutation_index in 0 1 2; do
+  mutated=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\\n" "$2" | __lmline_redact_clip_text' _ \
+    "$cfg_tmp/actions-recognized-esc-quotes.bash" "${generic_esc_fixtures[$mutation_index]}") || fail "mutated escaped-quote scheme $mutation_index"
+  grep -Fq "${generic_esc_secrets[$mutation_index]}" <<<"$mutated" || fail "recognized-scheme mutation $mutation_index did not leak"
+done
+
 clip_provider_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_dir/engine" "$repo_dir/lmline/lmline" clip --provider fake "原因は？")
 grep -q 'clipboard provider=fake' <<<"$clip_provider_out" || fail "clip one-shot provider"
 # Measure only the clipboard section delivered to the engine, never its text.
