@@ -65,6 +65,9 @@ printf '%s\n' 'Authorization: my_scheme:"SYNTHGLUEDQ2" "PAYLOADGLUEDQ2"; echo KE
 printf '%s\n' 'Authorization: my_scheme:"SYNTHREPEATQ1"; Authorization: 2scheme:"SYNTHREPEATQ2"; echo KEEPREPEATQ'
 printf '%s\n' 'Authorization: my_scheme:"SYNTHREPEATPIPE1"|Authorization: 2scheme:"SYNTHREPEATPIPE2"; echo KEEPREPEATPIPE'
 printf '%s\n' 'Authorization: my_scheme:"SYNTHREPEATREDIR1" >out; Authorization: 2scheme:"SYNTHREPEATREDIR2" <in; echo KEEPREPEATREDIR'
+printf "%s\\n" "Authorization: my_scheme:'SYNTHREPEATSQ1'; Authorization: 2scheme:'SYNTHREPEATSQ2'; echo KEEPREPEATSQ"
+printf "%s\\n" "Authorization: my_scheme:'SYNTHREPEATSQPIPE1'|Authorization: 2scheme:'SYNTHREPEATSQPIPE2'; echo KEEPREPEATSQPIPE"
+printf "%s\\n" "Authorization: my_scheme:'SYNTHREPEATSQREDIR1' >out; Authorization: 2scheme:'SYNTHREPEATSQREDIR2' <in; echo KEEPREPEATSQREDIR"
 printf '%s\n' 'Authorization: Basic basicCredentialValue1234567890'
 printf '%s\n' 'Authorization: Digest username="user", nonce="digestNonceValue123456"'
 printf '%s\n' 'Authorization: Token tokenSchemeValue1234567890'
@@ -1402,6 +1405,15 @@ grep -Fq SYNTHREPEATPIPE2 "$line_file" && exit 9420
 grep -Fxq 'Authorization: my_scheme:"***REDACTED***" >out; Authorization: 2scheme:"***REDACTED***" <in; echo KEEPREPEATREDIR' "$line_file" || exit 9421
 grep -Fq SYNTHREPEATREDIR1 "$line_file" && exit 9422
 grep -Fq SYNTHREPEATREDIR2 "$line_file" && exit 9423
+grep -Fxq "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ" "$line_file" || exit 9424
+grep -Fq SYNTHREPEATSQ1 "$line_file" && exit 9425
+grep -Fq SYNTHREPEATSQ2 "$line_file" && exit 9426
+grep -Fxq "Authorization: my_scheme:'***REDACTED***'|Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQPIPE" "$line_file" || exit 9427
+grep -Fq SYNTHREPEATSQPIPE1 "$line_file" && exit 9428
+grep -Fq SYNTHREPEATSQPIPE2 "$line_file" && exit 9429
+grep -Fxq "Authorization: my_scheme:'***REDACTED***' >out; Authorization: 2scheme:'***REDACTED***' <in; echo KEEPREPEATSQREDIR" "$line_file" || exit 9430
+grep -Fq SYNTHREPEATSQREDIR1 "$line_file" && exit 9431
+grep -Fq SYNTHREPEATSQREDIR2 "$line_file" && exit 9432
 grep -Fq 'more_secret456' "$line_file" && exit 129
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
@@ -2395,7 +2407,7 @@ tail_rule1=$(cat <<'RULE'
 RULE
 )
 tail_rule2=$(cat <<'RULE'
-    -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/('[^'[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
 RULE
 )
 for rule in "$tail_rule1" "$tail_rule2"; do
@@ -2966,5 +2978,27 @@ grep -Fq 'Authorization: ***REDACTED***"' <<<"$widened" || fail "wide-rule mutat
 repeat_header=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
   "$repo_dir/lmline/actions.bash" "$repeat_header_fixture") || fail "shipped repeated-header redaction"
 grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATQ' <<<"$repeat_header" || fail "shipped repeated-header rule damaged scheme or tail"
+
+# Mutation check: the single-quoted header tail rule must not cross a shell separator.
+narrow_single_rule=$(cat <<'RULE'
+    -e "s/('[^'[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+RULE
+)
+wide_single_rule=$(cat <<'RULE'
+    -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+RULE
+)
+[[ $(grep -cF "$narrow_single_rule" "$repo_dir/lmline/actions.bash") == 1 ]] || fail "expected one narrow single-quoted header rule"
+narrow_single_line=$(grep -nF "$narrow_single_rule" "$repo_dir/lmline/actions.bash" | cut -d: -f1)
+printf '%s\n' "$wide_single_rule" >"$cfg_tmp/wide-single-rule"
+awk -v n="$narrow_single_line" -v repl="$cfg_tmp/wide-single-rule" 'NR==n {while ((getline line < repl) > 0) print line; next} {print}' \
+  "$repo_dir/lmline/actions.bash" >"$cfg_tmp/actions-wide-single-rule.bash" || fail "wide single-rule mutation copy"
+repeat_single_fixture="Authorization: my_scheme:'SYNTHREPEATSQ1'; Authorization: 2scheme:'SYNTHREPEATSQ2'; echo KEEPREPEATSQ"
+widened_single=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$cfg_tmp/actions-wide-single-rule.bash" "$repeat_single_fixture") || fail "wide single-rule redaction"
+grep -Fq "Authorization: ***REDACTED***''" <<<"$widened_single" || fail "wide single-rule mutation did not over-redact the second scheme"
+repeat_single=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  "$repo_dir/lmline/actions.bash" "$repeat_single_fixture") || fail "shipped repeated single-quoted header redaction"
+grep -Fxq "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ" <<<"$repeat_single" || fail "shipped single-quote rule damaged scheme or tail"
 
 ok "clip cli"
