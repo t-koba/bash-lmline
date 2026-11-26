@@ -238,6 +238,7 @@ __lmline_redact_clip_text() {
   local auth_prefix_escaped_dq auth_prefix_escaped_sq auth_scheme_optional
   local key_prefix_escaped_dq key_prefix_escaped_sq
   local auth_prefix_quoted_dq auth_prefix_quoted_sq auth_marker auth_redacted_value
+  local realm_shield_prefix
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
   if [[ ! $userinfo_min =~ ^[1-9][0-9]{0,2}$ ]] || (( 10#$userinfo_min > 255 )); then
     userinfo_min=8
@@ -257,6 +258,8 @@ __lmline_redact_clip_text() {
   # one RFC-token scheme followed by separators and the marker. A live
   # credential that ends in a marker spelling is not a redacted value.
   auth_redacted_value="(${auth_scheme_any}([[:space:]]+|[:=]+))?[:=]*[[:space:]]*${auth_marker}"
+  # Per-invocation prefix keeps a pasted marker from being treated as a shield.
+  realm_shield_prefix="@@LMLINE_REALM_SHIELD_${RANDOM}${RANDOM}${RANDOM}_"
   key_word='(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)'
   key_name="(${key_word}[A-Za-z0-9_-]*|[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)"
   key_prefix="((^|[^A-Za-z0-9_/?@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
@@ -316,13 +319,13 @@ __lmline_redact_clip_text() {
   # value before quoted-value rules can consume the closing quote and the
   # following shell command. Any character after the closing quote is
   # tolerated, so a glued suffix cannot hide the credential. A realm field
-  # is shielded with a distinctive case-preserving marker because its quoted
-  # value is not a secret; the marker is restored only in that key context.
+  # is shielded with a per-invocation case-preserving marker because its
+  # quoted value is not a secret; only that marker is restored.
   sed -E \
-    -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3@@LMLINE_REALM_SHIELD_\4@@/Ig" \
+    -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*={2,}|[^[:space:]&;,=\"']*:+|([A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\7/Ig" \
-    -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)@@LMLINE_REALM_SHIELD_([A-Za-z]+)@@/\1\2\3\4=/Ig" \
+    -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)${realm_shield_prefix}([A-Za-z]+)@@/\1\2\3\4=/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
     -e "s/(^|[[:space:]])(--user=)([0-9]*[^0-9[:space:]\"':;,|&][^[:space:]\"':;,|&]*)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
