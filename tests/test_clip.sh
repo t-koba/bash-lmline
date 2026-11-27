@@ -645,6 +645,9 @@ printf '%s\n' 'url=https://x/?\"Authorization\"%3D\"SYNTHQUOTEENCA1\"&y=1; echo 
 printf '%s\n' 'url=https://x/?\"token\"%3D\"SYNTHQUOTEENCA2\"&y=1; echo KEEPQUOTEENC2'
 printf '%s\n' 'url=https://x/?\"Authorization\"%20%3D%20Bearer%20SYNTHPADENCA1&y=KEEPPADENC1'
 printf "%s\n" "url=https://x/?\\'Authorization\\'%20%3D%20Bearer%20SYNTHPADENCA2&y=KEEPPADENC2"
+# Literal-space scheme values must be masked whole, not just the scheme word.
+printf '%s\n' 'url=https://x/?a=1&Authorization%3DBearer SYNTHSCHEMESPACE9001&keep=KEEPSCHEMESPACE1'
+printf '%s\n' "url=https://x/?a=1&\\'Authorization\\'%3DBasic SYNTHSCHEMESPACE9002&keep=KEEPSCHEMESPACE2"
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
@@ -1897,6 +1900,10 @@ grep -Fq 'SYNTHPADENCA1' "$line_file" && exit 490
 grep -Fq 'KEEPPADENC1' "$line_file" || exit 491
 grep -Fq 'SYNTHPADENCA2' "$line_file" && exit 492
 grep -Fq 'KEEPPADENC2' "$line_file" || exit 493
+grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPSCHEMESPACE1' "$line_file" || exit 494
+grep -Fq 'SYNTHSCHEMESPACE9001' "$line_file" && exit 495
+grep -Fxq "url=https://x/?a=1&'Authorization':***REDACTED***&keep=KEEPSCHEMESPACE2" "$line_file" || exit 496
+grep -Fq 'SYNTHSCHEMESPACE9002' "$line_file" && exit 497
 grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
