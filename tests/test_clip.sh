@@ -805,6 +805,11 @@ printf "%s\\n" "mysql -p'SYNTHP946' https://x; echo KEEPP946"
 printf '%s\n' 'mysql -p"SYNTHQDB1">out; echo KEEPQDB1'
 printf '%s\n' "mysql -p'SYNTHQDB2'<in; echo KEEPQDB2"
 printf '%s\n' 'mysql -p"SYNTHQDB3">>out; echo KEEPQDB3'
+printf '%s\n' 'mkdir -pkeep; echo KEEPPCMDB1'
+printf '%s\n' 'MKDIR -pKEEPUPPER; echo KEEPPCMDB2'
+printf '%s\n' 'ls -la -pKEEPPCMDB3; echo KEEPPCMDB3'
+printf '%s\n' 'echo PREPCMDB4; mysql -uadmin -pSYNTHPCMDB4; echo KEEPPCMDB4'
+printf '%s\n' 'mkdir -pkeep; mysql -pSYNTHPCMDB5; mkdir -pkeep2'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -2146,6 +2151,13 @@ grep -Fq 'SYNTHP946' "$line_file" && exit 9144
 grep -Fxq 'mysql -p"***REDACTED***">out; echo KEEPQDB1' "$line_file" || exit 9160
 grep -Fq 'SYNTHQDB1' "$line_file" && exit 9161
 grep -Fxq "mysql -p'***REDACTED***'<in; echo KEEPQDB2" "$line_file" || exit 9162
+grep -Fxq 'mkdir -pkeep; echo KEEPPCMDB1' "$line_file" || exit 9190
+grep -Fxq 'MKDIR -pKEEPUPPER; echo KEEPPCMDB2' "$line_file" || exit 9191
+grep -Fxq 'ls -la -pKEEPPCMDB3; echo KEEPPCMDB3' "$line_file" || exit 9192
+grep -Fxq 'echo PREPCMDB4; mysql -uadmin -p***REDACTED***; echo KEEPPCMDB4' "$line_file" || exit 9193
+grep -Fq 'SYNTHPCMDB4' "$line_file" && exit 9194
+grep -Fxq 'mkdir -pkeep; mysql -p***REDACTED***; mkdir -pkeep2' "$line_file" || exit 9195
+grep -Fq 'SYNTHPCMDB5' "$line_file" && exit 9196
 grep -Fq 'SYNTHQDB2' "$line_file" && exit 9163
 grep -Fxq 'mysql -p"***REDACTED***">>out; echo KEEPQDB3' "$line_file" || exit 9164
 grep -Fq 'SYNTHQDB3' "$line_file" && exit 9165
