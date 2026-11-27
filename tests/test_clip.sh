@@ -648,6 +648,13 @@ printf "%s\n" "url=https://x/?\\'Authorization\\'%20%3D%20Bearer%20SYNTHPADENCA2
 # Literal-space scheme values must be masked whole, not just the scheme word.
 printf '%s\n' 'url=https://x/?a=1&Authorization%3DBearer SYNTHSCHEMESPACE9001&keep=KEEPSCHEMESPACE1'
 printf '%s\n' "url=https://x/?a=1&\\'Authorization\\'%3DBasic SYNTHSCHEMESPACE9002&keep=KEEPSCHEMESPACE2"
+# Encoded credentials must keep shell quotes and command tails intact.
+printf '%s\n' 'curl "https://x/?Authorization%3DSYNTHQUOTEKEEP9001" -H "X: keep"; echo KEEPQUOTETAIL9001'
+printf '%s\n' 'curl "https://x/?Authorization%3DSYNTHQUOTEKEEP9002"'
+printf '%s\n' "curl 'https://x/?Authorization%3DSYNTHQUOTEKEEP9003' -H 'X: keep'; echo KEEPQUOTETAIL9003"
+printf '%s\n' "curl \"https://x/?Authorization%3DSYNTHQUOTEKEEP9004\" --data=' keep'; echo KEEPQUOTETAIL9004"
+printf '%s\n' 'url=https://x/?a=1&\"Authorization\"%3DBearer SYNTHESCDQ9003&keep=KEEPTAIL540'
+printf '%s\n' 'url=https://x/?a=1&token%3Dmy secret SYNTHKEY9008&keep=KEEPTAIL603'
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
@@ -1904,6 +1911,18 @@ grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPSCHEMESPACE1
 grep -Fq 'SYNTHSCHEMESPACE9001' "$line_file" && exit 495
 grep -Fxq "url=https://x/?a=1&'Authorization':***REDACTED***&keep=KEEPSCHEMESPACE2" "$line_file" || exit 496
 grep -Fq 'SYNTHSCHEMESPACE9002' "$line_file" && exit 497
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***" -H "X: keep"; echo KEEPQUOTETAIL9001' "$line_file" || exit 510
+grep -Fq 'SYNTHQUOTEKEEP9001' "$line_file" && exit 511
+grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"' "$line_file" || exit 512
+grep -Fq 'SYNTHQUOTEKEEP9002' "$line_file" && exit 513
+grep -Fxq "curl 'https://x/?Authorization:***REDACTED***' -H 'X: keep'; echo KEEPQUOTETAIL9003" "$line_file" || exit 514
+grep -Fq 'SYNTHQUOTEKEEP9003' "$line_file" && exit 515
+grep -Fxq "curl \"https://x/?Authorization:***REDACTED***\" --data=' keep'; echo KEEPQUOTETAIL9004" "$line_file" || exit 516
+grep -Fq 'SYNTHQUOTEKEEP9004' "$line_file" && exit 517
+grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPTAIL540' "$line_file" || exit 518
+grep -Fq 'SYNTHESCDQ9003' "$line_file" && exit 519
+grep -Fxq 'url=https://x/?a=1&token=***REDACTED***&keep=KEEPTAIL603' "$line_file" || exit 520
+grep -Fq 'SYNTHKEY9008' "$line_file" && exit 521
 grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
@@ -3033,6 +3052,35 @@ expect_exact 'URL Authorization ending' 'url=https://x/?a=1&Authorization=SYNTHC
 expect_exact 'padded URL Authorization ending' \
   'url=https://x/?a=1&Authorization=SYNTHPADENDMUT==; echo KEEPPADEDMUT' \
   'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEDMUT'
+
+# Encoded credentials keep their surrounding shell quoting and command tails.
+expect_exact 'encoded quote and tail' \
+  'curl "https://x/?Authorization%3DSYNTHQUOTEKEEP9001" -H "X: keep"; echo KEEPQUOTETAIL9001' \
+  'curl "https://x/?Authorization:***REDACTED***" -H "X: keep"; echo KEEPQUOTETAIL9001'
+expect_exact 'encoded quote at end' \
+  'curl "https://x/?Authorization%3DSYNTHQUOTEKEEP9002"' \
+  'curl "https://x/?Authorization:***REDACTED***"'
+expect_exact 'encoded single quote and tail' \
+  "curl 'https://x/?Authorization%3DSYNTHQUOTEKEEP9003' -H 'X: keep'; echo KEEPQUOTETAIL9003" \
+  "curl 'https://x/?Authorization:***REDACTED***' -H 'X: keep'; echo KEEPQUOTETAIL9003"
+expect_exact 'encoded quote before option' \
+  "curl \"https://x/?Authorization%3DSYNTHQUOTEKEEP9004\" --data=' keep'; echo KEEPQUOTETAIL9004" \
+  "curl \"https://x/?Authorization:***REDACTED***\" --data=' keep'; echo KEEPQUOTETAIL9004"
+expect_exact 'escaped key with literal space' \
+  'url=https://x/?a=1&\"Authorization\"%3DBearer SYNTHESCDQ9003&keep=KEEPTAIL540' \
+  'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPTAIL540'
+expect_exact 'generic key with literal space' \
+  'url=https://x/?a=1&token%3Dmy secret SYNTHKEY9008&keep=KEEPTAIL603' \
+  'url=https://x/?a=1&token=***REDACTED***&keep=KEEPTAIL603'
+expect_shell_valid() {
+  local label=$1 fixture=$2 actual
+  actual=$(redact_clip_line "$fixture") || fail "$label: redaction failed"
+  bash -n <<<"$actual" || fail "$label: output is not valid shell: $actual"
+}
+expect_shell_valid 'encoded double quote shell syntax' \
+  'curl "https://x/?Authorization%3DSYNTHQUOTEKEEP9001" -H "X: keep"; echo KEEPQUOTETAIL9001'
+expect_shell_valid 'encoded single quote shell syntax' \
+  "curl 'https://x/?Authorization%3DSYNTHQUOTEKEEP9003' -H 'X: keep'; echo KEEPQUOTETAIL9003"
 
 # The shield nonce must be unique per clip call even in zsh command substitution.
 if command -v zsh >/dev/null 2>&1; then
