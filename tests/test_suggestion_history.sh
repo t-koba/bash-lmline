@@ -96,13 +96,19 @@ concurrent_failure=
 concurrent_diagnostic=
 check_concurrent_records() {
   local shell=$1 history_dir=$2 out_prefix=$3 config_dir=$4
+  local pad1=$padding pad2=${5:-$padding} pad3=${6:-$padding}
   local flags=(-f -e -i)
   [[ $shell != bash ]] || flags=(--norc -e -i)
   mkdir -m 700 "$history_dir"
   local pids=() pid writer failed=0
   for writer in 1 2 3; do
+    case $writer in
+      1) writer_padding=$pad1 ;;
+      2) writer_padding=$pad2 ;;
+      *) writer_padding=$pad3 ;;
+    esac
     LMLINE_CONFIG_DIR="$config_dir" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
-      "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/writer" "$repo_dir" "$shell" "$writer" "$padding" "$tmp" \
+      "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/writer" "$repo_dir" "$shell" "$writer" "$writer_padding" "$tmp" \
       >"$out_prefix-$writer.out" 2>&1 &
     pids+=("$!")
   done
@@ -125,7 +131,7 @@ check_concurrent_records() {
   fi
   # Check the six fields in order and exactly one original/candidate pair per writer.
   local diagnostic
-  if ! diagnostic=$(awk -v pad="$padding" -v shell="$shell" '
+  if ! diagnostic=$(awk -v pad1="$pad1" -v pad2="$pad2" -v pad3="$pad3" -v shell="$shell" '
     function bad() {
       line = NR
       # Report only known field names and lengths, never values.
@@ -156,7 +162,9 @@ check_concurrent_records() {
     NR % 6 == 4 { if ($0 != "mode=generate") bad() }
     NR % 6 == 5 {
       pair = substr($0, length(original) + 1)
-      if ($0 != original pair || pair !~ /^[123]-/ || substr(pair, 3) != pad || seen[pair]++) bad()
+      writer = substr(pair, 1, 1)
+      expected_pad = (writer == 1 ? pad1 : (writer == 2 ? pad2 : pad3))
+      if ($0 != original pair || pair !~ /^[123]-/ || substr(pair, 3) != expected_pad || seen[pair]++) bad()
     }
     NR % 6 == 0 { if ($0 != candidate pair) bad() }
     END {
@@ -237,6 +245,39 @@ for shell in bash zsh; do
     printf 'retry - %s slow append attempt %d of 6\n' "$shell" "$attempt"
   done
   ok "$shell suggestion history survives a slow large append"
+done
+
+# A short contender must not vanish behind a large live append just because its
+# own record is small. Hold the lock for longer than the old short-writer wait.
+mixed_real_dd=$(type -P dd)
+mkdir -p "$tmp/mixed-dd-bin"
+cat >"$tmp/mixed-dd-bin/dd" <<MIXED_DD
+#!/bin/sh
+sleep 2
+exec "$mixed_real_dd" "\$@"
+MIXED_DD
+chmod +x "$tmp/mixed-dd-bin/dd"
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s mixed-size suggestion append (shell unavailable)\n' "$shell"
+    continue
+  fi
+  attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    history_dir="$tmp/mixed-history-$shell-attempt$attempt"
+    if PATH="$tmp/mixed-dd-bin:$PATH" check_concurrent_records "$shell" \
+      "$history_dir" "$tmp/mixed-$shell-attempt$attempt" \
+      "$tmp/mixed-config-$shell-attempt$attempt" "$padding" SHORT SHORT; then
+      break
+    fi
+    [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
+    if ((attempt >= 6)); then
+      fail "$concurrent_failure"
+    fi
+    printf 'retry - %s mixed-size append attempt %d of 6\n' "$shell" "$attempt"
+  done
+  ok "$shell suggestion history survives a mixed-size slow append"
 done
 
 # Zsh must keep shell-quoted newlines and backslashes escaped in the record;
@@ -864,13 +905,13 @@ for shell in bash zsh; do
   printf '%s\n' "$$" >"$live_dir/.suggestions.lock/pid"
   live_owner=$(command cat "$live_dir/.suggestions.lock/pid" 2>/dev/null) ||
     fail "$shell cannot read live lock fixture"
-  LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
+  if LMLINE_TEST_DD=$(type -P dd) PATH="$tmp/private-bin:$PATH" \
     LMLINE_CONFIG_DIR="$tmp/config-live-$shell" LMLINE_HISTORY_DIR="$live_dir" LMLINE_BIND_KEYS=0 \
     "$shell" "${stale_flags[@]}" -c 'source "$@"' _ "$tmp/private-writer" "$repo_dir" "$shell" \
-    >"$tmp/live-$shell.out" 2>"$tmp/live-$shell.err" || {
+    >"$tmp/live-$shell.out" 2>"$tmp/live-$shell.err"; then
     cat "$tmp/live-$shell.err" >&2
-    fail "$shell live-lock writer failed"
-  }
+    fail "$shell live-lock writer reported success after its wait expired"
+  fi
   if grep -q 'suggestions\.lock\|\.stale\|/pid' "$tmp/live-$shell.err" 2>/dev/null; then
     cat "$tmp/live-$shell.err" >&2
     fail "$shell live-lock writer wrote lock noise to stderr"
