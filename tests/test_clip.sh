@@ -2408,6 +2408,32 @@ expect_masked 'sshpass password before closing outer quote' "$sshpass_outer_quot
 expect_exact 'sshpass closing outer quote output' "$sshpass_outer_quote" \
   "bash -c \"sshpass -p ***REDACTED***\" ; echo ${sk32}"
 
+# Command-name case and clustered short options stay in the masked family.
+sp33="${sshpass_word}${sshpass_tail}33"
+sk33="KEEP${sshpass_tail}33"
+sp34="${sshpass_word}${sshpass_tail}34"
+sk34="KEEP${sshpass_tail}34"
+sp35="${sshpass_word}${sshpass_tail}35"
+sk35="KEEP${sshpass_tail}35"
+sp36="${sshpass_word}${sshpass_tail}36"
+sk36="KEEP${sshpass_tail}36"
+sshpass_upper="SSHPASS -p ${sp33} ssh host; echo ${sk33}"
+sshpass_mixed="Sshpass -p ${sp34} ssh host; echo ${sk34}"
+sshpass_cluster="sshpass -vp ${sp35} ssh host; echo ${sk35}"
+sshpass_cluster_attached="sshpass -vp${sp36} ssh host; echo ${sk36}"
+expect_masked 'uppercase sshpass password' "$sshpass_upper" "$sp33" "$sk33"
+expect_exact 'uppercase sshpass output' "$sshpass_upper" \
+  "SSHPASS -p ***REDACTED*** ssh host; echo ${sk33}"
+expect_masked 'mixed-case sshpass password' "$sshpass_mixed" "$sp34" "$sk34"
+expect_exact 'mixed-case sshpass output' "$sshpass_mixed" \
+  "Sshpass -p ***REDACTED*** ssh host; echo ${sk34}"
+expect_masked 'clustered sshpass password' "$sshpass_cluster" "$sp35" "$sk35"
+expect_exact 'clustered sshpass output' "$sshpass_cluster" \
+  "sshpass -vp ***REDACTED*** ssh host; echo ${sk35}"
+expect_masked 'clustered attached sshpass password' "$sshpass_cluster_attached" "$sp36" "$sk36"
+expect_exact 'clustered attached sshpass output' "$sshpass_cluster_attached" \
+  "sshpass -vp***REDACTED*** ssh host; echo ${sk36}"
+
 # Escaped quotes after a generic scheme stay masked with their tails intact.
 generic_esc_fixtures=(
   'Authorization: abc=\"SYNTHGESC001\"; echo KEEPGESTAIL1'

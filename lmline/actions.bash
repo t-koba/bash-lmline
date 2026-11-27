@@ -370,7 +370,7 @@ __lmline_redact_clip_text() {
       word_text = out
       word_end = i
     }
-    function scan(s, i,    c, out, n, w, k) {
+    function scan(s, i,    c, out, n, w, k, prefix, rest, ch, rem, cluster_state) {
       out = ""
       n = length(s)
       scan_end = n + 1
@@ -381,34 +381,66 @@ __lmline_redact_clip_text() {
         parse_word(s, i)
         w = word_text
         k = word_end
-        if (w == "-p") {
-          out = out w
-          i = k
-          while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
-          if (i <= n && !is_sep(substr(s, i, 1))) {
-            parse_word(s, i)
-            out = out redact_value(word_text)
-            scan_end = word_end
-          } else {
-            scan_end = i
-          }
-          return out
-        }
-        if (substr(w, 1, 2) == "-p" && length(w) > 2) {
-          out = out "-p" redact_value(substr(w, 3))
-          scan_end = k
-          return out
-        }
-        if (w == "-v" || w == "-e" || w == "-T" || w == "-h" || w == "--help" || w == "--version") {
+        if (w == "--help" || w == "--version") {
           out = out w; i = k; continue
         }
-        if (w == "-f" || w == "-P" || w == "-d" || w == "-o") {
-          out = out w; i = k
-          while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
-          if (i <= n && !is_sep(substr(s, i, 1))) {
-            parse_word(s, i); out = out word_text; i = word_end
+        if (substr(w, 1, 1) == "-" && substr(w, 1, 2) != "--") {
+          prefix = "-"
+          rest = substr(w, 2)
+          cluster_state = 0
+          while (length(rest) > 0) {
+            ch = substr(rest, 1, 1)
+            if (ch == "v" || ch == "e" || ch == "T" || ch == "h") {
+              prefix = prefix ch
+              rest = substr(rest, 2)
+              continue
+            }
+            if (ch == "p") {
+              out = out prefix "p"
+              rem = substr(rest, 2)
+              if (rem != "") {
+                out = out redact_value(rem)
+                scan_end = k
+                return out
+              }
+              i = k
+              while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
+              if (i <= n && !is_sep(substr(s, i, 1))) {
+                parse_word(s, i)
+                out = out redact_value(word_text)
+                scan_end = word_end
+              } else {
+                scan_end = i
+              }
+              return out
+            }
+            if (ch == "f" || ch == "P" || ch == "d" || ch == "o") {
+              out = out prefix ch
+              rem = substr(rest, 2)
+              if (rem != "") {
+                out = out rem
+                i = k
+              } else {
+                i = k
+                while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
+                if (i <= n && !is_sep(substr(s, i, 1))) {
+                  parse_word(s, i); out = out word_text; i = word_end
+                }
+              }
+              cluster_state = 1
+              break
+            }
+            cluster_state = 2
+            break
           }
-          continue
+          if (cluster_state == 0) {
+            out = out prefix
+            i = k
+            continue
+          }
+          if (cluster_state == 1) {
+            continue
+          }
         }
         scan_end = i
         return out
@@ -417,7 +449,7 @@ __lmline_redact_clip_text() {
     }
     function process(s,    out, idx, before, after, seg, cut) {
       out = ""
-      while ((idx = index(s, "sshpass")) > 0) {
+      while ((idx = index(tolower(s), "sshpass")) > 0) {
         before = idx > 1 ? substr(s, idx - 1, 1) : ""
         after = substr(s, idx + 7, 1)
         if ((idx == 1 || before ~ /[[:space:];,&|(/="]/ || before == sq) &&
