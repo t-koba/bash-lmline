@@ -3107,6 +3107,18 @@ expect_exact 'unquoted redirect after auth flag' \
 expect_exact 'escaped bracket stays in the credential' \
   'curl --user=SYNTHESCBRACKET1\>out;echo KEEPESCB1' \
   'curl --user=***REDACTED***;echo KEEPESCB1'
+expect_exact 'escaped dollar at credential start' \
+  'curl --user=\$uperSecret;echo KEEPLB1' \
+  'curl --user=***REDACTED***;echo KEEPLB1'
+expect_exact 'escaped hash at credential start' \
+  'curl --user=\#hiddenSecret;echo KEEPLB2' \
+  'curl --user=***REDACTED***;echo KEEPLB2'
+expect_exact 'escaped bracket at credential start' \
+  'curl --user=\>bracketSecret;echo KEEPLB3' \
+  'curl --user=***REDACTED***;echo KEEPLB3'
+expect_exact 'escaped dollar after leading digits' \
+  'curl --user=1\$digitSecret;echo KEEPLB4' \
+  'curl --user=***REDACTED***;echo KEEPLB4'
 expect_exact 'quoted bracket stays in the credential' \
   'curl --user="SYNTHQUOTEBRACKET1>out";echo KEEPQUOTEB1' \
   'curl --user="***REDACTED***";echo KEEPQUOTEB1'
