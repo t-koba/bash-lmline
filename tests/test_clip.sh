@@ -630,6 +630,10 @@ printf '%s\n' 'curl "https://x.test/a?api-key%3dencEqSecret9002&keep=KEEPENC2"'
 printf '%s\n' 'curl "https://x.test/a#token%3AencColonSecret9003&keep=KEEPENC3"'
 printf '%s\n' 'curl "https://x.test/a?token%20%3D%20encSpaceSecret9004&keep=KEEPENC4"'
 printf '%s\n' 'curl "https://x.test/a?redirect=https%3A//safe.test&keep=KEEPENC5"'
+printf '%s\n' 'curl "https://x.test/a?Authorization%3DBearer%20AUTHENCSECRET0103&keep=KEEP0103"'
+printf '%s\n' "curl 'https://x.test/a?\"Authorization\"%3DBearer%20AUTHENCSECRET0103&keep=KEEP0103'"
+printf '%s\n' "curl 'https://x.test/a?\"token\"%3DquotedKeySecret0201&keep=KEEP0201'"
+printf '%s\n' "curl \"https://x.test/a?'token'%3DquotedKeySecret0202&keep=KEEP0202\""
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
@@ -1852,6 +1856,13 @@ grep -Fq 'encColonSecret9003' "$line_file" && exit 335
 grep -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC4"' "$line_file" || exit 336
 grep -Fq 'encSpaceSecret9004' "$line_file" && exit 337
 grep -Fxq 'curl "https://x.test/a?redirect=https%3A//safe.test&keep=KEEPENC5"' "$line_file" || exit 338
+grep -Fxq 'curl "https://x.test/a?Authorization:***REDACTED***&keep=KEEP0103"' "$line_file" || exit 339
+grep -Fq 'AUTHENCSECRET0103' "$line_file" && exit 340
+grep -Fxq "curl 'https://x.test/a?\"Authorization\":***REDACTED***&keep=KEEP0103'" "$line_file" || exit 341
+grep -Fxq "curl 'https://x.test/a?\"token\"=***REDACTED***&keep=KEEP0201'" "$line_file" || exit 342
+grep -Fq 'quotedKeySecret0201' "$line_file" && exit 343
+grep -Fxq "curl \"https://x.test/a?'token'=***REDACTED***&keep=KEEP0202\"" "$line_file" || exit 344
+grep -Fq 'quotedKeySecret0202' "$line_file" && exit 345
 grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
