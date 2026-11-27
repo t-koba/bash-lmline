@@ -3331,6 +3331,56 @@ for case_index in "${!grouped_fixtures[@]}"; do
   printf '%s\n' "$expected" | bash -n || fail "grouped credential $case_index is not valid shell: $expected"
 done
 
+# An internal ) or } stays part of the credential; only a trailing one closes
+# the group. Tails stay visible and a second pass is stable.
+inner_group_fixtures=(
+  'curl -u=user:pa)SYNTHINNERU1 https://x; echo TAILINNERU1'
+  'curl -u=user:pa}SYNTHINNERU2 https://x; echo TAILINNERU2'
+  'curl --user=user:pa)SYNTHINNERU3 https://x; echo TAILINNERU3'
+  'curl --user=user:pa}SYNTHINNERU4 https://x; echo TAILINNERU4'
+  'curl -u user:pa)SYNTHINNERU5 https://x; echo TAILINNERU5'
+  'curl -u user:pa}SYNTHINNERU6 https://x; echo TAILINNERU6'
+  'curl -u=pa)SYNTHINNERU7 https://x; echo TAILINNERU7'
+  'curl -u=pa}SYNTHINNERU8 https://x; echo TAILINNERU8'
+  'curl --user=pa)SYNTHINNERU9 https://x; echo TAILINNERU9'
+  'curl --user=pa}SYNTHINNERU10 https://x; echo TAILINNERU10'
+  '(curl -u=user:pa)SYNTHINNERG1); echo KEEPINNERG1'
+  '(curl --user=user:pa}SYNTHINNERG2); echo KEEPINNERG2'
+  '(curl -u user:pa)SYNTHINNERG3); echo KEEPINNERG3'
+  '(curl -u=pa)SYNTHINNERG4); echo KEEPINNERG4'
+  '(curl --user=pa}SYNTHINNERG5); echo KEEPINNERG5'
+  '{ curl -u user:pa}SYNTHINNERG6; echo KEEPINNERG6; }'
+)
+inner_group_expected=(
+  'curl -u=user:***REDACTED*** https://x; echo TAILINNERU1'
+  'curl -u=user:***REDACTED*** https://x; echo TAILINNERU2'
+  'curl --user=user:***REDACTED*** https://x; echo TAILINNERU3'
+  'curl --user=user:***REDACTED*** https://x; echo TAILINNERU4'
+  'curl -u user:***REDACTED*** https://x; echo TAILINNERU5'
+  'curl -u user:***REDACTED*** https://x; echo TAILINNERU6'
+  'curl -u=***REDACTED*** https://x; echo TAILINNERU7'
+  'curl -u=***REDACTED*** https://x; echo TAILINNERU8'
+  'curl --user=***REDACTED*** https://x; echo TAILINNERU9'
+  'curl --user=***REDACTED*** https://x; echo TAILINNERU10'
+  '(curl -u=user:***REDACTED***); echo KEEPINNERG1'
+  '(curl --user=user:***REDACTED***); echo KEEPINNERG2'
+  '(curl -u user:***REDACTED***); echo KEEPINNERG3'
+  '(curl -u=***REDACTED***); echo KEEPINNERG4'
+  '(curl --user=***REDACTED***); echo KEEPINNERG5'
+  '{ curl -u user:***REDACTED***; echo KEEPINNERG6; }'
+)
+inner_group_secrets=(SYNTHINNERU1 SYNTHINNERU2 SYNTHINNERU3 SYNTHINNERU4 SYNTHINNERU5 SYNTHINNERU6 SYNTHINNERU7 SYNTHINNERU8 SYNTHINNERU9 SYNTHINNERU10 SYNTHINNERG1 SYNTHINNERG2 SYNTHINNERG3 SYNTHINNERG4 SYNTHINNERG5 SYNTHINNERG6)
+inner_group_tails=(TAILINNERU1 TAILINNERU2 TAILINNERU3 TAILINNERU4 TAILINNERU5 TAILINNERU6 TAILINNERU7 TAILINNERU8 TAILINNERU9 TAILINNERU10 KEEPINNERG1 KEEPINNERG2 KEEPINNERG3 KEEPINNERG4 KEEPINNERG5 KEEPINNERG6)
+for case_index in "${!inner_group_fixtures[@]}"; do
+  fixture=${inner_group_fixtures[$case_index]}
+  expected=${inner_group_expected[$case_index]}
+  expect_exact "inner group credential $case_index" "$fixture" "$expected"
+  expect_exact "inner group credential second pass $case_index" "$expected" "$expected"
+  grep -Fq "${inner_group_secrets[$case_index]}" <<<"$expected" && fail "inner group credential $case_index was not masked"
+  grep -Fq "${inner_group_tails[$case_index]}" <<<"$expected" || fail "inner group credential $case_index lost its tail"
+  printf '%s\n' "$expected" | bash -n || fail "inner group credential $case_index is not valid shell: $expected"
+done
+
 # Marker-shaped prefixes are still live credentials when the whole value is not
 # a canonical redaction marker.
 expect_exact 'live credential starting with star' \

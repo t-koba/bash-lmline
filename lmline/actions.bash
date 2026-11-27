@@ -344,7 +344,8 @@ __lmline_redact_clip_text() {
   # The value is masked in the same pass, including adjacent escaped segments,
   # so no later quote rule can eat a following shell command.
   # A closing parenthesis or brace ends a grouped command, not a credential:
-  # value and tail classes below leave ) and } for the shell.
+  # value and tail classes below keep a trailing ) or } for the shell while an
+  # internal one followed by credential text stays part of the value.
   # The terminal scheme rule skips canonical markers by their leading * or @
   # so a second pass keeps its closing quote and command group.
   awk '
@@ -496,17 +497,17 @@ __lmline_redact_clip_text() {
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*={2,}|[^[:space:]&;,=\"']*:+|([A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\7/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)${realm_shield_prefix}([A-Za-z]+)@@/\1\2\3\4=/Ig" \
-    -e "s/(^|[^[:alnum:]_-])(-u)([^[:space:]\"':;,|&<>=]+):(([^[:space:]\"';,&|<>)\\\\]|\\\\.)+)(((\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')([^][:space:];,&|<>\"')}]*))*)/\\1\\2\\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[^[:alnum:]_-])(-u)([^[:space:]\"':;,|&<>=]+):([^[:space:]\"';,&|<>\\\\]|\\\\.)*([^[:space:]\"';,&|<>)}\\\\]|\\\\.)(((\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')([^][:space:];,&|<>\"')}]*))*)/\\1\\2\\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^[:alnum:]_-])(-u)([^[:space:]\"':;,|&<>=]+):(((\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')([^][:space:];,&|<>\"')}]*))+)/\\1\\2\\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^[:alnum:]_-])(-u)([\"'])([^\"':]+):([^\"']+)([\"'])/\\1\\2\\3\\4:@@LMLINE_REDACTED@@\\6/Ig" \
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>)}\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
-    -e "s/(^|[[:space:]])(-u=|--u=)(([^[:space:]\"':;,|&<>\\\\]|\\\\.)+)([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\5/Ig" \
-    -e "s/(^|[[:space:]])(--user=)([0-9]*(\\\\[^\"']|[^0-9[:space:]\"':;,|&<>])([^[:space:]\"':;,|&<>)}\\\\]|\\\\.)+)([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\6/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|<>\\\\]|\\\\.)*([^[:space:]\"';,&|<>)}\\\\]|\\\\.)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&<>\\\\]|\\\\.)*([^[:space:]\"':;,|&<>)}\\\\]|\\\\.)([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\5/Ig" \
+    -e "s/(^|[[:space:]])(--user=)([0-9]*(\\\\[^\"']|[^0-9[:space:]\"':;,|&<>])([^[:space:]\"':;,|&<>\\\\]|\\\\.)*([^[:space:]\"':;,|&<>)}\\\\]|\\\\.))([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\7/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^[:space:]\"':]+):([^\"\\\\']*)(\\\\*)\"/\1\2\3\"\4:@@LMLINE_REDACTED@@\6\"/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^\"\\\\']*)(\\\\*)\"/\1\2\3\"@@LMLINE_REDACTED@@\5\"/Ig" \
-    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>)}\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|<>\\\\]|\\\\.)*([^[:space:]\"';,&|<>)}\\\\]|\\\\.)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(\")([^\"']+)([\"])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
