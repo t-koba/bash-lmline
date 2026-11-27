@@ -229,6 +229,14 @@ __lmline_clipboard_read() {
   "${fields[1]}" "${args[@]}"
 }
 
+# Generate the realm shield nonce in the calling shell: RANDOM repeats in
+# zsh command substitutions and can be unset, while a counter advanced in
+# the parent shell is unique for every clip invocation in both shells.
+__lmline_next_realm_shield_prefix() {
+  __LMLINE_REALM_SHIELD_SEQ=$(( ${__LMLINE_REALM_SHIELD_SEQ:-0} + 1 ))
+  __LMLINE_REALM_SHIELD_PREFIX="@@LMLINE_REALM_SHIELD_$$_${__LMLINE_REALM_SHIELD_SEQ}_"
+}
+
 # The @ in the temporary marker is deliberate: later scheme-less rules
 # exclude @ so they cannot re-redact a value whose scheme was preserved.
 # @-specific rules restore coverage for real credentials beginning with @.
@@ -238,8 +246,9 @@ __lmline_redact_clip_text() {
   local auth_prefix_escaped_dq auth_prefix_escaped_sq auth_scheme_optional
   local key_prefix_escaped_dq key_prefix_escaped_sq
   local auth_prefix_quoted_dq auth_prefix_quoted_sq auth_marker auth_redacted_value
-  local realm_shield_prefix
+  local realm_shield_prefix=${1-}
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
+  [[ -n $realm_shield_prefix ]] || return 1
   if [[ ! $userinfo_min =~ ^[1-9][0-9]{0,2}$ ]] || (( 10#$userinfo_min > 255 )); then
     userinfo_min=8
   fi
@@ -258,8 +267,6 @@ __lmline_redact_clip_text() {
   # one RFC-token scheme followed by separators and the marker. A live
   # credential that ends in a marker spelling is not a redacted value.
   auth_redacted_value="(${auth_scheme_any}([[:space:]]+|[:=]+))?[:=]*[[:space:]]*${auth_marker}"
-  # Per-invocation prefix keeps a pasted marker from being treated as a shield.
-  realm_shield_prefix="@@LMLINE_REALM_SHIELD_${RANDOM}${RANDOM}${RANDOM}_"
   key_word='(TOKEN|Token|token|SECRET|Secret|secret|PASSWORD|Password|password|PASS|Pass|pass|KEY|Key|key)'
   key_name="(${key_word}[A-Za-z0-9_-]*|[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)"
   key_prefix="((^|[^A-Za-z0-9_/?@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
@@ -542,10 +549,10 @@ __lmline_redact_clip_text() {
 
 __lmline_prepare_clip_input() {
   local question=$1 clipboard=$2 provider=$3 max_input=${LMLINE_CLIP_MAX_INPUT_BYTES:-65536}
-  local raw_bytes redacted input_bytes truncated=0 patterns_file
+  local raw_bytes redacted input_bytes truncated=0 patterns_file realm_shield_prefix=${4-}
   [[ "$max_input" =~ ^[1-9][0-9]*$ ]] || max_input=65536
   raw_bytes=$(LC_ALL=C printf '%s' "$clipboard" | wc -c | tr -d ' ')
-  redacted=$(printf '%s' "$clipboard" | __lmline_redact_clip_text) || return 1
+  redacted=$(printf '%s' "$clipboard" | __lmline_redact_clip_text "$realm_shield_prefix") || return 1
   input_bytes=$(LC_ALL=C printf '%s' "$redacted" | wc -c | tr -d ' ')
   if (( input_bytes > max_input )); then
     patterns_file=$(__lmline_condense_patterns_file) || return 1
@@ -570,6 +577,7 @@ EOF
 __lmline_print_clip() {
   local engine=$1 shell_name=$2 question=$3 prefix=$4
   local tmp clipboard clip_input engine_output engine_status error had_errexit=0 max_output output_bytes meta_status provider display_status
+  __lmline_next_realm_shield_prefix
   tmp=$(mktemp -d "$(__lmline_tmp_root)/lmline-clip.XXXXXX") || return 1
   __lmline_clipboard_read >"$tmp/clipboard" || {
     rm -rf "$tmp"
@@ -582,7 +590,7 @@ __lmline_print_clip() {
     printf '%sclipboard is empty (provider=%s)\n' "$prefix" "$provider"
     return 1
   }
-  clip_input=$(__lmline_prepare_clip_input "$question" "$clipboard" "$provider") || {
+  clip_input=$(__lmline_prepare_clip_input "$question" "$clipboard" "$provider" "$__LMLINE_REALM_SHIELD_PREFIX") || {
     rm -rf "$tmp"
     return 1
   }

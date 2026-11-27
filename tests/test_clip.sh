@@ -2172,7 +2172,7 @@ grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
 # Behavioral checks exercise the shipped redactor only; no source text is rewritten.
 redact_clip_line() {
-  bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ \
+  bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; __lmline_next_realm_shield_prefix; printf "%s\n" "$2" | __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ \
     "$repo_dir/lmline/actions.bash" "$1"
 }
 expect_exact() {
@@ -2383,10 +2383,10 @@ strict_out=$(LMLINE_CLIP_USERINFO_MIN=1 LMLINE_CONFIG_DIR="$strict_dir/config" L
 grep -q 'strict answer' <<<"$strict_out" || fail "strict userinfo minimum answer"
 
 userinfo_token_255=$(printf '%255s' '' | tr ' ' a)
-threshold_255=$(LMLINE_CLIP_USERINFO_MIN=255 bash -c 'source "$1"; printf "https://%s@example.test/x\n" "$2" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash" "$userinfo_token_255") || fail "userinfo threshold 255 redaction"
+threshold_255=$(LMLINE_CLIP_USERINFO_MIN=255 bash -c 'source "$1"; __lmline_next_realm_shield_prefix; printf "https://%s@example.test/x\n" "$2" | __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ "$repo_dir/lmline/actions.bash" "$userinfo_token_255") || fail "userinfo threshold 255 redaction"
 grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$threshold_255" || fail "userinfo threshold 255 output"
 for invalid_userinfo_min in 256 32768 100000 invalid; do
-  fallback_userinfo=$(LMLINE_CLIP_USERINFO_MIN="$invalid_userinfo_min" bash -c 'source "$1"; printf "https://abcdefghijkl@example.test/x\n" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash") || fail "invalid userinfo threshold $invalid_userinfo_min broke redaction"
+  fallback_userinfo=$(LMLINE_CLIP_USERINFO_MIN="$invalid_userinfo_min" bash -c 'source "$1"; __lmline_next_realm_shield_prefix; printf "https://abcdefghijkl@example.test/x\n" | __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ "$repo_dir/lmline/actions.bash") || fail "invalid userinfo threshold $invalid_userinfo_min broke redaction"
   grep -Fxq 'https://***REDACTED***@example.test/x' <<<"$fallback_userinfo" || fail "invalid userinfo threshold $invalid_userinfo_min did not fall back"
 done
 
@@ -2405,7 +2405,7 @@ quoted_tail_fixtures=(
   'curl -H "Authorization: Bearer abc""pa\\\"inside space""pb TAILAUDIT07"&& :'
 )
 for quoted_tail_fixture in "${quoted_tail_fixtures[@]}"; do
-  quoted_tail_redacted=$(bash -c 'source "$1"; printf "%s\n" "$2" | __lmline_redact_clip_text' _ "$repo_dir/lmline/actions.bash" "$quoted_tail_fixture") || fail "quoted tail redaction: $quoted_tail_fixture"
+  quoted_tail_redacted=$(bash -c 'source "$1"; __lmline_next_realm_shield_prefix; printf "%s\n" "$2" | __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ "$repo_dir/lmline/actions.bash" "$quoted_tail_fixture") || fail "quoted tail redaction: $quoted_tail_fixture"
   printf '%s\n' "$quoted_tail_redacted" | bash -n || fail "quoted tail redaction is not valid shell text: $quoted_tail_redacted"
 done
 
@@ -2721,5 +2721,14 @@ expect_exact 'URL Authorization ending' 'url=https://x/?a=1&Authorization=SYNTHC
 expect_exact 'padded URL Authorization ending' \
   'url=https://x/?a=1&Authorization=SYNTHPADENDMUT==; echo KEEPPADEDMUT' \
   'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEDMUT'
+
+# The shield nonce must be unique per clip call even in zsh command substitution.
+if command -v zsh >/dev/null 2>&1; then
+  zsh_marker_out=$(zsh -c 'unset RANDOM; source "$1"; __lmline_next_realm_shield_prefix; first=$__LMLINE_REALM_SHIELD_PREFIX; __lmline_next_realm_shield_prefix; second=$__LMLINE_REALM_SHIELD_PREFIX; [[ $first != $second ]] || exit 11; fixture="curl \"https://x/?Authorization=${first}FOO@@\" ; echo KEEPZSHCLIP"; printf "%s\n" "$fixture" | __lmline_redact_clip_text "$second"' _ "$repo_dir/lmline/actions.bash") || fail "zsh realm shield nonce is not per-invocation"
+  grep -Fq 'echo KEEPZSHCLIP' <<<"$zsh_marker_out" || fail "zsh pasted shield marker lost its command tail"
+  grep -Fq '@@LMLINE_REALM_SHIELD_' <<<"$zsh_marker_out" || fail "zsh pasted shield marker was rewritten"
+  ! grep -Fq '***REDACTED***' <<<"$zsh_marker_out" || fail "zsh pasted shield marker was treated as a credential"
+  ok "zsh realm shield nonce is per-invocation"
+fi
 
 ok "clip cli"
