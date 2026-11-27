@@ -2996,6 +2996,40 @@ for case_index in "${!glued_mixed_fixtures[@]}"; do
   expect_exact "idempotent mixed glued -u password $case_index" "${glued_mixed_expected[$case_index]}" \
     "${glued_mixed_expected[$case_index]}"
 done
+# Quoted glued passwords keep shell grouping, escaped quotes and following args intact.
+glued_quoted_fixtures=(
+  '(curl -uuser:"SYNTHGDQ1"); echo KEEPGDQ1'
+  'x=$(curl -uuser:"SYNTHGDQ2"); echo KEEPGDQ2'
+  '{ curl -uuser:"SYNTHGDQ3"; echo KEEPGDQ3; }'
+  '(curl -uuser:"SYNTHGDQ4"}); echo KEEPGDQ4'
+  'curl -uuser:"SYNTHGDQ5\"TAILGDQ5"; echo KEEPGDQ5'
+  "curl -uuser:'SYNTHGDQ6\\'TAILGDQ6'; echo KEEPGDQ6"
+  'curl -uuser:PRE"SYNTHGDQ7"; echo KEEPGDQ7'
+  'curl -uuser:"SYNTHGDQ8" -H "X-Test: KEEPHEADERGDQ8"; echo KEEPGDQ8'
+  "curl -uuser:'SYNTHGDQ9' -H 'X-Test: KEEPHEADERGDQ9'; echo KEEPGDQ9"
+)
+glued_quoted_expected=(
+  '(curl -uuser:***REDACTED***); echo KEEPGDQ1'
+  'x=$(curl -uuser:***REDACTED***); echo KEEPGDQ2'
+  '{ curl -uuser:***REDACTED***; echo KEEPGDQ3; }'
+  '(curl -uuser:***REDACTED***}); echo KEEPGDQ4'
+  'curl -uuser:***REDACTED***; echo KEEPGDQ5'
+  'curl -uuser:***REDACTED***; echo KEEPGDQ6'
+  'curl -uuser:***REDACTED***; echo KEEPGDQ7'
+  'curl -uuser:***REDACTED*** -H "X-Test: KEEPHEADERGDQ8"; echo KEEPGDQ8'
+  "curl -uuser:***REDACTED*** -H 'X-Test: KEEPHEADERGDQ9'; echo KEEPGDQ9"
+)
+glued_quoted_secrets=(SYNTHGDQ1 SYNTHGDQ2 SYNTHGDQ3 SYNTHGDQ4 SYNTHGDQ5 SYNTHGDQ6 SYNTHGDQ7 SYNTHGDQ8 SYNTHGDQ9)
+glued_quoted_tails=(KEEPGDQ1 KEEPGDQ2 KEEPGDQ3 KEEPGDQ4 KEEPGDQ5 KEEPGDQ6 KEEPGDQ7 KEEPGDQ8 KEEPGDQ9)
+for case_index in "${!glued_quoted_fixtures[@]}"; do
+  fixture=${glued_quoted_fixtures[$case_index]}
+  expected=${glued_quoted_expected[$case_index]}
+  expect_exact "quoted glued -u boundary $case_index" "$fixture" "$expected"
+  expect_masked "quoted glued -u leak check $case_index" "$fixture" \
+    "${glued_quoted_secrets[$case_index]}" "${glued_quoted_tails[$case_index]}"
+  actual=$(redact_clip_line "$fixture") || fail "quoted glued -u shell check $case_index: redaction failed"
+  bash -n <<<"$actual" || fail "quoted glued -u shell check $case_index: output is not valid shell: $actual"
+done
 # Backslash-escaped delimiters stay inside a glued password.
 expect_exact 'glued -u escaped delimiter' 'curl -uuser:SYNTHESC1\;SYNTHESC2 https://x' \
   'curl -uuser:***REDACTED*** https://x'
