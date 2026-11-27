@@ -2971,9 +2971,40 @@ for case_index in "${!glued_u_fixtures[@]}"; do
   expect_exact "idempotent glued -u argument $case_index" "${glued_u_expected[$case_index]}" \
     "${glued_u_expected[$case_index]}"
 done
+# Glued -u passwords assembled from bare and quoted pieces are masked whole.
+glued_mixed_fixtures=(
+  'curl -uuser:MYQ1 https://x'
+  'curl -uuser:"MYQ2"; echo KEEP2'
+  "curl -uuser:'MYQ3'; echo KEEP3"
+  'curl -uuser:PRE"POST" https://x; echo KEEP4'
+  'curl -uuser:SECRET"X""Y"; echo KEEP5'
+  "curl -u'user:MYQ6' https://x"
+  'curl -u"user:MYQ7" https://x'
+)
+glued_mixed_expected=(
+  'curl -uuser:***REDACTED*** https://x'
+  'curl -uuser:***REDACTED***; echo KEEP2'
+  'curl -uuser:***REDACTED***; echo KEEP3'
+  'curl -uuser:***REDACTED*** https://x; echo KEEP4'
+  'curl -uuser:***REDACTED***; echo KEEP5'
+  "curl -u'user:***REDACTED***' https://x"
+  'curl -u"user:***REDACTED***" https://x'
+)
+for case_index in "${!glued_mixed_fixtures[@]}"; do
+  expect_exact "mixed glued -u password $case_index" "${glued_mixed_fixtures[$case_index]}" \
+    "${glued_mixed_expected[$case_index]}"
+  expect_exact "idempotent mixed glued -u password $case_index" "${glued_mixed_expected[$case_index]}" \
+    "${glued_mixed_expected[$case_index]}"
+done
+# Backslash-escaped delimiters stay inside a glued password.
+expect_exact 'glued -u escaped delimiter' 'curl -uuser:SYNTHESC1\;SYNTHESC2 https://x' \
+  'curl -uuser:***REDACTED*** https://x'
+expect_exact 'idempotent glued -u escaped delimiter' 'curl -uuser:***REDACTED*** https://x' \
+  'curl -uuser:***REDACTED*** https://x'
 # Long flags and other glued -u spellings are not credential forms.
 expect_exact 'numeric long user flag' 'curl --user=1000 https://x' 'curl --user=1000 https://x'
 expect_exact 'unrelated url flag' 'curl --url https://x' 'curl --url https://x'
+expect_exact 'unrelated url flag with tail' 'curl --url https://x; echo KEEPURL' 'curl --url https://x; echo KEEPURL'
 expect_exact 'glued verbose flag' 'curl -uvVALUE https://x' 'curl -uvVALUE https://x'
 
 # Attached password flags mask the value and keep the following word and tail.
