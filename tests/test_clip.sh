@@ -634,6 +634,10 @@ printf '%s\n' 'curl "https://x.test/a?Authorization%3DBearer%20AUTHENCSECRET0103
 printf '%s\n' "curl 'https://x.test/a?\"Authorization\"%3DBearer%20AUTHENCSECRET0103&keep=KEEP0103'"
 printf '%s\n' "curl 'https://x.test/a?\"token\"%3DquotedKeySecret0201&keep=KEEP0201'"
 printf '%s\n' "curl \"https://x.test/a?'token'%3DquotedKeySecret0202&keep=KEEP0202\""
+printf '%s\n' 'url=https://x/?\"token\"%3DEscapedQuotedSecret0301&y=KEEPQ1; echo KEEPQ1'
+printf '%s\n' "url=https://x/?\\'token\\'%3DEscapedQuotedSecret0302&y=KEEPQ2"
+printf '%s\n' 'url=https://x/?\"Authorization\"%3DBearer%20EscapedAuthSecret0303&y=KEEPQ3'
+printf '%s\n' "url=https://x/?\\'Authorization\\'%3DBearer%20EscapedAuthSecret0304&y=KEEPQ4"
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
@@ -1863,6 +1867,14 @@ grep -Fxq "curl 'https://x.test/a?\"token\"=***REDACTED***&keep=KEEP0201'" "$lin
 grep -Fq 'quotedKeySecret0201' "$line_file" && exit 343
 grep -Fxq "curl \"https://x.test/a?'token'=***REDACTED***&keep=KEEP0202\"" "$line_file" || exit 344
 grep -Fq 'quotedKeySecret0202' "$line_file" && exit 345
+grep -Fq 'EscapedQuotedSecret0301' "$line_file" && exit 346
+grep -Fq 'KEEPQ1' "$line_file" || exit 347
+grep -Fq 'EscapedQuotedSecret0302' "$line_file" && exit 348
+grep -Fq 'KEEPQ2' "$line_file" || exit 349
+grep -Fq 'EscapedAuthSecret0303' "$line_file" && exit 350
+grep -Fq 'KEEPQ3' "$line_file" || exit 351
+grep -Fq 'EscapedAuthSecret0304' "$line_file" && exit 352
+grep -Fq 'KEEPQ4' "$line_file" || exit 353
 grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
