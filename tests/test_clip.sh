@@ -2950,6 +2950,32 @@ expect_exact 'quoted flag username' 'curl -u="user:SYNTHQ01" https://x; echo KEE
 expect_exact 'flag separator tail' 'curl -u=SYNTHFLAG928&&echo KEEPFLAG928' \
   'curl -u=***REDACTED***&&echo KEEPFLAG928'
 
+# Glued -u arguments mask only the password, keeping the flag, user, quotes and tail.
+glued_u_fixtures=(
+  'curl -uuser:SYNTHGLUE1 https://x; echo KEEP1'
+  'curl -ubob:SYNTHGLUE2 https://x'
+  "curl -u'user:SYNTHGLUE3' https://x; echo KEEP3"
+  'curl -u"user:SYNTHGLUE4" https://x'
+  'curl -uuser:SYNTHGLUE5; echo KEEP5'
+)
+glued_u_expected=(
+  'curl -uuser:***REDACTED*** https://x; echo KEEP1'
+  'curl -ubob:***REDACTED*** https://x'
+  "curl -u'user:***REDACTED***' https://x; echo KEEP3"
+  'curl -u"user:***REDACTED***" https://x'
+  'curl -uuser:***REDACTED***; echo KEEP5'
+)
+for case_index in "${!glued_u_fixtures[@]}"; do
+  expect_exact "glued -u argument $case_index" "${glued_u_fixtures[$case_index]}" \
+    "${glued_u_expected[$case_index]}"
+  expect_exact "idempotent glued -u argument $case_index" "${glued_u_expected[$case_index]}" \
+    "${glued_u_expected[$case_index]}"
+done
+# Long flags and other glued -u spellings are not credential forms.
+expect_exact 'numeric long user flag' 'curl --user=1000 https://x' 'curl --user=1000 https://x'
+expect_exact 'unrelated url flag' 'curl --url https://x' 'curl --url https://x'
+expect_exact 'glued verbose flag' 'curl -uvVALUE https://x' 'curl -uvVALUE https://x'
+
 # Attached password flags mask the value and keep the following word and tail.
 p_fixtures=('mysql -uadmin -pSYNTHP941; echo KEEPP941' 'mysql -p"SYNTHP945" https://x; echo KEEPP945')
 p_secrets=(SYNTHP941 SYNTHP945)
