@@ -2288,7 +2288,6 @@ sk18="KEEP${sshpass_tail}18"
 sp19="${sshpass_word}${sshpass_tail}19"
 sk19="KEEP${sshpass_tail}19"
 sp20="${sshpass_word}${sshpass_tail}20"
-sk20="KEEP${sshpass_tail}20"
 sp21="${sshpass_word}${sshpass_tail}21<def"
 sk21="KEEP${sshpass_tail}21"
 sshpass_glued_double="sshpass -p\"${sp12}\" ssh host; echo ${sk12}"
@@ -2365,7 +2364,6 @@ expect_exact 'bash -p is a shell option' \
 # Each sshpass invocation on a shell line owns its own password, and an -p
 # inside a quoted option argument is not the password flag.
 sp26="${sshpass_word}${sshpass_tail}26"
-sk26="KEEP${sshpass_tail}26"
 sp27="${sshpass_word}${sshpass_tail}27"
 sk27="KEEP${sshpass_tail}27"
 sshpass_two_semicolons="sshpass -p ${sp26} ssh host; sshpass -p ${sp27} ssh host2; echo ${sk27}"
