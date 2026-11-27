@@ -345,8 +345,8 @@ __lmline_redact_clip_text() {
     -e "s/(^|[[:space:]])(--password[[:space:]]+)([^[:space:]\"';,&|]+)/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(\")([^\"']+)([\"])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(')([^']+)(')/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
-    -e "s/(^|[[:space:];,&|])(mysql|mysqldump|mysqladmin|mysqlshow|mariadb|mariadb-dump|mariadb-admin)([[:space:];,&|]|$)/\1\2@@LMLINE_DBCMD@@\3/g" \
-    -e "s/(@@LMLINE_DBCMD@@[^;&|]*)([[:space:]])(-p)([^[:space:]\"\';,&|]+)/\1\2\3@@LMLINE_REDACTED@@/g" \
+    -e "s/(^|[[:space:];,&|(/=])(mysql|mysqldump|mysqladmin|mysqlshow|mariadb|mariadb-dump|mariadb-admin)([[:space:];,&|)/=]|$)/\1\2@@LMLINE_DBCMD@@\3/Ig" \
+    -e "s/(@@LMLINE_DBCMD@@[^;&|]*)([[:space:]])(-p)([^[:space:]\"\');,&|]+)/\1\2\3@@LMLINE_REDACTED@@/g" \
     -e "s/(@@LMLINE_DBCMD@@[^;&|]*)(-p)([\"\'])([^\"\']+)([\"\'])/\1\2\3@@LMLINE_REDACTED@@\5/g" \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \

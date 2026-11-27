@@ -810,6 +810,12 @@ printf '%s\n' 'MKDIR -pKEEPUPPER; echo KEEPPCMDB2'
 printf '%s\n' 'ls -la -pKEEPPCMDB3; echo KEEPPCMDB3'
 printf '%s\n' 'echo PREPCMDB4; mysql -uadmin -pSYNTHPCMDB4; echo KEEPPCMDB4'
 printf '%s\n' 'mkdir -pkeep; mysql -pSYNTHPCMDB5; mkdir -pkeep2'
+printf '%s\n' '/usr/bin/mysql -pSYNTHPCMDB6; echo KEEPPCMDB6'
+printf '%s\n' 'sudo /usr/local/bin/mysql -pSYNTHPCMDB7; echo KEEPPCMDB7'
+printf '%s\n' 'echo $(mysql -pSYNTHPCMDB8); echo KEEPPCMDB8'
+printf '%s\n' 'x=$(mariadb -pSYNTHPCMDB9); echo KEEPPCMDB9'
+printf '%s\n' '(mysql -pSYNTHPCMDB10); echo KEEPPCMDB10'
+printf '%s\n' 'MYSQL -pSYNTHPCMDB11; echo KEEPPCMDB11'
 EOF
 chmod +x "$clip_test_dir/bin/fakeclip"
 printf 'fake\t%s\n' "$clip_test_dir/bin/fakeclip" >"$clip_test_dir/config/clipboard_providers.tsv"
@@ -2158,6 +2164,18 @@ grep -Fxq 'echo PREPCMDB4; mysql -uadmin -p***REDACTED***; echo KEEPPCMDB4' "$li
 grep -Fq 'SYNTHPCMDB4' "$line_file" && exit 9194
 grep -Fxq 'mkdir -pkeep; mysql -p***REDACTED***; mkdir -pkeep2' "$line_file" || exit 9195
 grep -Fq 'SYNTHPCMDB5' "$line_file" && exit 9196
+grep -Fxq '/usr/bin/mysql -p***REDACTED***; echo KEEPPCMDB6' "$line_file" || exit 9197
+grep -Fq 'SYNTHPCMDB6' "$line_file" && exit 9198
+grep -Fxq 'sudo /usr/local/bin/mysql -p***REDACTED***; echo KEEPPCMDB7' "$line_file" || exit 9199
+grep -Fq 'SYNTHPCMDB7' "$line_file" && exit 9200
+grep -Fxq 'echo $(mysql -p***REDACTED***); echo KEEPPCMDB8' "$line_file" || exit 9201
+grep -Fq 'SYNTHPCMDB8' "$line_file" && exit 9202
+grep -Fxq 'x=$(mariadb -p***REDACTED***); echo KEEPPCMDB9' "$line_file" || exit 9203
+grep -Fq 'SYNTHPCMDB9' "$line_file" && exit 9204
+grep -Fxq '(mysql -p***REDACTED***); echo KEEPPCMDB10' "$line_file" || exit 9205
+grep -Fq 'SYNTHPCMDB10' "$line_file" && exit 9206
+grep -Fxq 'MYSQL -p***REDACTED***; echo KEEPPCMDB11' "$line_file" || exit 9207
+grep -Fq 'SYNTHPCMDB11' "$line_file" && exit 9208
 grep -Fq 'SYNTHQDB2' "$line_file" && exit 9163
 grep -Fxq 'mysql -p"***REDACTED***">>out; echo KEEPQDB3' "$line_file" || exit 9164
 grep -Fq 'SYNTHQDB3' "$line_file" && exit 9165
