@@ -624,6 +624,12 @@ printf '%s\n' 'db:password=SECRETcolon987654'
 printf '%s\n' '[INFO]token=SECRETbracket987654'
 printf '%s\n' "curl 'https://example.test/?token=user@example.com&at=1'"
 printf '%s\n' "curl 'https://example.test/?token=abc/def&slash=1'"
+# Percent-encoded URL separators still carry credential keys.
+printf '%s\n' 'curl "https://x.test/a?token%3DencEqSecret9001&keep=KEEPENC1"'
+printf '%s\n' 'curl "https://x.test/a?api-key%3dencEqSecret9002&keep=KEEPENC2"'
+printf '%s\n' 'curl "https://x.test/a#token%3AencColonSecret9003&keep=KEEPENC3"'
+printf '%s\n' 'curl "https://x.test/a?token%20%3D%20encSpaceSecret9004&keep=KEEPENC4"'
+printf '%s\n' 'curl "https://x.test/a?redirect=https%3A//safe.test&keep=KEEPENC5"'
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
@@ -1837,6 +1843,15 @@ grep -Fxq "curl 'https://example.test/?token=***REDACTED***&at=1'" "$line_file" 
 grep -Fxq "curl 'https://example.test/?token=***REDACTED***&slash=1'" "$line_file" || exit 255
 grep -Fq '@example.com&at=1' "$line_file" && exit 254
 grep -Fq '/def&slash=1' "$line_file" && exit 254
+grep -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC1"' "$line_file" || exit 330
+grep -Fq 'encEqSecret9001' "$line_file" && exit 331
+grep -Fxq 'curl "https://x.test/a?api-key=***REDACTED***&keep=KEEPENC2"' "$line_file" || exit 332
+grep -Fq 'encEqSecret9002' "$line_file" && exit 333
+grep -Fxq 'curl "https://x.test/a#token=***REDACTED***&keep=KEEPENC3"' "$line_file" || exit 334
+grep -Fq 'encColonSecret9003' "$line_file" && exit 335
+grep -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC4"' "$line_file" || exit 336
+grep -Fq 'encSpaceSecret9004' "$line_file" && exit 337
+grep -Fxq 'curl "https://x.test/a?redirect=https%3A//safe.test&keep=KEEPENC5"' "$line_file" || exit 338
 grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255

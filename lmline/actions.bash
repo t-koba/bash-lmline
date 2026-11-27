@@ -331,6 +331,9 @@ __lmline_redact_clip_text() {
   # sshpass takes its password from -p, not from a key=value pair. Mask its
   # own password arguments before the other rules, leaving later command
   # options such as an ssh port untouched.
+  # A percent-encoded = or : after a URL credential key is still a separator;
+  # canonicalize it before the URL key rules so the value is masked instead of
+  # copied verbatim. Encoded spaces around it are part of the separator form.
   awk '
     BEGIN { sq = sprintf("%c", 39) }
     function is_sep(c) {
@@ -592,6 +595,7 @@ __lmline_redact_clip_text() {
     -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) '/\1'/Ig" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?@@LMLINE_REDACTED@@\\\"/\\1\\2##LMLINE_REDACTED##\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?@@LMLINE_REDACTED@@'/\\1\\2##LMLINE_REDACTED##'/Ig" \
+    -e "s/([?&/@#=;,])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)((%20)*)(%3[DdAa])((%20)*)/\1\2=/Ig" \
     -e "s/([?&/@#=;,])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)([[:space:]]*)([:=])([[:space:]]*)([:=])([[:space:]]*)/\1\2\4\5\8/Ig" \
     -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \
