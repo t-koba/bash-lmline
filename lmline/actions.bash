@@ -447,13 +447,21 @@ __lmline_redact_clip_text() {
       }
       return out
     }
+    function is_before(c) {
+      return (c ~ /[[:space:]]/ || c == ";" || c == "," || c == "&" || c == "|" ||
+              c == "(" || c == "/" || c == "=" || c == "\"")
+    }
+    function is_after(c) {
+      return (c ~ /[[:space:]]/ || c == ";" || c == "," || c == "&" || c == "|" ||
+              c == ")" || c == "/" || c == "=" || c == "\"")
+    }
     function process(s,    out, idx, before, after, seg, cut) {
       out = ""
       while ((idx = index(tolower(s), "sshpass")) > 0) {
         before = idx > 1 ? substr(s, idx - 1, 1) : ""
         after = substr(s, idx + 7, 1)
-        if ((idx == 1 || before ~ /[[:space:];,&|(/="]/ || before == sq) &&
-            (after == "" || after ~ /[[:space:];,&|)/="]/ || after == sq)) {
+        if ((idx == 1 || is_before(before) || before == sq) &&
+            (after == "" || is_after(after) || after == sq)) {
           out = out substr(s, 1, idx + 6)
           seg = scan(substr(s, idx + 7), 1)
           out = out seg
