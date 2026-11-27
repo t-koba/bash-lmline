@@ -328,6 +328,10 @@ __lmline_redact_clip_text() {
   # tolerated, so a glued suffix cannot hide the credential. A realm field
   # is shielded with a per-invocation case-preserving marker because its
   # quoted value is not a secret; only that marker is restored.
+  # sshpass takes its password from -p, not from a key=value pair. Mark the
+  # command, then scan only its own options so a later -p (for example an
+  # ssh port) is left alone. Masking happens after the other rules so the
+  # final quoted value cannot be re-read as another credential.
   sed -E \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
@@ -348,6 +352,8 @@ __lmline_redact_clip_text() {
     -e "s/(^|[[:space:];,&|(/=])(mysql|mysqldump|mysqladmin|mysqlshow|mariadb|mariadb-dump|mariadb-admin)([[:space:];,&|)/=]|$)/\1\2@@LMLINE_DBCMD@@\3/Ig" \
     -e "s/(@@LMLINE_DBCMD@@[^;&|]*)([[:space:]])(-p)([^[:space:]\"\');,&|]+)/\1\2\3@@LMLINE_REDACTED@@/g" \
     -e "s/(@@LMLINE_DBCMD@@[^;&|]*)(-p)([\"\'])([^\"\']+)([\"\'])/\1\2\3@@LMLINE_REDACTED@@\5/g" \
+    -e "s/(^|[[:space:];,&|(/=\"'])(sshpass)([[:space:];,&|)/=\"']|$)/\1\2@@LMLINE_SSHPASSCMD@@\3/Ig" \
+    -e "s/(@@LMLINE_SSHPASSCMD@@)(([[:space:]]+(-[veTh]|-f[[:space:]]+[^[:space:]]+|-P[[:space:]]+[^[:space:]]+|-d[[:space:]]+[^[:space:]]+|-o[[:space:]]+[^[:space:]]+|--help|--version))*[[:space:]]*)(-p)/\2@@LMLINE_SSHPASSARG@@\5/" \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
@@ -545,7 +551,20 @@ __lmline_redact_clip_text() {
     -e "s/([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[^[:space:]&;,=\"':=])([\"'[:space:]&;,]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([[:space:]&;,]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?][^[:space:]&;,]*)([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([\"'])/\1\2\3:***REDACTED***\7/Ig" \
+    -e "s/(@@LMLINE_SSHPASSARG@@-p)[$]'([^']*)'/\1;SSHPASS_ANSI;/" \
+    -e 's/(@@LMLINE_SSHPASSARG@@-p)"([^"]*)"/\1;SSHPASS_DQ;/' \
+    -e "s/(@@LMLINE_SSHPASSARG@@-p)'([^']*)'/\1;SSHPASS_SQ;/" \
+    -e "s/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)[$]'([^']*)'/\1;SSHPASS_ANSI;/" \
+    -e 's/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)"([^"]*)"/\1;SSHPASS_DQ;/' \
+    -e "s/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)'([^']*)'/\1;SSHPASS_SQ;/" \
+    -e 's/(@@LMLINE_SSHPASSARG@@-p)([^[:space:]"&;|<>()]+)/\1@@LMLINE_REDACTED@@/' \
+    -e 's/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)([^[:space:]"&;|<>()]+)/\1@@LMLINE_REDACTED@@/' \
+    -e "s/;SSHPASS_ANSI;/\$'***REDACTED***'/g" \
+    -e 's/;SSHPASS_DQ;/"***REDACTED***"/g' \
+    -e "s/;SSHPASS_SQ;/'***REDACTED***'/g" \
     -e 's#@@LMLINE_DBCMD@@##g' \
+    -e 's#@@LMLINE_SSHPASSCMD@@##g' \
+    -e 's#@@LMLINE_SSHPASSARG@@##g' \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig"
 }
 

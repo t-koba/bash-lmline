@@ -2223,6 +2223,145 @@ expect_masked() {
   grep -Fq "$tail" <<<"$actual" || fail "$label: lost the command tail"
 }
 
+# sshpass passwords are command arguments, not generic credentials. Values
+# are assembled from parts so no secret-shaped literal enters the tree.
+sshpass_word='SECRET'
+sshpass_tail='TTT'
+sp1="${sshpass_word}${sshpass_tail}1"
+sp2="${sshpass_word}${sshpass_tail}2"
+sp3="${sshpass_word}${sshpass_tail}3"
+sp4="${sshpass_word}${sshpass_tail}4"
+sp5="${sshpass_word}${sshpass_tail}5"
+sk1="KEEP${sshpass_tail}1"
+sk2="KEEP${sshpass_tail}2"
+sk3="KEEP${sshpass_tail}3"
+sk4="KEEP${sshpass_tail}4"
+sk5="KEEP${sshpass_tail}5"
+sshpass_attached="sshpass -p${sp1} ssh host; echo ${sk1}"
+sshpass_separated="sshpass -p ${sp2} ssh host; echo ${sk2}"
+sshpass_double="sshpass -p \"${sp3}\" ssh host; echo ${sk3}"
+sshpass_single="sshpass -p '${sp4}' ssh host; echo ${sk4}"
+sshpass_long="sshpass --password=${sp5} ssh host; echo ${sk5}"
+expect_masked 'sshpass attached password' "$sshpass_attached" "$sp1" "$sk1"
+expect_exact 'sshpass attached password output' "$sshpass_attached" \
+  "sshpass -p***REDACTED*** ssh host; echo ${sk1}"
+expect_masked 'sshpass separated password' "$sshpass_separated" "$sp2" "$sk2"
+expect_exact 'sshpass separated password output' "$sshpass_separated" \
+  "sshpass -p ***REDACTED*** ssh host; echo ${sk2}"
+expect_masked 'sshpass double-quoted password' "$sshpass_double" "$sp3" "$sk3"
+expect_exact 'sshpass double-quoted password output' "$sshpass_double" \
+  "sshpass -p \"***REDACTED***\" ssh host; echo ${sk3}"
+expect_masked 'sshpass single-quoted password' "$sshpass_single" "$sp4" "$sk4"
+expect_exact 'sshpass single-quoted password output' "$sshpass_single" \
+  "sshpass -p '***REDACTED***' ssh host; echo ${sk4}"
+expect_masked 'sshpass long option password' "$sshpass_long" "$sp5" "$sk5"
+sp6="${sshpass_word}${sshpass_tail}8"
+sk6="KEEP${sshpass_tail}8"
+sp7="${sshpass_word}${sshpass_tail}9"
+sk7="KEEP${sshpass_tail}9"
+sp8="${sshpass_word}${sshpass_tail}10"
+sk8="KEEP${sshpass_tail}10"
+sp9="${sshpass_word}${sshpass_tail}11"
+sk9="KEEP${sshpass_tail}11"
+sshpass_quoted="bash -c \"sshpass -p${sp6} ssh host; echo ${sk6}\""
+sshpass_paren="(sshpass -p${sp7} ssh host); echo ${sk7}"
+sshpass_quoted_single="bash -c \"sshpass -p '${sp8}' ssh host; echo ${sk8}\""
+sshpass_paren_double="(sshpass -p \"${sp9}\" ssh host); echo ${sk9}"
+expect_masked 'sshpass after double quote' "$sshpass_quoted" "$sp6" "$sk6"
+expect_masked 'sshpass after paren' "$sshpass_paren" "$sp7" "$sk7"
+expect_masked 'sshpass single-quoted after double quote' "$sshpass_quoted_single" "$sp8" "$sk8"
+expect_masked 'sshpass double-quoted after paren' "$sshpass_paren_double" "$sp9" "$sk9"
+sp12="${sshpass_word}${sshpass_tail}12"
+sk12="KEEP${sshpass_tail}12"
+sp13="${sshpass_word}${sshpass_tail}13"
+sk13="KEEP${sshpass_tail}13"
+sp14="${sshpass_word}${sshpass_tail}14<def"
+sk14="KEEP${sshpass_tail}14"
+sp15="${sshpass_word}${sshpass_tail}15 with space"
+sk15="KEEP${sshpass_tail}15"
+sp16="${sshpass_word}${sshpass_tail}16 with space"
+sk16="KEEP${sshpass_tail}16"
+sp17="${sshpass_word}${sshpass_tail}17"
+sk17="KEEP${sshpass_tail}17"
+sp18="${sshpass_word}${sshpass_tail}18"
+sk18="KEEP${sshpass_tail}18"
+sp19="${sshpass_word}${sshpass_tail}19"
+sk19="KEEP${sshpass_tail}19"
+sp20="${sshpass_word}${sshpass_tail}20"
+sk20="KEEP${sshpass_tail}20"
+sp21="${sshpass_word}${sshpass_tail}21<def"
+sk21="KEEP${sshpass_tail}21"
+sshpass_glued_double="sshpass -p\"${sp12}\" ssh host; echo ${sk12}"
+sshpass_glued_single="sshpass -p'${sp13}' ssh host; echo ${sk13}"
+sshpass_glued_single_angle="sshpass -p'${sp14}' ssh host; echo ${sk14}"
+sshpass_glued_double_angle="sshpass -p\"${sp21}\" ssh host; echo ${sk21}"
+sshpass_glued_double_space="sshpass -p\"${sp15}\" ssh host; echo ${sk15}"
+sshpass_glued_single_space="sshpass -p'${sp16}' ssh host; echo ${sk16}"
+sshpass_verbose_attached="sshpass -v -p${sp17} ssh host; echo ${sk17}"
+sshpass_verbose_separated="sshpass -v -p ${sp18} ssh host; echo ${sk18}"
+sshpass_spaced_double_control="sshpass -p \"${sp19}\" ssh host; echo ${sk19}"
+sshpass_psql_control="sshpass -p${sp20} ssh host; psql -p 5432"
+expect_masked 'sshpass glued double password' "$sshpass_glued_double" "$sp12" "$sk12"
+expect_exact 'sshpass glued double password output' "$sshpass_glued_double" \
+  "sshpass -p\"***REDACTED***\" ssh host; echo ${sk12}"
+expect_masked 'sshpass glued single password' "$sshpass_glued_single" "$sp13" "$sk13"
+expect_exact 'sshpass glued single password output' "$sshpass_glued_single" \
+  "sshpass -p'***REDACTED***' ssh host; echo ${sk13}"
+expect_masked 'sshpass glued single angle password' "$sshpass_glued_single_angle" "$sp14" "$sk14"
+expect_exact 'sshpass glued single angle password output' "$sshpass_glued_single_angle" \
+  "sshpass -p'***REDACTED***' ssh host; echo ${sk14}"
+expect_masked 'sshpass glued double angle password' "$sshpass_glued_double_angle" "$sp21" "$sk21"
+expect_exact 'sshpass glued double angle password output' "$sshpass_glued_double_angle" \
+  "sshpass -p\"***REDACTED***\" ssh host; echo ${sk21}"
+expect_masked 'sshpass glued double space password' "$sshpass_glued_double_space" "$sp15" "$sk15"
+expect_exact 'sshpass glued double space password output' "$sshpass_glued_double_space" \
+  "sshpass -p\"***REDACTED***\" ssh host; echo ${sk15}"
+expect_masked 'sshpass glued single space password' "$sshpass_glued_single_space" "$sp16" "$sk16"
+expect_exact 'sshpass glued single space password output' "$sshpass_glued_single_space" \
+  "sshpass -p'***REDACTED***' ssh host; echo ${sk16}"
+expect_masked 'sshpass verbose attached password' "$sshpass_verbose_attached" "$sp17" "$sk17"
+expect_exact 'sshpass verbose attached password output' "$sshpass_verbose_attached" \
+  "sshpass -v -p***REDACTED*** ssh host; echo ${sk17}"
+expect_masked 'sshpass verbose separated password' "$sshpass_verbose_separated" "$sp18" "$sk18"
+expect_exact 'sshpass verbose separated password output' "$sshpass_verbose_separated" \
+  "sshpass -v -p ***REDACTED*** ssh host; echo ${sk18}"
+expect_masked 'sshpass spaced double control' "$sshpass_spaced_double_control" "$sp19" "$sk19"
+expect_exact 'sshpass spaced double control output' "$sshpass_spaced_double_control" \
+  "sshpass -p \"***REDACTED***\" ssh host; echo ${sk19}"
+expect_masked 'sshpass psql control masks only sshpass' "$sshpass_psql_control" "$sp20" "psql -p 5432"
+expect_exact 'sshpass psql control output' "$sshpass_psql_control" \
+  "sshpass -p***REDACTED*** ssh host; psql -p 5432"
+sp22="${sshpass_word}${sshpass_tail}22"
+sk22="KEEP${sshpass_tail}22"
+sp23="${sshpass_word}${sshpass_tail}23"
+sk23="KEEP${sshpass_tail}23"
+sp24="${sshpass_word}${sshpass_tail}24"
+sk24="KEEP${sshpass_tail}24"
+sp25="${sshpass_word}${sshpass_tail}25"
+sk25="KEEP${sshpass_tail}25"
+sshpass_later_port="sshpass -p${sp22} ssh -p 2222 host; echo ${sk22}"
+sshpass_ansi="sshpass -p\$'${sp23}' ssh host; echo ${sk23}"
+sshpass_ansi_spaced="sshpass -p \$'${sp24}' ssh host; echo ${sk24}"
+sshpass_comma="sshpass -p SEC,${sp25} ssh host; echo ${sk25}"
+expect_masked 'sshpass password with later ssh port' "$sshpass_later_port" "$sp22" "$sk22"
+expect_exact 'sshpass leaves later ssh port intact' "$sshpass_later_port" \
+  "sshpass -p***REDACTED*** ssh -p 2222 host; echo ${sk22}"
+expect_masked 'sshpass ANSI-C quoted password' "$sshpass_ansi" "$sp23" "$sk23"
+expect_exact 'sshpass ANSI-C quoted password output' "$sshpass_ansi" \
+  "sshpass -p\$'***REDACTED***' ssh host; echo ${sk23}"
+expect_masked 'sshpass spaced ANSI-C password' "$sshpass_ansi_spaced" "$sp24" "$sk24"
+expect_exact 'sshpass spaced ANSI-C password output' "$sshpass_ansi_spaced" \
+  "sshpass -p \$'***REDACTED***' ssh host; echo ${sk24}"
+expect_masked 'sshpass comma password' "$sshpass_comma" "$sp25" "$sk25"
+expect_exact 'sshpass comma password output' "$sshpass_comma" \
+  "sshpass -p ***REDACTED*** ssh host; echo ${sk25}"
+expect_exact 'mkdir -p suffix is not a password' \
+  'mkdir -pKEEPTTT6; echo KEEPTTT6' 'mkdir -pKEEPTTT6; echo KEEPTTT6'
+expect_exact 'psql -p is a port' \
+  'psql -p 5432 -c "echo KEEPTTT7"' 'psql -p 5432 -c "echo KEEPTTT7"'
+expect_exact 'bash -p is a shell option' \
+  'bash -p; echo KEEPBASHP' 'bash -p; echo KEEPBASHP'
+
 # Escaped quotes after a generic scheme stay masked with their tails intact.
 generic_esc_fixtures=(
   'Authorization: abc=\"SYNTHGESC001\"; echo KEEPGESTAIL1'
