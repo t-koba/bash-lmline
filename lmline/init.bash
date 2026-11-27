@@ -678,9 +678,10 @@ __lmline_record_suggestion() {
   # dd only reads the shell-backed here-string, it does not make the append atomic.
   # The pid file lets a later record reclaim a lock whose owner died.
   local lock_dir=$LMLINE_HISTORY_DIR/.suggestions.lock attempt owner current stale_dir
-  # A live owner can stay busy for seconds whatever size the waiter records.
-  # Use one generous bound for every writer and report an expired wait.
-  local attempt_limit=160
+  local live_wait=0
+  # Wait for a live owner on its own budget: its append duration is unrelated
+  # to this waiter's record size. Report either expired budget as a failure.
+  local attempt_limit=160 live_wait_limit=1200
   for ((attempt = 0; attempt < attempt_limit; attempt++)); do
     if command mkdir "$lock_dir" 2>/dev/null; then
       # A restrictive umask must not make the new lock unwritable.
@@ -707,6 +708,9 @@ __lmline_record_suggestion() {
           : # An own pid left behind is stale.
         elif kill -0 "$owner" 2>/dev/null; then
           sleep 0.025 2>/dev/null || true
+          live_wait=$((live_wait + 1))
+          ((live_wait < live_wait_limit)) || break
+          attempt=$((attempt - 1))
           continue
         fi
         ;;
@@ -748,6 +752,7 @@ __lmline_record_suggestion() {
     esac
   done
   ((attempt < attempt_limit)) || return 1
+  ((live_wait < live_wait_limit)) || return 1
   # A stalled creator can be displaced before its pid is visible. The private
   # claim proves the active lock is still ours even if pid reads transiently empty.
   [[ -e "$lock_dir/claim.$$" ]] || return 0

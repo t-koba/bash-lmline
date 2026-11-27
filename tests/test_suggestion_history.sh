@@ -37,10 +37,12 @@ padding=${padding// /x}
 mkdir "$tmp/bin"
 cat >"$tmp/bin/dd" <<'DD'
 #!/bin/sh
-# The shell has opened the append fd. Keep the peers waiting while it is open.
+# Hold the lock long enough to exercise contenders, then keep peers waiting
+# while the append fd is open.
 # One record must be one dd invocation: a second call can interleave fields.
 printf x >>"$LMLINE_HISTORY_DIR/dd-calls" || exit 1
 : >"$LMLINE_HISTORY_DIR/start-peers" || exit 1
+[ -z "${LMLINE_TEST_DD_SLEEP-}" ] || sleep "$LMLINE_TEST_DD_SLEEP"
 attempt=0
 while [ ! -e "$LMLINE_HISTORY_DIR/done-2" ] || [ ! -e "$LMLINE_HISTORY_DIR/done-3" ]; do
   attempt=$((attempt + 1))
@@ -97,6 +99,7 @@ concurrent_diagnostic=
 check_concurrent_records() {
   local shell=$1 history_dir=$2 out_prefix=$3 config_dir=$4
   local pad1=$padding pad2=${5:-$padding} pad3=${6:-$padding}
+  local dd_sleep=${8:-0}
   local flags=(-f -e -i)
   [[ $shell != bash ]] || flags=(--norc -e -i)
   mkdir -m 700 "$history_dir"
@@ -108,7 +111,8 @@ check_concurrent_records() {
       *) writer_padding=$pad3 ;;
     esac
     LMLINE_CONFIG_DIR="$config_dir" LMLINE_HISTORY_DIR="$history_dir" LMLINE_BIND_KEYS=0 \
-      "$shell" "${flags[@]}" -c 'source "$@"' _ "$tmp/writer" "$repo_dir" "$shell" "$writer" "$writer_padding" "$tmp" \
+      LMLINE_TEST_DD_SLEEP=$dd_sleep "$shell" "${flags[@]}" -c 'source "$@"' _ \
+      "$tmp/writer" "$repo_dir" "$shell" "$writer" "$writer_padding" "$tmp" \
       >"$out_prefix-$writer.out" 2>&1 &
     pids+=("$!")
   done
@@ -216,14 +220,6 @@ done
 
 # A large append can take seconds on a loaded runner. Contenders must wait
 # for the live lock instead of silently dropping their own records.
-mkdir -p "$tmp/slow-dd-bin"
-real_dd=$(type -P dd)
-cat >"$tmp/slow-dd-bin/dd" <<SLOW_DD
-#!/bin/sh
-sleep 1.2
-exec "$real_dd" "\$@"
-SLOW_DD
-chmod +x "$tmp/slow-dd-bin/dd"
 for shell in bash zsh; do
   if ! command -v "$shell" >/dev/null; then
     printf 'skip - %s slow suggestion append (shell unavailable)\n' "$shell"
@@ -233,9 +229,9 @@ for shell in bash zsh; do
   while :; do
     attempt=$((attempt + 1))
     history_dir="$tmp/slow-history-$shell-attempt$attempt"
-    if PATH="$tmp/slow-dd-bin:$PATH" check_concurrent_records "$shell" \
+    if check_concurrent_records "$shell" \
       "$history_dir" "$tmp/slow-$shell-attempt$attempt" \
-      "$tmp/slow-config-$shell-attempt$attempt"; then
+      "$tmp/slow-config-$shell-attempt$attempt" "$padding" "$padding" 1.2; then
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
@@ -249,14 +245,6 @@ done
 
 # A short contender must not vanish behind a large live append just because its
 # own record is small. Hold the lock for longer than the old short-writer wait.
-mixed_real_dd=$(type -P dd)
-mkdir -p "$tmp/mixed-dd-bin"
-cat >"$tmp/mixed-dd-bin/dd" <<MIXED_DD
-#!/bin/sh
-sleep 2
-exec "$mixed_real_dd" "\$@"
-MIXED_DD
-chmod +x "$tmp/mixed-dd-bin/dd"
 for shell in bash zsh; do
   if ! command -v "$shell" >/dev/null; then
     printf 'skip - %s mixed-size suggestion append (shell unavailable)\n' "$shell"
@@ -266,9 +254,9 @@ for shell in bash zsh; do
   while :; do
     attempt=$((attempt + 1))
     history_dir="$tmp/mixed-history-$shell-attempt$attempt"
-    if PATH="$tmp/mixed-dd-bin:$PATH" check_concurrent_records "$shell" \
+    if check_concurrent_records "$shell" \
       "$history_dir" "$tmp/mixed-$shell-attempt$attempt" \
-      "$tmp/mixed-config-$shell-attempt$attempt" "$padding" SHORT SHORT; then
+      "$tmp/mixed-config-$shell-attempt$attempt" "$padding" SHORT SHORT 2; then
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
@@ -278,6 +266,31 @@ for shell in bash zsh; do
     printf 'retry - %s mixed-size append attempt %d of 6\n' "$shell" "$attempt"
   done
   ok "$shell suggestion history survives a mixed-size slow append"
+done
+
+# A live owner can hold the lock much longer than any short-writer attempt
+# budget. Waiting for that live owner must keep every contender's record.
+for shell in bash zsh; do
+  if ! command -v "$shell" >/dev/null; then
+    printf 'skip - %s long suggestion append (shell unavailable)\n' "$shell"
+    continue
+  fi
+  attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    history_dir="$tmp/long-history-$shell-attempt$attempt"
+    if check_concurrent_records "$shell" \
+      "$history_dir" "$tmp/long-$shell-attempt$attempt" \
+      "$tmp/long-config-$shell-attempt$attempt" "$padding" SHORT SHORT 15; then
+      break
+    fi
+    [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
+    if ((attempt >= 3)); then
+      fail "$concurrent_failure"
+    fi
+    printf 'retry - %s long append attempt %d of 3\n' "$shell" "$attempt"
+  done
+  ok "$shell suggestion history survives a long live append"
 done
 
 # Zsh must keep shell-quoted newlines and backslashes escaped in the record;
