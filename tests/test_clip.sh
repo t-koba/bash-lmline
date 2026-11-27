@@ -3424,6 +3424,84 @@ for case_index in "${!glued_equals_fixtures[@]}"; do
   grep -Fq "${glued_equals_tails[$case_index]}" <<<"$expected" || fail "glued equals credential $case_index lost its tail"
   printf '%s\n' "$expected" | bash -n || fail "glued equals credential $case_index is not valid shell: $expected"
 done
+# Glued equals with user: prefix and quoted passwords are fully masked.
+# All three flag spellings, both quote families, bare and grouped contexts,
+# including partial prefixes and escaped quotes.
+glued_user_equals_fixtures=(
+  'curl -u=user:"SYNTHUEQ1"; echo KEEPUEQ1'
+  'curl --u=user:"SYNTHUEQ2"; echo KEEPUEQ2'
+  'curl --user=user:"SYNTHUEQ3"; echo KEEPUEQ3'
+  "curl -u=user:'SYNTHUEQ4'; echo KEEPUEQ4"
+  "curl --u=user:'SYNTHUEQ5'; echo KEEPUEQ5"
+  "curl --user=user:'SYNTHUEQ6'; echo KEEPUEQ6"
+  'curl -u=user:"my secretSYNTHUEQ7"; echo KEEPUEQ7'
+  'curl --u=user:"my secretSYNTHUEQ8"; echo KEEPUEQ8'
+  'curl --user=user:"my secretSYNTHUEQ9"; echo KEEPUEQ9'
+  'curl -u=user:PRE"SYNTHUEQ10" https://x; echo KEEPUEQ10'
+  'curl --u=user:PRE"SYNTHUEQ11" https://x; echo KEEPUEQ11'
+  'curl --user=user:PRE"SYNTHUEQ12" https://x; echo KEEPUEQ12'
+  "curl -u=user:PRE'SYNTHUEQ13'; echo KEEPUEQ13"
+  "curl --u=user:PRE'SYNTHUEQ14'; echo KEEPUEQ14"
+  "curl --user=user:PRE'SYNTHUEQ15'; echo KEEPUEQ15"
+  'curl -u=user:"SYNTHUEQ16\"TAILUEQ16"; echo KEEPUEQ16'
+  'curl --u=user:"SYNTHUEQ17\"TAILUEQ17"; echo KEEPUEQ17'
+  'curl --user=user:"SYNTHUEQ18\"TAILUEQ18"; echo KEEPUEQ18'
+  "curl -u=user:'SYNTHUEQ19\\'TAILUEQ19'; echo KEEPUEQ19"
+  "curl --u=user:'SYNTHUEQ20\\'TAILUEQ20'; echo KEEPUEQ20"
+  "curl --user=user:'SYNTHUEQ21\\'TAILUEQ21'; echo KEEPUEQ21"
+  'curl -u=SECRETB"TAILUEQ22\"B"; echo KEEPE22'
+  '(curl -u=user:"SYNTHUEQG1"); echo KEEPUEQG1'
+  '(curl --u=user:"SYNTHUEQG2"); echo KEEPUEQG2'
+  '(curl --user=user:"SYNTHUEQG3"); echo KEEPUEQG3'
+  'x=$(curl -u=user:"SYNTHUEQG4"); echo KEEPUEQG4'
+  '{ curl --u=user:"SYNTHUEQG5"; echo KEEPUEQG5; }'
+  '(curl --user=user:"SYNTHUEQG6"}); echo KEEPUEQG6'
+  '(curl -u=user:"SYNTHUEQG7\"TAILUEQG7"); echo KEEPUEQG7'
+  "(curl -u=user:'SYNTHUEQG8\\'TAILUEQG8'); echo KEEPUEQG8"
+  "(curl -u=user:'SYNTHUEQG9'); echo KEEPUEQG9"
+  'x=$(curl --u=user:"SYNTHUEQG10"); echo KEEPUEQG10'
+)
+glued_user_equals_expected=(
+  'curl -u=***REDACTED***; echo KEEPUEQ1'
+  'curl --u=***REDACTED***; echo KEEPUEQ2'
+  'curl --user=***REDACTED***; echo KEEPUEQ3'
+  'curl -u=***REDACTED***; echo KEEPUEQ4'
+  'curl --u=***REDACTED***; echo KEEPUEQ5'
+  'curl --user=***REDACTED***; echo KEEPUEQ6'
+  'curl -u=***REDACTED***; echo KEEPUEQ7'
+  'curl --u=***REDACTED***; echo KEEPUEQ8'
+  'curl --user=***REDACTED***; echo KEEPUEQ9'
+  'curl -u=***REDACTED*** https://x; echo KEEPUEQ10'
+  'curl --u=***REDACTED*** https://x; echo KEEPUEQ11'
+  'curl --user=***REDACTED*** https://x; echo KEEPUEQ12'
+  'curl -u=***REDACTED***; echo KEEPUEQ13'
+  'curl --u=***REDACTED***; echo KEEPUEQ14'
+  'curl --user=***REDACTED***; echo KEEPUEQ15'
+  'curl -u=***REDACTED***; echo KEEPUEQ16'
+  'curl --u=***REDACTED***; echo KEEPUEQ17'
+  'curl --user=***REDACTED***; echo KEEPUEQ18'
+  'curl -u=***REDACTED***; echo KEEPUEQ19'
+  'curl --u=***REDACTED***; echo KEEPUEQ20'
+  'curl --user=***REDACTED***; echo KEEPUEQ21'
+  'curl -u=***REDACTED***; echo KEEPE22'
+  '(curl -u=***REDACTED***); echo KEEPUEQG1'
+  '(curl --u=***REDACTED***); echo KEEPUEQG2'
+  '(curl --user=***REDACTED***); echo KEEPUEQG3'
+  'x=$(curl -u=***REDACTED***); echo KEEPUEQG4'
+  '{ curl --u=***REDACTED***; echo KEEPUEQG5; }'
+  '(curl --user=***REDACTED***}); echo KEEPUEQG6'
+  '(curl -u=***REDACTED***); echo KEEPUEQG7'
+  '(curl -u=***REDACTED***); echo KEEPUEQG8'
+  '(curl -u=***REDACTED***); echo KEEPUEQG9'
+  'x=$(curl --u=***REDACTED***); echo KEEPUEQG10'
+)
+for case_index in "${!glued_user_equals_fixtures[@]}"; do
+  fixture=${glued_user_equals_fixtures[$case_index]}
+  expected=${glued_user_equals_expected[$case_index]}
+  expect_exact "glued user equals $case_index" "$fixture" "$expected"
+  expect_exact "glued user equals second pass $case_index" "$expected" "$expected"
+  printf '%s\n' "$expected" | bash -n || fail "glued user equals $case_index is not valid shell: $expected"
+done
 
 # Marker-shaped prefixes are still live credentials when the whole value is not
 # a canonical redaction marker.
