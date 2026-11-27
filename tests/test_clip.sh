@@ -3381,6 +3381,50 @@ for case_index in "${!inner_group_fixtures[@]}"; do
   printf '%s\n' "$expected" | bash -n || fail "inner group credential $case_index is not valid shell: $expected"
 done
 
+# Glued equals credentials with an immediately quoted tail are fully masked.
+# Both quote families, all three flag spellings, bare and grouped contexts.
+glued_equals_fixtures=(
+  'curl -u=SYNTHGLUEEQ1"TAILGLUEEQ1"; echo KEEPGLUEEQ1'
+  "curl -u=SYNTHGLUEEQ2'TAILGLUEEQ2'; echo KEEPGLUEEQ2"
+  'curl --u=SYNTHGLUEEU1"TAILGLUEEU1"; echo KEEPGLUEEU1'
+  "curl --u=SYNTHGLUEEU2'TAILGLUEEU2'; echo KEEPGLUEEU2"
+  'curl --user=SYNTHGLUEED1"TAILGLUEED1"; echo KEEPGLUEED1'
+  "curl --user=SYNTHGLUEED2'TAILGLUEED2'; echo KEEPGLUEED2"
+  '(curl -u=SYNTHGLUEG1"TAILGLUEG1"); echo KEEPGLUEG1'
+  "(curl --u=SYNTHGLUEG2'TAILGLUEG2'); echo KEEPGLUEG2"
+  '(curl --user=SYNTHGLUEG3"TAILGLUEG3"); echo KEEPGLUEG3'
+  "{ curl -u=SYNTHGLUEG4'TAILGLUEG4'; echo KEEPGLUEG4; }"
+  '{ curl --u=SYNTHGLUEG5"TAILGLUEG5"; echo KEEPGLUEG5; }'
+  "{ curl --user=SYNTHGLUEG6'TAILGLUEG6'; echo KEEPGLUEG6; }"
+)
+glued_equals_expected=(
+  'curl -u=***REDACTED***; echo KEEPGLUEEQ1'
+  'curl -u=***REDACTED***; echo KEEPGLUEEQ2'
+  'curl --u=***REDACTED***; echo KEEPGLUEEU1'
+  'curl --u=***REDACTED***; echo KEEPGLUEEU2'
+  'curl --user=***REDACTED***; echo KEEPGLUEED1'
+  'curl --user=***REDACTED***; echo KEEPGLUEED2'
+  '(curl -u=***REDACTED***); echo KEEPGLUEG1'
+  '(curl --u=***REDACTED***); echo KEEPGLUEG2'
+  '(curl --user=***REDACTED***); echo KEEPGLUEG3'
+  '{ curl -u=***REDACTED***; echo KEEPGLUEG4; }'
+  '{ curl --u=***REDACTED***; echo KEEPGLUEG5; }'
+  '{ curl --user=***REDACTED***; echo KEEPGLUEG6; }'
+)
+glued_equals_prefix=(SYNTHGLUEEQ1 SYNTHGLUEEQ2 SYNTHGLUEEU1 SYNTHGLUEEU2 SYNTHGLUEED1 SYNTHGLUEED2 SYNTHGLUEG1 SYNTHGLUEG2 SYNTHGLUEG3 SYNTHGLUEG4 SYNTHGLUEG5 SYNTHGLUEG6)
+glued_equals_quoted=(TAILGLUEEQ1 TAILGLUEEQ2 TAILGLUEEU1 TAILGLUEEU2 TAILGLUEED1 TAILGLUEED2 TAILGLUEG1 TAILGLUEG2 TAILGLUEG3 TAILGLUEG4 TAILGLUEG5 TAILGLUEG6)
+glued_equals_tails=(KEEPGLUEEQ1 KEEPGLUEEQ2 KEEPGLUEEU1 KEEPGLUEEU2 KEEPGLUEED1 KEEPGLUEED2 KEEPGLUEG1 KEEPGLUEG2 KEEPGLUEG3 KEEPGLUEG4 KEEPGLUEG5 KEEPGLUEG6)
+for case_index in "${!glued_equals_fixtures[@]}"; do
+  fixture=${glued_equals_fixtures[$case_index]}
+  expected=${glued_equals_expected[$case_index]}
+  expect_exact "glued equals credential $case_index" "$fixture" "$expected"
+  expect_exact "glued equals credential second pass $case_index" "$expected" "$expected"
+  grep -Fq "${glued_equals_prefix[$case_index]}" <<<"$expected" && fail "glued equals credential $case_index leaked its prefix"
+  grep -Fq "${glued_equals_quoted[$case_index]}" <<<"$expected" && fail "glued equals credential $case_index leaked its quoted tail"
+  grep -Fq "${glued_equals_tails[$case_index]}" <<<"$expected" || fail "glued equals credential $case_index lost its tail"
+  printf '%s\n' "$expected" | bash -n || fail "glued equals credential $case_index is not valid shell: $expected"
+done
+
 # Marker-shaped prefixes are still live credentials when the whole value is not
 # a canonical redaction marker.
 expect_exact 'live credential starting with star' \
