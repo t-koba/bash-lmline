@@ -2309,6 +2309,22 @@ expect_masked() {
   grep -Fq "$tail" <<<"$actual" || fail "$label: lost the command tail"
 }
 
+# A masked glued -u value must survive a second pass: a grouping operator
+# after it is shell syntax, not part of the password.
+expect_idempotent_shell() {
+  local label=$1 fixture=$2 secret=$3 tail=$4 once twice
+  once=$(redact_clip_line "$fixture") || fail "$label: first redaction failed"
+  twice=$(redact_clip_line "$once") || fail "$label: second redaction failed"
+  [[ $twice == "$once" ]] || fail "$label: second pass changed $once to $twice"
+  grep -Fq '***REDACTED***' <<<"$once" || fail "$label: credential was not masked: $once"
+  grep -Fq "$secret" <<<"$once" && fail "$label: leaked the credential"
+  grep -Fq "$secret" <<<"$twice" && fail "$label: leaked the credential on second pass"
+  grep -Fq "$tail" <<<"$once" || fail "$label: lost the command tail"
+  grep -Fq "$tail" <<<"$twice" || fail "$label: lost the command tail on second pass"
+  bash -n <<<"$once" || fail "$label: first output is not valid shell: $once"
+  bash -n <<<"$twice" || fail "$label: second output is not valid shell: $twice"
+}
+
 # sshpass passwords are command arguments, not generic credentials. Values
 # are assembled from parts so no secret-shaped literal enters the tree.
 sshpass_word='SECRET'
@@ -3030,6 +3046,16 @@ for case_index in "${!glued_quoted_fixtures[@]}"; do
   actual=$(redact_clip_line "$fixture") || fail "quoted glued -u shell check $case_index: redaction failed"
   bash -n <<<"$actual" || fail "quoted glued -u shell check $case_index: output is not valid shell: $actual"
 done
+expect_idempotent_shell 'idempotent glued -u in subshell' \
+  '(curl -uuser:SYNTHIDEMSUB1); echo KEEPIDEMSUB1' SYNTHIDEMSUB1 KEEPIDEMSUB1
+expect_idempotent_shell 'idempotent quoted glued -u in subshell' \
+  '(curl -uuser:"SYNTHIDEMSUB2"); echo KEEPIDEMSUB2' SYNTHIDEMSUB2 KEEPIDEMSUB2
+expect_idempotent_shell 'idempotent glued -u in command substitution' \
+  'x=$(curl -uuser:SYNTHIDEMCMD1); echo KEEPIDEMCMD1' SYNTHIDEMCMD1 KEEPIDEMCMD1
+expect_idempotent_shell 'idempotent quoted glued -u in command substitution' \
+  'x=$(curl -uuser:"SYNTHIDEMCMD2"); echo KEEPIDEMCMD2' SYNTHIDEMCMD2 KEEPIDEMCMD2
+expect_idempotent_shell 'idempotent quoted glued -u in grouped braces' \
+  '{ curl -uuser:"SYNTHIDEMBR1"; }; echo KEEPIDEMBR1' SYNTHIDEMBR1 KEEPIDEMBR1
 # Backslash-escaped delimiters stay inside a glued password.
 expect_exact 'glued -u escaped delimiter' 'curl -uuser:SYNTHESC1\;SYNTHESC2 https://x' \
   'curl -uuser:***REDACTED*** https://x'
