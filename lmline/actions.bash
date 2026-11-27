@@ -335,6 +335,9 @@ __lmline_redact_clip_text() {
   # sshpass takes its password from -p, not from a key=value pair. Mask its
   # own password arguments before the other rules, leaving later command
   # options such as an ssh port untouched.
+  # A bare quote after an encoded credential opens another credential segment
+  # inside a single-quoted URL: mask each segment up to the closing quote.
+  # A closing quote followed by whitespace ends the argument, not a credential. Interior whitespace stays credential data.
   # A percent-encoded = or : after a URL credential key is still a separator;
   # canonicalize it before the URL key rules so the value is masked instead of
   # copied verbatim. Encoded spaces around it are part of the separator form.
@@ -605,7 +608,9 @@ __lmline_redact_clip_text() {
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?@@LMLINE_REDACTED@@\\\"/\\1\\2##LMLINE_REDACTED##\\\"/Ig" \
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?@@LMLINE_REDACTED@@'/\\1\\2##LMLINE_REDACTED##'/Ig" \
     -e "s/([?&/@#=;,])(((\\\\?\")?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*(\\\\?\")?)|(\\\\'[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*\\\\')|('[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*'))((%20)*)(%3[DdAa])((%20)*)(([^&;,|<>\\\"'\\\\]|\\\\[^&;,|<>])|([']*([^]})\$[:space:]&;,|<>\\\"'\\\\]|\\\\[^[:space:]&;,|<>])|[\"]*([^]})\$[:alnum:][:space:]&;,|<>\\\"'\\\\]|\\\\[^[:space:]&;,|<>])))*\\\\?/\1\2=${encoded_mask}/Ig" \
-    -e "s/(${encoded_mask}[\\\"])([^&;,|<>\\\"'\\\\]+)(&)/\1${encoded_mask}\3/g" \
+    -e "s/(${encoded_mask}[\\\"])([^[:space:]&;,|<>\\\"'\\\\][^&;,|<>\\\"'\\\\]*)(&)/\1${encoded_mask}\3/g" \
+    -e "s/(${encoded_mask}\")([^[:space:]&;,|<>\\\\'][^&;,|<>\\\\']*)(\")([^[:space:]&;,|<>\\\\'][^&;,|<>\\\\']*)([\"'])/\1${encoded_mask}\3${encoded_mask}\5/g" \
+    -e "s/(${encoded_mask}\")([^[:space:]&;,|<>\\\\\"'\\\\][^&;,|<>\\\\\"'\\\\]*)([\"'])/\1${encoded_mask}\3/g" \
     -e "s/([?&/@#=;,])([A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*)([[:space:]]*)([:=])([[:space:]]*)([:=])([[:space:]]*)/\1\2\4\5\8/Ig" \
     -e "s/${key_prefix_url}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix_url}'(([^'\\\\]|\\\\.)*)'/\1'@@LMLINE_REDACTED@@'/Ig" \

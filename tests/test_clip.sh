@@ -3122,6 +3122,42 @@ expect_exact 'bare double quote inside single-quoted encoded value' \
   "curl 'https://x/?Authorization:***REDACTED***\"***REDACTED***&keep=KEEPDQ456'"
 expect_shell_valid 'bare double quote inside single-quoted encoded value shell syntax' \
   "curl 'https://x/?Authorization%3DSYNTHDQ999\"PART2DQ&keep=KEEPDQ456'"
+# Bare quotes after an encoded credential start more credential data inside a
+# single-quoted URL; every segment is masked while the shell tail is preserved.
+expect_exact 'space-bearing tail after bare quote' \
+  "url='https://x/?token%3DSYNTHSP1\"SYNTHSP2 SYNTHSP3&keep=KEEPSP1'" \
+  "url='https://x/?token=***REDACTED***\"***REDACTED***&keep=KEEPSP1'"
+expect_exact 'space-bearing Authorization tail after bare quote' \
+  "curl 'https://x/?Authorization%3DSYNTHSP4\"SYNTHSP5 secret SYNTHSP6&keep=KEEPSP2'" \
+  "curl 'https://x/?Authorization:***REDACTED***\"***REDACTED***&keep=KEEPSP2'"
+sp_tab_fixture=$'url=\'https://x/?token%3DSYNTHSP7"SYNTHSP8\tSYNTHSP9&keep=KEEPSP3\''
+expect_exact 'tab in tail after bare quote' \
+  "$sp_tab_fixture" \
+  "url='https://x/?token=***REDACTED***\"***REDACTED***&keep=KEEPSP3'"
+expect_exact 'bare quote after encoded Authorization masks the tail' \
+  "curl 'https://x/?Authorization%3DSYNTHBQTA\"SYNTHBQTB'; echo KEEPBT1" \
+  "curl 'https://x/?Authorization:***REDACTED***\"***REDACTED***'; echo KEEPBT1"
+expect_exact 'two bare quotes after encoded Authorization mask both tails' \
+  "curl 'https://x/?Authorization%3DSYNTHBQT1\"SYNTHBQT2\"SYNTHBQT3'; echo KEEPBT2" \
+  "curl 'https://x/?Authorization:***REDACTED***\"***REDACTED***\"***REDACTED***'; echo KEEPBT2"
+expect_exact 'bare quote after encoded token masks the tail' \
+  "curl 'https://x/?token%3DSYNTHBQT4\"SYNTHBQT5'; echo KEEPBT3" \
+  "curl 'https://x/?token=***REDACTED***\"***REDACTED***'; echo KEEPBT3"
+expect_exact 'bare quote before an embedded semicolon masks the tail' \
+  "curl 'https://x/?token%3DSYNTHBQT9\"SYNTHBQTB\"; echo KEEPBT4'" \
+  "curl 'https://x/?token=***REDACTED***\"***REDACTED***\"; echo KEEPBT4'"
+expect_exact 'bare quote before an embedded ampersand masks the tail' \
+  "curl 'https://x/?token%3DSYNTHBQT10\"SYNTHBQTB\"& echo KEEPBT5'" \
+  "curl 'https://x/?token=***REDACTED***\"***REDACTED***\"& echo KEEPBT5'"
+expect_exact 'closing quote after encoded value keeps the shell separator' \
+  'curl "https://x/?Authorization%3DSYNTHBQT6" && echo KEEPSHELL1' \
+  'curl "https://x/?Authorization:***REDACTED***" && echo KEEPSHELL1'
+expect_exact 'closing quote after encoded token keeps the shell separator' \
+  'curl "https://x/?token%3DSYNTHBQT7" && echo KEEPSHELL2' \
+  'curl "https://x/?token=***REDACTED***" && echo KEEPSHELL2'
+expect_exact 'closing quote after encoded value keeps a semicolon tail' \
+  'curl "https://x/?Authorization%3DSYNTHBQT8"; echo KEEPSHELL3' \
+  'curl "https://x/?Authorization:***REDACTED***"; echo KEEPSHELL3'
 expect_exact 'unquoted redirect after auth flag' \
   'curl --user=SYNTHOPREDIR1>out;echo KEEPOPREDIR1' \
   'curl --user=***REDACTED***>out;echo KEEPOPREDIR1'
