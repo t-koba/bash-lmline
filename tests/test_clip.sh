@@ -246,7 +246,7 @@ printf '%s\n' 'url=https://x/?Authorization:="SYNTHAUTHURL1"'
 printf '%s\n' 'url=https://x/?Authorization="SYNTHAUTHURL2"&y=1; echo KEEPTAIL'
 printf '%s\n' 'url=https://x/?Authorization=SYNTHAUTHURL3'
 printf '%s\n' 'url=https://x/?Authorization : = SYNTHAUTHURL4'
-printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHURLAMP1'
+printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHURLAMP1; echo KEEPURLAMP1'
 printf '%s\n' 'url=https://x/?a=1;Authorization=SYNTHURLSEMI1'
 printf '%s\n' 'url=https://x/?a=1,Authorization=SYNTHURLCOMMA1'
 printf '%s\n' 'url=https://x/?a=1&Authorization=Bearer%20SYNTHURLBEARER1'
@@ -1100,7 +1100,7 @@ grep -Fxq -- 'curl "https://x/?Authorization:@@LMLINE_REALM_SHIELD_FOO@@" ; echo
 grep -Fxq -- 'curl "https://x/?Authorization:@@LMLINE_REALM_SHIELD_FOO@@\"example.com\"; echo KEEPPASTEDSHIELDGLUED' "$line_file" || exit 1258
 grep -Fxq '?Authorization:REALM="example.com"; echo KEEPREALMCASE' "$line_file" || exit 1255
 grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPCOLONEQREALM' "$line_file" || exit 1256
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 889
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLAMP1' "$line_file" || exit 889
 grep -Fq SYNTHURLAMP1 "$line_file" && exit 890
 grep -Fxq -- 'url=https://x/?a=1;Authorization:***REDACTED***' "$line_file" || exit 891
 grep -Fq SYNTHURLSEMI1 "$line_file" && exit 892
