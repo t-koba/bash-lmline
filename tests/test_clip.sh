@@ -3100,7 +3100,28 @@ expect_shell_valid 'encoded double quote shell syntax' \
 expect_shell_valid 'encoded single quote shell syntax' \
   "curl 'https://x/?Authorization%3DSYNTHQUOTEKEEP9003' -H 'X: keep'; echo KEEPQUOTETAIL9003"
 
+expect_exact 'closing paren after encoded Authorization value' \
+  '(curl "https://x/?Authorization%3DSYNTHCLQ1"); echo KEEPCLQ1' \
+  '(curl "https://x/?Authorization:***REDACTED***"); echo KEEPCLQ1'
+expect_exact 'closing paren after encoded array value' \
+  'x=("https://x/?token%3DSYNTHCLQ2"); echo KEEPCLQ2' \
+  'x=("https://x/?token=***REDACTED***"); echo KEEPCLQ2'
+expect_exact 'word after encoded value closing quote' \
+  'curl "https://x/?Authorization%3DSYNTHCLQ3"foo; echo KEEPCLQ3' \
+  'curl "https://x/?Authorization:***REDACTED***"foo; echo KEEPCLQ3'
+expect_exact 'closing single quote after encoded value' \
+  "(curl 'https://x/?token%3DSYNTHCLQ4'); echo KEEPCLQ4" \
+  "(curl 'https://x/?token=***REDACTED***'); echo KEEPCLQ4"
+expect_shell_valid 'grouped encoded Authorization value shell syntax' \
+  '(curl "https://x/?Authorization%3DSYNTHCLQ1"); echo KEEPCLQ1'
+expect_shell_valid 'encoded value with following word shell syntax' \
+  'curl "https://x/?Authorization%3DSYNTHCLQ3"foo; echo KEEPCLQ3'
 # Unquoted redirects survive; quoted and escaped brackets remain credential data.
+expect_exact 'bare double quote inside single-quoted encoded value' \
+  "curl 'https://x/?Authorization%3DSYNTHDQ999\"PART2DQ&keep=KEEPDQ456'" \
+  "curl 'https://x/?Authorization:***REDACTED***\"***REDACTED***&keep=KEEPDQ456'"
+expect_shell_valid 'bare double quote inside single-quoted encoded value shell syntax' \
+  "curl 'https://x/?Authorization%3DSYNTHDQ999\"PART2DQ&keep=KEEPDQ456'"
 expect_exact 'unquoted redirect after auth flag' \
   'curl --user=SYNTHOPREDIR1>out;echo KEEPOPREDIR1' \
   'curl --user=***REDACTED***>out;echo KEEPOPREDIR1'
