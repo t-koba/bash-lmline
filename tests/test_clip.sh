@@ -2362,6 +2362,52 @@ expect_exact 'psql -p is a port' \
 expect_exact 'bash -p is a shell option' \
   'bash -p; echo KEEPBASHP' 'bash -p; echo KEEPBASHP'
 
+# Each sshpass invocation on a shell line owns its own password, and an -p
+# inside a quoted option argument is not the password flag.
+sp26="${sshpass_word}${sshpass_tail}26"
+sk26="KEEP${sshpass_tail}26"
+sp27="${sshpass_word}${sshpass_tail}27"
+sk27="KEEP${sshpass_tail}27"
+sshpass_two_semicolons="sshpass -p ${sp26} ssh host; sshpass -p ${sp27} ssh host2; echo ${sk27}"
+expect_masked 'first sshpass password in shell chain' "$sshpass_two_semicolons" "$sp26" "$sk27"
+expect_masked 'second sshpass password in shell chain' "$sshpass_two_semicolons" "$sp27" "$sk27"
+expect_exact 'both sshpass passwords in shell chain' "$sshpass_two_semicolons" \
+  "sshpass -p ***REDACTED*** ssh host; sshpass -p ***REDACTED*** ssh host2; echo ${sk27}"
+sshpass_two_and="sshpass -p ${sp26} ssh host && sshpass -p ${sp27} ssh host2; echo ${sk27}"
+expect_masked 'first sshpass password after and' "$sshpass_two_and" "$sp26" "$sk27"
+expect_masked 'second sshpass password after and' "$sshpass_two_and" "$sp27" "$sk27"
+sp28="${sshpass_word}${sshpass_tail}28"
+sk28="KEEP${sshpass_tail}28"
+sp29="${sshpass_word}${sshpass_tail}29"
+sk29="KEEP${sshpass_tail}29"
+sshpass_prompt_option="sshpass -P \"pass -p word\" -p ${sp28} ssh host; echo ${sk28}"
+expect_masked 'sshpass password after quoted prompt option' "$sshpass_prompt_option" "$sp28" "$sk28"
+expect_exact 'sshpass quoted prompt option output' "$sshpass_prompt_option" \
+  "sshpass -P \"pass -p word\" -p ***REDACTED*** ssh host; echo ${sk28}"
+sshpass_proxy_option="sshpass -o \"ProxyCommand=nc -p 1234\" -p ${sp29} ssh host; echo ${sk29}"
+expect_masked 'sshpass password after quoted proxy option' "$sshpass_proxy_option" "$sp29" "$sk29"
+expect_exact 'sshpass quoted proxy option output' "$sshpass_proxy_option" \
+  "sshpass -o \"ProxyCommand=nc -p 1234\" -p ***REDACTED*** ssh host; echo ${sk29}"
+sp30="${sshpass_word}${sshpass_tail}30"
+sk30="KEEP${sshpass_tail}30"
+sp31="${sshpass_word}${sshpass_tail}31"
+sk31="KEEP${sshpass_tail}31"
+sshpass_ansi_escaped="sshpass -p \$'AB\\'${sp30}' ssh host; echo ${sk30}"
+expect_masked 'sshpass ANSI-C escaped-quote password' "$sshpass_ansi_escaped" "$sp30" "$sk30"
+expect_exact 'sshpass ANSI-C escaped-quote password output' "$sshpass_ansi_escaped" \
+  "sshpass -p \$'***REDACTED***' ssh host; echo ${sk30}"
+sshpass_dq_escaped="sshpass -p \"AB\\\"${sp31}\" ssh host; echo ${sk31}"
+expect_masked 'sshpass double-quoted escaped-quote password' "$sshpass_dq_escaped" "$sp31" "$sk31"
+expect_exact 'sshpass double-quoted escaped-quote password output' "$sshpass_dq_escaped" \
+  "sshpass -p \"***REDACTED***\" ssh host; echo ${sk31}"
+
+sp32="${sshpass_word}${sshpass_tail}32"
+sk32="KEEP${sshpass_tail}32"
+sshpass_outer_quote="bash -c \"sshpass -p ${sp32}\" ; echo ${sk32}"
+expect_masked 'sshpass password before closing outer quote' "$sshpass_outer_quote" "$sp32" "$sk32"
+expect_exact 'sshpass closing outer quote output' "$sshpass_outer_quote" \
+  "bash -c \"sshpass -p ***REDACTED***\" ; echo ${sk32}"
+
 # Escaped quotes after a generic scheme stay masked with their tails intact.
 generic_esc_fixtures=(
   'Authorization: abc=\"SYNTHGESC001\"; echo KEEPGESTAIL1'

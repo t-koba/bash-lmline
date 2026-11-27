@@ -328,11 +328,114 @@ __lmline_redact_clip_text() {
   # tolerated, so a glued suffix cannot hide the credential. A realm field
   # is shielded with a per-invocation case-preserving marker because its
   # quoted value is not a secret; only that marker is restored.
-  # sshpass takes its password from -p, not from a key=value pair. Mark the
-  # command, then scan only its own options so a later -p (for example an
-  # ssh port) is left alone. Masking happens after the other rules so the
-  # final quoted value cannot be re-read as another credential.
-  sed -E \
+  # sshpass takes its password from -p, not from a key=value pair. Mask its
+  # own password arguments before the other rules, leaving later command
+  # options such as an ssh port untouched.
+  awk '
+    BEGIN { sq = sprintf("%c", 39) }
+    function is_sep(c) {
+      return c == ";" || c == "&" || c == "|" || c == "(" || c == ")" || c == "<" || c == ">"
+    }
+    function redact_value(v) {
+      if (substr(v, 1, 2) == "$" sq && substr(v, length(v), 1) == sq)
+        return "$" sq "***REDACTED***" sq
+      if (substr(v, 1, 1) == "\"" && substr(v, length(v), 1) == "\"")
+        return "\"***REDACTED***\""
+      if (substr(v, 1, 1) == sq && substr(v, length(v), 1) == sq)
+        return sq "***REDACTED***" sq
+      return "***REDACTED***"
+    }
+    function parse_word(s, i,    c, out, n, q) {
+      out = ""
+      n = length(s)
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c ~ /[[:space:]]/ || is_sep(c)) break
+        if ((c == "\"" || c == sq || (c == "$" && substr(s, i + 1, 1) == sq)) &&
+            (out == "" || (i < n && substr(s, i + 1, 1) !~ /[[:space:]]/ && !is_sep(substr(s, i + 1, 1))))) {
+          q = c
+          if (q == "$") { out = out "$"; i++; q = sq }
+          out = out q; i++
+          while (i <= n) {
+            c = substr(s, i, 1)
+            out = out c; i++
+            if (c == "\\" && i <= n) { out = out substr(s, i, 1); i++; continue }
+            if (c == q) break
+          }
+          continue
+        }
+        if (c == "\"" || c == sq || (c == "$" && substr(s, i + 1, 1) == sq)) break
+        out = out c; i++
+      }
+      word_text = out
+      word_end = i
+    }
+    function scan(s, i,    c, out, n, w, k) {
+      out = ""
+      n = length(s)
+      scan_end = n + 1
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c ~ /[[:space:]]/) { out = out c; i++; continue }
+        if (is_sep(c)) { out = out c; scan_end = i + 1; return out }
+        parse_word(s, i)
+        w = word_text
+        k = word_end
+        if (w == "-p") {
+          out = out w
+          i = k
+          while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
+          if (i <= n && !is_sep(substr(s, i, 1))) {
+            parse_word(s, i)
+            out = out redact_value(word_text)
+            scan_end = word_end
+          } else {
+            scan_end = i
+          }
+          return out
+        }
+        if (substr(w, 1, 2) == "-p" && length(w) > 2) {
+          out = out "-p" redact_value(substr(w, 3))
+          scan_end = k
+          return out
+        }
+        if (w == "-v" || w == "-e" || w == "-T" || w == "-h" || w == "--help" || w == "--version") {
+          out = out w; i = k; continue
+        }
+        if (w == "-f" || w == "-P" || w == "-d" || w == "-o") {
+          out = out w; i = k
+          while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
+          if (i <= n && !is_sep(substr(s, i, 1))) {
+            parse_word(s, i); out = out word_text; i = word_end
+          }
+          continue
+        }
+        scan_end = i
+        return out
+      }
+      return out
+    }
+    function process(s,    out, idx, before, after, seg, cut) {
+      out = ""
+      while ((idx = index(s, "sshpass")) > 0) {
+        before = idx > 1 ? substr(s, idx - 1, 1) : ""
+        after = substr(s, idx + 7, 1)
+        if ((idx == 1 || before ~ /[[:space:];,&|(/="]/ || before == sq) &&
+            (after == "" || after ~ /[[:space:];,&|)/="]/ || after == sq)) {
+          out = out substr(s, 1, idx + 6)
+          seg = scan(substr(s, idx + 7), 1)
+          out = out seg
+          cut = idx + 6 + scan_end
+          s = substr(s, cut)
+        } else {
+          out = out substr(s, 1, idx + 6)
+          s = substr(s, idx + 7)
+        }
+      }
+      return out s
+    }
+    { print process($0) }
+  ' | sed -E \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*={2,}|[^[:space:]&;,=\"']*:+|([A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\7/Ig" \
@@ -352,8 +455,6 @@ __lmline_redact_clip_text() {
     -e "s/(^|[[:space:];,&|(/=])(mysql|mysqldump|mysqladmin|mysqlshow|mariadb|mariadb-dump|mariadb-admin)([[:space:];,&|)/=]|$)/\1\2@@LMLINE_DBCMD@@\3/Ig" \
     -e "s/(@@LMLINE_DBCMD@@[^;&|]*)([[:space:]])(-p)([^[:space:]\"\');,&|]+)/\1\2\3@@LMLINE_REDACTED@@/g" \
     -e "s/(@@LMLINE_DBCMD@@[^;&|]*)(-p)([\"\'])([^\"\']+)([\"\'])/\1\2\3@@LMLINE_REDACTED@@\5/g" \
-    -e "s/(^|[[:space:];,&|(/=\"'])(sshpass)([[:space:];,&|)/=\"']|$)/\1\2@@LMLINE_SSHPASSCMD@@\3/Ig" \
-    -e "s/(@@LMLINE_SSHPASSCMD@@)(([[:space:]]+(-[veTh]|-f[[:space:]]+[^[:space:]]+|-P[[:space:]]+[^[:space:]]+|-d[[:space:]]+[^[:space:]]+|-o[[:space:]]+[^[:space:]]+|--help|--version))*[[:space:]]*)(-p)/\2@@LMLINE_SSHPASSARG@@\5/" \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e ':lmline_quote_sep_protect' \
@@ -551,20 +652,7 @@ __lmline_redact_clip_text() {
     -e "s/([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[^[:space:]&;,=\"':=])([\"'[:space:]&;,]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([[:space:]&;,]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?][^[:space:]&;,]*)([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([\"'])/\1\2\3:***REDACTED***\7/Ig" \
-    -e "s/(@@LMLINE_SSHPASSARG@@-p)[$]'([^']*)'/\1;SSHPASS_ANSI;/" \
-    -e 's/(@@LMLINE_SSHPASSARG@@-p)"([^"]*)"/\1;SSHPASS_DQ;/' \
-    -e "s/(@@LMLINE_SSHPASSARG@@-p)'([^']*)'/\1;SSHPASS_SQ;/" \
-    -e "s/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)[$]'([^']*)'/\1;SSHPASS_ANSI;/" \
-    -e 's/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)"([^"]*)"/\1;SSHPASS_DQ;/' \
-    -e "s/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)'([^']*)'/\1;SSHPASS_SQ;/" \
-    -e 's/(@@LMLINE_SSHPASSARG@@-p)([^[:space:]"&;|<>()]+)/\1@@LMLINE_REDACTED@@/' \
-    -e 's/(@@LMLINE_SSHPASSARG@@-p[[:space:]]+)([^[:space:]"&;|<>()]+)/\1@@LMLINE_REDACTED@@/' \
-    -e "s/;SSHPASS_ANSI;/\$'***REDACTED***'/g" \
-    -e 's/;SSHPASS_DQ;/"***REDACTED***"/g' \
-    -e "s/;SSHPASS_SQ;/'***REDACTED***'/g" \
     -e 's#@@LMLINE_DBCMD@@##g' \
-    -e 's#@@LMLINE_SSHPASSCMD@@##g' \
-    -e 's#@@LMLINE_SSHPASSARG@@##g' \
     -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig"
 }
 
