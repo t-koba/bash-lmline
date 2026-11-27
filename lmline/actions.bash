@@ -343,6 +343,10 @@ __lmline_redact_clip_text() {
   # copied verbatim. Encoded spaces around it are part of the separator form.
   # The value is masked in the same pass, including adjacent escaped segments,
   # so no later quote rule can eat a following shell command.
+  # A closing parenthesis or brace ends a grouped command, not a credential:
+  # value and tail classes below leave ) and } for the shell.
+  # The terminal scheme rule skips canonical markers by their leading * or @
+  # so a second pass keeps its closing quote and command group.
   awk '
     BEGIN { sq = sprintf("%c", 39) }
     function is_sep(c) {
@@ -495,14 +499,14 @@ __lmline_redact_clip_text() {
     -e "s/(^|[^[:alnum:]_-])(-u)([^[:space:]\"':;,|&<>=]+):(([^[:space:]\"';,&|<>)\\\\]|\\\\.)+)(((\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')([^][:space:];,&|<>\"')}]*))*)/\\1\\2\\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^[:alnum:]_-])(-u)([^[:space:]\"':;,|&<>=]+):(((\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')([^][:space:];,&|<>\"')}]*))+)/\\1\\2\\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^[:alnum:]_-])(-u)([\"'])([^\"':]+):([^\"']+)([\"'])/\\1\\2\\3\\4:@@LMLINE_REDACTED@@\\6/Ig" \
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
-    -e "s/(^|[[:space:]])(-u=|--u=)(([^[:space:]\"':;,|&<>\\\\]|\\\\.)+)([[:space:];,&|<>]|$)/\1\2@@LMLINE_REDACTED@@\5/Ig" \
-    -e "s/(^|[[:space:]])(--user=)([0-9]*(\\\\[^\"']|[^0-9[:space:]\"':;,|&<>])([^[:space:]\"':;,|&<>\\\\]|\\\\.)+)([[:space:];,&|<>]|$)/\1\2@@LMLINE_REDACTED@@\6/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>)}\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=)(([^[:space:]\"':;,|&<>\\\\]|\\\\.)+)([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\5/Ig" \
+    -e "s/(^|[[:space:]])(--user=)([0-9]*(\\\\[^\"']|[^0-9[:space:]\"':;,|&<>])([^[:space:]\"':;,|&<>)}\\\\]|\\\\.)+)([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\6/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^[:space:]\"':]+):([^\"\\\\']*)(\\\\*)\"/\1\2\3\"\4:@@LMLINE_REDACTED@@\6\"/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^\"\\\\']*)(\\\\*)\"/\1\2\3\"@@LMLINE_REDACTED@@\5\"/Ig" \
-    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>)}\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(\")([^\"']+)([\"])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
@@ -602,10 +606,10 @@ __lmline_redact_clip_text() {
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'([0-9]+)([><])/\\1\\2@@LMLINE_REDACTED@@'\\4\\5/Ig" \
     -e 's/(\"[^\"]*Authorization:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
     -e "s/('[^']*Authorization:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
-    -e "s/(\"[^\";,&|<>]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
-    -e "s/(\"[^\"[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
-    -e "s/('[^';,&|<>]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
-    -e "s/('[^'[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/(\"[^\";,&|<>]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>)}]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "s/(\"[^\"[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"[^[:space:]';,&:<>)}]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \
+    -e "s/('[^';,&|<>]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>)}]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
+    -e "s/('[^'[:space:];,&|]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\']*)'[^[:space:]';,&:<>)}]*/\\1\\2@@LMLINE_REDACTED@@'/Ig" \
     -e 's/("[^"]*Authorization:[^"]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) "/\1"/Ig' \
     -e "s/('[^']*Authorization:[^']*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)) '/\1'/Ig" \
     -e "s/(\"[^\"]*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?@@LMLINE_REDACTED@@\\\"/\\1\\2##LMLINE_REDACTED##\\\"/Ig" \
@@ -656,7 +660,7 @@ __lmline_redact_clip_text() {
     -e "s/('[^']*Authorization:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^']+)('[[:space:]]|$)/\\1\\2@@LMLINE_REDACTED@@\\4/Ig" \
     -e "s/('Authorization:[[:space:]]+${auth_scheme_token}+[:=]+@@LMLINE_REDACTED@@)\"([^'\\\\]|\\\\.)*((')|\\\\?\$)/\1\3/Ig" \
     -e "s/${auth_prefix}${auth_scheme}(\\\\+)\"(([^\"\\\\]|\\\\.)*)(\\\\*)\"([^[:space:];,&|]*)/\1\2\3\"***REDACTED***\6\"\7/Ig" \
-    -e "/Authorization:[[:space:]]+${auth_scheme_token}+[[:space:]]+\\\\+[\"]/!s/${auth_prefix}${auth_scheme}[^@\\\"'[:space:];].*$/\1\2@@LMLINE_REDACTED@@/Ig" \
+    -e "/Authorization:[[:space:]]+${auth_scheme_token}+[[:space:]]+\\\\+[\"]/!s/${auth_prefix}${auth_scheme}[^*@\\\"'[:space:];].*$/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}\"(([^@\\\"\\\\]|\\\\.)*)\"/\\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${auth_prefix}'(([^@'\\\\]|\\\\.)*)'/\\1'@@LMLINE_REDACTED@@'/Ig" \
     -e "s/${auth_prefix}\"(([^\"\\\\]|\\\\.)*\\\\?)$/\\1\"@@LMLINE_REDACTED@@/Ig" \

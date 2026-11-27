@@ -3301,6 +3301,66 @@ expect_exact 'escaped dollar after leading digits' \
 expect_exact 'quoted bracket stays in the credential' \
   'curl --user="SYNTHQUOTEBRACKET1>out";echo KEEPQUOTEB1' \
   'curl --user="***REDACTED***";echo KEEPQUOTEB1'
+# Grouped credentials keep their closing group operator, flag spelling and
+# quoted header tail; a second pass must not eat the closing quote or group.
+grouped_fixtures=(
+  '(curl -u user:SYNTHGRP1); echo KEEPGRP1'
+  '(curl --user=SYNTHGRP2); echo KEEPGRP2'
+  '(curl -u=user:SYNTHGRP9); echo KEEPGRP9'
+  '(curl -H "Authorization: Bearer SYNTHGRP5"); echo KEEPGRP5'
+  'x=$(curl -H "Authorization: Bearer SYNTHGRP8"); echo KEEPGRP8'
+  '{ curl -u user:SYNTHGRP10; echo KEEPGRP10; }'
+)
+grouped_expected=(
+  '(curl -u user:***REDACTED***); echo KEEPGRP1'
+  '(curl --user=***REDACTED***); echo KEEPGRP2'
+  '(curl -u=user:***REDACTED***); echo KEEPGRP9'
+  '(curl -H "Authorization: Bearer ***REDACTED***"); echo KEEPGRP5'
+  'x=$(curl -H "Authorization: Bearer ***REDACTED***"); echo KEEPGRP8'
+  '{ curl -u user:***REDACTED***; echo KEEPGRP10; }'
+)
+grouped_secrets=(SYNTHGRP1 SYNTHGRP2 SYNTHGRP9 SYNTHGRP5 SYNTHGRP8 SYNTHGRP10)
+grouped_tails=(KEEPGRP1 KEEPGRP2 KEEPGRP9 KEEPGRP5 KEEPGRP8 KEEPGRP10)
+for case_index in "${!grouped_fixtures[@]}"; do
+  fixture=${grouped_fixtures[$case_index]}
+  expected=${grouped_expected[$case_index]}
+  expect_exact "grouped credential $case_index" "$fixture" "$expected"
+  expect_exact "grouped credential second pass $case_index" "$expected" "$expected"
+  grep -Fq "${grouped_secrets[$case_index]}" <<<"$expected" && fail "grouped credential $case_index was not masked"
+  grep -Fq "${grouped_tails[$case_index]}" <<<"$expected" || fail "grouped credential $case_index lost its tail"
+  printf '%s\n' "$expected" | bash -n || fail "grouped credential $case_index is not valid shell: $expected"
+done
+
+# Marker-shaped prefixes are still live credentials when the whole value is not
+# a canonical redaction marker.
+expect_exact 'live credential starting with star' \
+  'curl -H "Authorization: Bearer *SYNTHSTAR14"; echo KEEPSTAR14' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPSTAR14'
+expect_exact 'idempotent live credential starting with star' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPSTAR14' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPSTAR14'
+expect_exact 'live credential starting with at' \
+  'curl -H "Authorization: Bearer @SYNTHAT15"; echo KEEPAT15' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPAT15'
+expect_exact 'idempotent live credential starting with at' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPAT15' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPAT15'
+
+# A user name without a password and unrelated flag clusters stay verbatim.
+grouped_negative_fixtures=(
+  '(curl --user SYNTHGRP3); echo KEEPGRP3'
+  '(curl --user=1000); echo KEEPGRPN1'
+  '(curl --url https://x); echo KEEPGRPN2'
+  '(curl -uvVALUE https://x); echo KEEPGRPN3'
+  'mkdir -pkeep; echo KEEPGRPN4'
+  "mysql -P3306 -e 'select 1'; echo KEEPGRPN5"
+)
+for case_index in "${!grouped_negative_fixtures[@]}"; do
+  fixture=${grouped_negative_fixtures[$case_index]}
+  expect_exact "grouped non-credential $case_index" "$fixture" "$fixture"
+  printf '%s\n' "$fixture" | bash -n || fail "grouped non-credential $case_index is not valid shell: $fixture"
+done
+
 # The shield nonce must be unique per clip call even in zsh command substitution.
 if command -v zsh >/dev/null 2>&1; then
   zsh_marker_out=$(zsh -c 'unset RANDOM; source "$1"; __lmline_next_realm_shield_prefix; first=$__LMLINE_REALM_SHIELD_PREFIX; __lmline_next_realm_shield_prefix; second=$__LMLINE_REALM_SHIELD_PREFIX; [[ $first != $second ]] || exit 11; fixture="curl \"https://x/?Authorization=${first}FOO@@\" ; echo KEEPZSHCLIP"; printf "%s\n" "$fixture" | __lmline_redact_clip_text "$second"' _ "$repo_dir/lmline/actions.bash") || fail "zsh realm shield nonce is not per-invocation"
