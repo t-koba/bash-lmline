@@ -253,10 +253,10 @@ printf '%s\n' 'url=https://x/?a=1&Authorization=Bearer%20SYNTHURLBEARER1'
 printf '%s\n' 'curl -H "Authorization: Bearer SYNTHURLHDR2"; curl "https://x/?a=1&Authorization=SYNTHURLSAME2"'
 printf '%s\n' 'curl "https://x/?a=1&Authorization=SYNTHURLDQ2"'
 printf '%s\n' "curl 'https://x/?a=1&Authorization=SYNTHURLSQ2'"
-printf '%s\n' 'curl "https://x/?a=1&Authorization=Bearer SYNTHURLSP2"'
-printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHCOLEND1:'
-printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHEQEND1='
-printf '%s\n' "curl 'https://x/?a=1&Authorization=SYNTHCOLQUOTE1:'"
+printf '%s\n' 'curl "https://x/?a=1&Authorization=Bearer SYNTHURLSP2"; echo KEEPURLSP2'
+printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHCOLEND1:; echo KEEPURLCOLEND1'
+printf '%s\n' 'url=https://x/?a=1&Authorization=SYNTHEQEND1=; echo KEEPURLEQEND1'
+printf '%s\n' "curl 'https://x/?a=1&Authorization=SYNTHCOLQUOTE1:'; echo KEEPURLCOLQUOTE1"
 # Base64 padding at the value end must not hide a URL query Authorization secret.
 printf '%s\n' 'url=https://x/?a=1&Authorization=U1lOVEhCQVNFNjQx==; echo KEEPPADEQ1'
 printf '%s\n' 'url=https://x/?a=1;Authorization=U1lOVEhCQVNFNjQy===; echo KEEPPADEQ2'
@@ -1115,14 +1115,14 @@ grep -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"' "$line_file" |
 grep -Fq SYNTHURLDQ2 "$line_file" && exit 900
 grep -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'" "$line_file" || exit 901
 grep -Fq SYNTHURLSQ2 "$line_file" && exit 902
-grep -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"' "$line_file" || exit 903
+grep -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPURLSP2' "$line_file" || exit 903
 grep -Fq SYNTHURLSP2 "$line_file" && exit 904
 grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 905
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLCOLEND1' "$line_file" || exit 905
 grep -Fq SYNTHCOLEND1 "$line_file" && exit 906
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 907
+grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLEQEND1' "$line_file" || exit 907
 grep -Fq SYNTHEQEND1 "$line_file" && exit 908
-grep -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'" "$line_file" || exit 909
+grep -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPURLCOLQUOTE1" "$line_file" || exit 909
 grep -Fq SYNTHCOLQUOTE1 "$line_file" && exit 910
 grep -Fq U1lOVEhCQVNFNjQx== "$line_file" && exit 1200
 grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ1' "$line_file" || exit 1201
