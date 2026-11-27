@@ -1024,6 +1024,7 @@ Attached `-pPASSWORD` and `-p"PASSWORD"` values used by database clients are mas
 Glued Authorization scheme values followed by a separate word are masked while that word and the command tail survive
 Quoted Authorization headers with spaced or glued values are masked without consuming a following quoted argument
 Quoted Authorization headers keep their quotes and surrounding command text
+Percent-encoded URL credential separators (`%3D`/`%3A`) mask the whole value, including bare quotes inside it; a separate quoted Authorization header on the same line keeps its closing quote and command tail
 Quoted values keep their quote characters, including escaped quotes inside the value
 Adjacent quoted segments after an Authorization scheme separator are one value and are masked together
 Repeated Authorization headers with glued custom-scheme quoted values, including glued shell separators, are each masked, with scheme words, quotes and command tails preserved

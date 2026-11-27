@@ -3072,11 +3072,29 @@ expect_exact 'escaped key with literal space' \
 expect_exact 'generic key with literal space' \
   'url=https://x/?a=1&token%3Dmy secret SYNTHKEY9008&keep=KEEPTAIL603' \
   'url=https://x/?a=1&token=***REDACTED***&keep=KEEPTAIL603'
+# A live quoted header and an encoded credential on one line must both be
+# masked without losing either command or the shell quote boundaries.
+expect_exact 'live header with encoded credential' \
+  'curl -H "Authorization: Bearer a\"b\"cSYNTHLIVEQQ999" https://x/?token%3DENCQQ888; echo KEEPTAILQQ777' \
+  'curl -H "Authorization: Bearer ***REDACTED***" https://x/?token=***REDACTED***; echo KEEPTAILQQ777'
+expect_exact 'bare quote inside encoded value' \
+  "curl \"https://x/?Authorization%3DSYNTHBAREQ999'PART2&keep=KEEPQQ123\"; echo TAILQQ123" \
+  "curl \"https://x/?Authorization:***REDACTED***&keep=KEEPQQ123\"; echo TAILQQ123"
+expect_exact 'bare quote inside encoded token value' \
+  "url=\"https://x/?token%3DSYNTHBARETOK999'PART2&keep=KEEPQQ456\"" \
+  "url=\"https://x/?token=***REDACTED***&keep=KEEPQQ456\""
+expect_exact 'pasted encoded marker does not disable header masking' \
+  'curl -H "Authorization: Bearer a\"b\"cLMLINE_ENCODED_MASK"; echo TAILQQ777' \
+  'curl -H "Authorization: Bearer ***REDACTED***"; echo TAILQQ777'
 expect_shell_valid() {
   local label=$1 fixture=$2 actual
   actual=$(redact_clip_line "$fixture") || fail "$label: redaction failed"
   bash -n <<<"$actual" || fail "$label: output is not valid shell: $actual"
 }
+expect_shell_valid 'live header beside encoded credential' \
+  'curl -H "Authorization: Bearer a\"b\"cSYNTHLIVEQQ999" https://x/?token%3DENCQQ888; echo KEEPTAILQQ777'
+expect_shell_valid 'pasted encoded marker shell syntax' \
+  'curl -H "Authorization: Bearer a\"b\"cLMLINE_ENCODED_MASK"; echo TAILQQ777'
 expect_shell_valid 'encoded double quote shell syntax' \
   'curl "https://x/?Authorization%3DSYNTHQUOTEKEEP9001" -H "X: keep"; echo KEEPQUOTETAIL9001'
 expect_shell_valid 'encoded single quote shell syntax' \
