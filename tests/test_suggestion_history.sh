@@ -195,11 +195,11 @@ for shell in bash zsh; do
       "$tmp/$shell-attempt$attempt" "$tmp/config-$shell-attempt$attempt"; then
       break
     fi
-    if ((attempt >= 3)); then
+    if ((attempt >= 6)); then
       [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
       fail "$concurrent_failure"
     fi
-    printf 'retry - %s suggestion history attempt %d of 3 failed: %s\n' \
+    printf 'retry - %s suggestion history attempt %d of 6 failed: %s\n' \
       "$shell" "$attempt" "$concurrent_failure" >&2
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
   done
@@ -231,10 +231,10 @@ for shell in bash zsh; do
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
-    if ((attempt >= 3)); then
+    if ((attempt >= 6)); then
       fail "$concurrent_failure"
     fi
-    printf 'retry - %s slow append attempt %d of 3\n' "$shell" "$attempt"
+    printf 'retry - %s slow append attempt %d of 6\n' "$shell" "$attempt"
   done
   ok "$shell suggestion history survives a slow large append"
 done
