@@ -3140,6 +3140,11 @@ expect_exact 'bare quote after encoded Authorization masks the tail' \
 expect_exact 'two bare quotes after encoded Authorization mask both tails' \
   "curl 'https://x/?Authorization%3DSYNTHBQT1\"SYNTHBQT2\"SYNTHBQT3'; echo KEEPBT2" \
   "curl 'https://x/?Authorization:***REDACTED***\"***REDACTED***\"***REDACTED***'; echo KEEPBT2"
+# The two-segment rule must also close on a double quote: the fixture above
+# ends in a single quote and passes even when that half of the rule is reverted.
+expect_exact 'two bare quotes after encoded token close with a double quote' \
+  "curl \"https://x/?token%3DSYNTHDQ2A\"SYNTHDQ2B\"SYNTHDQ2C\"; echo KEEPDQ2" \
+  "curl \"https://x/?token=***REDACTED***\"***REDACTED***\"***REDACTED***\"; echo KEEPDQ2"
 expect_exact 'bare quote after encoded token masks the tail' \
   "curl 'https://x/?token%3DSYNTHBQT4\"SYNTHBQT5'; echo KEEPBT3" \
   "curl 'https://x/?token=***REDACTED***\"***REDACTED***'; echo KEEPBT3"
