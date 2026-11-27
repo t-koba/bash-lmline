@@ -117,7 +117,7 @@ printf '%s\n' 'Authorization: SYNTHFDSPACE 2> err'
 printf '%s\n' 'Authorization: Bearer SYNTHFDBEARER 2>err'
 printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMED10 10>out'
 printf '%s\n' 'Authorization: SYNTHFDSPLIT 2>err; Authorization: SYNTHFDBARE'
-printf '%s\n' 'Authorization: SYNTHFDNUM123 2>err'
+printf '%s\n' 'Authorization: SYNTHFDNUM123 2>err; echo KEEPFDNUM123'
 printf '%s\n' 'Authorization: SYNTHFDTAIL456>out'
 printf '%s\n' 'Authorization: SYNTHFDFD123 123>out'
 printf '%s\n' 'Authorization: Bearer SYNTHFDSCHEMED123 123>out'
@@ -916,7 +916,7 @@ grep -Fxq 'Authorization: ***REDACTED*** 2>err; Authorization: ***REDACTED***' "
 grep -Fq 'SYNTHFDSPLIT' "$line_file" && exit 409
 grep -Fq 'SYNTHFDBARE' "$line_file" && exit 410
 # Digits inside a credential stay masked; only fd digits before an operator are kept.
-grep -Fxq 'Authorization: ***REDACTED*** 2>err' "$line_file" || exit 411
+grep -Fxq 'Authorization: ***REDACTED*** 2>err; echo KEEPFDNUM123' "$line_file" || exit 411
 grep -Fq 'SYNTHFDNUM123' "$line_file" && exit 412
 grep -Fxq 'Authorization: ***REDACTED***>out' "$line_file" || exit 413
 grep -Fq 'SYNTHFDTAIL456' "$line_file" && exit 414
