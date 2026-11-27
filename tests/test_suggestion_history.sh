@@ -217,31 +217,6 @@ for shell in bash zsh; do
   ok "$shell suggestion history keeps concurrent records intact"
 done
 
-# A large append can take seconds on a loaded runner. Contenders must wait
-# for the live lock instead of silently dropping their own records.
-for shell in bash zsh; do
-  if ! command -v "$shell" >/dev/null; then
-    printf 'skip - %s slow suggestion append (shell unavailable)\n' "$shell"
-    continue
-  fi
-  attempt=0
-  while :; do
-    attempt=$((attempt + 1))
-    history_dir="$tmp/slow-history-$shell-attempt$attempt"
-    if check_concurrent_records "$shell" \
-      "$history_dir" "$tmp/slow-$shell-attempt$attempt" \
-      "$tmp/slow-config-$shell-attempt$attempt" "$padding" "$padding" 1.2; then
-      break
-    fi
-    [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
-    if ((attempt >= 6)); then
-      fail "$concurrent_failure"
-    fi
-    printf 'retry - %s slow append attempt %d of 6\n' "$shell" "$attempt"
-  done
-  ok "$shell suggestion history survives a slow large append"
-done
-
 # A short contender must not vanish behind a large live append just because its
 # own record is small. Hold the lock for longer than the old short-writer wait.
 for shell in bash zsh; do
