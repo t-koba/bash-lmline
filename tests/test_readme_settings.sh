@@ -104,5 +104,5 @@ if problems:
     raise SystemExit(1)
 print(f"README settings match the catalog; PS0 defaults match across CLI, Bash, and Zsh ({len(catalog)} settings)")
 PY
-grep -Fxq 'Command-line auth flags `-u`/`--user` with `user:password` or `-u=SECRET`/`--user=SECRET`, and `--password` values (quoted or unquoted); usernames, quote characters and glued `;`, `,`, `&` and `|` operators are kept; glued redirects are masked with the credential (fail closed), while unrelated `-p` flags and numeric `--user=1000` are left alone' "$repo_dir/README.md" || fail "CLI redirect redaction is not documented"
+grep -Fxq 'Command-line auth flags `-u`/`--user` with `user:password` or `-u=SECRET`/`--user=SECRET`, and `--password` values (quoted or unquoted); usernames, quote characters and glued `;`, `,`, `&` and `|` operators are kept; unquoted glued redirects are preserved and quoted or escaped angle brackets stay masked; unrelated `-p` flags and numeric `--user=1000` are left alone' "$repo_dir/README.md" || fail "CLI redirect redaction is not documented"
 ok "README and PS0 defaults match the catalog"
