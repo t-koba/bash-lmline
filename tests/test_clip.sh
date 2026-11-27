@@ -322,7 +322,7 @@ printf '%s\n' 'curl -H "X: keep" -H "Authorization: Bearer @atSecondDouble779" h
 printf '%s\n' 'Authorization: Bearer @sec"quoteTail9011" -H "X: keep" https://x'
 printf '%s\n' "Authorization: Bearer @sec'quoteTail9012' -H 'X: keep' https://x"
 printf '%s\n' 'Authorization: Digest @digestAt9013, nonce="nonceTail9014"'
-printf '%s\n' 'curl -H "Authorization: Bearer @sec\"escapedTail9015\"" https://x'
+printf '%s\n' 'curl -H "Authorization: Bearer @sec\"escapedTail9015\"" https://x; echo KEEPESC9015'
 printf '%s\n' 'curl -H "Authorization: Bearer abc\"defGHI tailSECRET9991" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "Authorization: abc\"defGHI tailSECRET9992" -H "X: keep" https://x'
 printf '%s\n' 'curl -H "Authorization: Bearer abc\" defGHI tailLEAK9041" -H "X: keep" https://x'
@@ -466,11 +466,11 @@ printf '%s\n' 'Authorization: Digest @ZxSecret7789, response="respFirst7789", no
 printf '%s\n' 'Authorization" : Digest @sec7788, nonce="NONCE7788", response="RESP7788"'
 printf '%s\n' '"Authorization" : Digest @sec7789, nonce="NONCE7789", response="RESP7789"'
 printf '%s\n' 'authorization  : Digest @sec7790, nonce="NONCE7790", response="RESP7790"'
-printf '%s\n' 'Authorization: Bearer #secretHash9020'
+printf '%s\n' 'Authorization: Bearer #secretHash9020; echo KEEPHASH9020'
 printf '%s\n' "Authorization: Bearer @o'brienApostrophe9016"
-printf '%s\n' 'Authorization: Bearer abc123" more_secret456'
-printf '%s\n' 'Authorization: Basic p@ss" w0rd123SECRET'
-printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123"}'
+printf '%s\n' 'echo KEEPMORE456; Authorization: Bearer abc123" more_secret456'
+printf '%s\n' 'echo KEEPWORD123; Authorization: Basic p@ss" w0rd123SECRET'
+printf '%s\n' '{"api_key": "keyPlusHeaderValue123", "Authorization": "Basic keyPlusHeaderCred123", "keep": "KEEPKEYPLUS"}'
 printf '%s\n' 'TOKEN=tokenPlusHeaderValue123 Authorization: Basic tokenPlusHeaderCred123'
 printf '%s\n' 'Authorization: bareSchemeLessValue1234567890'
 printf '%s\n' 'Authorization: "quotedSchemeLessValue123"'
@@ -1283,7 +1283,9 @@ grep -Fq 'NONCE7790' "$line_file" && exit 228
 grep -Fq 'RESP7790' "$line_file" && exit 229
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 212
 grep -Fq 'secretHash9020' "$line_file" && exit 213
+grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPHASH9020' "$line_file" || exit 9531
 grep -Fq 'escapedTail9015' "$line_file" && exit 178
+grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x; echo KEEPESC9015' "$line_file" || exit 9532
 grep -Fq 'tailSECRET9991' "$line_file" && exit 230
 grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 231
 grep -Fq 'tailSECRET9992' "$line_file" && exit 232
@@ -1564,10 +1566,13 @@ grep -Fq KEEPNATQ1 "$line_file" || exit 9446
 grep -Fxq "echo 'note Authorization: SYNTHNATS1 ***REDACTED***'; echo KEEPNATS1" "$line_file" || exit 9447
 grep -Fq KEEPNATS1 "$line_file" || exit 9448
 grep -Fq 'more_secret456' "$line_file" && exit 129
+grep -Fxq 'echo KEEPMORE456; Authorization: Bearer ***REDACTED***' "$line_file" || exit 9533
 grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
+grep -Fxq 'echo KEEPWORD123; Authorization: Basic ***REDACTED***' "$line_file" || exit 9534
 grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
 grep -Fxq 'Authorization: ***REDACTED***' "$line_file" || exit 128
 grep -Fq 'keyPlusHeaderValue123' "$line_file" && exit 100
+grep -Fxq '{"api_key": "***REDACTED***", "Authorization": "Basic ***REDACTED***", "keep": "KEEPKEYPLUS"}' "$line_file" || exit 9535
 grep -Fq 'keyPlusHeaderCred123' "$line_file" && exit 101
 grep -Fq 'tokenPlusHeaderValue123' "$line_file" && exit 102
 grep -Fq 'tokenPlusHeaderCred123' "$line_file" && exit 103
