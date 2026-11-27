@@ -2216,11 +2216,11 @@ grep -Fxq 'curl -u=\"user:***REDACTED***\" https://x; echo KEEPE1' "$line_file" 
 grep -Fq 'SYNTHQE1' "$line_file" && exit 9167
 grep -Fxq 'curl --user=\"***REDACTED***\" https://x; echo KEEPE2' "$line_file" || exit 9168
 grep -Fq 'SYNTHQE2' "$line_file" && exit 9169
-grep -Fxq 'curl --user=***REDACTED***;echo KEEPOPS1' "$line_file" || exit 9154
+grep -Fxq 'curl --user=***REDACTED***>out;echo KEEPOPS1' "$line_file" || exit 9154
 grep -Fq 'SECOPS1' "$line_file" && exit 9155
-grep -Fxq 'curl -u=user:***REDACTED***;echo KEEPOPS2' "$line_file" || exit 9156
+grep -Fxq 'curl -u=user:***REDACTED***>>out;echo KEEPOPS2' "$line_file" || exit 9156
 grep -Fq 'SECOPS2' "$line_file" && exit 9157
-grep -Fxq 'curl --password ***REDACTED***;echo KEEPOPS3' "$line_file" || exit 9158
+grep -Fxq 'curl --password ***REDACTED***<in;echo KEEPOPS3' "$line_file" || exit 9158
 grep -Fq 'SECOPS3' "$line_file" && exit 9159
 grep -Fxq 'mysql -uadmin -p***REDACTED***; echo KEEPP941' "$line_file" || exit 9135
 grep -Fq 'SYNTHP941' "$line_file" && exit 9136
@@ -3082,6 +3082,16 @@ expect_shell_valid 'encoded double quote shell syntax' \
 expect_shell_valid 'encoded single quote shell syntax' \
   "curl 'https://x/?Authorization%3DSYNTHQUOTEKEEP9003' -H 'X: keep'; echo KEEPQUOTETAIL9003"
 
+# Unquoted redirects survive; quoted and escaped brackets remain credential data.
+expect_exact 'unquoted redirect after auth flag' \
+  'curl --user=SYNTHOPREDIR1>out;echo KEEPOPREDIR1' \
+  'curl --user=***REDACTED***>out;echo KEEPOPREDIR1'
+expect_exact 'escaped bracket stays in the credential' \
+  'curl --user=SYNTHESCBRACKET1\>out;echo KEEPESCB1' \
+  'curl --user=***REDACTED***;echo KEEPESCB1'
+expect_exact 'quoted bracket stays in the credential' \
+  'curl --user="SYNTHQUOTEBRACKET1>out";echo KEEPQUOTEB1' \
+  'curl --user="***REDACTED***";echo KEEPQUOTEB1'
 # The shield nonce must be unique per clip call even in zsh command substitution.
 if command -v zsh >/dev/null 2>&1; then
   zsh_marker_out=$(zsh -c 'unset RANDOM; source "$1"; __lmline_next_realm_shield_prefix; first=$__LMLINE_REALM_SHIELD_PREFIX; __lmline_next_realm_shield_prefix; second=$__LMLINE_REALM_SHIELD_PREFIX; [[ $first != $second ]] || exit 11; fixture="curl \"https://x/?Authorization=${first}FOO@@\" ; echo KEEPZSHCLIP"; printf "%s\n" "$fixture" | __lmline_redact_clip_text "$second"' _ "$repo_dir/lmline/actions.bash") || fail "zsh realm shield nonce is not per-invocation"

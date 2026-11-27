@@ -485,20 +485,20 @@ __lmline_redact_clip_text() {
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*={2,}|[^[:space:]&;,=\"']*:+|([A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\7/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)${realm_shield_prefix}([A-Za-z]+)@@/\1\2\3\4=/Ig" \
-    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
-    -e "s/(^|[[:space:]])(-u=|--u=)([^[:space:]\"':;,|&]+)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
-    -e "s/(^|[[:space:]])(--user=)([0-9]*[^0-9[:space:]\"':;,|&][^[:space:]\"':;,|&]*)([[:space:];,&|]|$)/\1\2@@LMLINE_REDACTED@@\4/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=)(([^[:space:]\"':;,|&<>\\\\]|\\\\.)+)([[:space:];,&|<>]|$)/\1\2@@LMLINE_REDACTED@@\5/Ig" \
+    -e "s/(^|[[:space:]])(--user=)([0-9]*[^0-9[:space:]\"':;,|&<>\\\\]([^[:space:]\"':;,|&<>\\\\]|\\\\.)+)([[:space:];,&|<>]|$)/\1\2@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^[:space:]\"':]+):([^\"\\\\']*)(\\\\*)\"/\1\2\3\"\4:@@LMLINE_REDACTED@@\6\"/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^\"\\\\']*)(\\\\*)\"/\1\2\3\"@@LMLINE_REDACTED@@\5\"/Ig" \
-    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):([^[:space:]\"';,&|]+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([^[:space:]\"':;,|&]+):(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2\3:@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(-u[[:space:]]+|--u[[:space:]]+|--user[[:space:]]+)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
-    -e "s/(^|[[:space:]])(--password[[:space:]]+)([^[:space:]\"';,&|]+)/\1\2@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[[:space:]])(--password[[:space:]]+)(([^[:space:]\"';,&|<>\\\\]|\\\\.)+)/\1\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(\")([^\"']+)([\"])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(--password[[:space:]]+)(')([^']+)(')/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:];,&|(/=])(mysql|mysqldump|mysqladmin|mysqlshow|mariadb|mariadb-dump|mariadb-admin)([[:space:];,&|)/=]|$)/\1\2@@LMLINE_DBCMD@@\3/Ig" \
-    -e "s/(@@LMLINE_DBCMD@@[^;&|]*)([[:space:]])(-p)([^[:space:]\"\');,&|]+)/\1\2\3@@LMLINE_REDACTED@@/g" \
+    -e "s/(@@LMLINE_DBCMD@@[^;&|]*)([[:space:]])(-p)(([^[:space:]\"\');,&|<>\\\\]|\\\\.)+)/\1\2\3@@LMLINE_REDACTED@@/g" \
     -e "s/(@@LMLINE_DBCMD@@[^;&|]*)(-p)([\"\'])([^\"\']+)([\"\'])/\1\2\3@@LMLINE_REDACTED@@\5/g" \
     -e 's#(([A-Za-z][A-Za-z0-9+.-]*:)//[^:/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
     -e 's#(://[;,]//[^/?#@[:space:]]*:)[^/?#@[:space:]]+@#\1@@LMLINE_REDACTED@@@#g' \
