@@ -98,15 +98,14 @@ concurrent_failure=
 concurrent_diagnostic=
 check_concurrent_records() {
   local shell=$1 history_dir=$2 out_prefix=$3 config_dir=$4
-  local pad1=$padding pad2=${5:-$padding} pad3=${6:-$padding}
-  local dd_sleep=${8:-0}
+  local pad2=${5:-$padding} pad3=${6:-$padding} dd_sleep=${7:-0}
   local flags=(-f -e -i)
   [[ $shell != bash ]] || flags=(--norc -e -i)
   mkdir -m 700 "$history_dir"
   local pids=() pid writer failed=0
   for writer in 1 2 3; do
     case $writer in
-      1) writer_padding=$pad1 ;;
+      1) writer_padding=$padding ;;
       2) writer_padding=$pad2 ;;
       *) writer_padding=$pad3 ;;
     esac
@@ -135,7 +134,7 @@ check_concurrent_records() {
   fi
   # Check the six fields in order and exactly one original/candidate pair per writer.
   local diagnostic
-  if ! diagnostic=$(awk -v pad1="$pad1" -v pad2="$pad2" -v pad3="$pad3" -v shell="$shell" '
+  if ! diagnostic=$(awk -v pad1="$padding" -v pad2="$pad2" -v pad3="$pad3" -v shell="$shell" '
     function bad() {
       line = NR
       # Report only known field names and lengths, never values.
@@ -256,7 +255,7 @@ for shell in bash zsh; do
     history_dir="$tmp/mixed-history-$shell-attempt$attempt"
     if check_concurrent_records "$shell" \
       "$history_dir" "$tmp/mixed-$shell-attempt$attempt" \
-      "$tmp/mixed-config-$shell-attempt$attempt" "$padding" SHORT SHORT 2; then
+      "$tmp/mixed-config-$shell-attempt$attempt" SHORT SHORT 2; then
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
@@ -281,7 +280,7 @@ for shell in bash zsh; do
     history_dir="$tmp/long-history-$shell-attempt$attempt"
     if check_concurrent_records "$shell" \
       "$history_dir" "$tmp/long-$shell-attempt$attempt" \
-      "$tmp/long-config-$shell-attempt$attempt" "$padding" SHORT SHORT 15; then
+      "$tmp/long-config-$shell-attempt$attempt" SHORT SHORT 15; then
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
