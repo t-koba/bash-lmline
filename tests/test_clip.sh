@@ -47,7 +47,7 @@ printf '%s\n' 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz'
 printf '%s\n' 'authorization: bearer lowercaseBearerTokenValue1234567890'
 printf '%s\n' 'api-key: hyphenatedKeyValue1234567890'
 printf '%s\n' 'TOKEN=*starredSecretValue*'
-printf '%s\n' 'Authorization: Bearer @secretAtValue123'
+printf '%s\n' 'Authorization: Bearer @secretAtValue123; echo KEEPATSECRET123'
 printf '%s\n' 'Authorization: my_scheme: SECRETZZ9; echo TAILZZ9'
 printf '%s\n' 'Authorization: 2Scheme: SECRETZZ10; echo TAILZZ10'
 printf '%s\n' 'Authorization: x~y: SECRETZZ11; echo TAILZZ11'
@@ -1200,6 +1200,7 @@ grep -Fq 'hyphenatedKeyValue' "$line_file" && exit 42
 grep -Fq 'token: ***REDACTED***' "$line_file" || exit 43
 grep -Fq 'starredSecretValue' "$line_file" && exit 79
 grep -Fq 'secretAtValue123' "$line_file" && exit 80
+grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPATSECRET123' "$line_file" || exit 9522
 grep -Fq 'Authorization: Basic ***REDACTED***' "$line_file" || exit 85
 grep -Fq 'basicCredentialValue' "$line_file" && exit 86
 grep -Fq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 87
