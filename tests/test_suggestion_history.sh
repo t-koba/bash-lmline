@@ -280,7 +280,7 @@ for shell in bash zsh; do
     history_dir="$tmp/long-history-$shell-attempt$attempt"
     if check_concurrent_records "$shell" \
       "$history_dir" "$tmp/long-$shell-attempt$attempt" \
-      "$tmp/long-config-$shell-attempt$attempt" SHORT SHORT 15; then
+      "$tmp/long-config-$shell-attempt$attempt" SHORT SHORT 8; then
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
