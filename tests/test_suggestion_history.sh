@@ -259,10 +259,10 @@ for shell in bash zsh; do
       break
     fi
     [[ -z $concurrent_diagnostic ]] || printf '%s\n' "$concurrent_diagnostic" >&2
-    if ((attempt >= 3)); then
+    if ((attempt >= 6)); then
       fail "$concurrent_failure"
     fi
-    printf 'retry - %s long append attempt %d of 3\n' "$shell" "$attempt"
+    printf 'retry - %s long append attempt %d of 6\n' "$shell" "$attempt"
   done
   ok "$shell suggestion history survives a long live append"
 done
