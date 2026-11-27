@@ -638,6 +638,13 @@ printf '%s\n' 'url=https://x/?\"token\"%3DEscapedQuotedSecret0301&y=KEEPQ1; echo
 printf '%s\n' "url=https://x/?\\'token\\'%3DEscapedQuotedSecret0302&y=KEEPQ2"
 printf '%s\n' 'url=https://x/?\"Authorization\"%3DBearer%20EscapedAuthSecret0303&y=KEEPQ3'
 printf '%s\n' "url=https://x/?\\'Authorization\\'%3DBearer%20EscapedAuthSecret0304&y=KEEPQ4"
+# Encoded separators must mask adjacent segments, quoted values and %20 padding without eating the tail.
+printf '%s\n' 'url=https://x/?\"Authorization\"%3DSYNTHADJENCA1\"SYNTHADJENCB1\"&y=1; echo KEEPADJENC1'
+printf '%s\n' 'url=https://x/?\"token\"%3DSYNTHADJENCA2\"SYNTHADJENCB2\"&y=1; echo KEEPADJENC2'
+printf '%s\n' 'url=https://x/?\"Authorization\"%3D\"SYNTHQUOTEENCA1\"&y=1; echo KEEPQUOTEENC1'
+printf '%s\n' 'url=https://x/?\"token\"%3D\"SYNTHQUOTEENCA2\"&y=1; echo KEEPQUOTEENC2'
+printf '%s\n' 'url=https://x/?\"Authorization\"%20%3D%20Bearer%20SYNTHPADENCA1&y=KEEPPADENC1'
+printf "%s\n" "url=https://x/?\\'Authorization\\'%20%3D%20Bearer%20SYNTHPADENCA2&y=KEEPPADENC2"
 printf '%s\n' 'curl "https://example.test/?q=sk_live_StripeBodyTail123&x=1"'
 printf '%s\n' 'sk_test_StripeCommaBody456,next=1'
 printf '%s\n' 'curl "https://example.test/?q=ghp_GitHubBodyTail456&x=1"'
@@ -1875,6 +1882,21 @@ grep -Fq 'EscapedAuthSecret0303' "$line_file" && exit 350
 grep -Fq 'KEEPQ3' "$line_file" || exit 351
 grep -Fq 'EscapedAuthSecret0304' "$line_file" && exit 352
 grep -Fq 'KEEPQ4' "$line_file" || exit 353
+# Adjacent segments, quoted values and padded separators mask every secret and keep the tail.
+grep -Fq 'SYNTHADJENCA1' "$line_file" && exit 480
+grep -Fq 'SYNTHADJENCB1' "$line_file" && exit 481
+grep -Fq 'KEEPADJENC1' "$line_file" || exit 482
+grep -Fq 'SYNTHADJENCA2' "$line_file" && exit 483
+grep -Fq 'SYNTHADJENCB2' "$line_file" && exit 484
+grep -Fq 'KEEPADJENC2' "$line_file" || exit 485
+grep -Fq 'SYNTHQUOTEENCA1' "$line_file" && exit 486
+grep -Fq 'KEEPQUOTEENC1' "$line_file" || exit 487
+grep -Fq 'SYNTHQUOTEENCA2' "$line_file" && exit 488
+grep -Fq 'KEEPQUOTEENC2' "$line_file" || exit 489
+grep -Fq 'SYNTHPADENCA1' "$line_file" && exit 490
+grep -Fq 'KEEPPADENC1' "$line_file" || exit 491
+grep -Fq 'SYNTHPADENCA2' "$line_file" && exit 492
+grep -Fq 'KEEPPADENC2' "$line_file" || exit 493
 grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
 grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
 grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
