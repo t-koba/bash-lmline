@@ -404,7 +404,7 @@ printf '%s\n' 'curl -H "Authorization: 2Scheme: SYNTH2" 2>err; echo TAIL2'
 printf '%s\n' 'curl -H "Authorization: Foo: SYNTHG1""GLUEDG1"; echo TAILG1'
 # Known schemes are the control for the same shell shapes.
 printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHB1" "PAYLOADB1"; echo TAILB1'
-printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHBC1" -H "X: KEEPC1" https://x; echo TAILC1'
+printf '%s\n' 'curl -H "Authorization: Bearer: SYNTHBC1" -H "X: KEEPC1" https://x; echo TAILBC1'
 # A glued scheme value followed by another word keeps that word and the tail.
 printf '%s\n' 'Authorization: Bearer=SYNTHGLUED901 https://x; echo KEEPGLUEDTAIL1'
 printf '%s\n' 'Authorization: Basic:abcSYNTHGLUED902 foo; echo KEEPGLUEDTAIL2'
@@ -1445,7 +1445,7 @@ grep -Fxq 'curl -H "Authorization: Foo:***REDACTED***"; echo TAILG1' "$line_file
 grep -Fq SYNTHB1 "$line_file" && exit 9518
 grep -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADB1"; echo TAILB1' "$line_file" || exit 9519
 grep -Fq SYNTHBC1 "$line_file" && exit 9520
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1' "$line_file" || exit 9521
+grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILBC1' "$line_file" || exit 9521
 grep -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1' "$line_file" || exit 1018
 grep -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2' "$line_file" || exit 1019
 grep -Fq SYNTHGLUED901 "$line_file" && exit 1020
