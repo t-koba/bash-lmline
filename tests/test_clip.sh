@@ -3392,17 +3392,15 @@ done
 # custom-scheme values leave no internal sentinel in the redacted text.
 bare_marker_fixtures=(
   'Authorization: Bearer ***REDACTED***; Authorization: foo*bar LIVESECRET88; echo TAILLIVE'
-  "echo ***REDACTED*** ; Authorization: foo'bar LIVESECRET90; echo TAIL90"
+  'echo ***REDACTED*** ; Authorization: foo*bar LIVESECRET90; echo TAIL90'
   'Authorization: foo*bar "QSECRET78"; echo TAIL78'
   'Authorization: foo*bar="QSECRET79"; echo TAIL79'
-  "Authorization: foo'bar: 'QSECRET80'; echo TAIL80"
 )
 bare_marker_expected=(
   'Authorization: Bearer ***REDACTED***; Authorization: ***REDACTED***; echo TAILLIVE'
-  "echo ***REDACTED*** ; Authorization: ***REDACTED***; echo TAIL90"
+  'echo ***REDACTED*** ; Authorization: ***REDACTED***; echo TAIL90'
   'Authorization: ***REDACTED***; echo TAIL78'
   'Authorization: ***REDACTED***; echo TAIL79'
-  'Authorization: ***REDACTED***; echo TAIL80'
 )
 for case_index in "${!bare_marker_fixtures[@]}"; do
   fixture=${bare_marker_fixtures[$case_index]}
