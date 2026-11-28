@@ -248,40 +248,18 @@ __lmline_redact_clip_text() {
   local key_prefix_escaped_dq key_prefix_escaped_sq
   local auth_prefix_quoted_dq auth_prefix_quoted_sq auth_marker auth_redacted_value
   local realm_shield_prefix=${1-}
-  local encoded_mask
+  local encoded_mask cont_token
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
   [[ -n $realm_shield_prefix ]] || return 1
-  # The internal raw mode applies the rules without joining, so a single
-  # physical line can be checked before the stream is canonicalized.
-  if [[ ${2-} != raw ]]; then
-    # Join only continuations the line rules leave unmasked: a dangling
-    # backslash after an already-redacted value is not a split credential.
-    local line acc rest masked pending= joining=0 slashes
-    local canonical=
-    while IFS= read -r line || [[ -n $line ]]; do
-      if (( joining )); then acc=$pending$line; joining=0; else acc=$line; fi
-      rest=$acc
-      slashes=0
-      while [[ -n $rest && ${rest: -1} == '\' ]]; do rest=${rest%?}; ((slashes++)); done
-      if (( slashes % 2 )); then
-        rest=$(printf '%s\n' "$acc" | __lmline_redact_clip_text "$realm_shield_prefix" raw) || return 1
-        masked=$rest
-        while [[ -n $masked && ${masked: -1} == '\' ]]; do masked=${masked%?}; done
-        if [[ $masked != *'***REDACTED***' && $masked != *"***REDACTED***'" &&
-              $masked != *'***REDACTED***"' && $masked != *'***REDACTED PRIVATE KEY***' ]]; then
-          pending=${acc%?}
-          joining=1
-          continue
-        fi
-      fi
-      canonical+="$acc"$'\n'
-    done
-    if (( joining )); then canonical+="${pending}\\"$'\n'; fi
-    if [[ -n $canonical ]]; then
-      printf '%s' "$canonical" | __lmline_redact_clip_text "$realm_shield_prefix" raw
-      return $?
-    fi
-    return 0
+  # A backslash-newline outside single quotes is a shell continuation that can
+  # split a credential across physical lines. Shield each such continuation
+  # with a per-call alphanumeric token before the line rules run, then restore
+  # the token to backslash-newline afterwards. Inside single quotes the
+  # backslash is literal, so those lines stay as they are; an even number of
+  # trailing backslashes is an escaped backslash, not a continuation.
+  cont_token="LMLINECONT${realm_shield_prefix//[^A-Za-z0-9]/}"
+  if [[ $cont_token == LMLINECONT ]]; then
+    cont_token="LMLINECONT0"
   fi
   # The encoded-credential placeholder is unique per clip call, so pasted
   # text cannot impersonate it and suppress later quoted-header rules.
@@ -388,7 +366,87 @@ __lmline_redact_clip_text() {
   # internal one followed by credential text stays part of the value.
   # The terminal scheme rule skips canonical markers by their leading * or @
   # so a second pass keeps its closing quote and command group.
-  awk '
+  awk -v shield="$cont_token" '
+    BEGIN {
+      sq = sprintf("%c", 39)
+      dq = sprintf("%c", 34)
+      bs = sprintf("%c", 92)
+      in_s = 0
+      in_d = 0
+      buf = ""
+      has_buf = 0
+    }
+    function count_trail(s,    n, i) {
+      n = 0
+      for (i = length(s); i >= 1 && substr(s, i, 1) == bs; i--) n++
+      return n
+    }
+    function scan_prefix(s,    i, c, n) {
+      n = length(s)
+      i = 1
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (in_s) {
+          if (c == sq) in_s = 0
+          i++
+        } else if (in_d) {
+          if (c == bs) { i += 2 }
+          else if (c == dq) { in_d = 0; i++ }
+          else { i++ }
+        } else {
+          if (c == bs) { if (i < n) i += 2; else i++ }
+          else if (c == sq) { in_s = 1; i++ }
+          else if (c == dq) { in_d = 1; i++ }
+          else { i++ }
+        }
+      }
+    }
+    {
+      line = $0
+      # A buffered continuation and a new credential on this line are
+      # separate credentials, not one split value: emit the buffered line
+      # with its backslash preserved instead of swallowing the next line.
+      # A split value continues with a bare fragment (no new prefix), while
+      # a new header, URL or command starts its own credential.
+      if (has_buf) {
+        ll = tolower(line)
+        if (match(ll, /^[[:space:]]*(authorization[[:space:]]*:|.*api-key[[:space:]]*:|url=|curl([[:space:]]|$))/)) {
+          prev = substr(buf, 1, length(buf) - length(shield)) bs
+          print prev
+          buf = ""
+          has_buf = 0
+        }
+      }
+      n_bs = count_trail(line)
+      odd = (n_bs % 2)
+      pre_len = length(line) - n_bs
+      prefix = substr(line, 1, pre_len)
+      trail = substr(line, pre_len + 1)
+      scan_prefix(prefix)
+      # Inside single quotes the backslash is literal, except when the
+      # logical line already holds a complete header prefix (a value split):
+      # then joining lets the line rules mask the whole credential instead
+      # of leaking its second half. Prefix splits without a complete prefix
+      # stay unjoined to avoid creating a credential from literal text.
+      cred_line = tolower(buf prefix)
+      is_cred = (index(cred_line, "authorization:") > 0 || index(cred_line, "api-key:") > 0)
+      if (odd && (!in_s || is_cred)) {
+        keep = (n_bs > 1) ? substr(trail, 1, n_bs - 1) : ""
+        if (has_buf) buf = buf prefix keep shield
+        else { buf = prefix keep shield; has_buf = 1 }
+        next
+      } else {
+        if (has_buf) { print buf line; buf = ""; has_buf = 0 }
+        else print line
+      }
+    }
+    END {
+      if (has_buf) {
+        buf = substr(buf, 1, length(buf) - length(shield)) bs
+        print buf
+      }
+    }
+  ' | awk '
     BEGIN { sq = sprintf("%c", 39) }
     function is_sep(c) {
       return c == ";" || c == "&" || c == "|" || c == "(" || c == ")" || c == "<" || c == ">"
@@ -769,7 +827,23 @@ __lmline_redact_clip_text() {
     -e "s/([?][^[:space:]&;,]*)([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([\"'])/\1\2\3:***REDACTED***\7/Ig" \
     -e 's#@@LMLINE_DBCMD@@##g' \
     -e "s/${encoded_mask}/***REDACTED***/Ig" \
-    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig"
+    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig" | awk -v shield="$cont_token" '
+    BEGIN {
+      bs = sprintf("%c", 92)
+      nl = sprintf("%c", 10)
+      repl = bs nl
+    }
+    {
+      line = $0
+      out = ""
+      while ((pos = index(line, shield)) > 0) {
+        out = out substr(line, 1, pos - 1) repl
+        line = substr(line, pos + length(shield))
+      }
+      out = out line
+      printf "%s\n", out
+    }
+  '
 }
 
 __lmline_prepare_clip_input() {

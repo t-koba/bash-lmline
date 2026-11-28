@@ -3681,58 +3681,85 @@ for case_index in "${!grouped_negative_fixtures[@]}"; do
   printf '%s\n' "$fixture" | bash -n || fail "grouped non-credential $case_index is not valid shell: $fixture"
 done
 
-# A shell backslash-newline can split a credential flag or its value. Join
-# those continuations before redacting; a continuation after an already
-# masked value, or after an escaped backslash, stays as it was.
+# A shell continuation can split a credential across physical lines. The
+# redactor shields each continuation outside single quotes with a per-call
+# alphanumeric token, runs the line rules, then restores the token to
+# backslash-newline. Inside single quotes the backslash is literal, so those
+# lines stay as they are unless they hold a complete header prefix (a value
+# split); an even number of trailing backslashes is an escaped backslash.
+# The --user= whitespace rule still covers shielded splits such as
+# --user=SHIELD alice:SECRET.
 split_continuation_fixtures=(
-  'curl --user=ali\
-ce:SECRETJOIN1; echo MARKJ1'
-  'curl -u \
-alice:SECRETJOIN2; echo MARKJ2'
-  'curl --user=\
- alice:SECRETCONT123; echo MARKCONT'
-  'curl --user=ali\
- ce:SECRETMID123; echo MARKMID'
+  $'curl --user=ali\\\nce:SECRETJOIN1; echo MARKJ1'
+  $'curl -u \\\nalice:SECRETJOIN2; echo MARKJ2'
+  $'curl --user=\\\n alice:SECRETCONT123; echo MARKCONT'
+  $'curl --user=ali\\\n ce:SECRETMID123; echo MARKMID'
   'curl --user=alice:SECRETPLAIN123; echo MARKPLAIN'
-  'curl --user=alice:SECRETIN123\
-; echo MARKIN'
-  'curl --user=alice:SECRETEVEN123\\
-echo MARKEVEN'
-  'curl --user=alice:***REDACTED***\
-; echo MARKMASKED'
-  'Authorization: ***REDACTED***; curl --user=ali\
-ce:SECRETSPLIT9; echo MARKSPLIT9'
+  $'curl --user=alice:SECRETIN123\\\n; echo MARKIN'
+  $'curl --user=alice:SECRETEVEN123\\\\\necho MARKEVEN'
+  $'curl --user=alice:***REDACTED***\\\n; echo MARKMASKED'
+  $'Authorization: ***REDACTED***; curl --user=ali\\\nce:SECRETSPLIT9; echo MARKSPLIT9'
+  $'Authorization: Bearer HALFA\\\nHALFB10; echo TAILA10'
+  $'curl -H "X-Api-Key: HALFA\\\nHALFB1" https://x; echo TAILQ1'
+  $'curl -H \'X-Api-Key: HALFA\\\nHALFB1\' https://x; echo TAILQ1'
+  $'curl -H "X-Api-Key: \'HALFA\\\nHALFB1\'" https://x; echo TAILQ1'
 )
 split_continuation_expected=(
-  'curl --user=alice:***REDACTED***; echo MARKJ1'
-  'curl -u alice:***REDACTED***; echo MARKJ2'
+  $'curl --user=ali\\\nce:***REDACTED***; echo MARKJ1'
+  $'curl -u \\\nalice:***REDACTED***; echo MARKJ2'
   'curl --user=***REDACTED***; echo MARKCONT'
   'curl --user=***REDACTED***; echo MARKMID'
   'curl --user=alice:***REDACTED***; echo MARKPLAIN'
-  'curl --user=alice:***REDACTED***\
-; echo MARKIN'
-  'curl --user=alice:***REDACTED***
-echo MARKEVEN'
-  'curl --user=alice:***REDACTED***\
-; echo MARKMASKED'
-  'Authorization: ***REDACTED***; curl --user=alice:***REDACTED***; echo MARKSPLIT9'
+  'curl --user=alice:***REDACTED***; echo MARKIN'
+  $'curl --user=alice:***REDACTED***\necho MARKEVEN'
+  'curl --user=alice:***REDACTED***; echo MARKMASKED'
+  $'Authorization: ***REDACTED***; curl --user=ali\\\nce:***REDACTED***; echo MARKSPLIT9'
+  'Authorization: Bearer ***REDACTED***; echo TAILA10'
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo TAILQ1'
+  "curl -H 'X-Api-Key: ***REDACTED***' https://x; echo TAILQ1"
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo TAILQ1'
 )
 split_continuation_secrets=(
   SECRETJOIN1 SECRETJOIN2 SECRETCONT123 SECRETMID123 SECRETPLAIN123
   SECRETIN123 SECRETEVEN123 NOTPRESENT SECRETSPLIT9
+  HALFB10 HALFB1 HALFB1 HALFB1
 )
 split_continuation_tails=(
   'echo MARKJ1' 'echo MARKJ2' 'echo MARKCONT' 'echo MARKMID' 'echo MARKPLAIN'
   'echo MARKIN' 'echo MARKEVEN' 'echo MARKMASKED' 'echo MARKSPLIT9'
+  'echo TAILA10' 'echo TAILQ1' 'echo TAILQ1' 'echo TAILQ1'
 )
 for case_index in "${!split_continuation_fixtures[@]}"; do
   fixture=${split_continuation_fixtures[$case_index]}
   expected=${split_continuation_expected[$case_index]}
   printf '%s\n' "$fixture" | bash -n || fail "split continuation $case_index is not valid shell: $fixture"
+  printf '%s\n' "$expected" | bash -n || fail "split continuation $case_index expected is not valid shell: $expected"
   expect_exact "split continuation $case_index" "$fixture" "$expected"
+  expect_exact "split continuation second pass $case_index" "$expected" "$expected"
   expect_idempotent_shell "split continuation $case_index" "$fixture" \
     "${split_continuation_secrets[$case_index]}" "${split_continuation_tails[$case_index]}"
 done
+
+# Single-quoted literals keep their backslash-newline byte-for-byte: the
+# backslash is literal inside single quotes, not a continuation. The printf
+# format string and an unquoted non-credential continuation are the same
+# controls: no masking, second pass identical, valid shell.
+shield_preservation_fixtures=(
+  $'echo \'abc\\\ndef\'; echo TAILSQ'
+  $'printf \'%s\\\nEND\''
+  $'echo foo\\\nbar; echo TAILNC'
+)
+for case_index in "${!shield_preservation_fixtures[@]}"; do
+  fixture=${shield_preservation_fixtures[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "shield preservation $case_index is not valid shell: $fixture"
+  expect_exact "shield preservation $case_index" "$fixture" "$fixture"
+  expect_exact "shield preservation second pass $case_index" "$fixture" "$fixture"
+  preserved=$(redact_clip_line "$fixture") || fail "shield preservation $case_index redaction failed"
+  [[ $preserved == "$fixture" ]] || fail "shield preservation $case_index changed bytes: $preserved"
+  printf '%s\n' "$preserved" | bash -n || fail "shield preservation $case_index output is not valid shell: $preserved"
+  [[ $preserved != *'***REDACTED***'* ]] || fail "shield preservation $case_index over-masked: $preserved"
+done
+
 
 # The shield nonce must be unique per clip call even in zsh command substitution.
 if command -v zsh >/dev/null 2>&1; then
