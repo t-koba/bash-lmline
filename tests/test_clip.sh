@@ -3388,6 +3388,34 @@ for case_index in "${!bare_tchar_fixtures[@]}"; do
   [[ $second == "$actual" ]] || fail "bare tchar scheme $case_index second pass changed $actual to $second"
 done
 
+# Live credentials beside canonical markers are still masked, and quoted bare
+# custom-scheme values leave no internal sentinel in the redacted text.
+bare_marker_fixtures=(
+  'Authorization: Bearer ***REDACTED***; Authorization: foo*bar LIVESECRET88; echo TAILLIVE'
+  "echo ***REDACTED*** ; Authorization: foo'bar LIVESECRET90; echo TAIL90"
+  'Authorization: foo*bar "QSECRET78"; echo TAIL78'
+  'Authorization: foo*bar="QSECRET79"; echo TAIL79'
+  "Authorization: foo'bar: 'QSECRET80'; echo TAIL80"
+)
+bare_marker_expected=(
+  'Authorization: Bearer ***REDACTED***; Authorization: ***REDACTED***; echo TAILLIVE'
+  "echo ***REDACTED*** ; Authorization: ***REDACTED***; echo TAIL90"
+  'Authorization: ***REDACTED***; echo TAIL78'
+  'Authorization: ***REDACTED***; echo TAIL79'
+  'Authorization: ***REDACTED***; echo TAIL80'
+)
+for case_index in "${!bare_marker_fixtures[@]}"; do
+  fixture=${bare_marker_fixtures[$case_index]}
+  expected=${bare_marker_expected[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "bare marker $case_index fixture is not valid shell: $fixture"
+  printf '%s\n' "$expected" | bash -n || fail "bare marker $case_index expected is not valid shell: $expected"
+  actual=$(redact_clip_exact "$fixture") || fail "bare marker $case_index redaction failed"
+  [[ $actual == "$expected" ]] || fail "bare marker $case_index: got $actual"
+  [[ $actual != *LMLINEBARE* ]] || fail "bare marker $case_index leaked an internal sentinel"
+  second=$(redact_clip_exact "$actual") || fail "bare marker $case_index second pass failed"
+  [[ $second == "$actual" ]] || fail "bare marker $case_index second pass changed $actual to $second"
+done
+
 # A star-leading bare value is live credential data, and canonical markers
 # stay idempotent while the following quoted word survives.
 star_leading_fixtures=(

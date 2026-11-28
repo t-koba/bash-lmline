@@ -291,7 +291,7 @@ __lmline_redact_clip_text() {
   # treated as credential data so a star-leading value cannot lose its mask.
   auth_scheme_bare_base="[!#\$%&+.^_\`|~0-9A-Za-z-]"
   auth_scheme_bare="(${auth_scheme_bare_base}+${auth_scheme_bare_noquote}*\\*${auth_scheme_bare_noquote}*|${auth_scheme_bare_base}+('${auth_scheme_bare_noquote}+)+)"
-  auth_scheme_bare_canonical='LMLINEBARE'
+  auth_scheme_bare_canonical=''
   auth_prefix_bare="(^|[^A-Za-z0-9_\"'])(Authorization[[:space:]]*:[[:space:]]*)"
   auth_scheme_any="(${auth_scheme_token}+)"
   auth_scheme="(${auth_scheme_token}+[[:space:]]+)"
@@ -730,7 +730,9 @@ __lmline_redact_clip_text() {
     }
     { print process($0) }
   ' | sed -E \
-    -e "/(\\*\\*\\*REDACTED\\*\\*\\*|@@LMLINE_REDACTED@@)/!s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]+|[:=]+)/\\1\\2${auth_scheme_bare_canonical}:/Ig" \
+    -e "s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]*[:=]+[[:space:]]*|[[:space:]]+)[\"'](([^\"\\\\]|\\\\.)*)[\"']/\\1\\2@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]*[:=]+[[:space:]]*|[[:space:]]+)'(([^'\\\\]|\\\\.)*)'/\\1\\2@@LMLINE_REDACTED@@/Ig" \
+    -e "s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]+|[:=]+)/\\1\\2${auth_scheme_bare_canonical}:/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([[:space:]]+|[^[:space:]\"':;,|&<>/]+[[:space:]]+)[^[:space:]\"':;,|&<>/]+:[^[:space:]\"';,&|<>/]+/\1\2***REDACTED***/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
