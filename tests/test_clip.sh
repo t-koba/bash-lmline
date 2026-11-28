@@ -3807,6 +3807,80 @@ for case_index in "${!shield_preservation_fixtures[@]}"; do
   [[ $preserved != *'***REDACTED***'* ]] || fail "shield preservation $case_index over-masked: $preserved"
 done
 
+# Open-quote continuations keep the logical line joined: a buffered prefix
+# that ends inside a quote is not flushed even when the next line starts a
+# header, so the closing quote and command tail survive with valid syntax.
+open_quote_fixture=$'echo "hello\\\nAuthorization: Bearer SECRETN2"; echo TAILN2'
+open_quote_expected=$'echo "hello\\\nAuthorization: Bearer ***REDACTED***"; echo TAILN2'
+printf '%s\n' "$open_quote_fixture" | bash -n || fail "open-quote flush fixture is not valid shell"
+printf '%s\n' "$open_quote_expected" | bash -n || fail "open-quote flush expected is not valid shell"
+expect_exact "open-quote flush" "$open_quote_fixture" "$open_quote_expected"
+expect_exact "open-quote flush second pass" "$open_quote_expected" "$open_quote_expected"
+expect_idempotent_shell "open-quote flush" "$open_quote_fixture" "SECRETN2" "echo TAILN2"
+
+# Single-quoted credential splits are joined via the header-aware gate:
+# -u/--user, --password, spaced Authorization, api_key and key assignments
+# mask fully with tails preserved; ordinary literals stay byte-identical.
+single_quote_cred_fixtures=(
+  $'curl -u \'alice:PASSA\\\nWORDA\' https://x; echo TAILUA'
+  $'mysql --password \'PASSA\\\nWORDA\'; echo TAILPA'
+  $'export \'MYKEY=PASSA\\\nWORDA\'; echo TAILKE'
+  $'curl -H \'Authorization : Bearer HALFS\\\nHALFT\' https://x; echo TAILH1'
+  $'curl -H \'api_key: SECRETK1\\\nSECRETK2\' https://x; echo TAILK'
+)
+single_quote_cred_expected=(
+  "curl -u 'alice:***REDACTED***' https://x; echo TAILUA"
+  "mysql --password '***REDACTED***'; echo TAILPA"
+  "export 'MYKEY=***REDACTED***'; echo TAILKE"
+  "curl -H 'Authorization : Bearer ***REDACTED***' https://x; echo TAILH1"
+  "curl -H 'api_key: ***REDACTED***' https://x; echo TAILK"
+)
+single_quote_cred_secrets=(
+  PASSA PASSA PASSA HALFS SECRETK1
+)
+single_quote_cred_tails=(
+  'echo TAILUA' 'echo TAILPA' 'echo TAILKE' 'echo TAILH1' 'echo TAILK'
+)
+for case_index in "${!single_quote_cred_fixtures[@]}"; do
+  fixture=${single_quote_cred_fixtures[$case_index]}
+  expected=${single_quote_cred_expected[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "single-quote cred $case_index is not valid shell: $fixture"
+  printf '%s\n' "$expected" | bash -n || fail "single-quote cred $case_index expected is not valid shell: $expected"
+  expect_exact "single-quote cred $case_index" "$fixture" "$expected"
+  expect_exact "single-quote cred second pass $case_index" "$expected" "$expected"
+  expect_idempotent_shell "single-quote cred $case_index" "$fixture" "${single_quote_cred_secrets[$case_index]}" "${single_quote_cred_tails[$case_index]}"
+done
+
+# Non-credential single-quoted backslash-newlines stay byte-identical.
+noncred_fixtures=(
+  $'echo \'abc\\\ndef\''
+  $'printf \'%s\\\nEND\''
+)
+for case_index in "${!noncred_fixtures[@]}"; do
+  fixture=${noncred_fixtures[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "non-credential control $case_index is not valid shell: $fixture"
+  expect_exact "non-credential control $case_index" "$fixture" "$fixture"
+  expect_exact "non-credential control second pass $case_index" "$fixture" "$fixture"
+  preserved=$(redact_clip_line "$fixture") || fail "non-credential control $case_index redaction failed"
+  [[ $preserved == "$fixture" ]] || fail "non-credential control $case_index changed bytes: $preserved"
+  printf '%s\n' "$preserved" | bash -n || fail "non-credential control $case_index output is not valid shell: $preserved"
+  [[ $preserved != *'***REDACTED***'* ]] || fail "non-credential control $case_index over-masked: $preserved"
+done
+
+# Pasted continuation tokens survive byte-identical via protection tokens.
+deterministic_prefix='@@LMLINE_REALM_SHIELD_99_99_'
+deterministic_raw="LMLINECONT${deterministic_prefix//[^A-Za-z0-9]/}"
+for suffix in LF CR P ""; do
+  token="${deterministic_raw}${suffix}"
+  fixture="echo ${token} tail; echo KEEPTOK"
+  actual=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$3" | __lmline_redact_clip_text "$2"' _ "$repo_dir/lmline/actions.bash" "$deterministic_prefix" "$fixture") || fail "token collision $suffix redaction failed"
+  [[ $actual == "$fixture" ]] || fail "token collision $suffix changed bytes: $actual"
+  printf '%s\n' "$actual" | bash -n || fail "token collision $suffix output is not valid shell: $actual"
+  second=$(bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; printf "%s\n" "$3" | __lmline_redact_clip_text "$2"' _ "$repo_dir/lmline/actions.bash" "$deterministic_prefix" "$actual") || fail "token collision $suffix second pass failed"
+  [[ $second == "$actual" ]] || fail "token collision $suffix second pass changed bytes: $second"
+done
+ok "token collision protection"
+
 
 # The shield nonce must be unique per clip call even in zsh command substitution.
 if command -v zsh >/dev/null 2>&1; then
