@@ -342,6 +342,7 @@ LMLINE_KEY_FIX	\C-x\C-f	fix key binding
 LMLINE_KEY_CLIP	\C-x\C-v	clipboard key binding
 LMLINE_CLIPBOARD_PROVIDER	auto	clipboard provider name
 LMLINE_CLIPBOARD_PROVIDERS_FILE	installed defaults	provider TSV path
+LMLINE_CREDENTIAL_ARGUMENTS_FILE	installed defaults	command credential-argument TSV path
 LMLINE_CLIP_MAX_INPUT_BYTES	65536	redacted clipboard input byte limit
 LMLINE_CLIP_USERINFO_MIN	8	minimum bare colonless URL username length to mask (1..255; invalid values use 8)
 LMLINE_SELECTOR	empty	Bash-only external candidate selector

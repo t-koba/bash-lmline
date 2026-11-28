@@ -1046,6 +1046,18 @@ AIza... Google API keys (body redacted, prefix kept)
 PEM private-key blocks (whole block redacted, body included)
 ```
 
+Command-specific argument redaction uses `LMLINE_CREDENTIAL_ARGUMENTS_FILE`,
+which defaults to the installed `credential_arguments.tsv`. Every non-comment
+TSV row has four columns:
+`command<TAB>credential_flags<TAB>value_flags<TAB>positional_keys`. The command
+is a whole phrase (for example `docker login`); `credential_flags` name values
+to mask, `value_flags` name values to preserve, and `positional_keys` name bare
+keys whose following argument is masked. Flag lists are comma-separated and
+cover short clusters or attached values (`-vpVALUE`), spaced values, and long
+options (`--password=VALUE` or `--password VALUE`). Set the variable to a
+readable TSV path to override the defaults; an unreadable explicit path fails
+closed so no pasted text is sent.
+
 ```bash
 lmline clip --status
 lmline clip --providers
@@ -1571,6 +1583,7 @@ single-setting help. Detailed tables are grouped below.
 | `LMLINE_KEY_CLIP` | `\C-x\C-v` | clipboard key binding |
 | `LMLINE_CLIPBOARD_PROVIDER` | `auto` | clipboard provider name |
 | `LMLINE_CLIPBOARD_PROVIDERS_FILE` | installed defaults | provider TSV path |
+| `LMLINE_CREDENTIAL_ARGUMENTS_FILE` | installed defaults | command credential-argument TSV path |
 | `LMLINE_CLIP_MAX_INPUT_BYTES` | `65536` | redacted clipboard input byte limit |
 | `LMLINE_CLIP_USERINFO_MIN` | `8` | minimum bare URL username length to mask (`1`–`255`; otherwise defaults to `8`) |
 | `LMLINE_SELECTOR` | empty | Bash-only external candidate selector |

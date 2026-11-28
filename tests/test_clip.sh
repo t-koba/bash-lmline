@@ -2586,8 +2586,22 @@ sshpass_ansi="sshpass -p\$'${sp23}' ssh host; echo ${sk23}"
 sshpass_ansi_spaced="sshpass -p \$'${sp24}' ssh host; echo ${sk24}"
 sshpass_comma="sshpass -p SEC,${sp25} ssh host; echo ${sk25}"
 expect_masked 'sshpass password with later ssh port' "$sshpass_later_port" "$sp22" "$sk22"
-expect_exact 'sshpass leaves later ssh port intact' "$sshpass_later_port" \
-  "sshpass -p***REDACTED*** ssh -p 2222 host; echo ${sk22}"
+# A line-based scanner cannot know that -p after the ssh operand belongs to
+# another command; fail closed and mask it rather than leak a same-named secret.
+expect_exact 'sshpass nested command flag is fail-closed redacted' "$sshpass_later_port" \
+  "sshpass -p***REDACTED*** ssh -p ***REDACTED*** host; echo ${sk22}"
+openssl_late_key='openssl enc -k SECRET_A input.txt -K SECRET_B; echo KEEPLATE1'
+expect_masked 'openssl masks credential after filename operand' "$openssl_late_key" 'SECRET_A' 'KEEPLATE1'
+expect_masked 'openssl masks second key after filename operand' "$openssl_late_key" 'SECRET_B' 'KEEPLATE1'
+docker_late_password='docker login -p SECRET_A registry -p SECRET_B; echo KEEPLATE2'
+expect_masked 'docker masks password after registry operand' "$docker_late_password" 'SECRET_A' 'KEEPLATE2'
+expect_masked 'docker masks repeated password after registry operand' "$docker_late_password" 'SECRET_B' 'KEEPLATE2'
+redis_late_password='redis-cli -a SECRET_A key1 -a SECRET_B; echo KEEPLATE3'
+expect_masked 'redis masks password after key operand' "$redis_late_password" 'SECRET_A' 'KEEPLATE3'
+expect_masked 'redis masks repeated password after key operand' "$redis_late_password" 'SECRET_B' 'KEEPLATE3'
+aws_late_key='aws configure set aws_secret_access_key SECRET_A region us-east-1 aws_access_key_id SECRET_B; echo KEEPLATE4'
+expect_masked 'aws masks key after region operand' "$aws_late_key" 'SECRET_A' 'KEEPLATE4'
+expect_masked 'aws masks access key after region operand' "$aws_late_key" 'SECRET_B' 'KEEPLATE4'
 expect_masked 'sshpass ANSI-C quoted password' "$sshpass_ansi" "$sp23" "$sk23"
 expect_exact 'sshpass ANSI-C quoted password output' "$sshpass_ansi" \
   "sshpass -p\$'***REDACTED***' ssh host; echo ${sk23}"
@@ -4109,5 +4123,145 @@ long_cont_elapsed=$(( SECONDS - long_cont_start ))
 (( long_cont_elapsed <= 3 )) || fail "long continuation took ${long_cont_elapsed}s, expected <=3s"
 cmp -s "$long_cont_tmp" "$long_cont_out" || fail "long continuation changed bytes"
 ok "long continuation linear"
+
+
+# Command-specific credential arguments come from the installed policy TSV.
+# Values are assembled from parts so no secret-shaped literal enters the tree.
+arg_word='SECRET'
+arg_tail='TTT'
+d1="${arg_word}${arg_tail}141"
+d2="${arg_word}${arg_tail}142"
+d3="${arg_word}${arg_tail}143"
+d4="${arg_word}${arg_tail}144"
+r1="${arg_word}${arg_tail}145"
+o1="${arg_word}${arg_tail}146"
+o2="${arg_word}${arg_tail}147"
+a1="${arg_word}${arg_tail}148"
+d5="${arg_word}${arg_tail}149"
+custom1="${arg_word}${arg_tail}152"
+
+docker_attached="docker login -p${d1} --username alice; echo KEEP141"
+docker_separated="docker login -p ${d2} --username alice; echo KEEP142"
+docker_quoted="docker login --password \"${d3}\" --username alice; echo KEEP143"
+docker_long="docker login --password ${d4} --username alice; echo KEEP144"
+redis_port="redis-cli -a ${r1} -p 6379; echo KEEP145"
+openssl_key="openssl enc -aes-256-cbc -k ${o1} -in input.txt; echo KEEP146"
+openssl_long="openssl enc -passin ${o2} -aes-256-cbc; echo KEEP147"
+aws_key="aws configure set aws_secret_access_key ${a1}; echo KEEP148"
+
+expect_masked 'docker attached password' "$docker_attached" "$d1" 'echo KEEP141'
+expect_exact 'docker attached password output' "$docker_attached" \
+  "docker login -p***REDACTED*** --username alice; echo KEEP141"
+expect_masked 'docker separated password' "$docker_separated" "$d2" 'echo KEEP142'
+expect_exact 'docker separated password output' "$docker_separated" \
+  "docker login -p ***REDACTED*** --username alice; echo KEEP142"
+expect_masked 'docker long quoted password' "$docker_quoted" "$d3" 'echo KEEP143'
+expect_exact 'docker long quoted password output' "$docker_quoted" \
+  "docker login --password \"***REDACTED***\" --username alice; echo KEEP143"
+expect_masked 'docker long separated password' "$docker_long" "$d4" 'echo KEEP144'
+expect_exact 'docker long separated password output' "$docker_long" \
+  "docker login --password ***REDACTED*** --username alice; echo KEEP144"
+expect_masked 'redis password keeps later port' "$redis_port" "$r1" '6379'
+expect_exact 'redis password output' "$redis_port" \
+  "redis-cli -a ***REDACTED*** -p 6379; echo KEEP145"
+expect_masked 'openssl enc key' "$openssl_key" "$o1" 'echo KEEP146'
+expect_exact 'openssl enc key output' "$openssl_key" \
+  "openssl enc -aes-256-cbc -k ***REDACTED*** -in input.txt; echo KEEP146"
+expect_masked 'openssl longest-match flag' "$openssl_long" "$o2" 'echo KEEP147'
+expect_exact 'openssl longest-match flag output' "$openssl_long" \
+  "openssl enc -passin ***REDACTED*** -aes-256-cbc; echo KEEP147"
+expect_masked 'aws positional key' "$aws_key" "$a1" 'echo KEEP148'
+expect_exact 'aws positional key output' "$aws_key" \
+  "aws configure set aws_secret_access_key ***REDACTED***; echo KEEP148"
+
+expect_idempotent_shell 'docker attached idempotent' "$docker_attached" "$d1" 'echo KEEP141'
+expect_idempotent_shell 'docker long quoted idempotent' "$docker_quoted" "$d3" 'echo KEEP143'
+expect_idempotent_shell 'redis port idempotent' "$redis_port" "$r1" '6379'
+expect_idempotent_shell 'openssl key idempotent' "$openssl_key" "$o1" 'echo KEEP146'
+expect_idempotent_shell 'aws positional idempotent' "$aws_key" "$a1" 'echo KEEP148'
+
+# Commands without a policy row keep their unrelated -p flags untouched.
+expect_exact 'unrelated docker build -p stays intact' \
+  "docker build -p ${d5}; echo KEEP149" "docker build -p ${d5}; echo KEEP149"
+expect_exact 'psql -p stays intact' \
+  'psql -p 5432 -c "echo KEEP150"' 'psql -p 5432 -c "echo KEEP150"'
+expect_exact 'redis port without credential stays intact' \
+  'redis-cli -p 6379 info; echo KEEP151' 'redis-cli -p 6379 info; echo KEEP151'
+
+# Bare operands do not end the argument scan, and each command occurrence
+# masks every credential in its own argument list. Keep controls prove that
+# the same flag spelling stays intact for commands without a policy row.
+op1="${arg_word}${arg_tail}153"
+op2="${arg_word}${arg_tail}154"
+op3="${arg_word}${arg_tail}155"
+op4="${arg_word}${arg_tail}156"
+op5="${arg_word}${arg_tail}157"
+op6="${arg_word}${arg_tail}158"
+op7="${arg_word}${arg_tail}159"
+op8="${arg_word}${arg_tail}160"
+op9="${arg_word}${arg_tail}161"
+op10="${arg_word}${arg_tail}162"
+
+docker_operand="docker login registry.example.invalid -p ${op1}; echo KEEP153"
+docker_repeat="docker login -p '${op2}' -p '${op3}'; echo KEEP154"
+redis_operand="redis-cli key1 -a ${op4} -p 6379 -a ${op5}; echo KEEP155"
+openssl_operand="openssl enc -aes-256-cbc input.txt -k ${op6} -K ${op7}; echo KEEP156"
+aws_multi="aws configure set --profile dev aws_secret_access_key ${op8} aws_access_key_id ${op9}; echo KEEP157"
+shell_wrapped="bash -c \"docker login registry.example.invalid -p ${op10}; echo KEEP158\""
+
+expect_masked 'docker registry operand keeps later password masked' "$docker_operand" "$op1" 'echo KEEP153'
+expect_exact 'docker registry operand output' "$docker_operand" \
+  "docker login registry.example.invalid -p ***REDACTED***; echo KEEP153"
+expect_masked 'docker repeated password second value masked' "$docker_repeat" "$op3" 'echo KEEP154'
+expect_exact 'docker repeated password output' "$docker_repeat" \
+  "docker login -p '***REDACTED***' -p '***REDACTED***'; echo KEEP154"
+expect_masked 'redis operand keeps later password masked' "$redis_operand" "$op5" '6379'
+expect_exact 'redis operand output' "$redis_operand" \
+  "redis-cli key1 -a ***REDACTED*** -p 6379 -a ***REDACTED***; echo KEEP155"
+expect_masked 'openssl operand keeps later key masked' "$openssl_operand" "$op7" 'echo KEEP156'
+expect_exact 'openssl operand output' "$openssl_operand" \
+  "openssl enc -aes-256-cbc input.txt -k ***REDACTED*** -K ***REDACTED***; echo KEEP156"
+expect_masked 'aws profile option keeps later keys masked' "$aws_multi" "$op9" 'echo KEEP157'
+expect_exact 'aws profile option output' "$aws_multi" \
+  "aws configure set --profile dev aws_secret_access_key ***REDACTED*** aws_access_key_id ***REDACTED***; echo KEEP157"
+expect_masked 'quoted command keeps inner credential masked' "$shell_wrapped" "$op10" 'echo KEEP158'
+expect_exact 'quoted command output' "$shell_wrapped" \
+  "bash -c \"docker login registry.example.invalid -p ***REDACTED***; echo KEEP158\""
+
+expect_idempotent_shell 'docker operand idempotent' "$docker_operand" "$op1" 'echo KEEP153'
+expect_idempotent_shell 'docker repeated idempotent' "$docker_repeat" "$op3" 'echo KEEP154'
+expect_idempotent_shell 'redis operand idempotent' "$redis_operand" "$op5" '6379'
+expect_idempotent_shell 'openssl operand idempotent' "$openssl_operand" "$op7" 'echo KEEP156'
+expect_idempotent_shell 'aws profile idempotent' "$aws_multi" "$op9" 'echo KEEP157'
+
+expect_exact 'docker run port stays intact' \
+  'docker run -d -p 3000:3000 image; echo KEEP159' \
+  'docker run -d -p 3000:3000 image; echo KEEP159'
+expect_exact 'aws non-credential setting stays intact' \
+  'aws configure set region us-east-1; echo KEEP160' \
+  'aws configure set region us-east-1; echo KEEP160'
+expect_exact 'openssl key file stays intact' \
+  'openssl enc -kfile keyfile -in input.txt; echo KEEP161' \
+  'openssl enc -kfile keyfile -in input.txt; echo KEEP161'
+
+# An explicit policy file overrides the installed defaults; an unreadable one
+# stops redaction instead of sending pasted text unmasked.
+custom_policy="$cfg_tmp/credential_arguments.tsv"
+printf 'mytool\tx\t\t\n' >"$custom_policy"
+custom_out=$(LMLINE_CREDENTIAL_ARGUMENTS_FILE="$custom_policy" \
+  redact_clip_line "mytool -x ${custom1}; echo KEEP152") || fail 'explicit policy redaction failed'
+[[ $custom_out == "mytool -x ***REDACTED***; echo KEEP152" ]] ||
+  fail "explicit policy was not applied: $custom_out"
+if LMLINE_CREDENTIAL_ARGUMENTS_FILE="$cfg_tmp/missing-credential-arguments.tsv" \
+   redact_clip_line "$docker_attached" >/dev/null 2>&1; then
+  fail 'unreadable credential arguments file did not fail closed'
+fi
+invalid_policy="$cfg_tmp/invalid-credential-arguments.tsv"
+printf 'mytool\tx|y\t\t\n' >"$invalid_policy"
+if LMLINE_CREDENTIAL_ARGUMENTS_FILE="$invalid_policy" \
+   redact_clip_line "$docker_attached" >/dev/null 2>&1; then
+  fail 'invalid credential arguments row did not fail closed'
+fi
+ok "command credential arguments"
 
 ok "clip cli"

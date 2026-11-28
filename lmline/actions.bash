@@ -250,7 +250,38 @@ __lmline_redact_clip_text() {
   local realm_shield_prefix=${1-}
   local encoded_mask cont_token cont_token_lf cont_token_cr cont_token_protect
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
+  local credential_arguments_file credential_arguments_spec
   [[ -n $realm_shield_prefix ]] || return 1
+  if [[ -n ${LMLINE_CREDENTIAL_ARGUMENTS_FILE:-} ]]; then
+    credential_arguments_file=$LMLINE_CREDENTIAL_ARGUMENTS_FILE
+  else
+    credential_arguments_file=${LMLINE_DEFAULTS_DIR:-$__LMLINE_ACTIONS_DIR/defaults}/credential_arguments.tsv
+    if [[ -n ${ZSH_VERSION-} && ! -r $credential_arguments_file ]]; then
+      # zsh does not populate BASH_SOURCE; %x inside this sourced file names it.
+      credential_arguments_file=$(eval 'printf "%s\n" "${${(%):-%x}:A:h}"' 2>/dev/null)/defaults/credential_arguments.tsv
+    fi
+  fi
+  [[ -r $credential_arguments_file ]] || {
+    printf 'lmline: credential arguments file is not readable: %s\n' "$credential_arguments_file" >&2
+    return 1
+  }
+  credential_arguments_spec=$(awk -F '\t' '
+    function invalid(value) {
+      return index(value, "|") > 0 || index(value, ":") > 0
+    }
+    /^#/ || /^[[:space:]]*$/ { next }
+    $1 == "" { next }
+    NF > 4 { exit 2 }
+    {
+      for (column = 1; column <= 4; column++)
+        if (invalid($column)) exit 2
+      printf "%s%s:%s:%s:%s", (count++ ? "|" : ""), $1, $2, $3, $4
+    }
+  ' "$credential_arguments_file") || {
+    printf 'lmline: credential arguments file has an invalid row: %s\n' \
+      "$credential_arguments_file" >&2
+    return 1
+  }
   # A backslash-newline or backslash-CR-newline outside single quotes is a
   # shell continuation that can split a credential across physical lines.
   # Shield each such continuation with a per-call alphanumeric token before
@@ -586,8 +617,7 @@ __lmline_redact_clip_text() {
         print buf
       }
     }
-  ' | awk '
-    BEGIN { sq = sprintf("%c", 39) }
+  ' | awk -v credential_spec="$credential_arguments_spec" '
     function is_sep(c) {
       return c == ";" || c == "&" || c == "|" || c == "(" || c == ")" || c == "<" || c == ">"
     }
@@ -625,80 +655,158 @@ __lmline_redact_clip_text() {
       word_text = out
       word_end = i
     }
-    function scan(s, i,    c, out, n, w, k, prefix, rest, ch, rem, cluster_state) {
-      out = ""
-      n = length(s)
-      scan_end = n + 1
-      while (i <= n) {
+    BEGIN {
+      sq = sprintf("%c", 39)
+      no_value = ",v,e,T,h,"
+      rule_count = 0
+      rows = split(credential_spec, rule_rows, "[|]")
+      for (r = 1; r <= rows; r++) {
+        if (rule_rows[r] == "") continue
+        fields = split(rule_rows[r], cols, ":")
+        for (pad = fields + 1; pad <= 4; pad++) cols[pad] = ""
+        rule_count++
+        rule_cmd[rule_count] = tolower(cols[1])
+        rule_cred[rule_count] = "," cols[2] ","
+        rule_keep[rule_count] = "," cols[3] ","
+        rule_pos[rule_count] = "," tolower(cols[4]) ","
+        cred_n[rule_count] = split(cols[2], tmp_flags, ",")
+        for (j = 1; j <= cred_n[rule_count]; j++) cred_f[rule_count, j] = tmp_flags[j]
+        keep_n[rule_count] = split(cols[3], tmp_flags, ",")
+        for (j = 1; j <= keep_n[rule_count]; j++) keep_f[rule_count, j] = tmp_flags[j]
+      }
+    }
+    function has_flag(list, flag) {
+      return index(list, "," flag ",") > 0
+    }
+    function match_long(name,    j, f, best) {
+      matched_flag = ""; matched_kind = ""; best = 0
+      for (j = 1; j <= cred_n[cur_rule]; j++) {
+        f = cred_f[cur_rule, j]
+        if (f != "" && tolower(f) == tolower(name) && length(f) > best) {
+          best = length(f); matched_flag = f; matched_kind = "cred"
+        }
+      }
+      for (j = 1; j <= keep_n[cur_rule]; j++) {
+        f = keep_f[cur_rule, j]
+        if (f != "" && tolower(f) == tolower(name) && length(f) > best) {
+          best = length(f); matched_flag = f; matched_kind = "keep"
+        }
+      }
+    }
+    # Short flags are case-sensitive; longer names match case-insensitively.
+    # The longest policy flag wins, so -passin is not split into -pass plus data.
+    function match_at(name, from,    j, f, cand, best) {
+      matched_flag = ""; matched_kind = ""; best = 0
+      for (j = 1; j <= cred_n[cur_rule]; j++) {
+        f = cred_f[cur_rule, j]
+        cand = substr(name, from, length(f))
+        if (f != "" && ((length(f) == 1 && cand == f) ||
+                        (length(f) > 1 && tolower(cand) == tolower(f))) &&
+            length(f) > best) {
+          best = length(f); matched_flag = f; matched_kind = "cred"
+        }
+      }
+      for (j = 1; j <= keep_n[cur_rule]; j++) {
+        f = keep_f[cur_rule, j]
+        cand = substr(name, from, length(f))
+        if (f != "" && ((length(f) == 1 && cand == f) ||
+                        (length(f) > 1 && tolower(cand) == tolower(f))) &&
+            length(f) > best) {
+          best = length(f); matched_flag = f; matched_kind = "keep"
+        }
+      }
+    }
+    # Consume one following word, keeping whitespace and separators byte-exact.
+    # A preserved flag does not swallow the next flag as its value.
+    function append_value(mask, from,    j) {
+      value_out = ""; value_end = from
+      j = from
+      while (j <= scan_n && substr(scan_s, j, 1) ~ /[[:space:]]/) {
+        value_out = value_out substr(scan_s, j, 1); j++
+      }
+      if (j <= scan_n && !is_sep(substr(scan_s, j, 1)) &&
+          (mask || substr(scan_s, j, 1) != "-")) {
+        parse_word(scan_s, j)
+        value_out = value_out (mask ? redact_value(word_text) : word_text)
+        value_end = word_end
+      } else {
+        value_end = j
+      }
+    }
+    function scan(s, start,    i, c, out, w, k, name, eq, attached, has_eq, stub, j, pending, rest, tail) {
+      scan_s = s; scan_n = length(s)
+      out = ""; i = start; scan_end = scan_n + 1
+      while (i <= scan_n) {
         c = substr(s, i, 1)
         if (c ~ /[[:space:]]/) { out = out c; i++; continue }
         if (is_sep(c)) { out = out c; scan_end = i + 1; return out }
         parse_word(s, i)
-        w = word_text
-        k = word_end
-        if (w == "--help" || w == "--version") {
-          out = out w; i = k; continue
+        w = word_text; k = word_end
+        if (w == "--help" || w == "--version") { out = out w; i = k; continue }
+        # Bare operands (a registry, a key name, a filename) are copied, not
+        # treated as the end of the command. Later arguments still get scanned.
+        if (substr(w, 1, 1) != "-" && has_flag(rule_pos[cur_rule], tolower(w))) {
+          append_value(1, k)
+          out = out w value_out
+          i = value_end
+          continue
         }
-        if (substr(w, 1, 1) == "-" && substr(w, 1, 2) != "--") {
-          prefix = "-"
-          rest = substr(w, 2)
-          cluster_state = 0
-          while (length(rest) > 0) {
-            ch = substr(rest, 1, 1)
-            if (ch == "v" || ch == "e" || ch == "T" || ch == "h") {
-              prefix = prefix ch
-              rest = substr(rest, 2)
+        if (substr(w, 1, 2) == "--") {
+          name = substr(w, 3)
+          eq = index(name, "=")
+          if (eq > 0) {
+            attached = substr(name, eq + 1); name = substr(name, 1, eq - 1); has_eq = 1
+          } else {
+            attached = ""; has_eq = 0
+          }
+          match_long(name)
+          if (matched_flag != "") {
+            stub = "--" name (has_eq ? "=" : "")
+            if (attached != "") {
+              out = out stub (matched_kind == "cred" ? redact_value(attached) : attached)
+                            i = k
               continue
             }
-            if (ch == "p") {
-              out = out prefix "p"
-              rem = substr(rest, 2)
-              if (rem != "") {
-                out = out redact_value(rem)
-                scan_end = k
-                return out
+            append_value(matched_kind == "cred", k)
+            out = out stub value_out
+                        i = value_end
+            continue
+          }
+          out = out w; i = k; continue
+        }
+        if (substr(w, 1, 1) == "-" && length(w) > 1) {
+          name = substr(w, 2)
+          eq = index(name, "=")
+          if (eq > 0) { tail = substr(name, eq + 1); name = substr(name, 1, eq - 1) }
+          else tail = ""
+          j = 1; pending = 1
+          while (j <= length(name)) {
+            match_at(name, j)
+            if (matched_flag != "") {
+              out = out "-" substr(name, pending, j - pending) substr(name, j, length(matched_flag))
+              pending = j + length(matched_flag)
+              rest = substr(name, pending)
+              if (rest != "" || tail != "") {
+                out = out (rest != "" ? "" : "=") \
+                  (matched_kind == "cred" ? redact_value(rest tail) : rest tail)
+                                i = k
+                break
               }
-              i = k
-              while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
-              if (i <= n && !is_sep(substr(s, i, 1))) {
-                parse_word(s, i)
-                out = out redact_value(word_text)
-                scan_end = word_end
-              } else {
-                scan_end = i
-              }
-              return out
-            }
-            if (ch == "f" || ch == "P" || ch == "d" || ch == "o") {
-              out = out prefix ch
-              rem = substr(rest, 2)
-              if (rem != "") {
-                out = out rem
-                i = k
-              } else {
-                i = k
-                while (i <= n && substr(s, i, 1) ~ /[[:space:]]/) { out = out substr(s, i, 1); i++ }
-                if (i <= n && !is_sep(substr(s, i, 1))) {
-                  parse_word(s, i); out = out word_text; i = word_end
-                }
-              }
-              cluster_state = 1
+              append_value(matched_kind == "cred", k)
+              out = out value_out
+                            i = value_end
               break
             }
-            cluster_state = 2
+            if (has_flag(no_value, substr(name, j, 1))) { j++; continue }
+            out = out "-" substr(name, pending)
+            if (tail != "") out = out "=" tail
+            i = k
             break
           }
-          if (cluster_state == 0) {
-            out = out prefix
-            i = k
-            continue
-          }
-          if (cluster_state == 1) {
-            continue
-          }
+          if (j > length(name)) { out = out "-" substr(name, pending); i = k }
+          continue
         }
-        scan_end = i
-        return out
+        out = out w; i = k
       }
       return out
     }
@@ -710,24 +818,32 @@ __lmline_redact_clip_text() {
       return (c ~ /[[:space:]]/ || c == ";" || c == "," || c == "&" || c == "|" ||
               c == ")" || c == "/" || c == "=" || c == "\"")
     }
-    function process(s,    out, idx, before, after, seg, cut) {
+    # Match whole command phrases, longest first, then scan only their tail.
+    function process(s,    out, low, n, i, ci, clen, best, best_rule, before, after, seg) {
       out = ""
-      while ((idx = index(tolower(s), "sshpass")) > 0) {
-        before = idx > 1 ? substr(s, idx - 1, 1) : ""
-        after = substr(s, idx + 7, 1)
-        if ((idx == 1 || is_before(before) || before == sq) &&
-            (after == "" || is_after(after) || after == sq)) {
-          out = out substr(s, 1, idx + 6)
-          seg = scan(substr(s, idx + 7), 1)
-          out = out seg
-          cut = idx + 6 + scan_end
-          s = substr(s, cut)
-        } else {
-          out = out substr(s, 1, idx + 6)
-          s = substr(s, idx + 7)
+      low = tolower(s)
+      n = length(s)
+      i = 1
+      while (i <= n) {
+        best = 0; best_rule = 0
+        for (ci = 1; ci <= rule_count; ci++) {
+          clen = length(rule_cmd[ci])
+          if (clen <= best || substr(low, i, clen) != rule_cmd[ci]) continue
+          before = i > 1 ? substr(s, i - 1, 1) : ""
+          after = substr(s, i + clen, 1)
+          if ((i == 1 || is_before(before) || before == sq) &&
+              (after == "" || is_after(after) || after == sq)) {
+            best = clen; best_rule = ci
+          }
         }
+        if (best == 0) { out = out substr(s, i, 1); i++; continue }
+        out = out substr(s, i, best)
+        cur_rule = best_rule
+        seg = scan(s, i + best)
+        out = out seg
+        i = scan_end
       }
-      return out s
+      return out
     }
     { print process($0) }
   ' | sed -E \
