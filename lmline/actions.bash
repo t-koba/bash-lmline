@@ -242,7 +242,7 @@ __lmline_next_realm_shield_prefix() {
 # @-specific rules restore coverage for real credentials beginning with @.
 __lmline_redact_clip_text() {
   local auth_prefix auth_scheme auth_scheme_name auth_scheme_dq auth_scheme_sq key_prefix
-  local key_prefix_quoted
+  local key_prefix_quoted_dq key_prefix_quoted_sq
   local key_word key_name key_prefix_url
   local auth_prefix_escaped_dq auth_prefix_escaped_sq auth_scheme_optional
   local key_prefix_escaped_dq key_prefix_escaped_sq
@@ -277,7 +277,8 @@ __lmline_redact_clip_text() {
   key_prefix="((^|[^A-Za-z0-9_/?@#=])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   # A whole quoted header owns its opening quote in the prefix, so the value
   # ends at that quote rather than at a shell separator.
-  key_prefix_quoted="((^|[^A-Za-z0-9_/?@#=])([\"'])${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
+  key_prefix_quoted_dq="((^|[^A-Za-z0-9_/?@#=])(\")${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
+  key_prefix_quoted_sq="((^|[^A-Za-z0-9_/?@#=])(')${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   key_prefix_url="(([?&/@#=;,])([\"']?)${key_name}[\"']?[[:space:]]*[=:][[:space:]]*)"
   key_prefix_keep_url="(([?&/@#=;,])\\\\*[\"']?${key_word}[A-Za-z0-9_-]*\\\\*[\"']?[[:space:]]*[=:][[:space:]]*)"
   auth_prefix_escaped_dq="(\\\\*[\"']?Authorization\\\\*[\"']?\\\\*[:][[:space:]]*\\\\*\")"
@@ -691,7 +692,8 @@ __lmline_redact_clip_text() {
     -e "s/${key_prefix}'(([^'\\\\]|\\\\.)*\\\\?)$/\1@@LMLINE_REDACTED@@/Ig" \
     -e "s/${key_prefix}\"(([^\"\\\\]|\\\\.)*)\"/\1\"@@LMLINE_REDACTED@@\"/Ig" \
     -e "s/${key_prefix}('([^'\\\\]|\\\\.)*')/\1'@@LMLINE_REDACTED@@'/Ig" \
-    -e "s/${key_prefix_quoted}((${auth_scheme_name}[[:space:]]+)?[^\"'[:space:];,&|<>][^\"'[:space:];,&|<>]*)[\"']/\\1\\3@@LMLINE_QUOTED_KEY@@\\3/Ig" \
+    -e "s/${key_prefix_quoted_dq}((${auth_scheme_name}[[:space:]]+)?([^\"[:space:];,&|<>\\\\]|\\\\.)+)\"/\\1\\3@@LMLINE_QUOTED_KEY@@\\3/Ig" \
+    -e "s/${key_prefix_quoted_sq}((${auth_scheme_name}[[:space:]]+)?([^'[:space:];,&|<>\\\\]|\\\\.)+)'/\\1\\3@@LMLINE_QUOTED_KEY@@\\3/Ig" \
     -e ':lmline_key_chain_mark_loop' \
     -e "s/${key_prefix}([^'\"[:space:];,&|<>]+)([;,|&])([\"']?[A-Za-z0-9_-]*${key_word}[A-Za-z0-9_-]*[\"']?[[:space:]]*[=:][[:space:]]*)/\1\7;@LMLINE_CHAIN_KEY@\8:\9/Ig" \
     -e 't lmline_key_chain_mark_loop' \

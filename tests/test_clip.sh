@@ -2381,6 +2381,38 @@ expect_exact 'quoted generic key keeps grouping characters in a value' \
   'curl -H "X-Api-Key: SEC)RET}tail"; echo KEEPNEGBR' \
   'curl -H "X-Api-Key: ***REDACTED***"; echo KEEPNEGBR'
 
+# An embedded escaped quote or an opposite quote stays inside the quoted value.
+expect_exact 'quoted generic key masks escaped quotes' \
+  'curl -H "X-Api-Key: \"SECRETTAIL123\"" https://x; echo KEEP' \
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEP'
+expect_exact 'quoted generic key masks escaped quotes second pass' \
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEP' \
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEP'
+expect_exact 'quoted generic key masks escaped quote after prefix' \
+  'curl -H "X-Api-Key: LEAD123\"SECRETTAIL123" https://x; echo KEEP' \
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEP'
+expect_exact 'quoted generic key masks escaped quote after prefix second pass' \
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEP' \
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEP'
+expect_exact 'quoted generic key masks opposite quote' \
+  "curl -H \"X-Password: don'tSECRETTAIL123\" https://x; echo KEEP" \
+  'curl -H "X-Password: ***REDACTED***" https://x; echo KEEP'
+expect_exact 'quoted generic key masks opposite quote second pass' \
+  'curl -H "X-Password: ***REDACTED***" https://x; echo KEEP' \
+  'curl -H "X-Password: ***REDACTED***" https://x; echo KEEP'
+expect_exact 'quoted generic key masks opposite quote in single quotes' \
+  "curl -H 'X-Api-Key: abcd1234\"SECRETTAIL123' https://x; echo KEEP" \
+  "curl -H 'X-Api-Key: ***REDACTED***' https://x; echo KEEP"
+expect_exact 'quoted generic key masks opposite quote in single quotes second pass' \
+  "curl -H 'X-Api-Key: ***REDACTED***' https://x; echo KEEP" \
+  "curl -H 'X-Api-Key: ***REDACTED***' https://x; echo KEEP"
+expect_exact 'quoted generic key keeps a following word second pass' \
+  'echo "note X-Api-Key: ***REDACTED*** tail"; echo KEEPX4' \
+  'echo "note X-Api-Key: ***REDACTED*** tail"; echo KEEPX4'
+expect_exact 'bare generic key second pass' \
+  'X-Api-Key: ***REDACTED***; echo KEEPX5' \
+  'X-Api-Key: ***REDACTED***; echo KEEPX5'
+
 # sshpass passwords are command arguments, not generic credentials. Values
 # are assembled from parts so no secret-shaped literal enters the tree.
 sshpass_word='SECRET'
