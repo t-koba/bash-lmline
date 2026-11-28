@@ -3388,6 +3388,27 @@ for case_index in "${!bare_tchar_fixtures[@]}"; do
   [[ $second == "$actual" ]] || fail "bare tchar scheme $case_index second pass changed $actual to $second"
 done
 
+# A star-leading bare value is live credential data, and canonical markers
+# stay idempotent while the following quoted word survives.
+star_leading_fixtures=(
+  'Authorization: *SYNTHSTARXYZ "PAYLOAD"; echo KEEPSTAR'
+  'Authorization: ***REDACTED*** "PAYLOAD"; echo KEEPMARK'
+)
+star_leading_expected=(
+  'Authorization: ***REDACTED*** "PAYLOAD"; echo KEEPSTAR'
+  'Authorization: ***REDACTED*** "PAYLOAD"; echo KEEPMARK'
+)
+for case_index in "${!star_leading_fixtures[@]}"; do
+  fixture=${star_leading_fixtures[$case_index]}
+  expected=${star_leading_expected[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "star-leading $case_index fixture is not valid shell: $fixture"
+  printf '%s\n' "$expected" | bash -n || fail "star-leading $case_index expected is not valid shell: $expected"
+  actual=$(redact_clip_exact "$fixture") || fail "star-leading $case_index redaction failed"
+  [[ $actual == "$expected" ]] || fail "star-leading $case_index: got $actual"
+  second=$(redact_clip_exact "$actual") || fail "star-leading $case_index second pass failed"
+  [[ $second == "$actual" ]] || fail "star-leading $case_index second pass changed $actual to $second"
+done
+
 # Glued custom-scheme quoted values are masked without eating the tail.
 glued_quote_fixtures=(
   'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'

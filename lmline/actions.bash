@@ -287,7 +287,10 @@ __lmline_redact_clip_text() {
   # token so the existing credential rules handle their values and tails.
   # An apostrophe must be followed by another tchar, never end the scheme.
   auth_scheme_bare_noquote="[!#\$%&*+.^_\`|~0-9A-Za-z-]"
-  auth_scheme_bare="(${auth_scheme_bare_noquote}*\\*${auth_scheme_bare_noquote}*|${auth_scheme_bare_noquote}+('${auth_scheme_bare_noquote}+)+)"
+  # A scheme with '*' must start with a non-star tchar; a leading '*' is
+  # treated as credential data so a star-leading value cannot lose its mask.
+  auth_scheme_bare_base="[!#\$%&+.^_\`|~0-9A-Za-z-]"
+  auth_scheme_bare="(${auth_scheme_bare_base}+${auth_scheme_bare_noquote}*\\*${auth_scheme_bare_noquote}*|${auth_scheme_bare_base}+('${auth_scheme_bare_noquote}+)+)"
   auth_scheme_bare_canonical='LMLINEBARE'
   auth_prefix_bare="(^|[^A-Za-z0-9_\"'])(Authorization[[:space:]]*:[[:space:]]*)"
   auth_scheme_any="(${auth_scheme_token}+)"
@@ -825,7 +828,8 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix}${auth_scheme_any}([:=]+)'(([^'\\\\]|\\\\.)*)$/\\1\\2\\3'@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}${auth_scheme_any}([:=]+)'(([^'\\\\]|\\\\.)*\\\\)$/\\1\\2\\3'@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\"'=[:space:];,&|][^\"'[:space:];,&|]*)([[:space:]]+)([\"'])/\\1==LMLINE_AUTH_VALUE==\\5\\6/Ig" \
-    -e "s/${auth_prefix}([^\"'=*[:space:];,&|][^\"'[:space:];,&|]*)([[:space:]]+)([\"'])/\\1@@LMLINE_REDACTED@@\\3\\4/Ig" \
+    -e "/Authorization[[:space:]]*:[[:space:]]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)/!s/${auth_prefix}(\*[^[:space:]\"'=;,|&<>]+)([[:space:]]+)([\"'])/\\1==LMLINE_AUTH_VALUE==\\3\\4/Ig" \
+    -e "/Authorization[[:space:]]*:[[:space:]]*(\*\*\*REDACTED\*\*\*|@@LMLINE_REDACTED@@)/!s/${auth_prefix}([^\"'=[:space:];,&|][^\"'[:space:];,&|]*)([[:space:]]+)([\"'])/\\1@@LMLINE_REDACTED@@\\3\\4/Ig" \
     -e "s/${auth_prefix}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]*([>][>]|[<][<]|[|][|]|&&|[,;|&<>]))/\\1;@LMLINE_SEP@\\3/Ig" \
     -e "s/${auth_prefix}==LMLINE_AUTH_SCHEME==${auth_scheme}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]*)([>][>]|[<][<]|[|][|]|&&|[,;|&<>])/\1==LMLINE_AUTH_SCHEME==\2;@LMLINE_SEP@\4\5/Ig" \
     -e "s/${auth_prefix}([^\"'=[:space:];,&|<>][^\"'[:space:];,&|<>]*)([[:space:]]+[0-9]+[[:space:]]*([>][>]|[<][<]|[<>]))/\\1;@LMLINE_SEP@\\3/Ig" \
