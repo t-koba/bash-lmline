@@ -281,6 +281,15 @@ __lmline_redact_clip_text() {
   # out of the class so the temporary marker guards remain distinguishable;
   # a single quote is a header delimiter in the rules below.
   auth_scheme_token='[!#$%&+.^_`|~0-9A-Za-z-]'
+  # A bare Authorization field follows RFC 9110 tchar, which also allows '*'
+  # and "'". Those stay out of the shared class because the quoted-header
+  # rules use them as delimiters. Bare fields canonicalize to a custom scheme
+  # token so the existing credential rules handle their values and tails.
+  # An apostrophe must be followed by another tchar, never end the scheme.
+  auth_scheme_bare_noquote="[!#\$%&*+.^_\`|~0-9A-Za-z-]"
+  auth_scheme_bare="(${auth_scheme_bare_noquote}*\\*${auth_scheme_bare_noquote}*|${auth_scheme_bare_noquote}+('${auth_scheme_bare_noquote}+)+)"
+  auth_scheme_bare_canonical='LMLINEBARE'
+  auth_prefix_bare="(^|[^A-Za-z0-9_\"'])(Authorization[[:space:]]*:[[:space:]]*)"
   auth_scheme_any="(${auth_scheme_token}+)"
   auth_scheme="(${auth_scheme_token}+[[:space:]]+)"
   auth_scheme_dq="(\"${auth_scheme_token}+[[:space:]]+)"
@@ -718,6 +727,7 @@ __lmline_redact_clip_text() {
     }
     { print process($0) }
   ' | sed -E \
+    -e "/(\\*\\*\\*REDACTED\\*\\*\\*|@@LMLINE_REDACTED@@)/!s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]+|[:=]+)/\\1\\2${auth_scheme_bare_canonical}:/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([[:space:]]+|[^[:space:]\"':;,|&<>/]+[[:space:]]+)[^[:space:]\"':;,|&<>/]+:[^[:space:]\"';,&|<>/]+/\1\2***REDACTED***/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \

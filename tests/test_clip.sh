@@ -3311,6 +3311,36 @@ for case_index in "${!custom_scheme_tail_fixtures[@]}"; do
   [[ $second == "$actual" ]] || fail "custom scheme tail $case_index second pass changed $actual to $second"
 done
 
+# Bare Authorization scheme tokens follow RFC 9110 tchar, including '*' and
+# an interior apostrophe. Quoted shell headers and canonical markers are not
+# bare schemes; every result is stable on a second pass.
+bare_tchar_fixtures=(
+  'Authorization: foo*bar SYN20'
+  "Authorization: foo'bar SYN21"
+  '-H "Authorization: Foo:SYN33" -H "X: KEEP33"'
+  '-H "Authorization: Bearer ***REDACTED***" -H "X: KEEP33"'
+  'Authorization: Bearer ***REDACTED***'
+  'Authorization: foo*bar ***REDACTED***'
+  'Authorization: Basic @@LMLINE_REDACTED@@'
+)
+bare_tchar_expected=(
+  'Authorization: ***REDACTED***'
+  'Authorization: ***REDACTED***'
+  '-H "Authorization: ***REDACTED***" -H "X: KEEP33"'
+  '-H "Authorization: Bearer ***REDACTED***" -H "X: KEEP33"'
+  'Authorization: Bearer ***REDACTED***'
+  'Authorization: foo*bar ***REDACTED***'
+  'Authorization: Basic ***REDACTED***'
+)
+for case_index in "${!bare_tchar_fixtures[@]}"; do
+  fixture=${bare_tchar_fixtures[$case_index]}
+  expected=${bare_tchar_expected[$case_index]}
+  actual=$(redact_clip_exact "$fixture") || fail "bare tchar scheme $case_index redaction failed"
+  [[ $actual == "$expected" ]] || fail "bare tchar scheme $case_index: got $actual"
+  second=$(redact_clip_exact "$actual") || fail "bare tchar scheme $case_index second pass failed"
+  [[ $second == "$actual" ]] || fail "bare tchar scheme $case_index second pass changed $actual to $second"
+done
+
 # Glued custom-scheme quoted values are masked without eating the tail.
 glued_quote_fixtures=(
   'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'
