@@ -20,7 +20,7 @@ for path in "$src_dir"/lmline/prompts/*.txt; do
 done
 
 mkdir -p "$config_dir/defaults"
-for path in "$src_dir"/lmline/defaults/*.txt "$src_dir"/lmline/defaults/*.tsv; do
+for path in "$src_dir"/lmline/defaults/*.txt "$src_dir"/lmline/defaults/*.tsv "$src_dir"/lmline/defaults/*.awk; do
   install -m 0644 "$path" "$config_dir/defaults/$(basename "$path")"
 done
 
