@@ -3278,6 +3278,39 @@ for case_index in "${!over_fixtures[@]}"; do
   expect_exact "generic quoted value $case_index" "${over_fixtures[$case_index]}" "${over_expected[$case_index]}"
 done
 
+# Quoted or escaped-quote custom-scheme headers must mask every credential
+# piece while keeping the following word, second header and command tail.
+redact_clip_exact() {
+  bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; __lmline_next_realm_shield_prefix; printf "%s" "$2" | __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ \
+    "$repo_dir/lmline/actions.bash" "$1"
+}
+custom_scheme_tail_fixtures=(
+  'curl -H "Authorization: my_scheme=\"SYN26\"" "KEEP26"; echo TAIL26'
+  "curl -H 'Authorization: my_scheme: \"SYN27\"' 'KEEP27'; echo TAIL27"
+  "curl -H 'Authorization: x~y: \"SYN28\"' -H \"X: KEEP28\"; echo TAIL28"
+  'Authorization: my_scheme:SYN29 "KEEP29"; echo TAIL29'
+  'curl -H "Authorization: my_scheme:SYN29" -H "X: KEEP29B" https://x; echo TAIL29B'
+  'curl -H "Authorization: Foo:SYN33" -H "X: KEEP33" https://x; echo TAIL33'
+)
+custom_scheme_tail_expected=(
+  'curl -H "Authorization: ***REDACTED***" "KEEP26"; echo TAIL26'
+  "curl -H 'Authorization: ***REDACTED***' 'KEEP27'; echo TAIL27"
+  "curl -H 'Authorization: ***REDACTED***' -H \"X: KEEP28\"; echo TAIL28"
+  'Authorization: ***REDACTED*** "KEEP29"; echo TAIL29'
+  'curl -H "Authorization: ***REDACTED***" -H "X: KEEP29B" https://x; echo TAIL29B'
+  'curl -H "Authorization: ***REDACTED***" -H "X: KEEP33" https://x; echo TAIL33'
+)
+for case_index in "${!custom_scheme_tail_fixtures[@]}"; do
+  fixture=${custom_scheme_tail_fixtures[$case_index]}
+  expected=${custom_scheme_tail_expected[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "custom scheme tail $case_index fixture is not valid shell: $fixture"
+  printf '%s\n' "$expected" | bash -n || fail "custom scheme tail $case_index expected is not valid shell: $expected"
+  actual=$(redact_clip_exact "$fixture") || fail "custom scheme tail $case_index redaction failed"
+  [[ $actual == "$expected" ]] || fail "custom scheme tail $case_index: got $actual"
+  second=$(redact_clip_exact "$actual") || fail "custom scheme tail $case_index second pass failed"
+  [[ $second == "$actual" ]] || fail "custom scheme tail $case_index second pass changed $actual to $second"
+done
+
 # Glued custom-scheme quoted values are masked without eating the tail.
 glued_quote_fixtures=(
   'Authorization: my_scheme:"SYNTHGLUEDQ1"; echo KEEPGLUEDQ1'
