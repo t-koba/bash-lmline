@@ -3414,6 +3414,31 @@ for case_index in "${!bare_marker_fixtures[@]}"; do
   [[ $second == "$actual" ]] || fail "bare marker $case_index second pass changed $actual to $second"
 done
 
+# A colon-separated bare custom scheme must not leave a live credential after
+# the scheme token is stripped.
+bare_colon_fixtures=(
+  'Authorization: foo*bar: LIVESECRET99; echo T'
+  'Authorization: mypassword123*: LIVESECRET99; echo T'
+  'Authorization: AKIAabcdefghijklmnop*: LIVESECRET99; echo T'
+  "curl -H \"Authorization: token'abc: LIVESECRET99\" -H \"X: KEEP99\"; echo TAIL99"
+)
+bare_colon_expected=(
+  'Authorization: ***REDACTED***; echo T'
+  'Authorization: ***REDACTED***; echo T'
+  'Authorization: ***REDACTED***; echo T'
+  'curl -H "Authorization: ***REDACTED***" -H "X: KEEP99"; echo TAIL99'
+)
+for case_index in "${!bare_colon_fixtures[@]}"; do
+  fixture=${bare_colon_fixtures[$case_index]}
+  expected=${bare_colon_expected[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "bare colon $case_index fixture is not valid shell: $fixture"
+  printf '%s\n' "$expected" | bash -n || fail "bare colon $case_index expected is not valid shell: $expected"
+  actual=$(redact_clip_exact "$fixture") || fail "bare colon $case_index redaction failed"
+  [[ $actual == "$expected" ]] || fail "bare colon $case_index: got $actual"
+  second=$(redact_clip_exact "$actual") || fail "bare colon $case_index second pass failed"
+  [[ $second == "$actual" ]] || fail "bare colon $case_index second pass changed $actual to $second"
+done
+
 # A star-leading bare value is live credential data, and canonical markers
 # stay idempotent while the following quoted word survives.
 star_leading_fixtures=(
