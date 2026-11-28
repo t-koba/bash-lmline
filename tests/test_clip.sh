@@ -862,1419 +862,1439 @@ while (($#)); do
   esac
 done
 [[ "$mode" == clip ]] || exit 10
-grep -Fq 'API_KEY=***REDACTED***' "$line_file" || exit 11
-grep -Fq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 12
-grep -Fxq 'Authorization: ***REDACTED*** | grep keepPipe90201' "$line_file" || exit 357
-grep -Fxq 'Authorization: ***REDACTED***|grep keepPipeTail90202' "$line_file" || exit 358
-grep -Fxq 'Authorization: Bearer ***REDACTED*** | grep keepBearerPipe90203' "$line_file" || exit 359
-grep -Fxq 'Authorization: Bearer ***REDACTED***|grep keepBearerPipeTail90204' "$line_file" || exit 360
-grep -Fxq 'Authorization: ***REDACTED*** && echo keepAmp90205' "$line_file" || exit 361
-grep -Fxq 'Authorization: ***REDACTED***&&echo keepAmpTail90206' "$line_file" || exit 362
-grep -Fxq 'Authorization: Bearer ***REDACTED*** && echo keepBearerAmp90207' "$line_file" || exit 363
-grep -Fxq 'Authorization: Bearer ***REDACTED***&&echo keepBearerAmpTail90208' "$line_file" || exit 364
-grep -Fxq 'Authorization: ***REDACTED*** || echo keepOr90209' "$line_file" || exit 365
-grep -Fxq 'Authorization: Bearer ***REDACTED*** || echo keepBearerOr90210' "$line_file" || exit 366
-grep -Fxq 'Authorization: ***REDACTED*** > out.txt' "$line_file" || exit 367
-grep -Fq 'secretRedirect123456' "$line_file" && exit 368
-grep -Fxq 'Authorization: ***REDACTED***>out.txt' "$line_file" || exit 369
-grep -Fq 'secretRedirectTail123456' "$line_file" && exit 370
-grep -Fxq 'Authorization: ***REDACTED*** >> out.txt' "$line_file" || exit 371
-grep -Fq 'secretRedirectDouble123456' "$line_file" && exit 372
-grep -Fxq 'Authorization: Bearer ***REDACTED*** > out.txt' "$line_file" || exit 373
-grep -Fq 'secretBearerRedirect123456' "$line_file" && exit 374
-grep -Fxq 'Authorization: Bearer ***REDACTED***>out.txt' "$line_file" || exit 375
-grep -Fq 'secretBearerRedirectTail123456' "$line_file" && exit 376
-grep -Fxq 'Authorization: ***REDACTED*** < in.txt' "$line_file" || exit 377
-grep -Fq 'secretInput123456' "$line_file" && exit 378
-grep -Fxq 'Authorization: Bearer ***REDACTED*** <<EOF' "$line_file" || exit 379
-grep -Fq 'secretHere123456' "$line_file" && exit 380
+# One helper owns every fixture assertion. It reports a stable case label,
+# never the expected text or clipboard contents, and always fails with status 1.
+assert_fixture() {
+  local label=$1 expectation=$2
+  shift 2
+  case $expectation in
+    present)
+      if grep "$@" "$line_file" >/dev/null 2>&1; then return 0; fi
+      ;;
+    absent)
+      if ! grep "$@" "$line_file" >/dev/null 2>&1; then return 0; fi
+      ;;
+    *)
+      printf 'clip fixture assertion failed: %s (invalid expectation)\n' "$label" >&2
+      exit 1
+      ;;
+  esac
+  printf 'clip fixture assertion failed: %s\n' "$label" >&2
+  exit 1
+}
+
+assert_fixture 'case 1' present -Fq 'API_KEY=***REDACTED***'
+assert_fixture 'case 2' present -Fq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 3' present -Fxq 'Authorization: ***REDACTED*** | grep keepPipe90201'
+assert_fixture 'case 4' present -Fxq 'Authorization: ***REDACTED***|grep keepPipeTail90202'
+assert_fixture 'case 5' present -Fxq 'Authorization: Bearer ***REDACTED*** | grep keepBearerPipe90203'
+assert_fixture 'case 6' present -Fxq 'Authorization: Bearer ***REDACTED***|grep keepBearerPipeTail90204'
+assert_fixture 'case 7' present -Fxq 'Authorization: ***REDACTED*** && echo keepAmp90205'
+assert_fixture 'case 8' present -Fxq 'Authorization: ***REDACTED***&&echo keepAmpTail90206'
+assert_fixture 'case 9' present -Fxq 'Authorization: Bearer ***REDACTED*** && echo keepBearerAmp90207'
+assert_fixture 'case 10' present -Fxq 'Authorization: Bearer ***REDACTED***&&echo keepBearerAmpTail90208'
+assert_fixture 'case 11' present -Fxq 'Authorization: ***REDACTED*** || echo keepOr90209'
+assert_fixture 'case 12' present -Fxq 'Authorization: Bearer ***REDACTED*** || echo keepBearerOr90210'
+assert_fixture 'case 13' present -Fxq 'Authorization: ***REDACTED*** > out.txt'
+assert_fixture 'case 14' absent -Fq 'secretRedirect123456'
+assert_fixture 'case 15' present -Fxq 'Authorization: ***REDACTED***>out.txt'
+assert_fixture 'case 16' absent -Fq 'secretRedirectTail123456'
+assert_fixture 'case 17' present -Fxq 'Authorization: ***REDACTED*** >> out.txt'
+assert_fixture 'case 18' absent -Fq 'secretRedirectDouble123456'
+assert_fixture 'case 19' present -Fxq 'Authorization: Bearer ***REDACTED*** > out.txt'
+assert_fixture 'case 20' absent -Fq 'secretBearerRedirect123456'
+assert_fixture 'case 21' present -Fxq 'Authorization: Bearer ***REDACTED***>out.txt'
+assert_fixture 'case 22' absent -Fq 'secretBearerRedirectTail123456'
+assert_fixture 'case 23' present -Fxq 'Authorization: ***REDACTED*** < in.txt'
+assert_fixture 'case 24' absent -Fq 'secretInput123456'
+assert_fixture 'case 25' present -Fxq 'Authorization: Bearer ***REDACTED*** <<EOF'
+assert_fixture 'case 26' absent -Fq 'secretHere123456'
 # A placeholder on the first value must not disable terminal cleanup of the second.
-grep -Fxq 'Authorization: ***REDACTED*** > out.txt; Authorization: ***REDACTED***' "$line_file" || exit 384
-grep -Fq 'splitRedirect123456' "$line_file" && exit 385
-grep -Fq 'splitBare123456' "$line_file" && exit 386
+assert_fixture 'case 27' present -Fxq 'Authorization: ***REDACTED*** > out.txt; Authorization: ***REDACTED***'
+assert_fixture 'case 28' absent -Fq 'splitRedirect123456'
+assert_fixture 'case 29' absent -Fq 'splitBare123456'
 # Fd digits belong to the redirect boundary, never to the credential.
-grep -Fxq 'Authorization: ***REDACTED*** 2>err' "$line_file" || exit 390
-grep -Fq 'SYNTHFDSECRET' "$line_file" && exit 391
-grep -Fxq 'Authorization: ***REDACTED*** >out' "$line_file" || exit 392
-grep -Fq 'SYNTHPLAINSECRET' "$line_file" && exit 393
-grep -Fxq 'Authorization: ***REDACTED*** 2>&1' "$line_file" || exit 394
-grep -Fq 'SYNTHFDSTDERR' "$line_file" && exit 395
-grep -Fxq 'Authorization: ***REDACTED*** 0<in' "$line_file" || exit 396
-grep -Fq 'SYNTHFDSTDIN' "$line_file" && exit 397
-grep -Fxq 'Authorization: ***REDACTED*** 10>out' "$line_file" || exit 398
-grep -Fq 'SYNTHFDFD10' "$line_file" && exit 399
-grep -Fxq 'Authorization: ***REDACTED*** 3>>err' "$line_file" || exit 400
-grep -Fq 'SYNTHFDAPPEND' "$line_file" && exit 401
-grep -Fxq 'Authorization: ***REDACTED*** 2> err' "$line_file" || exit 402
-grep -Fq 'SYNTHFDSPACE' "$line_file" && exit 403
-grep -Fxq 'Authorization: Bearer ***REDACTED*** 2>err' "$line_file" || exit 404
-grep -Fq 'SYNTHFDBEARER' "$line_file" && exit 405
-grep -Fxq 'Authorization: Bearer ***REDACTED*** 10>out' "$line_file" || exit 406
-grep -Fq 'SYNTHFDSCHEMED10' "$line_file" && exit 407
+assert_fixture 'case 30' present -Fxq 'Authorization: ***REDACTED*** 2>err'
+assert_fixture 'case 31' absent -Fq 'SYNTHFDSECRET'
+assert_fixture 'case 32' present -Fxq 'Authorization: ***REDACTED*** >out'
+assert_fixture 'case 33' absent -Fq 'SYNTHPLAINSECRET'
+assert_fixture 'case 34' present -Fxq 'Authorization: ***REDACTED*** 2>&1'
+assert_fixture 'case 35' absent -Fq 'SYNTHFDSTDERR'
+assert_fixture 'case 36' present -Fxq 'Authorization: ***REDACTED*** 0<in'
+assert_fixture 'case 37' absent -Fq 'SYNTHFDSTDIN'
+assert_fixture 'case 38' present -Fxq 'Authorization: ***REDACTED*** 10>out'
+assert_fixture 'case 39' absent -Fq 'SYNTHFDFD10'
+assert_fixture 'case 40' present -Fxq 'Authorization: ***REDACTED*** 3>>err'
+assert_fixture 'case 41' absent -Fq 'SYNTHFDAPPEND'
+assert_fixture 'case 42' present -Fxq 'Authorization: ***REDACTED*** 2> err'
+assert_fixture 'case 43' absent -Fq 'SYNTHFDSPACE'
+assert_fixture 'case 44' present -Fxq 'Authorization: Bearer ***REDACTED*** 2>err'
+assert_fixture 'case 45' absent -Fq 'SYNTHFDBEARER'
+assert_fixture 'case 46' present -Fxq 'Authorization: Bearer ***REDACTED*** 10>out'
+assert_fixture 'case 47' absent -Fq 'SYNTHFDSCHEMED10'
 # The marker on the first value must not stop the later bare value from masking.
-grep -Fxq 'Authorization: ***REDACTED*** 2>err; Authorization: ***REDACTED***' "$line_file" || exit 408
-grep -Fq 'SYNTHFDSPLIT' "$line_file" && exit 409
-grep -Fq 'SYNTHFDBARE' "$line_file" && exit 410
+assert_fixture 'case 48' present -Fxq 'Authorization: ***REDACTED*** 2>err; Authorization: ***REDACTED***'
+assert_fixture 'case 49' absent -Fq 'SYNTHFDSPLIT'
+assert_fixture 'case 50' absent -Fq 'SYNTHFDBARE'
 # Digits inside a credential stay masked; only fd digits before an operator are kept.
-grep -Fxq 'Authorization: ***REDACTED*** 2>err; echo KEEPFDNUM123' "$line_file" || exit 411
-grep -Fq 'SYNTHFDNUM123' "$line_file" && exit 412
-grep -Fxq 'Authorization: ***REDACTED***>out' "$line_file" || exit 413
-grep -Fq 'SYNTHFDTAIL456' "$line_file" && exit 414
+assert_fixture 'case 51' present -Fxq 'Authorization: ***REDACTED*** 2>err; echo KEEPFDNUM123'
+assert_fixture 'case 52' absent -Fq 'SYNTHFDNUM123'
+assert_fixture 'case 53' present -Fxq 'Authorization: ***REDACTED***>out'
+assert_fixture 'case 54' absent -Fq 'SYNTHFDTAIL456'
 # Three-digit and spaced fd forms keep the full redirect boundary.
-grep -Fxq 'Authorization: ***REDACTED*** 123>out' "$line_file" || exit 415
-grep -Fq 'SYNTHFDFD123' "$line_file" && exit 416
-grep -Fxq 'Authorization: Bearer ***REDACTED*** 123>out' "$line_file" || exit 417
-grep -Fq 'SYNTHFDSCHEMED123' "$line_file" && exit 418
-grep -Fxq 'Authorization: ***REDACTED*** 2 >err' "$line_file" || exit 419
-grep -Fq 'SYNTHFDGAP' "$line_file" && exit 420
-grep -Fxq 'Authorization: Bearer ***REDACTED*** 2 >err' "$line_file" || exit 421
-grep -Fq 'SYNTHFDSCHEMEGAP' "$line_file" && exit 422
+assert_fixture 'case 55' present -Fxq 'Authorization: ***REDACTED*** 123>out'
+assert_fixture 'case 56' absent -Fq 'SYNTHFDFD123'
+assert_fixture 'case 57' present -Fxq 'Authorization: Bearer ***REDACTED*** 123>out'
+assert_fixture 'case 58' absent -Fq 'SYNTHFDSCHEMED123'
+assert_fixture 'case 59' present -Fxq 'Authorization: ***REDACTED*** 2 >err'
+assert_fixture 'case 60' absent -Fq 'SYNTHFDGAP'
+assert_fixture 'case 61' present -Fxq 'Authorization: Bearer ***REDACTED*** 2 >err'
+assert_fixture 'case 62' absent -Fq 'SYNTHFDSCHEMEGAP'
 # A padded value must not swallow the operator or the following words.
-grep -Fxq 'Authorization: Basic ***REDACTED*** > out' "$line_file" || exit 700
-grep -Fq 'dXNlcjpwYXNz==' "$line_file" && exit 701
-grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPAUTHPAD1' "$line_file" || exit 702
-grep -Fq 'SYNTHAUTHPAD1' "$line_file" && exit 703
-grep -Fxq 'Authorization: Bearer ***REDACTED*** 2>err; echo KEEPAUTHPAD2' "$line_file" || exit 704
-grep -Fq 'SYNTHAUTHPAD2' "$line_file" && exit 705
+assert_fixture 'case 63' present -Fxq 'Authorization: Basic ***REDACTED*** > out'
+assert_fixture 'case 64' absent -Fq 'dXNlcjpwYXNz=='
+assert_fixture 'case 65' present -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPAUTHPAD1'
+assert_fixture 'case 66' absent -Fq 'SYNTHAUTHPAD1'
+assert_fixture 'case 67' present -Fxq 'Authorization: Bearer ***REDACTED*** 2>err; echo KEEPAUTHPAD2'
+assert_fixture 'case 68' absent -Fq 'SYNTHAUTHPAD2'
 # A keyed chain after an Authorization marker keeps both boundaries.
-grep -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED***; echo KEEPMIXAUTH' "$line_file" || exit 706
-grep -Fq 'SYNTHMIXAUTH2' "$line_file" && exit 707
-grep -Fxq 'Authorization: Bearer ***REDACTED***,token=***REDACTED***; echo KEEPMIXAUTH2' "$line_file" || exit 708
-grep -Fq 'SYNTHMIXAUTH4' "$line_file" && exit 709
-grep -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED***;token2=***REDACTED***; echo KEEPMIXAUTH3' "$line_file" || exit 710
-grep -Fq 'SYNTHMIXAUTH7' "$line_file" && exit 711
-grep -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED*** echo KEEPCASEMARK' "$line_file" || exit 712
-grep -Fqi '@lmline_chain_key@' "$line_file" && exit 713
-grep -Fq 'SYNTHCASEMARK' "$line_file" && exit 714
-grep -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARK' "$line_file" || exit 715
-grep -Fq '@@LMLINE_URL_REDACTED@@' "$line_file" && exit 716
-grep -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARKCASE' "$line_file" || exit 717
-grep -Fqi '@@LMLINE_URL_REDACTED@@' "$line_file" && exit 718
-grep -Fxq 'echo KEEPPASTEDREDMARK ***REDACTED*** KEEPPASTEDREDTAIL' "$line_file" || exit 719
-grep -Fqi '@@LmLINE_Redacted@@' "$line_file" && exit 720
-grep -Fxq 'echo KEEPPASTEDCHAINMARK ***REDACTED*** KEEPPASTEDCHAINTAIL' "$line_file" || exit 721
-grep -Fqi '@LmLINE_ChAiN_kEy@' "$line_file" && exit 722
-grep -Fxq 'echo KEEPPASTEDSEPMARK ***REDACTED*** KEEPPASTEDSEPTAIL' "$line_file" || exit 723
-grep -Fqi '@LmLINE_SeP@' "$line_file" && exit 724
-grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPEQSDQ1' "$line_file" || exit 725
-grep -Fq 'SYNTHEQSDQ1' "$line_file" && exit 726
-grep -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPEQSQ1" "$line_file" || exit 727
-grep -Fq 'SYNTHESQSQ1' "$line_file" && exit 728
-grep -Fxq 'authorization: bearer="***REDACTED***" && echo KEEPEQSCASE' "$line_file" || exit 729
-grep -Fq 'SYNTHEQSCASE1' "$line_file" && exit 730
-grep -Fxq 'Authorization: Basic="***REDACTED***"; echo KEEPEQSESC' "$line_file" || exit 731
-grep -Fq 'SYNTHEQSESC1' "$line_file" && exit 732
-grep -Fxq 'Authorization: Bearer="***REDACTED***' "$line_file" || exit 733
-grep -Fq 'SYNTHEQUNTERM1' "$line_file" && exit 734
-grep -Fxq "Authorization: Bearer='***REDACTED***" "$line_file" || exit 735
-grep -Fq 'SYNTHEQUNTERM2' "$line_file" && exit 736
-grep -Fq 'SYNTHEQTBACK1' "$line_file" && exit 740
-grep -Fq 'SYNTHEQTBACK2' "$line_file" && exit 742
-grep -Fxq 'Authorization: Bearer:"***REDACTED***"; echo KEEPCOLSDQ1' "$line_file" || exit 743
-grep -Fq 'SYNTHCOLSDQ1' "$line_file" && exit 744
-grep -Fxq "Authorization: Basic=='***REDACTED***'; echo KEEPCOLSQ2" "$line_file" || exit 745
-grep -Fq 'SYNTHCOLSQ2' "$line_file" && exit 746
-grep -Fxq 'Authorization: Digest:="***REDACTED***"; echo KEEPCOLREP3' "$line_file" || exit 747
-grep -Fq 'SYNTHCOLREP3' "$line_file" && exit 748
-grep -Fxq 'Authorization: Bearer:"***REDACTED***' "$line_file" || exit 749
-grep -Fq 'SYNTHCOLUNTERM4' "$line_file" && exit 750
-grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPESESDQ1' "$line_file" || exit 751
-grep -Fq 'SYNTHESESDQ1' "$line_file" && exit 752
-grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPESESQ1" "$line_file" || exit 753
-grep -Fq 'SYNTHESESQ1' "$line_file" && exit 754
-grep -Fxq 'Authorization: Bearer==\"***REDACTED***\" | echo KEEPESESDQ2' "$line_file" || exit 755
-grep -Fq 'SYNTHESESDQ2' "$line_file" && exit 756
-grep -Fxq "Authorization: Bearer:\'***REDACTED***\' >> out; echo KEEPESESQ2" "$line_file" || exit 757
-grep -Fq 'SYNTHESESQ2' "$line_file" && exit 758
-grep -Fxq 'authorization: bearer=\"***REDACTED***\" && echo KEEPESESDQCASE' "$line_file" || exit 759
-grep -Fq 'SYNTHESESDQCASE' "$line_file" && exit 760
-grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"' "$line_file" || exit 761
-grep -Fq 'SYNTHESESDQ3' "$line_file" && exit 762
-grep -Fq 'SYNTHUNTERMDPQ1' "$line_file" && exit 775
-grep -Fxq -- 'Authorization: Bearer=\"***REDACTED***' "$line_file" || exit 776
-grep -Fq 'SYNTHUNTERMSQ1' "$line_file" && exit 777
-grep -Fxq "Authorization: Bearer=\\'***REDACTED***" "$line_file" || exit 778
+assert_fixture 'case 69' present -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED***; echo KEEPMIXAUTH'
+assert_fixture 'case 70' absent -Fq 'SYNTHMIXAUTH2'
+assert_fixture 'case 71' present -Fxq 'Authorization: Bearer ***REDACTED***,token=***REDACTED***; echo KEEPMIXAUTH2'
+assert_fixture 'case 72' absent -Fq 'SYNTHMIXAUTH4'
+assert_fixture 'case 73' present -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED***;token2=***REDACTED***; echo KEEPMIXAUTH3'
+assert_fixture 'case 74' absent -Fq 'SYNTHMIXAUTH7'
+assert_fixture 'case 75' present -Fxq 'Authorization: Bearer ***REDACTED***;token=***REDACTED*** echo KEEPCASEMARK'
+assert_fixture 'case 76' absent -Fqi '@lmline_chain_key@'
+assert_fixture 'case 77' absent -Fq 'SYNTHCASEMARK'
+assert_fixture 'case 78' present -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARK'
+assert_fixture 'case 79' absent -Fq '@@LMLINE_URL_REDACTED@@'
+assert_fixture 'case 80' present -Fxq 'url=https://u:***REDACTED***@host/path; echo KEEPPASTEDURLMARKCASE'
+assert_fixture 'case 81' absent -Fqi '@@LMLINE_URL_REDACTED@@'
+assert_fixture 'case 82' present -Fxq 'echo KEEPPASTEDREDMARK ***REDACTED*** KEEPPASTEDREDTAIL'
+assert_fixture 'case 83' absent -Fqi '@@LmLINE_Redacted@@'
+assert_fixture 'case 84' present -Fxq 'echo KEEPPASTEDCHAINMARK ***REDACTED*** KEEPPASTEDCHAINTAIL'
+assert_fixture 'case 85' absent -Fqi '@LmLINE_ChAiN_kEy@'
+assert_fixture 'case 86' present -Fxq 'echo KEEPPASTEDSEPMARK ***REDACTED*** KEEPPASTEDSEPTAIL'
+assert_fixture 'case 87' absent -Fqi '@LmLINE_SeP@'
+assert_fixture 'case 88' present -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPEQSDQ1'
+assert_fixture 'case 89' absent -Fq 'SYNTHEQSDQ1'
+assert_fixture 'case 90' present -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPEQSQ1"
+assert_fixture 'case 91' absent -Fq 'SYNTHESQSQ1'
+assert_fixture 'case 92' present -Fxq 'authorization: bearer="***REDACTED***" && echo KEEPEQSCASE'
+assert_fixture 'case 93' absent -Fq 'SYNTHEQSCASE1'
+assert_fixture 'case 94' present -Fxq 'Authorization: Basic="***REDACTED***"; echo KEEPEQSESC'
+assert_fixture 'case 95' absent -Fq 'SYNTHEQSESC1'
+assert_fixture 'case 96' present -Fxq 'Authorization: Bearer="***REDACTED***'
+assert_fixture 'case 97' absent -Fq 'SYNTHEQUNTERM1'
+assert_fixture 'case 98' present -Fxq "Authorization: Bearer='***REDACTED***"
+assert_fixture 'case 99' absent -Fq 'SYNTHEQUNTERM2'
+assert_fixture 'case 100' absent -Fq 'SYNTHEQTBACK1'
+assert_fixture 'case 101' absent -Fq 'SYNTHEQTBACK2'
+assert_fixture 'case 102' present -Fxq 'Authorization: Bearer:"***REDACTED***"; echo KEEPCOLSDQ1'
+assert_fixture 'case 103' absent -Fq 'SYNTHCOLSDQ1'
+assert_fixture 'case 104' present -Fxq "Authorization: Basic=='***REDACTED***'; echo KEEPCOLSQ2"
+assert_fixture 'case 105' absent -Fq 'SYNTHCOLSQ2'
+assert_fixture 'case 106' present -Fxq 'Authorization: Digest:="***REDACTED***"; echo KEEPCOLREP3'
+assert_fixture 'case 107' absent -Fq 'SYNTHCOLREP3'
+assert_fixture 'case 108' present -Fxq 'Authorization: Bearer:"***REDACTED***'
+assert_fixture 'case 109' absent -Fq 'SYNTHCOLUNTERM4'
+assert_fixture 'case 110' present -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPESESDQ1'
+assert_fixture 'case 111' absent -Fq 'SYNTHESESDQ1'
+assert_fixture 'case 112' present -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPESESQ1"
+assert_fixture 'case 113' absent -Fq 'SYNTHESESQ1'
+assert_fixture 'case 114' present -Fxq 'Authorization: Bearer==\"***REDACTED***\" | echo KEEPESESDQ2'
+assert_fixture 'case 115' absent -Fq 'SYNTHESESDQ2'
+assert_fixture 'case 116' present -Fxq "Authorization: Bearer:\'***REDACTED***\' >> out; echo KEEPESESQ2"
+assert_fixture 'case 117' absent -Fq 'SYNTHESESQ2'
+assert_fixture 'case 118' present -Fxq 'authorization: bearer=\"***REDACTED***\" && echo KEEPESESDQCASE'
+assert_fixture 'case 119' absent -Fq 'SYNTHESESDQCASE'
+assert_fixture 'case 120' present -Fxq 'Authorization: Bearer=\"***REDACTED***\"'
+assert_fixture 'case 121' absent -Fq 'SYNTHESESDQ3'
+assert_fixture 'case 122' absent -Fq 'SYNTHUNTERMDPQ1'
+assert_fixture 'case 123' present -Fxq -- 'Authorization: Bearer=\"***REDACTED***'
+assert_fixture 'case 124' absent -Fq 'SYNTHUNTERMSQ1'
+assert_fixture 'case 125' present -Fxq "Authorization: Bearer=\\'***REDACTED***"
 # Every trailing-backslash parity masks the credential and consumes the dangling slash;
 # all four parities share the exact output asserted above.
-grep -Fq 'SYNTHTRAILDDQ0' "$line_file" && exit 786
-grep -Fq 'SYNTHTRAILDDQ1' "$line_file" && exit 788
-grep -Fq 'SYNTHTRAILDDQ2' "$line_file" && exit 790
-grep -Fq 'SYNTHTRAILDDQ3' "$line_file" && exit 792
-grep -Fq 'SYNTHTRAILSQ0' "$line_file" && exit 794
-grep -Fq 'SYNTHTRAILSQ1' "$line_file" && exit 796
-grep -Fq 'SYNTHTRAILSQ2' "$line_file" && exit 798
-grep -Fq 'SYNTHTRAILSQ3' "$line_file" && exit 800
-grep -Fq 'SYNTHQURL1' "$line_file" && exit 763
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPQURL1' "$line_file" || exit 764
-grep -Fq 'SYNTHQURL2' "$line_file" && exit 765
-grep -Fxq -- "url=https://x/?secret='***REDACTED***'&y=2; echo KEEPQURL2" "$line_file" || exit 766
-grep -Fq 'SYNTHQURL3' "$line_file" && exit 767
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPQURL3' "$line_file" || exit 768
-grep -Fq 'SYNTHQURL4' "$line_file" && exit 769
-grep -Fxq -- "url=https://x/?api_key='***REDACTED***'&y=4; echo KEEPQURL4" "$line_file" || exit 770
-grep -Fq 'SYNTHQURL5' "$line_file" && exit 771
-grep -Fxq -- 'curl "https://x/?token="***REDACTED***"&y=5"; echo KEEPQURL5' "$line_file" || exit 772
-grep -Fq 'SYNTHQURL6' "$line_file" && exit 773
-grep -Fq 'SYNTHESCKQ1' "$line_file" && exit 779
-grep -Fxq -- 'url=https://x/?"token"="***REDACTED***"&y=1; echo KEEPESCKQ1' "$line_file" || exit 780
-grep -Fq 'SYNTHESCKQ2' "$line_file" && exit 780
-grep -Fxq -- 'url=https://x/?'"'"'secret'"'"'='"'"'***REDACTED***'"'"'&y=2; echo KEEPESCKQ2' "$line_file" || exit 781
-grep -Fq 'SYNTHESCKQ3' "$line_file" && exit 781
-grep -Fxq -- 'url=https://x/?"api_key"='"'"'***REDACTED***'"'"'&y=3; echo KEEPESCKQ3' "$line_file" || exit 782
-grep -Fq 'SYNTHESCKQ4' "$line_file" && exit 782
-grep -Fxq -- 'curl "https://x/?"token"="***REDACTED***"&y=4"; echo KEEPESCKQ4' "$line_file" || exit 783
-grep -Fq 'SYNTHESCKQ5' "$line_file" && exit 783
-grep -Fxq -- 'url=https://x/?"token"=***REDACTED***&y=5; echo KEEPESCKQ5' "$line_file" || exit 784
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"' "$line_file" || exit 774
+assert_fixture 'case 126' absent -Fq 'SYNTHTRAILDDQ0'
+assert_fixture 'case 127' absent -Fq 'SYNTHTRAILDDQ1'
+assert_fixture 'case 128' absent -Fq 'SYNTHTRAILDDQ2'
+assert_fixture 'case 129' absent -Fq 'SYNTHTRAILDDQ3'
+assert_fixture 'case 130' absent -Fq 'SYNTHTRAILSQ0'
+assert_fixture 'case 131' absent -Fq 'SYNTHTRAILSQ1'
+assert_fixture 'case 132' absent -Fq 'SYNTHTRAILSQ2'
+assert_fixture 'case 133' absent -Fq 'SYNTHTRAILSQ3'
+assert_fixture 'case 134' absent -Fq 'SYNTHQURL1'
+assert_fixture 'case 135' present -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPQURL1'
+assert_fixture 'case 136' absent -Fq 'SYNTHQURL2'
+assert_fixture 'case 137' present -Fxq -- "url=https://x/?secret='***REDACTED***'&y=2; echo KEEPQURL2"
+assert_fixture 'case 138' absent -Fq 'SYNTHQURL3'
+assert_fixture 'case 139' present -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPQURL3'
+assert_fixture 'case 140' absent -Fq 'SYNTHQURL4'
+assert_fixture 'case 141' present -Fxq -- "url=https://x/?api_key='***REDACTED***'&y=4; echo KEEPQURL4"
+assert_fixture 'case 142' absent -Fq 'SYNTHQURL5'
+assert_fixture 'case 143' present -Fxq -- 'curl "https://x/?token="***REDACTED***"&y=5"; echo KEEPQURL5'
+assert_fixture 'case 144' absent -Fq 'SYNTHQURL6'
+assert_fixture 'case 145' absent -Fq 'SYNTHESCKQ1'
+assert_fixture 'case 146' present -Fxq -- 'url=https://x/?"token"="***REDACTED***"&y=1; echo KEEPESCKQ1'
+assert_fixture 'case 147' absent -Fq 'SYNTHESCKQ2'
+assert_fixture 'case 148' present -Fxq -- 'url=https://x/?'"'"'secret'"'"'='"'"'***REDACTED***'"'"'&y=2; echo KEEPESCKQ2'
+assert_fixture 'case 149' absent -Fq 'SYNTHESCKQ3'
+assert_fixture 'case 150' present -Fxq -- 'url=https://x/?"api_key"='"'"'***REDACTED***'"'"'&y=3; echo KEEPESCKQ3'
+assert_fixture 'case 151' absent -Fq 'SYNTHESCKQ4'
+assert_fixture 'case 152' present -Fxq -- 'curl "https://x/?"token"="***REDACTED***"&y=4"; echo KEEPESCKQ4'
+assert_fixture 'case 153' absent -Fq 'SYNTHESCKQ5'
+assert_fixture 'case 154' present -Fxq -- 'url=https://x/?"token"=***REDACTED***&y=5; echo KEEPESCKQ5'
+assert_fixture 'case 155' present -Fxq -- 'url=https://x/?token="***REDACTED***"'
 # Adjacent escaped segments are consumed fail-closed: no value or tail survives.
-grep -Fq 'SYNTHESCADJ1' "$line_file" && exit 801
-grep -Fxq -- 'url=https://x/?"token"=***REDACTED***"***REDACTED***' "$line_file" || exit 802
-grep -Fq 'KEEPESCADJ1' "$line_file" && exit 803
-grep -Fq 'SYNTHESCADJ2' "$line_file" && exit 804
-grep -Fq 'KEEPESCADJ2' "$line_file" && exit 806
-grep -Fq 'SYNTHESCADJ3' "$line_file" && exit 807
-grep -Fq 'KEEPESCADJ3' "$line_file" && exit 809
-grep -Fq 'SYNTHESCADJ4' "$line_file" && exit 810
-grep -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***" "$line_file" || exit 811
-grep -Fq 'KEEPESCADJ4' "$line_file" && exit 812
+assert_fixture 'case 156' absent -Fq 'SYNTHESCADJ1'
+assert_fixture 'case 157' present -Fxq -- 'url=https://x/?"token"=***REDACTED***"***REDACTED***'
+assert_fixture 'case 158' absent -Fq 'KEEPESCADJ1'
+assert_fixture 'case 159' absent -Fq 'SYNTHESCADJ2'
+assert_fixture 'case 160' absent -Fq 'KEEPESCADJ2'
+assert_fixture 'case 161' absent -Fq 'SYNTHESCADJ3'
+assert_fixture 'case 162' absent -Fq 'KEEPESCADJ3'
+assert_fixture 'case 163' absent -Fq 'SYNTHESCADJ4'
+assert_fixture 'case 164' present -Fxq -- "url=https://x/?'token'=***REDACTED***'***REDACTED***"
+assert_fixture 'case 165' absent -Fq 'KEEPESCADJ4'
 # Chained credential keys keep their field boundaries; adjacent segments stay masked.
-grep -Fq 'SYNTHKEEPUNEQ1' "$line_file" && exit 890
-grep -Fq 'SYNTHKEEPUNEQ2' "$line_file" && exit 891
-grep -Fq 'SECNEXT' "$line_file" && exit 913
-grep -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPESEMPTYDQ' "$line_file" || exit 914
-grep -Fq 'SECNEXTE' "$line_file" && exit 915
-grep -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPESEMPTYSQ" "$line_file" || exit 916
-grep -Fq 'SECNEXT WITH SPACE' "$line_file" && exit 926
-grep -Fq 'SECNEXT SQ SPACE' "$line_file" && exit 927
-grep -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPURLDQSPACE' "$line_file" || exit 928
-grep -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPURLSQSPACE" "$line_file" || exit 929
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"&password="***REDACTED***"&y=2; echo KEEPUNEQ' "$line_file" || exit 892
-grep -Fq 'SYNTHKEEPESCQ1' "$line_file" && exit 893
-grep -Fq 'SYNTHKEEPESCQ2' "$line_file" && exit 894
-grep -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\"&password=***REDACTED***; echo KEEPESCQ" "$line_file" || exit 895
-grep -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\";password=***REDACTED***; echo KEEPSEMI" "$line_file" || exit 905
-grep -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\",password=***REDACTED***; echo KEEPCOMMA" "$line_file" || exit 906
-grep -Fq 'SYNTHKEEPESCSQ1' "$line_file" && exit 896
-grep -Fq 'SYNTHKEEPESCSQ2' "$line_file" && exit 897
-grep -Fxq -- "url=https://x/?'token'='***REDACTED***'&password=***REDACTED***; echo KEEPESCSQ" "$line_file" || exit 898
-grep -Fq 'SYNTHADJGUARD1' "$line_file" && exit 899
-grep -Fq 'KEEPADJGUARD1' "$line_file" && exit 900
-grep -Fq 'SYNTHADJGUARD2' "$line_file" && exit 902
-grep -Fq 'KEEPADJGUARD2' "$line_file" && exit 903
+assert_fixture 'case 166' absent -Fq 'SYNTHKEEPUNEQ1'
+assert_fixture 'case 167' absent -Fq 'SYNTHKEEPUNEQ2'
+assert_fixture 'case 168' absent -Fq 'SECNEXT'
+assert_fixture 'case 169' present -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPESEMPTYDQ'
+assert_fixture 'case 170' absent -Fq 'SECNEXTE'
+assert_fixture 'case 171' present -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPESEMPTYSQ"
+assert_fixture 'case 172' absent -Fq 'SECNEXT WITH SPACE'
+assert_fixture 'case 173' absent -Fq 'SECNEXT SQ SPACE'
+assert_fixture 'case 174' present -Fxq 'url=https://x/?token="***REDACTED***"&password=***REDACTED***&y=1; echo KEEPURLDQSPACE'
+assert_fixture 'case 175' present -Fxq "url=https://x/?token='***REDACTED***'&secret=***REDACTED***&y=2; echo KEEPURLSQSPACE"
+assert_fixture 'case 176' present -Fxq -- 'url=https://x/?token="***REDACTED***"&password="***REDACTED***"&y=2; echo KEEPUNEQ'
+assert_fixture 'case 177' absent -Fq 'SYNTHKEEPESCQ1'
+assert_fixture 'case 178' absent -Fq 'SYNTHKEEPESCQ2'
+assert_fixture 'case 179' present -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\"&password=***REDACTED***; echo KEEPESCQ"
+assert_fixture 'case 180' present -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\";password=***REDACTED***; echo KEEPSEMI"
+assert_fixture 'case 181' present -Fxq -- "url=https://x/?\"token\"=\"***REDACTED***\",password=***REDACTED***; echo KEEPCOMMA"
+assert_fixture 'case 182' absent -Fq 'SYNTHKEEPESCSQ1'
+assert_fixture 'case 183' absent -Fq 'SYNTHKEEPESCSQ2'
+assert_fixture 'case 184' present -Fxq -- "url=https://x/?'token'='***REDACTED***'&password=***REDACTED***; echo KEEPESCSQ"
+assert_fixture 'case 185' absent -Fq 'SYNTHADJGUARD1'
+assert_fixture 'case 186' absent -Fq 'KEEPADJGUARD1'
+assert_fixture 'case 187' absent -Fq 'SYNTHADJGUARD2'
+assert_fixture 'case 188' absent -Fq 'KEEPADJGUARD2'
 # A plain key must consume adjacent escaped segments; a second keyed field stays separate.
-grep -Fq 'SYNTHADJPLAIN1' "$line_file" && exit 850
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPADJPLAIN1' "$line_file" || exit 851
-grep -Fq 'SYNTHADJPLAIN2' "$line_file" && exit 852
-grep -Fxq -- "url=https://x/?token='***REDACTED***'&y=2; echo KEEPADJPLAIN2" "$line_file" || exit 853
-grep -Fq 'SYNTHADJPLAIN3' "$line_file" && exit 854
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPADJPLAIN3' "$line_file" || exit 855
-grep -Fq 'SYNTHADJPLAIN4' "$line_file" && exit 856
-grep -Fxq -- 'url=https://x/?token="***REDACTED***"&other_token="***REDACTED***"&y=4; echo KEEPADJPLAIN4' "$line_file" || exit 857
-grep -Fq 'SYNTHDOUBLE1' "$line_file" && exit 860
-grep -Fxq -- 'url=https://x/?token:"***REDACTED***"' "$line_file" || exit 861
-grep -Fq 'SYNTHDOUBLE2' "$line_file" && exit 862
-grep -Fxq -- 'url=https://x/?token:"***REDACTED***"&y=1; echo KEEPTAIL' "$line_file" || exit 863
-grep -Fq 'SYNTHDOUBLE3' "$line_file" && exit 864
-grep -Fxq -- "url=https://x/?token='***REDACTED***'" "$line_file" || exit 865
-grep -Fq 'SYNTHDOUBLE4' "$line_file" && exit 866
-grep -Fxq -- 'url=https://x/?api_key:"***REDACTED***"&y=2; echo KEEPDOUBLE4' "$line_file" || exit 867
-grep -Fq 'SYNTHSPACED1' "$line_file" && exit 870
-grep -Fxq -- 'url=https://x/?token : ***REDACTED***' "$line_file" || exit 871
-grep -Fq 'SYNTHSPACED2' "$line_file" && exit 872
-grep -Fxq -- 'url=https://x/?token : "***REDACTED***"&y=1; echo KEEPTAIL' "$line_file" || exit 873
-grep -Fq 'SYNTHSPACED3' "$line_file" && exit 874
-grep -Fxq -- "url=https://x/?api_key : '***REDACTED***'" "$line_file" || exit 875
-grep -Fxq -- 'url=https://x/?realm : = "example.com"; echo KEEPREALM' "$line_file" || exit 876
-grep -Fq 'SYNTHAUTHURL1' "$line_file" && exit 880
-grep -Fxq -- 'url=https://x/?Authorization:"***REDACTED***"' "$line_file" || exit 881
-grep -Fq 'SYNTHAUTHURL2' "$line_file" && exit 882
-grep -Fxq -- 'url=https://x/?Authorization:"***REDACTED***"&y=1; echo KEEPTAIL' "$line_file" || exit 883
-grep -Fq 'SYNTHAUTHURL3' "$line_file" && exit 884
-grep -Fxq -- 'url=https://x/?Authorization:***REDACTED***' "$line_file" || exit 885
-grep -Fq 'SYNTHAUTHURL4' "$line_file" && exit 886
-grep -Fxq -- 'url=https://x/?Authorization: ***REDACTED***' "$line_file" || exit 887
-grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPURLAUTH' "$line_file" || exit 888
-grep -Fxq 'Note LMLINE_REALM_EQ_SENTINEL is only a temporary marker.' "$line_file" || exit 1253
-grep -Fxq 'Note @@LMLINE_REALM_SHIELD_FOO@@ stays intact.' "$line_file" || exit 1254
-grep -Fxq -- 'curl "https://x/?Authorization:@@LMLINE_REALM_SHIELD_FOO@@" ; echo KEEPPASTEDSHIELD' "$line_file" || exit 1257
-grep -Fxq -- 'curl "https://x/?Authorization:@@LMLINE_REALM_SHIELD_FOO@@\"example.com\"; echo KEEPPASTEDSHIELDGLUED' "$line_file" || exit 1258
-grep -Fxq '?Authorization:REALM="example.com"; echo KEEPREALMCASE' "$line_file" || exit 1255
-grep -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPCOLONEQREALM' "$line_file" || exit 1256
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLAMP1' "$line_file" || exit 889
-grep -Fq SYNTHURLAMP1 "$line_file" && exit 890
-grep -Fxq -- 'url=https://x/?a=1;Authorization:***REDACTED***' "$line_file" || exit 891
-grep -Fq SYNTHURLSEMI1 "$line_file" && exit 892
-grep -Fxq -- 'url=https://x/?a=1,Authorization:***REDACTED***' "$line_file" || exit 893
-grep -Fq SYNTHURLCOMMA1 "$line_file" && exit 894
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***' "$line_file" || exit 895
-grep -Fq SYNTHURLBEARER1 "$line_file" && exit 896
-grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN' "$line_file" || exit 737
-grep -Fxq -- 'curl -H "Authorization: Bearer ***REDACTED***"; curl "https://x/?a=1&Authorization:***REDACTED***"' "$line_file" || exit 897
-grep -Fq SYNTHURLSAME2 "$line_file" && exit 898
-grep -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"' "$line_file" || exit 899
-grep -Fq SYNTHURLDQ2 "$line_file" && exit 900
-grep -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'" "$line_file" || exit 901
-grep -Fq SYNTHURLSQ2 "$line_file" && exit 902
-grep -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPURLSP2' "$line_file" || exit 903
-grep -Fq SYNTHURLSP2 "$line_file" && exit 904
-grep -Fq 'SYNTHEQCHAIN' "$line_file" && exit 738
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLCOLEND1' "$line_file" || exit 905
-grep -Fq SYNTHCOLEND1 "$line_file" && exit 906
-grep -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLEQEND1' "$line_file" || exit 907
-grep -Fq SYNTHEQEND1 "$line_file" && exit 908
-grep -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPURLCOLQUOTE1" "$line_file" || exit 909
-grep -Fq SYNTHCOLQUOTE1 "$line_file" && exit 910
-grep -Fq U1lOVEhCQVNFNjQx== "$line_file" && exit 1200
-grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ1' "$line_file" || exit 1201
-grep -Fq U1lOVEhCQVNFNjQy=== "$line_file" && exit 1202
-grep -Fxq 'url=https://x/?a=1;Authorization:***REDACTED***; echo KEEPPADEQ2' "$line_file" || exit 1203
-grep -Fq U1lOVEhCQVNFNjQz== "$line_file" && exit 1204
-grep -Fxq 'url=https://x/?a=1,Authorization:***REDACTED***; echo KEEPPADEQ3' "$line_file" || exit 1205
-grep -Fq U1lOVEhCQVNFNjQ0== "$line_file" && exit 1206
-grep -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPPADEQ4" "$line_file" || exit 1207
-grep -Fq U1lOVEhCQVNFNjQ1== "$line_file" && exit 1208
-grep -Fxq 'curl "https://x/?a=1;Authorization:***REDACTED***"; echo KEEPPADEQ5' "$line_file" || exit 1209
-grep -Fq U1lOVEhCQVNFNjQ2=== "$line_file" && exit 1210
-grep -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ6"' "$line_file" || exit 1211
-grep -Fq U1lOVEhCQVNFNjQ3=== "$line_file" && exit 1212
-grep -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ7'" "$line_file" || exit 1213
-grep -Fq U1lOVEhCQVNFNjQ4== "$line_file" && exit 1214
-grep -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPPADEQ8' "$line_file" || exit 1215
-grep -Fq U1lOVEhCQVNFNjQ5=== "$line_file" && exit 1216
-grep -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPPADEQ9" "$line_file" || exit 1217
-grep -Fq U1lOVEhCQVNFNjQ6= "$line_file" && exit 1218
-grep -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPSINGLEEQ1' "$line_file" || exit 1219
-grep -Fq U1lOVEhCQVNFNjQ7= "$line_file" && exit 1220
-grep -Fxq "curl 'https://x/?a=1;Authorization:***REDACTED***'; echo KEEPSINGLEEQ2" "$line_file" || exit 1221
-grep -Fq U1lOVEhCQVNFNjQ8= "$line_file" && exit 1222
-grep -Fxq 'curl "https://x/?a=1,Authorization:***REDACTED***"; echo KEEPSINGLEEQ3' "$line_file" || exit 1223
-grep -Fq U1lOVEhCQVFCMQ== "$line_file" && exit 1224
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILFQ1' "$line_file" || exit 1225
-grep -Fq U1lOVEhCQVFCMg== "$line_file" && exit 1226
-grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILFQ2" "$line_file" || exit 1227
-grep -Fq U1lOVEhCQVFCMw=== "$line_file" && exit 1228
-grep -Fxq 'url=https://x/?Authorization:***REDACTED***; echo TAILFQ3' "$line_file" || exit 1229
-grep -Fq U1lOVEhCQVFCNDo: "$line_file" && exit 1230
-grep -Fxq 'url=https://x/?Authorization:***REDACTED***; echo TAILFQ4' "$line_file" || exit 1231
-grep -Fq YWI= "$line_file" && exit 1232
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILB64ONE' "$line_file" || exit 1233
-grep -Fq YWJjZGVmZ2hpamtsbW5vcHE= "$line_file" && exit 1234
-grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILB64LONG" "$line_file" || exit 1235
-grep -Fq SYNTHSINGLEEQ4= "$line_file" && exit 1236
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILSINGLE4' "$line_file" || exit 1237
-grep -Fq SYNTHSINGLEEQ5= "$line_file" && exit 1238
-grep -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILSINGLE5" "$line_file" || exit 1239
-grep -Fq SYNTHESCAPED1= "$line_file" && exit 1240
-grep -Fxq 'curl \"https://x/?Authorization:***REDACTED***\"; echo TAILESC' "$line_file" || exit 1241
-grep -Fq SYNTHGT1= "$line_file" && exit 1242
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***">out; echo TAILGT' "$line_file" || exit 1243
-grep -Fq SYNTHPAR1= "$line_file" && exit 1244
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"); echo TAILPAR' "$line_file" || exit 1245
-grep -Fq SYNTHMULTIGT1== "$line_file" && exit 1246
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***">out; echo TAILMULTIGT' "$line_file" || exit 1247
-grep -Fq U1lOVEhCQVFCMA== "$line_file" && exit 1248
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"]; echo KEEPBASE1' "$line_file" || exit 1249
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"?x=1; echo KEEPBASE2' "$line_file" || exit 1250
-grep -Fq SYNTHSUFFIX1= "$line_file" && exit 1251
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"]; echo TAILSUFFIX1' "$line_file" || exit 1252
-grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1' "$line_file" || exit 907
-grep -Fq 'SYNTHAUDSEG' "$line_file" && exit 908
-grep -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2" "$line_file" || exit 909
-grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPAUDSEG3' "$line_file" || exit 910
-grep -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPAUDSEG4" "$line_file" || exit 911
-grep -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPAUDSEG5' "$line_file" || exit 912
-grep -Fq 'SYNTH SPACE' "$line_file" && exit 917
-grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPSEGSPACE1' "$line_file" || exit 918
-grep -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPSEGSPACE2" "$line_file" || exit 919
-grep -Fxq 'Authorization: Bearer="***REDACTED***"; echo "KEEPSEGSPACE4"' "$line_file" || exit 920
-grep -Fq 'SYNTH UPQ' "$line_file" && exit 921
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ1' "$line_file" || exit 922
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ2' "$line_file" || exit 923
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo "KEEPUPQ3"' "$line_file" || exit 924
-grep -Fxq 'Authorization: Bearer=***REDACTED***;token=***REDACTED***; echo KEEPUPQ4' "$line_file" || exit 925
-grep -Fq 'SYNTHUPQ5' "$line_file" && exit 930
-grep -Fq 'SYNTHUPQ6' "$line_file" && exit 931
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Bearer=***REDACTED***; echo KEEPUPQ5' "$line_file" || exit 932
-grep -Fq 'SYNTHUPQ7' "$line_file" && exit 933
-grep -Fxq 'Authorization: Bearer=***REDACTED*** | grep KEEPUPQ7' "$line_file" || exit 934
-grep -Fq 'SYNTHUPQ8' "$line_file" && exit 935
-grep -Fq 'SYNTHUPQ9' "$line_file" && exit 936
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ8' "$line_file" || exit 937
-grep -Fq 'SYNTHUPQ10' "$line_file" && exit 938
-grep -Fq 'SYNTHUPQ11' "$line_file" && exit 939
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQ10' "$line_file" || exit 940
-grep -Fq 'SYNTHUPQESC1' "$line_file" && exit 941
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC1' "$line_file" || exit 942
-grep -Fq 'SYNTHUPQESC2' "$line_file" && exit 943
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC2' "$line_file" || exit 944
-grep -Fq 'SYNTHUPQESC3' "$line_file" && exit 945
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3' "$line_file" || exit 946
-grep -Fq 'SYNTHCUSTM' "$line_file" && exit 947
-grep -Fq 'SYNTHXAUTH' "$line_file" && exit 948
-grep -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Custom=***REDACTED***; echo KEEPCUSTOM1' "$line_file" || exit 949
-grep -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPCUSTOM2' "$line_file" || exit 950
-grep -Fxq 'Authorization: X-OAuth2=***REDACTED***; Authorization: X-OAuth2=***REDACTED***; echo KEEPCUSTOM3' "$line_file" || exit 951
-grep -Fq 'SYNTHCUSTOMQH1' "$line_file" && exit 954
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://example.test; echo KEEPQHCUSTOM1" "$line_file" || exit 955
-grep -Fq 'SYNTHCUSTOMQH2' "$line_file" && exit 956
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://example.test; echo KEEPQHCUSTOM2' "$line_file" || exit 957
-grep -Fq 'LEAKAPOSTROPHE987' "$line_file" && exit 958
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPTAILAPOS987' "$line_file" || exit 959
-grep -Fq 'LEAKAPOSTROPHE988' "$line_file" && exit 960
-grep -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPTAILCUSTOM988' "$line_file" || exit 961
-grep -Fq 'LEAKDQUOTE989' "$line_file" && exit 962
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPTAILDQUOTE989' "$line_file" || exit 963
-grep -Fxq 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5' "$line_file" || exit 952
-grep -Fxq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 953
+assert_fixture 'case 189' absent -Fq 'SYNTHADJPLAIN1'
+assert_fixture 'case 190' present -Fxq -- 'url=https://x/?token="***REDACTED***"&y=1; echo KEEPADJPLAIN1'
+assert_fixture 'case 191' absent -Fq 'SYNTHADJPLAIN2'
+assert_fixture 'case 192' present -Fxq -- "url=https://x/?token='***REDACTED***'&y=2; echo KEEPADJPLAIN2"
+assert_fixture 'case 193' absent -Fq 'SYNTHADJPLAIN3'
+assert_fixture 'case 194' present -Fxq -- 'url=https://x/?token="***REDACTED***"&y=3; echo KEEPADJPLAIN3'
+assert_fixture 'case 195' absent -Fq 'SYNTHADJPLAIN4'
+assert_fixture 'case 196' present -Fxq -- 'url=https://x/?token="***REDACTED***"&other_token="***REDACTED***"&y=4; echo KEEPADJPLAIN4'
+assert_fixture 'case 197' absent -Fq 'SYNTHDOUBLE1'
+assert_fixture 'case 198' present -Fxq -- 'url=https://x/?token:"***REDACTED***"'
+assert_fixture 'case 199' absent -Fq 'SYNTHDOUBLE2'
+assert_fixture 'case 200' present -Fxq -- 'url=https://x/?token:"***REDACTED***"&y=1; echo KEEPTAIL'
+assert_fixture 'case 201' absent -Fq 'SYNTHDOUBLE3'
+assert_fixture 'case 202' present -Fxq -- "url=https://x/?token='***REDACTED***'"
+assert_fixture 'case 203' absent -Fq 'SYNTHDOUBLE4'
+assert_fixture 'case 204' present -Fxq -- 'url=https://x/?api_key:"***REDACTED***"&y=2; echo KEEPDOUBLE4'
+assert_fixture 'case 205' absent -Fq 'SYNTHSPACED1'
+assert_fixture 'case 206' present -Fxq -- 'url=https://x/?token : ***REDACTED***'
+assert_fixture 'case 207' absent -Fq 'SYNTHSPACED2'
+assert_fixture 'case 208' present -Fxq -- 'url=https://x/?token : "***REDACTED***"&y=1; echo KEEPTAIL'
+assert_fixture 'case 209' absent -Fq 'SYNTHSPACED3'
+assert_fixture 'case 210' present -Fxq -- "url=https://x/?api_key : '***REDACTED***'"
+assert_fixture 'case 211' present -Fxq -- 'url=https://x/?realm : = "example.com"; echo KEEPREALM'
+assert_fixture 'case 212' absent -Fq 'SYNTHAUTHURL1'
+assert_fixture 'case 213' present -Fxq -- 'url=https://x/?Authorization:"***REDACTED***"'
+assert_fixture 'case 214' absent -Fq 'SYNTHAUTHURL2'
+assert_fixture 'case 215' present -Fxq -- 'url=https://x/?Authorization:"***REDACTED***"&y=1; echo KEEPTAIL'
+assert_fixture 'case 216' absent -Fq 'SYNTHAUTHURL3'
+assert_fixture 'case 217' present -Fxq -- 'url=https://x/?Authorization:***REDACTED***'
+assert_fixture 'case 218' absent -Fq 'SYNTHAUTHURL4'
+assert_fixture 'case 219' present -Fxq -- 'url=https://x/?Authorization: ***REDACTED***'
+assert_fixture 'case 220' present -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPURLAUTH'
+assert_fixture 'case 221' present -Fxq 'Note LMLINE_REALM_EQ_SENTINEL is only a temporary marker.'
+assert_fixture 'case 222' present -Fxq 'Note @@LMLINE_REALM_SHIELD_FOO@@ stays intact.'
+assert_fixture 'case 223' present -Fxq -- 'curl "https://x/?Authorization:@@LMLINE_REALM_SHIELD_FOO@@" ; echo KEEPPASTEDSHIELD'
+assert_fixture 'case 224' present -Fxq -- 'curl "https://x/?Authorization:@@LMLINE_REALM_SHIELD_FOO@@\"example.com\"; echo KEEPPASTEDSHIELDGLUED'
+assert_fixture 'case 225' present -Fxq '?Authorization:REALM="example.com"; echo KEEPREALMCASE'
+assert_fixture 'case 226' present -Fxq -- 'url=https://x/?Authorization:realm="example.com"; echo KEEPCOLONEQREALM'
+assert_fixture 'case 227' present -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLAMP1'
+assert_fixture 'case 228' absent -Fq SYNTHURLAMP1
+assert_fixture 'case 229' present -Fxq -- 'url=https://x/?a=1;Authorization:***REDACTED***'
+assert_fixture 'case 230' absent -Fq SYNTHURLSEMI1
+assert_fixture 'case 231' present -Fxq -- 'url=https://x/?a=1,Authorization:***REDACTED***'
+assert_fixture 'case 232' absent -Fq SYNTHURLCOMMA1
+assert_fixture 'case 233' present -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***'
+assert_fixture 'case 234' absent -Fq SYNTHURLBEARER1
+assert_fixture 'case 235' present -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPEQCHAIN'
+assert_fixture 'case 236' present -Fxq -- 'curl -H "Authorization: Bearer ***REDACTED***"; curl "https://x/?a=1&Authorization:***REDACTED***"'
+assert_fixture 'case 237' absent -Fq SYNTHURLSAME2
+assert_fixture 'case 238' present -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"'
+assert_fixture 'case 239' absent -Fq SYNTHURLDQ2
+assert_fixture 'case 240' present -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'"
+assert_fixture 'case 241' absent -Fq SYNTHURLSQ2
+assert_fixture 'case 242' present -Fxq -- 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPURLSP2'
+assert_fixture 'case 243' absent -Fq SYNTHURLSP2
+assert_fixture 'case 244' absent -Fq 'SYNTHEQCHAIN'
+assert_fixture 'case 245' present -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLCOLEND1'
+assert_fixture 'case 246' absent -Fq SYNTHCOLEND1
+assert_fixture 'case 247' present -Fxq -- 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPURLEQEND1'
+assert_fixture 'case 248' absent -Fq SYNTHEQEND1
+assert_fixture 'case 249' present -Fxq -- "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPURLCOLQUOTE1"
+assert_fixture 'case 250' absent -Fq SYNTHCOLQUOTE1
+assert_fixture 'case 251' absent -Fq U1lOVEhCQVNFNjQx==
+assert_fixture 'case 252' present -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ1'
+assert_fixture 'case 253' absent -Fq U1lOVEhCQVNFNjQy===
+assert_fixture 'case 254' present -Fxq 'url=https://x/?a=1;Authorization:***REDACTED***; echo KEEPPADEQ2'
+assert_fixture 'case 255' absent -Fq U1lOVEhCQVNFNjQz==
+assert_fixture 'case 256' present -Fxq 'url=https://x/?a=1,Authorization:***REDACTED***; echo KEEPPADEQ3'
+assert_fixture 'case 257' absent -Fq U1lOVEhCQVNFNjQ0==
+assert_fixture 'case 258' present -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPPADEQ4"
+assert_fixture 'case 259' absent -Fq U1lOVEhCQVNFNjQ1==
+assert_fixture 'case 260' present -Fxq 'curl "https://x/?a=1;Authorization:***REDACTED***"; echo KEEPPADEQ5'
+assert_fixture 'case 261' absent -Fq U1lOVEhCQVNFNjQ2===
+assert_fixture 'case 262' present -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ6"'
+assert_fixture 'case 263' absent -Fq U1lOVEhCQVNFNjQ3===
+assert_fixture 'case 264' present -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***; echo KEEPPADEQ7'"
+assert_fixture 'case 265' absent -Fq U1lOVEhCQVNFNjQ4==
+assert_fixture 'case 266' present -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPPADEQ8'
+assert_fixture 'case 267' absent -Fq U1lOVEhCQVNFNjQ5===
+assert_fixture 'case 268' present -Fxq "curl 'https://x/?a=1&Authorization:***REDACTED***'; echo KEEPPADEQ9"
+assert_fixture 'case 269' absent -Fq U1lOVEhCQVNFNjQ6=
+assert_fixture 'case 270' present -Fxq 'curl "https://x/?a=1&Authorization:***REDACTED***"; echo KEEPSINGLEEQ1'
+assert_fixture 'case 271' absent -Fq U1lOVEhCQVNFNjQ7=
+assert_fixture 'case 272' present -Fxq "curl 'https://x/?a=1;Authorization:***REDACTED***'; echo KEEPSINGLEEQ2"
+assert_fixture 'case 273' absent -Fq U1lOVEhCQVNFNjQ8=
+assert_fixture 'case 274' present -Fxq 'curl "https://x/?a=1,Authorization:***REDACTED***"; echo KEEPSINGLEEQ3'
+assert_fixture 'case 275' absent -Fq U1lOVEhCQVFCMQ==
+assert_fixture 'case 276' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILFQ1'
+assert_fixture 'case 277' absent -Fq U1lOVEhCQVFCMg==
+assert_fixture 'case 278' present -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILFQ2"
+assert_fixture 'case 279' absent -Fq U1lOVEhCQVFCMw===
+assert_fixture 'case 280' present -Fxq 'url=https://x/?Authorization:***REDACTED***; echo TAILFQ3'
+assert_fixture 'case 281' absent -Fq U1lOVEhCQVFCNDo:
+assert_fixture 'case 282' present -Fxq 'url=https://x/?Authorization:***REDACTED***; echo TAILFQ4'
+assert_fixture 'case 283' absent -Fq YWI=
+assert_fixture 'case 284' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILB64ONE'
+assert_fixture 'case 285' absent -Fq YWJjZGVmZ2hpamtsbW5vcHE=
+assert_fixture 'case 286' present -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILB64LONG"
+assert_fixture 'case 287' absent -Fq SYNTHSINGLEEQ4=
+assert_fixture 'case 288' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"; echo TAILSINGLE4'
+assert_fixture 'case 289' absent -Fq SYNTHSINGLEEQ5=
+assert_fixture 'case 290' present -Fxq "curl 'https://x/?Authorization:***REDACTED***'; echo TAILSINGLE5"
+assert_fixture 'case 291' absent -Fq SYNTHESCAPED1=
+assert_fixture 'case 292' present -Fxq 'curl \"https://x/?Authorization:***REDACTED***\"; echo TAILESC'
+assert_fixture 'case 293' absent -Fq SYNTHGT1=
+assert_fixture 'case 294' present -Fxq 'curl "https://x/?Authorization:***REDACTED***">out; echo TAILGT'
+assert_fixture 'case 295' absent -Fq SYNTHPAR1=
+assert_fixture 'case 296' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"); echo TAILPAR'
+assert_fixture 'case 297' absent -Fq SYNTHMULTIGT1==
+assert_fixture 'case 298' present -Fxq 'curl "https://x/?Authorization:***REDACTED***">out; echo TAILMULTIGT'
+assert_fixture 'case 299' absent -Fq U1lOVEhCQVFCMA==
+assert_fixture 'case 300' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"]; echo KEEPBASE1'
+assert_fixture 'case 301' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"?x=1; echo KEEPBASE2'
+assert_fixture 'case 302' absent -Fq SYNTHSUFFIX1=
+assert_fixture 'case 303' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"]; echo TAILSUFFIX1'
+assert_fixture 'case 304' present -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPAUDSEG1'
+assert_fixture 'case 305' absent -Fq 'SYNTHAUDSEG'
+assert_fixture 'case 306' present -Fxq "Authorization: Bearer=\\'***REDACTED***\\'; echo KEEPAUDSEG2"
+assert_fixture 'case 307' present -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPAUDSEG3'
+assert_fixture 'case 308' present -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPAUDSEG4"
+assert_fixture 'case 309' present -Fxq 'Authorization: Bearer="***REDACTED***";token=***REDACTED***; echo KEEPAUDSEG5'
+assert_fixture 'case 310' absent -Fq 'SYNTH SPACE'
+assert_fixture 'case 311' present -Fxq 'Authorization: Bearer="***REDACTED***"; echo KEEPSEGSPACE1'
+assert_fixture 'case 312' present -Fxq "Authorization: Bearer='***REDACTED***'; echo KEEPSEGSPACE2"
+assert_fixture 'case 313' present -Fxq 'Authorization: Bearer="***REDACTED***"; echo "KEEPSEGSPACE4"'
+assert_fixture 'case 314' absent -Fq 'SYNTH UPQ'
+assert_fixture 'case 315' present -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ1'
+assert_fixture 'case 316' present -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ2'
+assert_fixture 'case 317' present -Fxq 'Authorization: Bearer=***REDACTED***; echo "KEEPUPQ3"'
+assert_fixture 'case 318' present -Fxq 'Authorization: Bearer=***REDACTED***;token=***REDACTED***; echo KEEPUPQ4'
+assert_fixture 'case 319' absent -Fq 'SYNTHUPQ5'
+assert_fixture 'case 320' absent -Fq 'SYNTHUPQ6'
+assert_fixture 'case 321' present -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Bearer=***REDACTED***; echo KEEPUPQ5'
+assert_fixture 'case 322' absent -Fq 'SYNTHUPQ7'
+assert_fixture 'case 323' present -Fxq 'Authorization: Bearer=***REDACTED*** | grep KEEPUPQ7'
+assert_fixture 'case 324' absent -Fq 'SYNTHUPQ8'
+assert_fixture 'case 325' absent -Fq 'SYNTHUPQ9'
+assert_fixture 'case 326' present -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPUPQ8'
+assert_fixture 'case 327' absent -Fq 'SYNTHUPQ10'
+assert_fixture 'case 328' absent -Fq 'SYNTHUPQ11'
+assert_fixture 'case 329' present -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQ10'
+assert_fixture 'case 330' absent -Fq 'SYNTHUPQESC1'
+assert_fixture 'case 331' present -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC1'
+assert_fixture 'case 332' absent -Fq 'SYNTHUPQESC2'
+assert_fixture 'case 333' present -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC2'
+assert_fixture 'case 334' absent -Fq 'SYNTHUPQESC3'
+assert_fixture 'case 335' present -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Basic=***REDACTED***; echo KEEPUPQESC3'
+assert_fixture 'case 336' absent -Fq 'SYNTHCUSTM'
+assert_fixture 'case 337' absent -Fq 'SYNTHXAUTH'
+assert_fixture 'case 338' present -Fxq 'Authorization: Bearer=***REDACTED***; Authorization: Custom=***REDACTED***; echo KEEPCUSTOM1'
+assert_fixture 'case 339' present -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPCUSTOM2'
+assert_fixture 'case 340' present -Fxq 'Authorization: X-OAuth2=***REDACTED***; Authorization: X-OAuth2=***REDACTED***; echo KEEPCUSTOM3'
+assert_fixture 'case 341' absent -Fq 'SYNTHCUSTOMQH1'
+assert_fixture 'case 342' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://example.test; echo KEEPQHCUSTOM1"
+assert_fixture 'case 343' absent -Fq 'SYNTHCUSTOMQH2'
+assert_fixture 'case 344' present -Fxq 'curl -H "Authorization: ***REDACTED***" https://example.test; echo KEEPQHCUSTOM2'
+assert_fixture 'case 345' absent -Fq 'LEAKAPOSTROPHE987'
+assert_fixture 'case 346' present -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPTAILAPOS987'
+assert_fixture 'case 347' absent -Fq 'LEAKAPOSTROPHE988'
+assert_fixture 'case 348' present -Fxq 'Authorization: Custom=***REDACTED***; echo KEEPTAILCUSTOM988'
+assert_fixture 'case 349' absent -Fq 'LEAKDQUOTE989'
+assert_fixture 'case 350' present -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEPTAILDQUOTE989'
+assert_fixture 'case 351' present -Fxq 'url=https://x/?realm=\"example.com\"; echo KEEPTAIL5'
+assert_fixture 'case 352' present -Fxq 'Authorization: Digest ***REDACTED***'
 # The existing URL/query and provider-key fixtures are controls for the narrow rule change.
-grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 381
-grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 382
-grep -Fq 'sk_live_***REDACTED***' "$line_file" || exit 383
-grep -Fq 'Authorization: Bearer "***REDACTED***"' "$line_file" || exit 74
-grep -Fq "Authorization: Bearer '***REDACTED***'" "$line_file" || exit 75
-grep -Fq 'quoted bearer token value' "$line_file" && exit 76
-grep -Fq 'single quoted bearer token' "$line_file" && exit 77
-grep -Fq 'insideTail1234567890' "$line_file" && exit 78
-grep -Fq 'authorization: bearer ***REDACTED***' "$line_file" || exit 39
-grep -Fq 'lowercaseBearerTokenValue' "$line_file" && exit 40
-grep -Fq 'api-key: ***REDACTED***' "$line_file" || exit 41
-grep -Fq 'hyphenatedKeyValue' "$line_file" && exit 42
-grep -Fq 'token: ***REDACTED***' "$line_file" || exit 43
-grep -Fq 'starredSecretValue' "$line_file" && exit 79
-grep -Fq 'secretAtValue123' "$line_file" && exit 80
-grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPATSECRET123' "$line_file" || exit 9522
-grep -Fq 'Authorization: Basic ***REDACTED***' "$line_file" || exit 85
-grep -Fq 'basicCredentialValue' "$line_file" && exit 86
-grep -Fq 'Authorization: Digest ***REDACTED***' "$line_file" || exit 87
-grep -Fq 'digestNonceValue' "$line_file" && exit 88
-grep -Fq 'Authorization: Token ***REDACTED***' "$line_file" || exit 89
-grep -Fq 'tokenSchemeValue' "$line_file" && exit 90
-grep -Fq 'jsonBasicValue' "$line_file" && exit 93
-grep -Fq 'quotedBasicValue' "$line_file" && exit 94
-grep -Fq 'unterminatedBasicValue' "$line_file" && exit 95
-grep -Fq 'firstHeaderToken123' "$line_file" && exit 96
-grep -Fq 'secondHeaderCred123' "$line_file" && exit 97
-grep -Fq 'curlToken123' "$line_file" && exit 98
-grep -Fq 'curlCred123' "$line_file" && exit 99
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "Authorization: Basic ***REDACTED***" https://x' "$line_file" || exit 126
-grep -Fq 'schemeLessQuoted123' "$line_file" && exit 131
-grep -Fq 'schemeLessQuoted124' "$line_file" && exit 132
-grep -Fq 'schemedQuoted125' "$line_file" && exit 133
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x' "$line_file" || exit 134
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' https://x" "$line_file" || exit 135
-grep -Fxq "curl -H 'Authorization: Basic ***REDACTED***' https://x" "$line_file" || exit 136
-grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "KEEP4"' "$line_file" || exit 340
-grep -Fq 'secretValue127' "$line_file" && exit 341
-grep -Fxq 'Authorization: ***REDACTED***; echo "KEEP5"' "$line_file" || exit 342
-grep -Fq 'secretValue130' "$line_file" && exit 343
-grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***' "$line_file" || exit 344
-grep -Fq 'secretValue131' "$line_file" && exit 345
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" "payload128" https://x' "$line_file" || exit 346
-grep -Fq 'secretValue128' "$line_file" && exit 347
-grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "K9002"' "$line_file" || exit 348
-grep -Fq 'tokenWithHash#9002' "$line_file" && exit 349
-grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "K9003"' "$line_file" || exit 350
-grep -Fq 'tokenWithBack\slash9003' "$line_file" && exit 351
-grep -Fxq 'Authorization: ***REDACTED*** ***REDACTED*** https://x' "$line_file" || exit 352
-grep -Fq 'realDpopSecret123456' "$line_file" && exit 353
-grep -Fq 'realWsseSecret123456' "$line_file" && exit 354
-grep -Fq 'oddAtDouble999' "$line_file" && exit 137
-grep -Fq 'oddAtSingle999' "$line_file" && exit 138
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: tailDouble" https://x' "$line_file" || exit 139
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: tailSingle' https://x" "$line_file" || exit 140
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepAtDouble" https://x' "$line_file" || exit 141
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: tailDouble" https://x' "$line_file" || exit 143
-grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***' -H 'X: tailSingle' https://x" "$line_file" || exit 144
-grep -Fxq 'curl -H "X: keep" -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 145
-grep -Fq 'atFirstDouble777' "$line_file" && exit 146
-grep -Fq 'atFirstSingle778' "$line_file" && exit 147
-grep -Fq 'atSecondDouble779' "$line_file" && exit 148
-grep -Fxq 'Authorization: Bearer ***REDACTED*** -H "X: keep" https://x' "$line_file" || exit 170
-grep -Fxq "Authorization: Bearer ***REDACTED*** -H 'X: keep' https://x" "$line_file" || exit 171
-grep -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***"' "$line_file" || exit 172
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 173
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 174
-grep -Fq 'quoteTail9011' "$line_file" && exit 175
-grep -Fq 'quoteTail9012' "$line_file" && exit 176
-grep -Fq 'nonceTail9014' "$line_file" && exit 177
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 202
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 203
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 204
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 205
-grep -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***"' "$line_file" || exit 206
-grep -Fq 'unterminatedDot9021' "$line_file" && exit 207
-grep -Fq 'unterminatedApostrophe9022' "$line_file" && exit 208
-grep -Fq 'Secret9029' "$line_file" && exit 209
-grep -Fq 'untermTail' "$line_file" && exit 210
-grep -Fq 'respSecret9023' "$line_file" && exit 211
-grep -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 214
-grep -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***", nonce="***REDACTED***"' "$line_file" || exit 215
-grep -Fq 'ZxSecretMARKER7788' "$line_file" && exit 216
-grep -Fq 'nonceSecond7789' "$line_file" && exit 217
-grep -Fxq 'Authorization" : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 218
-grep -Fq 'sec7788' "$line_file" && exit 219
-grep -Fq 'NONCE7788' "$line_file" && exit 220
-grep -Fq 'RESP7788' "$line_file" && exit 221
-grep -Fxq '"Authorization" : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 222
-grep -Fq 'sec7789' "$line_file" && exit 223
-grep -Fq 'NONCE7789' "$line_file" && exit 224
-grep -Fq 'RESP7789' "$line_file" && exit 225
-grep -Fxq 'authorization  : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"' "$line_file" || exit 226
-grep -Fq 'sec7790' "$line_file" && exit 227
-grep -Fq 'NONCE7790' "$line_file" && exit 228
-grep -Fq 'RESP7790' "$line_file" && exit 229
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 212
-grep -Fq 'secretHash9020' "$line_file" && exit 213
-grep -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPHASH9020' "$line_file" || exit 9531
-grep -Fq 'escapedTail9015' "$line_file" && exit 178
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x; echo KEEPESC9015' "$line_file" || exit 9532
-grep -Fq 'tailSECRET9991' "$line_file" && exit 230
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 231
-grep -Fq 'tailSECRET9992' "$line_file" && exit 232
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 233
-grep -Fq 'tailLEAK9041' "$line_file" && exit 234
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 235
-grep -Fq 'tailLEAK9042' "$line_file" && exit 236
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 237
-grep -Fq 'tailLEAK9043' "$line_file" && exit 238
-grep -Fxq 'curl -H "X: keep" -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 239
-grep -Fq 'tailEscBearer9031' "$line_file" && exit 240
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 241
-grep -Fq 'tailEscScheme9032' "$line_file" && exit 242
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"X: keepTail9033" https://x' "$line_file" || exit 243
+assert_fixture 'case 353' present -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'"
+assert_fixture 'case 354' present -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"'
+assert_fixture 'case 355' present -Fq 'sk_live_***REDACTED***'
+assert_fixture 'case 356' present -Fq 'Authorization: Bearer "***REDACTED***"'
+assert_fixture 'case 357' present -Fq "Authorization: Bearer '***REDACTED***'"
+assert_fixture 'case 358' absent -Fq 'quoted bearer token value'
+assert_fixture 'case 359' absent -Fq 'single quoted bearer token'
+assert_fixture 'case 360' absent -Fq 'insideTail1234567890'
+assert_fixture 'case 361' present -Fq 'authorization: bearer ***REDACTED***'
+assert_fixture 'case 362' absent -Fq 'lowercaseBearerTokenValue'
+assert_fixture 'case 363' present -Fq 'api-key: ***REDACTED***'
+assert_fixture 'case 364' absent -Fq 'hyphenatedKeyValue'
+assert_fixture 'case 365' present -Fq 'token: ***REDACTED***'
+assert_fixture 'case 366' absent -Fq 'starredSecretValue'
+assert_fixture 'case 367' absent -Fq 'secretAtValue123'
+assert_fixture 'case 368' present -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPATSECRET123'
+assert_fixture 'case 369' present -Fq 'Authorization: Basic ***REDACTED***'
+assert_fixture 'case 370' absent -Fq 'basicCredentialValue'
+assert_fixture 'case 371' present -Fq 'Authorization: Digest ***REDACTED***'
+assert_fixture 'case 372' absent -Fq 'digestNonceValue'
+assert_fixture 'case 373' present -Fq 'Authorization: Token ***REDACTED***'
+assert_fixture 'case 374' absent -Fq 'tokenSchemeValue'
+assert_fixture 'case 375' absent -Fq 'jsonBasicValue'
+assert_fixture 'case 376' absent -Fq 'quotedBasicValue'
+assert_fixture 'case 377' absent -Fq 'unterminatedBasicValue'
+assert_fixture 'case 378' absent -Fq 'firstHeaderToken123'
+assert_fixture 'case 379' absent -Fq 'secondHeaderCred123'
+assert_fixture 'case 380' absent -Fq 'curlToken123'
+assert_fixture 'case 381' absent -Fq 'curlCred123'
+assert_fixture 'case 382' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "Authorization: Basic ***REDACTED***" https://x'
+assert_fixture 'case 383' absent -Fq 'schemeLessQuoted123'
+assert_fixture 'case 384' absent -Fq 'schemeLessQuoted124'
+assert_fixture 'case 385' absent -Fq 'schemedQuoted125'
+assert_fixture 'case 386' present -Fxq 'curl -H "Authorization: ***REDACTED***" https://x'
+assert_fixture 'case 387' present -Fxq "curl -H 'Authorization: ***REDACTED***' https://x"
+assert_fixture 'case 388' present -Fxq "curl -H 'Authorization: Basic ***REDACTED***' https://x"
+assert_fixture 'case 389' present -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "KEEP4"'
+assert_fixture 'case 390' absent -Fq 'secretValue127'
+assert_fixture 'case 391' present -Fxq 'Authorization: ***REDACTED***; echo "KEEP5"'
+assert_fixture 'case 392' absent -Fq 'secretValue130'
+assert_fixture 'case 393' present -Fxq 'Authorization: ***REDACTED*** ***REDACTED***'
+assert_fixture 'case 394' absent -Fq 'secretValue131'
+assert_fixture 'case 395' present -Fxq 'curl -H "Authorization: ***REDACTED***" "payload128" https://x'
+assert_fixture 'case 396' absent -Fq 'secretValue128'
+assert_fixture 'case 397' present -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "K9002"'
+assert_fixture 'case 398' absent -Fq 'tokenWithHash#9002'
+assert_fixture 'case 399' present -Fxq 'Authorization: ***REDACTED*** ***REDACTED***; echo "K9003"'
+assert_fixture 'case 400' absent -Fq 'tokenWithBack\slash9003'
+assert_fixture 'case 401' present -Fxq 'Authorization: ***REDACTED*** ***REDACTED*** https://x'
+assert_fixture 'case 402' absent -Fq 'realDpopSecret123456'
+assert_fixture 'case 403' absent -Fq 'realWsseSecret123456'
+assert_fixture 'case 404' absent -Fq 'oddAtDouble999'
+assert_fixture 'case 405' absent -Fq 'oddAtSingle999'
+assert_fixture 'case 406' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: tailDouble" https://x'
+assert_fixture 'case 407' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: tailSingle' https://x"
+assert_fixture 'case 408' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepAtDouble" https://x'
+assert_fixture 'case 409' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: tailDouble" https://x'
+assert_fixture 'case 410' present -Fxq "curl -H 'Authorization: Bearer ***REDACTED***' -H 'X: tailSingle' https://x"
+assert_fixture 'case 411' present -Fxq 'curl -H "X: keep" -H "Authorization: Bearer ***REDACTED***" https://x'
+assert_fixture 'case 412' absent -Fq 'atFirstDouble777'
+assert_fixture 'case 413' absent -Fq 'atFirstSingle778'
+assert_fixture 'case 414' absent -Fq 'atSecondDouble779'
+assert_fixture 'case 415' present -Fxq 'Authorization: Bearer ***REDACTED*** -H "X: keep" https://x'
+assert_fixture 'case 416' present -Fxq "Authorization: Bearer ***REDACTED*** -H 'X: keep' https://x"
+assert_fixture 'case 417' present -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***"'
+assert_fixture 'case 418' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x'
+assert_fixture 'case 419' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 420' absent -Fq 'quoteTail9011'
+assert_fixture 'case 421' absent -Fq 'quoteTail9012'
+assert_fixture 'case 422' absent -Fq 'nonceTail9014'
+assert_fixture 'case 423' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 424' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 425' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 426' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 427' present -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***"'
+assert_fixture 'case 428' absent -Fq 'unterminatedDot9021'
+assert_fixture 'case 429' absent -Fq 'unterminatedApostrophe9022'
+assert_fixture 'case 430' absent -Fq 'Secret9029'
+assert_fixture 'case 431' absent -Fq 'untermTail'
+assert_fixture 'case 432' absent -Fq 'respSecret9023'
+assert_fixture 'case 433' present -Fxq 'Authorization: Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"'
+assert_fixture 'case 434' present -Fxq 'Authorization: Digest ***REDACTED***, response="***REDACTED***", nonce="***REDACTED***"'
+assert_fixture 'case 435' absent -Fq 'ZxSecretMARKER7788'
+assert_fixture 'case 436' absent -Fq 'nonceSecond7789'
+assert_fixture 'case 437' present -Fxq 'Authorization" : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"'
+assert_fixture 'case 438' absent -Fq 'sec7788'
+assert_fixture 'case 439' absent -Fq 'NONCE7788'
+assert_fixture 'case 440' absent -Fq 'RESP7788'
+assert_fixture 'case 441' present -Fxq '"Authorization" : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"'
+assert_fixture 'case 442' absent -Fq 'sec7789'
+assert_fixture 'case 443' absent -Fq 'NONCE7789'
+assert_fixture 'case 444' absent -Fq 'RESP7789'
+assert_fixture 'case 445' present -Fxq 'authorization  : Digest ***REDACTED***, nonce="***REDACTED***", response="***REDACTED***"'
+assert_fixture 'case 446' absent -Fq 'sec7790'
+assert_fixture 'case 447' absent -Fq 'NONCE7790'
+assert_fixture 'case 448' absent -Fq 'RESP7790'
+assert_fixture 'case 449' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 450' absent -Fq 'secretHash9020'
+assert_fixture 'case 451' present -Fxq 'Authorization: Bearer ***REDACTED***; echo KEEPHASH9020'
+assert_fixture 'case 452' absent -Fq 'escapedTail9015'
+assert_fixture 'case 453' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x; echo KEEPESC9015'
+assert_fixture 'case 454' absent -Fq 'tailSECRET9991'
+assert_fixture 'case 455' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x'
+assert_fixture 'case 456' absent -Fq 'tailSECRET9992'
+assert_fixture 'case 457' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x'
+assert_fixture 'case 458' absent -Fq 'tailLEAK9041'
+assert_fixture 'case 459' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x'
+assert_fixture 'case 460' absent -Fq 'tailLEAK9042'
+assert_fixture 'case 461' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x'
+assert_fixture 'case 462' absent -Fq 'tailLEAK9043'
+assert_fixture 'case 463' present -Fxq 'curl -H "X: keep" -H "Authorization: Bearer ***REDACTED***" https://x'
+assert_fixture 'case 464' absent -Fq 'tailEscBearer9031'
+assert_fixture 'case 465' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"X: keepTail9033" https://x'
+assert_fixture 'case 466' absent -Fq 'tailEscScheme9032'
+assert_fixture 'case 467' present -Fxq 'curl -H "Authorization: ***REDACTED***"X: keepTail9033" https://x'
 # Genuinely closed escaped quotes are real word boundaries: keep the next header.
-grep -Fq 'tailClosedBearer9031' "$line_file" && exit 254
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keepClosed" https://x' "$line_file" || exit 255
-grep -Fq 'tailClosedScheme9032' "$line_file" && exit 254
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepClosed" https://x' "$line_file" || exit 255
+assert_fixture 'case 468' absent -Fq 'tailClosedBearer9031'
+assert_fixture 'case 469' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keepClosed" https://x'
+assert_fixture 'case 470' absent -Fq 'tailClosedScheme9032'
+assert_fixture 'case 471' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keepClosed" https://x'
 # The tailEscBearer9031/tailEscScheme9032 fixtures above are malformed shell text.
 # Their exact assertions record the fail-closed fallback, not a word boundary.
-grep -Fq 'plainQuote9044' "$line_file" && exit 244
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x' "$line_file" || exit 245
-grep -Fq 'dblSlashQuote9045' "$line_file" && exit 246
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***' "$line_file" || exit 247
-grep -Fq 'tailAUDIT028' "$line_file" && exit 248
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 249
-grep -Fq 'tailAUDIT027' "$line_file" && exit 250
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 251
-grep -Fq 'tailAUDIT029' "$line_file" && exit 252
-grep -Fq 'innerSPACE' "$line_file" && exit 254
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 255
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test" "$line_file" || exit 255
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test" "$line_file" || exit 253
-grep -Fq 'multiDQ90' "$line_file" && exit 256
-grep -Fq 'multiSQ90' "$line_file" && exit 257
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 258
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 259
-grep -Fq 'insideEsc9031' "$line_file" && exit 270
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test' "$line_file" || exit 271
-grep -Fq 'insideEsc9033' "$line_file" && exit 272
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test" "$line_file" || exit 273
-grep -Fq 'tailDQSpaced9034' "$line_file" && exit 307
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test' "$line_file" || exit 308
-grep -Fq 'tailSQSpaced9035' "$line_file" && exit 309
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test" "$line_file" || exit 310
-grep -Fq 'tailBearer9038' "$line_file" && exit 321
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test' "$line_file" || exit 322
-grep -Fq 'tailEOL9039' "$line_file" && exit 323
-grep -Fxq 'curl -H "Authorization: ***REDACTED***' "$line_file" || exit 324
-grep -Fq 'secret123456' "$line_file" && exit 325
-grep -Fq 'TAILAUDIT07' "$line_file" && exit 328
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo "KEEP07"' "$line_file" || exit 329
-grep -Fq 'TAILAUDIT08' "$line_file" && exit 330
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***", "KEEP08"' "$line_file" || exit 331
-grep -Fq 'TAILAUDIT09' "$line_file" && exit 430
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"| :' "$line_file" || exit 431
-grep -Fq 'TAILAUDIT10' "$line_file" && exit 432
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***">out' "$line_file" || exit 433
-grep -Fq 'TAILAUDIT11' "$line_file" && exit 434
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***">>out' "$line_file" || exit 435
-grep -Fq 'TAILAUDIT12' "$line_file" && exit 436
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"<in' "$line_file" || exit 437
-grep -Fq 'TAILAUDIT13' "$line_file" && exit 438
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" >out' "$line_file" || exit 439
-grep -Fq 'TAILAUDIT14' "$line_file" && exit 440
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; :' "$line_file" || exit 441
-grep -Fq 'TAILAUDIT15' "$line_file" && exit 442
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>err' "$line_file" || exit 443
-grep -Fq 'TAILAUDIT16' "$line_file" && exit 444
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>&1' "$line_file" || exit 445
-grep -Fq 'TAILAUDIT17' "$line_file" && exit 446
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"1>>out' "$line_file" || exit 447
-grep -Fq 'TAILAUDIT18' "$line_file" && exit 448
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"10>out' "$line_file" || exit 449
-grep -Fq 'TAILAUDIT19' "$line_file" && exit 450
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"& :' "$line_file" || exit 451
-grep -Fq 'TAILAUDIT20' "$line_file" && exit 452
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"&& :' "$line_file" || exit 453
-grep -Fq 'TAILAUDIT02' "$line_file" && exit 332
-grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'" "$line_file" || exit 333
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "payload123" https://x' "$line_file" || exit 326
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "user@host" "other" https://x' "$line_file" || exit 327
-grep -Fq 'brienApostrophe9016' "$line_file" && exit 179
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x" "$line_file" || exit 142
-grep -Fq 'FIRSTSECRET' "$line_file" && exit 970
-grep -Fq 'SECONDSECRET' "$line_file" && exit 971
-grep -Fq 'ONLYSECRET' "$line_file" && exit 972
-grep -Fq 'SINGLESECRET' "$line_file" && exit 973
-grep -Fxq 'curl -H "Authorization: Bearer=***REDACTED***; Authorization: ***REDACTED***" https://x; echo KEEPTAIL' "$line_file" || exit 974
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://x; echo KEEPTAIL" "$line_file" || exit 975
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL' "$line_file" || exit 976
-grep -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE' "$line_file" || exit 977
-grep -Fq "'tSECRET" "$line_file" && exit 978
-grep -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6' "$line_file" || exit 979
-grep -Fq 'SECRETADJ' "$line_file" && exit 980
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILADJQ' "$line_file" || exit 981
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'2>err; echo KEEPTAILADJS" "$line_file" || exit 982
-grep -Fq 'SECRETADJPQ' "$line_file" && exit 983
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'2>err; echo KEEPTAILADJPQ" "$line_file" || exit 984
-grep -Fq 'SECRETADJSQ' "$line_file" && exit 985
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILADJSQ' "$line_file" || exit 986
-grep -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$line_file" || exit 990
-grep -Fxq 'curl -H '"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo MIRRORTAIL' "$line_file" || exit 991
-grep -Fq SECRETZZ "$line_file" && exit 992
-grep -Fq SECRETMM "$line_file" && exit 993
-grep -Fxq 'curl -H"Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL' "$line_file" || exit 998
-grep -Fxq 'curl -H'"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo KEEPTAIL' "$line_file" || exit 999
-grep -Fq SECRETZZ "$line_file" && exit 1000
-grep -Fq SECRETMM "$line_file" && exit 1001
-grep -Fxq 'Authorization: Bearer:***REDACTED*** -H "X: keep" https://x; echo KEEPTAIL' "$line_file" || exit 994
-grep -Fxq 'Authorization: Bearer:***REDACTED*** -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL' "$line_file" || exit 995
-grep -Fq LEAKMIN987 "$line_file" && exit 996
-grep -Fq LEAKMIRROR988 "$line_file" && exit 997
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE1' "$line_file" || exit 1002
-grep -Fxq 'curl -H"Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE2' "$line_file" || exit 1003
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAILCLOSURE3' "$line_file" || exit 1004
-grep -Fq SYNTHCLOSURE901 "$line_file" && exit 1005
-grep -Fq SYNTHCLOSURE902 "$line_file" && exit 1006
-grep -Fq SYNTHCLOSURE903 "$line_file" && exit 1007
-grep -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL1' "$line_file" || exit 1010
-grep -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL2' "$line_file" || exit 1011
-grep -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL3' "$line_file" || exit 1012
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPSEPTAIL4' "$line_file" || exit 1013
-grep -Fq SYNTHSEP901 "$line_file" && exit 1014
-grep -Fq SYNTHSEP902 "$line_file" && exit 1015
-grep -Fq SYNTHSEP903 "$line_file" && exit 1016
-grep -Fq SYNTHSEP904 "$line_file" && exit 1017
-grep -Fq SYNTHQSEP911 "$line_file" && exit 1030
-grep -Fq SYNTHQSEP912 "$line_file" && exit 1031
-grep -Fq SYNTHQSEP913 "$line_file" && exit 1032
-grep -Fq SYNTHQSEP914 "$line_file" && exit 1033
-grep -Fq SYNTHQSEP915 "$line_file" && exit 1034
-grep -Fq KEEPQSEPTAIL11 "$line_file" || exit 1040
-grep -Fq KEEPQSEPTAIL12 "$line_file" || exit 1041
-grep -Fq KEEPQSEPTAIL13 "$line_file" || exit 1042
-grep -Fq KEEPQSEPTAIL14 "$line_file" || exit 1043
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL11' "$line_file" || exit 1051
-grep -Fxq 'curl -H '\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL12' "$line_file" || exit 1052
-grep -Fxq 'curl -H"Authorization: ***REDACTED***"; echo KEEPQSEPTAIL13' "$line_file" || exit 1053
-grep -Fxq 'curl -H'\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL14' "$line_file" || exit 1054
+assert_fixture 'case 472' absent -Fq 'plainQuote9044'
+assert_fixture 'case 473' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x'
+assert_fixture 'case 474' absent -Fq 'dblSlashQuote9045'
+assert_fixture 'case 475' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 476' absent -Fq 'tailAUDIT028'
+assert_fixture 'case 477' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test'
+assert_fixture 'case 478' absent -Fq 'tailAUDIT027'
+assert_fixture 'case 479' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test'
+assert_fixture 'case 480' absent -Fq 'tailAUDIT029'
+assert_fixture 'case 481' absent -Fq 'innerSPACE'
+assert_fixture 'case 482' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test'
+assert_fixture 'case 483' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test"
+assert_fixture 'case 484' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://example.test"
+assert_fixture 'case 485' absent -Fq 'multiDQ90'
+assert_fixture 'case 486' absent -Fq 'multiSQ90'
+assert_fixture 'case 487' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://example.test'
+assert_fixture 'case 488' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test'
+assert_fixture 'case 489' absent -Fq 'insideEsc9031'
+assert_fixture 'case 490' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test'
+assert_fixture 'case 491' absent -Fq 'insideEsc9033'
+assert_fixture 'case 492' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test"
+assert_fixture 'case 493' absent -Fq 'tailDQSpaced9034'
+assert_fixture 'case 494' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://dqesc9031.example.test'
+assert_fixture 'case 495' absent -Fq 'tailSQSpaced9035'
+assert_fixture 'case 496' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H \"X: keep\" https://sqesc9033.example.test"
+assert_fixture 'case 497' absent -Fq 'tailBearer9038'
+assert_fixture 'case 498' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://example.test'
+assert_fixture 'case 499' absent -Fq 'tailEOL9039'
+assert_fixture 'case 500' present -Fxq 'curl -H "Authorization: ***REDACTED***'
+assert_fixture 'case 501' absent -Fq 'secret123456'
+assert_fixture 'case 502' absent -Fq 'TAILAUDIT07'
+assert_fixture 'case 503' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo "KEEP07"'
+assert_fixture 'case 504' absent -Fq 'TAILAUDIT08'
+assert_fixture 'case 505' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***", "KEEP08"'
+assert_fixture 'case 506' absent -Fq 'TAILAUDIT09'
+assert_fixture 'case 507' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"| :'
+assert_fixture 'case 508' absent -Fq 'TAILAUDIT10'
+assert_fixture 'case 509' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***">out'
+assert_fixture 'case 510' absent -Fq 'TAILAUDIT11'
+assert_fixture 'case 511' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***">>out'
+assert_fixture 'case 512' absent -Fq 'TAILAUDIT12'
+assert_fixture 'case 513' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"<in'
+assert_fixture 'case 514' absent -Fq 'TAILAUDIT13'
+assert_fixture 'case 515' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" >out'
+assert_fixture 'case 516' absent -Fq 'TAILAUDIT14'
+assert_fixture 'case 517' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; :'
+assert_fixture 'case 518' absent -Fq 'TAILAUDIT15'
+assert_fixture 'case 519' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>err'
+assert_fixture 'case 520' absent -Fq 'TAILAUDIT16'
+assert_fixture 'case 521' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>&1'
+assert_fixture 'case 522' absent -Fq 'TAILAUDIT17'
+assert_fixture 'case 523' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"1>>out'
+assert_fixture 'case 524' absent -Fq 'TAILAUDIT18'
+assert_fixture 'case 525' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"10>out'
+assert_fixture 'case 526' absent -Fq 'TAILAUDIT19'
+assert_fixture 'case 527' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"& :'
+assert_fixture 'case 528' absent -Fq 'TAILAUDIT20'
+assert_fixture 'case 529' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"&& :'
+assert_fixture 'case 530' absent -Fq 'TAILAUDIT02'
+assert_fixture 'case 531' present -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'"
+assert_fixture 'case 532' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "payload123" https://x'
+assert_fixture 'case 533' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" "user@host" "other" https://x'
+assert_fixture 'case 534' absent -Fq 'brienApostrophe9016'
+assert_fixture 'case 535' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keepAtSingle' https://x"
+assert_fixture 'case 536' absent -Fq 'FIRSTSECRET'
+assert_fixture 'case 537' absent -Fq 'SECONDSECRET'
+assert_fixture 'case 538' absent -Fq 'ONLYSECRET'
+assert_fixture 'case 539' absent -Fq 'SINGLESECRET'
+assert_fixture 'case 540' present -Fxq 'curl -H "Authorization: Bearer=***REDACTED***; Authorization: ***REDACTED***" https://x; echo KEEPTAIL'
+assert_fixture 'case 541' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: keep' https://x; echo KEEPTAIL"
+assert_fixture 'case 542' present -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAIL'
+assert_fixture 'case 543' present -Fxq 'Authorization: Bearer=\"***REDACTED***\"; echo KEEPTAILBARE'
+assert_fixture 'case 544' absent -Fq "'tSECRET"
+assert_fixture 'case 545' present -Fxq 'Authorization: Bearer=***REDACTED***; echo KEEP6'
+assert_fixture 'case 546' absent -Fq 'SECRETADJ'
+assert_fixture 'case 547' present -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILADJQ'
+assert_fixture 'case 548' present -Fxq "curl -H 'Authorization: ***REDACTED***'2>err; echo KEEPTAILADJS"
+assert_fixture 'case 549' absent -Fq 'SECRETADJPQ'
+assert_fixture 'case 550' present -Fxq "curl -H 'Authorization: ***REDACTED***'2>err; echo KEEPTAILADJPQ"
+assert_fixture 'case 551' absent -Fq 'SECRETADJSQ'
+assert_fixture 'case 552' present -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILADJSQ'
+assert_fixture 'case 553' present -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL'
+assert_fixture 'case 554' present -Fxq 'curl -H '"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo MIRRORTAIL'
+assert_fixture 'case 555' absent -Fq SECRETZZ
+assert_fixture 'case 556' absent -Fq SECRETMM
+assert_fixture 'case 557' present -Fxq 'curl -H"Authorization: Bearer:***REDACTED***"X; echo KEEPTAIL'
+assert_fixture 'case 558' present -Fxq 'curl -H'"'"'Authorization: Bearer:***REDACTED***'"'"'X; echo KEEPTAIL'
+assert_fixture 'case 559' absent -Fq SECRETZZ
+assert_fixture 'case 560' absent -Fq SECRETMM
+assert_fixture 'case 561' present -Fxq 'Authorization: Bearer:***REDACTED*** -H "X: keep" https://x; echo KEEPTAIL'
+assert_fixture 'case 562' present -Fxq 'Authorization: Bearer:***REDACTED*** -H '"'"'X: keep'"'"' https://x; echo KEEPTAIL'
+assert_fixture 'case 563' absent -Fq LEAKMIN987
+assert_fixture 'case 564' absent -Fq LEAKMIRROR988
+assert_fixture 'case 565' present -Fxq 'curl -H "Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE1'
+assert_fixture 'case 566' present -Fxq 'curl -H"Authorization: ***REDACTED***"2>err; echo KEEPTAILCLOSURE2'
+assert_fixture 'case 567' present -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPTAILCLOSURE3'
+assert_fixture 'case 568' absent -Fq SYNTHCLOSURE901
+assert_fixture 'case 569' absent -Fq SYNTHCLOSURE902
+assert_fixture 'case 570' absent -Fq SYNTHCLOSURE903
+assert_fixture 'case 571' present -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL1'
+assert_fixture 'case 572' present -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL2'
+assert_fixture 'case 573' present -Fxq 'Authorization: ***REDACTED***; echo KEEPSEPTAIL3'
+assert_fixture 'case 574' present -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo KEEPSEPTAIL4'
+assert_fixture 'case 575' absent -Fq SYNTHSEP901
+assert_fixture 'case 576' absent -Fq SYNTHSEP902
+assert_fixture 'case 577' absent -Fq SYNTHSEP903
+assert_fixture 'case 578' absent -Fq SYNTHSEP904
+assert_fixture 'case 579' absent -Fq SYNTHQSEP911
+assert_fixture 'case 580' absent -Fq SYNTHQSEP912
+assert_fixture 'case 581' absent -Fq SYNTHQSEP913
+assert_fixture 'case 582' absent -Fq SYNTHQSEP914
+assert_fixture 'case 583' absent -Fq SYNTHQSEP915
+assert_fixture 'case 584' present -Fq KEEPQSEPTAIL11
+assert_fixture 'case 585' present -Fq KEEPQSEPTAIL12
+assert_fixture 'case 586' present -Fq KEEPQSEPTAIL13
+assert_fixture 'case 587' present -Fq KEEPQSEPTAIL14
+assert_fixture 'case 588' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPQSEPTAIL11'
+assert_fixture 'case 589' present -Fxq 'curl -H '\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL12'
+assert_fixture 'case 590' present -Fxq 'curl -H"Authorization: ***REDACTED***"; echo KEEPQSEPTAIL13'
+assert_fixture 'case 591' present -Fxq 'curl -H'\''Authorization: ***REDACTED***'\''; echo KEEPQSEPTAIL14'
 # Generic schemes must mask the credential and keep the following shell word.
-grep -Fq SYNTHA1 "$line_file" && exit 9501
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADA1"; echo TAILA1' "$line_file" || exit 9502
-grep -Fq SYNTHS1 "$line_file" && exit 9503
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' 'PAYLOADS1'; echo TAILS1" "$line_file" || exit 9504
-grep -Fq SYNTHX1 "$line_file" && exit 9505
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" --data "DATAX1"; echo TAILX1' "$line_file" || exit 9506
-grep -Fq SYNTHC1 "$line_file" && exit 9507
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1' "$line_file" || exit 9508
-grep -Fq SYNTHX2 "$line_file" && exit 9509
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: KEEPX2' https://x; echo TAILX2" "$line_file" || exit 9510
-grep -Fq SYNTHM1 "$line_file" && exit 9511
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo TAILM1' "$line_file" || exit 9512
-grep -Fq SYNTH2 "$line_file" && exit 9513
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" 2>err; echo TAIL2' "$line_file" || exit 9514
-grep -Fq SYNTHG1 "$line_file" && exit 9515
-grep -Fq GLUEDG1 "$line_file" && exit 9516
-grep -Fxq 'curl -H "Authorization: Foo:***REDACTED***"; echo TAILG1' "$line_file" || exit 9517
-grep -Fq SYNTHB1 "$line_file" && exit 9518
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADB1"; echo TAILB1' "$line_file" || exit 9519
-grep -Fq SYNTHBC1 "$line_file" && exit 9520
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILBC1' "$line_file" || exit 9521
-grep -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1' "$line_file" || exit 1018
-grep -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2' "$line_file" || exit 1019
-grep -Fq SYNTHGLUED901 "$line_file" && exit 1020
-grep -Fq SYNTHGLUED902 "$line_file" && exit 1021
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x; echo KEEPARGTAIL1' "$line_file" || exit 1022
-grep -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"' "$line_file" || exit 1023
-grep -Fq SYNTHEOL1001 "$line_file" && exit 1024
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPZZ' "$line_file" || exit 9170
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPZZ" "$line_file" || exit 9171
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" -H "Authorization: ***REDACTED***"; echo KEEPZZ9' "$line_file" || exit 9172
-grep -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'Authorization: ***REDACTED***'; echo KEEPZZ9" "$line_file" || exit 9173
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x; echo KEEP88' "$line_file" || exit 9174
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED1' "$line_file" || exit 9180
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED2" "$line_file" || exit 9181
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED3' "$line_file" || exit 9182
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED4" "$line_file" || exit 9183
-grep -Fq REALSECRET941 "$line_file" && exit 9184
-grep -Fq REALSECRET942 "$line_file" && exit 9185
-grep -Fq REALSECRET943 "$line_file" && exit 9186
-grep -Fq REALSECRET944 "$line_file" && exit 9187
-grep -Fxq "curl -H 'Authorization: Bearer:***REDACTED***'" "$line_file" || exit 1025
-grep -Fq SYNTHEOL1002 "$line_file" && exit 1026
-grep -Fxq 'curl -H "Authorization: Basic:***REDACTED***"' "$line_file" || exit 1027
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPSTAR911' "$line_file" || exit 1060
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPAT912" "$line_file" || exit 1061
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPSTAR913' "$line_file" || exit 1062
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPAT914' "$line_file" || exit 1063
-grep -Fq SYNTHSTAR911 "$line_file" && exit 1064
-grep -Fq SYNTHAT912 "$line_file" && exit 1065
-grep -Fq SYNTHSTAR913 "$line_file" && exit 1066
-grep -Fq SYNTHAT914 "$line_file" && exit 1067
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEP921' "$line_file" || exit 1068
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP922" "$line_file" || exit 1069
-grep -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP923" "$line_file" || exit 1070
-grep -Fq SYNTHSTAR921 "$line_file" && exit 1071
-grep -Fq SYNTHSTAR922 "$line_file" && exit 1072
-grep -Fq SYNTHAT923 "$line_file" && exit 1073
-grep -Fxq 'Authorization: ***REDACTED***; echo KEEPGENSC901' "$line_file" || exit 1074
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGENSC902' "$line_file" || exit 1075
-grep -Fq SYNTHGENSC901 "$line_file" && exit 1076
-grep -Fq SYNTHGENSC902 "$line_file" && exit 1077
-grep -Fq SYNTHEOL1003 "$line_file" && exit 1028
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM1' "$line_file" || exit 1029
-grep -Fq 1234567890 "$line_file" && exit 1030
-grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'; echo KEEPNUM2" "$line_file" || exit 1031
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM3' "$line_file" || exit 1032
-grep -Fq SECRETABC123 "$line_file" && exit 1033
-grep -Fq SYNTHARG901 "$line_file" && exit 1026
-grep -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2' "$line_file" || exit 1023
-grep -Fq SYNTHARG902 "$line_file" && exit 1027
-grep -Fxq 'curl -H "Authorization: ***REDACTED***" "payload903" https://x; echo KEEPARGTAIL3' "$line_file" || exit 1024
-grep -Fq SYNTHARG903 "$line_file" && exit 1028
-grep -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' '"'"'payload904'"'"' https://x; echo KEEPARGTAIL4' "$line_file" || exit 1025
-grep -Fq SYNTHARG904 "$line_file" && exit 1029
-grep -Fxq 'Authorization: ***REDACTED***; echo TAILZZ9' "$line_file" || exit 9301
-grep -Fq SECRETZZ9 "$line_file" && exit 9302
-grep -Fxq 'Authorization: ***REDACTED***; echo TAILZZ10' "$line_file" || exit 9303
-grep -Fq SECRETZZ10 "$line_file" && exit 9304
-grep -Fxq 'Authorization: ***REDACTED***; echo TAILZZ11' "$line_file" || exit 9305
-grep -Fq SECRETZZ11 "$line_file" && exit 9306
-grep -Fxq 'Authorization: my_scheme=\"***REDACTED***\"; echo TAILZZ12' "$line_file" || exit 9307
-grep -Fq SYNTHE12 "$line_file" && exit 9308
-grep -Fxq 'Authorization: 2Scheme=\"***REDACTED***\"; echo TAILZZ13' "$line_file" || exit 9309
-grep -Fq SYNTHE13 "$line_file" && exit 9310
-grep -Fxq 'Authorization: my_scheme \"***REDACTED***\"; echo TAILZZSP2' "$line_file" || exit 9311
-grep -Fq SYNTHSP2 "$line_file" && exit 9312
-grep -Fxq 'Authorization: 2Scheme \"***REDACTED***\"; echo TAILZZSP3' "$line_file" || exit 9313
-grep -Fq SYNTHSP3 "$line_file" && exit 9314
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; echo KEEPQUOTED1' "$line_file" || exit 9401
-grep -Fq SYNTHQUOTED1 "$line_file" && exit 9402
-grep -Fxq "Authorization: my_scheme:'***REDACTED***'; echo KEEPQUOTED2" "$line_file" || exit 9403
-grep -Fq SYNTHQUOTED2 "$line_file" && exit 9404
-grep -Fxq 'Authorization: 2Scheme="***REDACTED***"; echo KEEPQUOTED3' "$line_file" || exit 9405
-grep -Fq SYNTHQUOTED3 "$line_file" && exit 9406
-grep -Fxq "Authorization: 2Scheme='***REDACTED***'; echo KEEPQUOTED4" "$line_file" || exit 9407
-grep -Fq SYNTHQUOTED4 "$line_file" && exit 9408
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; echo KEEPGLUEDQ1' "$line_file" || exit 9409
-grep -Fq SYNTHGLUEDQ1 "$line_file" && exit 9410
-grep -Fxq "Authorization: 2Scheme:'***REDACTED***'; echo KEEPGLUEDS1" "$line_file" || exit 9411
-grep -Fq SYNTHGLUEDS1 "$line_file" && exit 9412
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***" "PAYLOADGLUEDQ2"; echo KEEPGLUEDQ2' "$line_file" || exit 9413
-grep -Fq SYNTHGLUEDQ2 "$line_file" && exit 9414
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"; Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATQ' "$line_file" || exit 9415
-grep -Fq SYNTHREPEATQ1 "$line_file" && exit 9416
-grep -Fq SYNTHREPEATQ2 "$line_file" && exit 9417
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"|Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATPIPE' "$line_file" || exit 9418
-grep -Fq SYNTHREPEATPIPE1 "$line_file" && exit 9419
-grep -Fq SYNTHREPEATPIPE2 "$line_file" && exit 9420
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***" >out; Authorization: 2scheme:"***REDACTED***" <in; echo KEEPREPEATREDIR' "$line_file" || exit 9421
-grep -Fq SYNTHREPEATREDIR1 "$line_file" && exit 9422
-grep -Fq SYNTHREPEATREDIR2 "$line_file" && exit 9423
-grep -Fxq "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ" "$line_file" || exit 9424
-grep -Fq SYNTHREPEATSQ1 "$line_file" && exit 9425
-grep -Fq SYNTHREPEATSQ2 "$line_file" && exit 9426
-grep -Fxq "Authorization: my_scheme:'***REDACTED***'|Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQPIPE" "$line_file" || exit 9427
-grep -Fq SYNTHREPEATSQPIPE1 "$line_file" && exit 9428
-grep -Fq SYNTHREPEATSQPIPE2 "$line_file" && exit 9429
-grep -Fxq "Authorization: my_scheme:'***REDACTED***' >out; Authorization: 2scheme:'***REDACTED***' <in; echo KEEPREPEATSQREDIR" "$line_file" || exit 9430
-grep -Fq SYNTHREPEATSQREDIR1 "$line_file" && exit 9431
-grep -Fq SYNTHREPEATSQREDIR2 "$line_file" && exit 9432
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP' "$line_file" || exit 9433
-grep -Fq SYNTHSEPAMP1 "$line_file" && exit 9434
-grep -Fq SYNTHSEPAMP2 "$line_file" && exit 9435
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***";Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPSEMI' "$line_file" || exit 9436
-grep -Fq SYNTHSEPSEMI1 "$line_file" && exit 9437
-grep -Fq SYNTHSEPSEMI2 "$line_file" && exit 9438
-grep -Fxq 'Authorization: my_scheme:"***REDACTED***",Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPCOMMA' "$line_file" || exit 9439
-grep -Fq SYNTHSEPCOMMA1 "$line_file" && exit 9440
-grep -Fq SYNTHSEPCOMMA2 "$line_file" && exit 9441
-grep -Fxq "Authorization: my_scheme:'***REDACTED***'&Authorization: 2scheme:'***REDACTED***'; echo KEEPSEPAMPSQ" "$line_file" || exit 9442
-grep -Fq SYNTHSEPAMPSQ1 "$line_file" && exit 9443
-grep -Fq SYNTHSEPAMPSQ2 "$line_file" && exit 9444
-grep -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1' "$line_file" || exit 9445
-grep -Fq KEEPNATQ1 "$line_file" || exit 9446
-grep -Fxq "echo 'note Authorization: SYNTHNATS1 ***REDACTED***'; echo KEEPNATS1" "$line_file" || exit 9447
-grep -Fq KEEPNATS1 "$line_file" || exit 9448
-grep -Fq 'more_secret456' "$line_file" && exit 129
-grep -Fxq 'echo KEEPMORE456; Authorization: Bearer ***REDACTED***' "$line_file" || exit 9533
-grep -Fq 'w0rd123SECRET' "$line_file" && exit 130
-grep -Fxq 'echo KEEPWORD123; Authorization: Basic ***REDACTED***' "$line_file" || exit 9534
-grep -Fxq 'Authorization: Bearer ***REDACTED***' "$line_file" || exit 127
-grep -Fxq 'Authorization: ***REDACTED***' "$line_file" || exit 128
-grep -Fq 'keyPlusHeaderValue123' "$line_file" && exit 100
-grep -Fxq '{"api_key": "***REDACTED***", "Authorization": "Basic ***REDACTED***", "keep": "KEEPKEYPLUS"}' "$line_file" || exit 9535
-grep -Fq 'keyPlusHeaderCred123' "$line_file" && exit 101
-grep -Fq 'tokenPlusHeaderValue123' "$line_file" && exit 102
-grep -Fq 'tokenPlusHeaderCred123' "$line_file" && exit 103
-grep -Fq 'Authorization: ***REDACTED***' "$line_file" || exit 104
-grep -Fq 'Authorization: "***REDACTED***"' "$line_file" || exit 105
-grep -Fq "Authorization: '***REDACTED***'" "$line_file" || exit 106
-grep -Fq 'bareSchemeLessValue' "$line_file" && exit 107
-grep -Fq 'quotedSchemeLessValue' "$line_file" && exit 108
-grep -Fq 'singleSchemeLessValue' "$line_file" && exit 109
-grep -Fq 'bareLowerSchemeLess' "$line_file" && exit 110
-grep -Fq 'bareCred2' "$line_file" && exit 111
-grep -Fq 'schemeLessJsonCred' "$line_file" && exit 112
-grep -Fq 'bareAtValue' "$line_file" && exit 113
-grep -Fq 'quotedAtValue' "$line_file" && exit 114
-grep -Fq 'unterminatedSchemeLess' "$line_file" && exit 115
-grep -Fq 'oddAtValue' "$line_file" && exit 116
-grep -Fq 's3cr3tToken99' "$line_file" && exit 117
-grep -Fq 'acct99' "$line_file" && exit 118
-grep -Fxq 'Authorization: Bearer ***REDACTED*** https://example.com' "$line_file" || exit 119
-grep -Fq 'two999' "$line_file" && exit 120
-grep -Fq 'u@host99' "$line_file" && exit 121
-grep -Fq 'backslashBearerOdd901' "$line_file" && exit 150
-grep -Fq 'backslashSchemeLessOdd902' "$line_file" && exit 151
-grep -Fq 'backslashSingleOdd903' "$line_file" && exit 152
-grep -Fq 'backslashKeyOdd904' "$line_file" && exit 153
-grep -Fxq 'Authorization: ***REDACTED***\' "$line_file" || exit 355
-grep -Fq 'continuationSecret444444' "$line_file" && exit 356
-grep -Fq 'hostBackslashOdd905' "$line_file" && exit 154
-grep -Fxq 'Authorization: Bearer "***REDACTED***' "$line_file" || exit 155
-grep -Fxq 'Authorization: "***REDACTED***' "$line_file" || exit 156
-grep -Fxq "Authorization: '***REDACTED***'" "$line_file" || exit 157
-grep -Fxq 'MY_TOKEN=***REDACTED***' "$line_file" || exit 158
-grep -Fq 'backslashBearerEven906' "$line_file" && exit 159
-grep -Fq 'backslashSchemeLessEven907' "$line_file" && exit 160
-grep -Fq 'u@host456' "$line_file" && exit 122
-grep -Fq 'keyVal123' "$line_file" && exit 123
-grep -Fq 'foo bar baz' "$line_file" && exit 124
-grep -Fq 'spaces tail' "$line_file" && exit 125
-grep -Fq 'tokenAtValue123' "$line_file" && exit 81
-grep -Fq 'keyAtValue123' "$line_file" && exit 82
-grep -Fq 'unterminated_secret_12345' "$line_file" && exit 83
-grep -Fq 'inner_unterminated_12345' "$line_file" && exit 84
-grep -Fq 'plainTokenValue' "$line_file" && exit 44
-grep -Fq '"api_key": "***REDACTED***"' "$line_file" || exit 45
-grep -Fq 'json_secret_value' "$line_file" && exit 46
-grep -Fq '"token": "***REDACTED***"' "$line_file" || exit 47
-grep -Fq 'json_token_value' "$line_file" && exit 48
-grep -Fq '"password": "***REDACTED***"' "$line_file" || exit 49
-grep -Fq 'value with spaces' "$line_file" && exit 50
-grep -Fq 'quote"BearerSuffix' "$line_file" && exit 53
-grep -Fq 'MY_TOKEN=***REDACTED***' "$line_file" || exit 54
-grep -Fq "Authorization: 'Bearer ***REDACTED***'" "$line_file" || exit 70
-grep -Fq 'BearerSuffixSingle' "$line_file" && exit 71
-grep -Fq "TOKEN='***REDACTED***'" "$line_file" || exit 72
-grep -Fq 'quotedTokenSecret123' "$line_file" && exit 73
-grep -Fq 'defGHI' "$line_file" && exit 55
-grep -Fq "DB_PASSWORD=***REDACTED***" "$line_file" || exit 56
-grep -Fq "'w0rd" "$line_file" && exit 57
-grep -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 161
-grep -Fq 'escapedJsonAuth9001' "$line_file" && exit 162
-grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 163
-grep -Fq 'escapedUnterminated9002' "$line_file" && exit 164
-grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 165
-grep -Fq 'escapedKey9003' "$line_file" && exit 166
-grep -Fxq 'curl -d "{\"api_key\":\"***REDACTED***\"}" https://x' "$line_file" || exit 167
-grep -Fq 'escapedApiKey9004' "$line_file" && exit 168
-grep -Fxq 'curl -d "{\\\"Authorization\\\":\\\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 169
-grep -Fq 'doubleEscapedAuth9101' "$line_file" && exit 170
-grep -Fxq 'MY_TOKEN\\\":\\\"***REDACTED***' "$line_file" || exit 171
-grep -Fq 'doubleEscapedKey9102' "$line_file" && exit 172
-grep -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 173
-grep -Fq 'SECRET888' "$line_file" && exit 174
-grep -Fxq 'curl -d "{\"MY_TOKEN\":\"***REDACTED***\"}" https://x' "$line_file" || exit 175
-grep -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x' "$line_file" || exit 176
-grep -Fq 'tailSECRET999' "$line_file" && exit 177
-grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 178
-grep -Fq 'secretEnding8888' "$line_file" && exit 179
-grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 180
-grep -Fq 'secretEnding7777' "$line_file" && exit 181
-grep -Fxq 'Authorization\":\"Bearer ***REDACTED***' "$line_file" || exit 182
-grep -Fq 'backslashOddEscapedAuth9011' "$line_file" && exit 183
-grep -Fxq 'MY_TOKEN\":\"***REDACTED***' "$line_file" || exit 184
-grep -Fq 'backslashOddEscapedKey9012' "$line_file" && exit 185
-grep -Fq 'brienEscapedAuth9201' "$line_file" && exit 186
-grep -Fq 'brienEscapedUnterm9202' "$line_file" && exit 187
-grep -Fq 'brienEscapedKey9203' "$line_file" && exit 188
-grep -Fq 'bracketCloseAuth9301' "$line_file" && exit 189
-grep -Fq 'bracketCloseKey9302' "$line_file" && exit 190
-grep -Fxq 'Authorization\: "Bearer ***REDACTED***"}' "$line_file" || exit 191
-grep -Fxq 'MY_TOKEN\: "***REDACTED***"}' "$line_file" || exit 192
-grep -Fxq 'Authorization\": "Bearer ***REDACTED***' "$line_file" || exit 193
-grep -Fxq "Authorization\\': 'Bearer ***REDACTED***'}" "$line_file" || exit 194
-grep -Fxq "Authorization: \\'Bearer ***REDACTED***'" "$line_file" || exit 195
-grep -Fxq "Authorization: \\'***REDACTED***'" "$line_file" || exit 196
-grep -Fxq "Authorization: \\'Bearer ***REDACTED***'}" "$line_file" || exit 197
-grep -Fxq "MY_TOKEN\\': '***REDACTED***'" "$line_file" || exit 198
-grep -Fxq "Authorization: \\\"Bearer ***REDACTED***\"" "$line_file" || exit 199
-grep -Fxq "Authorization: \\\"***REDACTED***\"" "$line_file" || exit 200
-grep -Fxq "MY_TOKEN\\: \"***REDACTED***\"" "$line_file" || exit 201
-grep -Fq '"Authorization": "Bearer ***REDACTED***"' "$line_file" || exit 51
+assert_fixture 'case 592' absent -Fq SYNTHA1
+assert_fixture 'case 593' present -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADA1"; echo TAILA1'
+assert_fixture 'case 594' absent -Fq SYNTHS1
+assert_fixture 'case 595' present -Fxq "curl -H 'Authorization: ***REDACTED***' 'PAYLOADS1'; echo TAILS1"
+assert_fixture 'case 596' absent -Fq SYNTHX1
+assert_fixture 'case 597' present -Fxq 'curl -H "Authorization: ***REDACTED***" --data "DATAX1"; echo TAILX1'
+assert_fixture 'case 598' absent -Fq SYNTHC1
+assert_fixture 'case 599' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILC1'
+assert_fixture 'case 600' absent -Fq SYNTHX2
+assert_fixture 'case 601' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'X: KEEPX2' https://x; echo TAILX2"
+assert_fixture 'case 602' absent -Fq SYNTHM1
+assert_fixture 'case 603' present -Fxq 'curl -H "Authorization: ***REDACTED***" https://x; echo TAILM1'
+assert_fixture 'case 604' absent -Fq SYNTH2
+assert_fixture 'case 605' present -Fxq 'curl -H "Authorization: ***REDACTED***" 2>err; echo TAIL2'
+assert_fixture 'case 606' absent -Fq SYNTHG1
+assert_fixture 'case 607' absent -Fq GLUEDG1
+assert_fixture 'case 608' present -Fxq 'curl -H "Authorization: Foo:***REDACTED***"; echo TAILG1'
+assert_fixture 'case 609' absent -Fq SYNTHB1
+assert_fixture 'case 610' present -Fxq 'curl -H "Authorization: ***REDACTED***" "PAYLOADB1"; echo TAILB1'
+assert_fixture 'case 611' absent -Fq SYNTHBC1
+assert_fixture 'case 612' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: KEEPC1" https://x; echo TAILBC1'
+assert_fixture 'case 613' present -Fxq 'Authorization: ***REDACTED*** https://x; echo KEEPGLUEDTAIL1'
+assert_fixture 'case 614' present -Fxq 'Authorization: ***REDACTED*** foo; echo KEEPGLUEDTAIL2'
+assert_fixture 'case 615' absent -Fq SYNTHGLUED901
+assert_fixture 'case 616' absent -Fq SYNTHGLUED902
+assert_fixture 'case 617' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "X: keep" https://x; echo KEEPARGTAIL1'
+assert_fixture 'case 618' present -Fxq 'curl -H "Authorization: Bearer:***REDACTED***"'
+assert_fixture 'case 619' absent -Fq SYNTHEOL1001
+assert_fixture 'case 620' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPZZ'
+assert_fixture 'case 621' present -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPZZ"
+assert_fixture 'case 622' present -Fxq 'curl -H "Authorization: ***REDACTED***" -H "Authorization: ***REDACTED***"; echo KEEPZZ9'
+assert_fixture 'case 623' present -Fxq "curl -H 'Authorization: ***REDACTED***' -H 'Authorization: ***REDACTED***'; echo KEEPZZ9"
+assert_fixture 'case 624' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" -H "X: keep" https://x; echo KEEP88'
+assert_fixture 'case 625' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED1'
+assert_fixture 'case 626' present -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED2"
+assert_fixture 'case 627' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPENDRED3'
+assert_fixture 'case 628' present -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPENDRED4"
+assert_fixture 'case 629' absent -Fq REALSECRET941
+assert_fixture 'case 630' absent -Fq REALSECRET942
+assert_fixture 'case 631' absent -Fq REALSECRET943
+assert_fixture 'case 632' absent -Fq REALSECRET944
+assert_fixture 'case 633' present -Fxq "curl -H 'Authorization: Bearer:***REDACTED***'"
+assert_fixture 'case 634' absent -Fq SYNTHEOL1002
+assert_fixture 'case 635' present -Fxq 'curl -H "Authorization: Basic:***REDACTED***"'
+assert_fixture 'case 636' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPSTAR911'
+assert_fixture 'case 637' present -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEPAT912"
+assert_fixture 'case 638' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPSTAR913'
+assert_fixture 'case 639' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPAT914'
+assert_fixture 'case 640' absent -Fq SYNTHSTAR911
+assert_fixture 'case 641' absent -Fq SYNTHAT912
+assert_fixture 'case 642' absent -Fq SYNTHSTAR913
+assert_fixture 'case 643' absent -Fq SYNTHAT914
+assert_fixture 'case 644' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEP921'
+assert_fixture 'case 645' present -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP922"
+assert_fixture 'case 646' present -Fxq "curl -H 'Authorization: ***REDACTED***'; echo KEEP923"
+assert_fixture 'case 647' absent -Fq SYNTHSTAR921
+assert_fixture 'case 648' absent -Fq SYNTHSTAR922
+assert_fixture 'case 649' absent -Fq SYNTHAT923
+assert_fixture 'case 650' present -Fxq 'Authorization: ***REDACTED***; echo KEEPGENSC901'
+assert_fixture 'case 651' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGENSC902'
+assert_fixture 'case 652' absent -Fq SYNTHGENSC901
+assert_fixture 'case 653' absent -Fq SYNTHGENSC902
+assert_fixture 'case 654' absent -Fq SYNTHEOL1003
+assert_fixture 'case 655' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM1'
+assert_fixture 'case 656' absent -Fq 1234567890
+assert_fixture 'case 657' present -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'; echo KEEPNUM2"
+assert_fixture 'case 658' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPNUM3'
+assert_fixture 'case 659' absent -Fq SECRETABC123
+assert_fixture 'case 660' absent -Fq SYNTHARG901
+assert_fixture 'case 661' present -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' -H '"'"'X: keep'"'"' https://x; echo KEEPARGTAIL2'
+assert_fixture 'case 662' absent -Fq SYNTHARG902
+assert_fixture 'case 663' present -Fxq 'curl -H "Authorization: ***REDACTED***" "payload903" https://x; echo KEEPARGTAIL3'
+assert_fixture 'case 664' absent -Fq SYNTHARG903
+assert_fixture 'case 665' present -Fxq 'curl -H '"'"'Authorization: ***REDACTED***'"'"' '"'"'payload904'"'"' https://x; echo KEEPARGTAIL4'
+assert_fixture 'case 666' absent -Fq SYNTHARG904
+assert_fixture 'case 667' present -Fxq 'Authorization: ***REDACTED***; echo TAILZZ9'
+assert_fixture 'case 668' absent -Fq SECRETZZ9
+assert_fixture 'case 669' present -Fxq 'Authorization: ***REDACTED***; echo TAILZZ10'
+assert_fixture 'case 670' absent -Fq SECRETZZ10
+assert_fixture 'case 671' present -Fxq 'Authorization: ***REDACTED***; echo TAILZZ11'
+assert_fixture 'case 672' absent -Fq SECRETZZ11
+assert_fixture 'case 673' present -Fxq 'Authorization: my_scheme=\"***REDACTED***\"; echo TAILZZ12'
+assert_fixture 'case 674' absent -Fq SYNTHE12
+assert_fixture 'case 675' present -Fxq 'Authorization: 2Scheme=\"***REDACTED***\"; echo TAILZZ13'
+assert_fixture 'case 676' absent -Fq SYNTHE13
+assert_fixture 'case 677' present -Fxq 'Authorization: my_scheme \"***REDACTED***\"; echo TAILZZSP2'
+assert_fixture 'case 678' absent -Fq SYNTHSP2
+assert_fixture 'case 679' present -Fxq 'Authorization: 2Scheme \"***REDACTED***\"; echo TAILZZSP3'
+assert_fixture 'case 680' absent -Fq SYNTHSP3
+assert_fixture 'case 681' present -Fxq 'Authorization: my_scheme:"***REDACTED***"; echo KEEPQUOTED1'
+assert_fixture 'case 682' absent -Fq SYNTHQUOTED1
+assert_fixture 'case 683' present -Fxq "Authorization: my_scheme:'***REDACTED***'; echo KEEPQUOTED2"
+assert_fixture 'case 684' absent -Fq SYNTHQUOTED2
+assert_fixture 'case 685' present -Fxq 'Authorization: 2Scheme="***REDACTED***"; echo KEEPQUOTED3'
+assert_fixture 'case 686' absent -Fq SYNTHQUOTED3
+assert_fixture 'case 687' present -Fxq "Authorization: 2Scheme='***REDACTED***'; echo KEEPQUOTED4"
+assert_fixture 'case 688' absent -Fq SYNTHQUOTED4
+assert_fixture 'case 689' present -Fxq 'Authorization: my_scheme:"***REDACTED***"; echo KEEPGLUEDQ1'
+assert_fixture 'case 690' absent -Fq SYNTHGLUEDQ1
+assert_fixture 'case 691' present -Fxq "Authorization: 2Scheme:'***REDACTED***'; echo KEEPGLUEDS1"
+assert_fixture 'case 692' absent -Fq SYNTHGLUEDS1
+assert_fixture 'case 693' present -Fxq 'Authorization: my_scheme:"***REDACTED***" "PAYLOADGLUEDQ2"; echo KEEPGLUEDQ2'
+assert_fixture 'case 694' absent -Fq SYNTHGLUEDQ2
+assert_fixture 'case 695' present -Fxq 'Authorization: my_scheme:"***REDACTED***"; Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATQ'
+assert_fixture 'case 696' absent -Fq SYNTHREPEATQ1
+assert_fixture 'case 697' absent -Fq SYNTHREPEATQ2
+assert_fixture 'case 698' present -Fxq 'Authorization: my_scheme:"***REDACTED***"|Authorization: 2scheme:"***REDACTED***"; echo KEEPREPEATPIPE'
+assert_fixture 'case 699' absent -Fq SYNTHREPEATPIPE1
+assert_fixture 'case 700' absent -Fq SYNTHREPEATPIPE2
+assert_fixture 'case 701' present -Fxq 'Authorization: my_scheme:"***REDACTED***" >out; Authorization: 2scheme:"***REDACTED***" <in; echo KEEPREPEATREDIR'
+assert_fixture 'case 702' absent -Fq SYNTHREPEATREDIR1
+assert_fixture 'case 703' absent -Fq SYNTHREPEATREDIR2
+assert_fixture 'case 704' present -Fxq "Authorization: my_scheme:'***REDACTED***'; Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQ"
+assert_fixture 'case 705' absent -Fq SYNTHREPEATSQ1
+assert_fixture 'case 706' absent -Fq SYNTHREPEATSQ2
+assert_fixture 'case 707' present -Fxq "Authorization: my_scheme:'***REDACTED***'|Authorization: 2scheme:'***REDACTED***'; echo KEEPREPEATSQPIPE"
+assert_fixture 'case 708' absent -Fq SYNTHREPEATSQPIPE1
+assert_fixture 'case 709' absent -Fq SYNTHREPEATSQPIPE2
+assert_fixture 'case 710' present -Fxq "Authorization: my_scheme:'***REDACTED***' >out; Authorization: 2scheme:'***REDACTED***' <in; echo KEEPREPEATSQREDIR"
+assert_fixture 'case 711' absent -Fq SYNTHREPEATSQREDIR1
+assert_fixture 'case 712' absent -Fq SYNTHREPEATSQREDIR2
+assert_fixture 'case 713' present -Fxq 'Authorization: my_scheme:"***REDACTED***"&Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPAMP'
+assert_fixture 'case 714' absent -Fq SYNTHSEPAMP1
+assert_fixture 'case 715' absent -Fq SYNTHSEPAMP2
+assert_fixture 'case 716' present -Fxq 'Authorization: my_scheme:"***REDACTED***";Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPSEMI'
+assert_fixture 'case 717' absent -Fq SYNTHSEPSEMI1
+assert_fixture 'case 718' absent -Fq SYNTHSEPSEMI2
+assert_fixture 'case 719' present -Fxq 'Authorization: my_scheme:"***REDACTED***",Authorization: 2scheme:"***REDACTED***"; echo KEEPSEPCOMMA'
+assert_fixture 'case 720' absent -Fq SYNTHSEPCOMMA1
+assert_fixture 'case 721' absent -Fq SYNTHSEPCOMMA2
+assert_fixture 'case 722' present -Fxq "Authorization: my_scheme:'***REDACTED***'&Authorization: 2scheme:'***REDACTED***'; echo KEEPSEPAMPSQ"
+assert_fixture 'case 723' absent -Fq SYNTHSEPAMPSQ1
+assert_fixture 'case 724' absent -Fq SYNTHSEPAMPSQ2
+assert_fixture 'case 725' present -Fxq 'echo "note Authorization: SYNTHNATQ1 ***REDACTED***"; echo KEEPNATQ1'
+assert_fixture 'case 726' present -Fq KEEPNATQ1
+assert_fixture 'case 727' present -Fxq "echo 'note Authorization: SYNTHNATS1 ***REDACTED***'; echo KEEPNATS1"
+assert_fixture 'case 728' present -Fq KEEPNATS1
+assert_fixture 'case 729' absent -Fq 'more_secret456'
+assert_fixture 'case 730' present -Fxq 'echo KEEPMORE456; Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 731' absent -Fq 'w0rd123SECRET'
+assert_fixture 'case 732' present -Fxq 'echo KEEPWORD123; Authorization: Basic ***REDACTED***'
+assert_fixture 'case 733' present -Fxq 'Authorization: Bearer ***REDACTED***'
+assert_fixture 'case 734' present -Fxq 'Authorization: ***REDACTED***'
+assert_fixture 'case 735' absent -Fq 'keyPlusHeaderValue123'
+assert_fixture 'case 736' present -Fxq '{"api_key": "***REDACTED***", "Authorization": "Basic ***REDACTED***", "keep": "KEEPKEYPLUS"}'
+assert_fixture 'case 737' absent -Fq 'keyPlusHeaderCred123'
+assert_fixture 'case 738' absent -Fq 'tokenPlusHeaderValue123'
+assert_fixture 'case 739' absent -Fq 'tokenPlusHeaderCred123'
+assert_fixture 'case 740' present -Fq 'Authorization: ***REDACTED***'
+assert_fixture 'case 741' present -Fq 'Authorization: "***REDACTED***"'
+assert_fixture 'case 742' present -Fq "Authorization: '***REDACTED***'"
+assert_fixture 'case 743' absent -Fq 'bareSchemeLessValue'
+assert_fixture 'case 744' absent -Fq 'quotedSchemeLessValue'
+assert_fixture 'case 745' absent -Fq 'singleSchemeLessValue'
+assert_fixture 'case 746' absent -Fq 'bareLowerSchemeLess'
+assert_fixture 'case 747' absent -Fq 'bareCred2'
+assert_fixture 'case 748' absent -Fq 'schemeLessJsonCred'
+assert_fixture 'case 749' absent -Fq 'bareAtValue'
+assert_fixture 'case 750' absent -Fq 'quotedAtValue'
+assert_fixture 'case 751' absent -Fq 'unterminatedSchemeLess'
+assert_fixture 'case 752' absent -Fq 'oddAtValue'
+assert_fixture 'case 753' absent -Fq 's3cr3tToken99'
+assert_fixture 'case 754' absent -Fq 'acct99'
+assert_fixture 'case 755' present -Fxq 'Authorization: Bearer ***REDACTED*** https://example.com'
+assert_fixture 'case 756' absent -Fq 'two999'
+assert_fixture 'case 757' absent -Fq 'u@host99'
+assert_fixture 'case 758' absent -Fq 'backslashBearerOdd901'
+assert_fixture 'case 759' absent -Fq 'backslashSchemeLessOdd902'
+assert_fixture 'case 760' absent -Fq 'backslashSingleOdd903'
+assert_fixture 'case 761' absent -Fq 'backslashKeyOdd904'
+assert_fixture 'case 762' present -Fxq 'Authorization: ***REDACTED***\'
+assert_fixture 'case 763' absent -Fq 'continuationSecret444444'
+assert_fixture 'case 764' absent -Fq 'hostBackslashOdd905'
+assert_fixture 'case 765' present -Fxq 'Authorization: Bearer "***REDACTED***'
+assert_fixture 'case 766' present -Fxq 'Authorization: "***REDACTED***'
+assert_fixture 'case 767' present -Fxq "Authorization: '***REDACTED***'"
+assert_fixture 'case 768' present -Fxq 'MY_TOKEN=***REDACTED***'
+assert_fixture 'case 769' absent -Fq 'backslashBearerEven906'
+assert_fixture 'case 770' absent -Fq 'backslashSchemeLessEven907'
+assert_fixture 'case 771' absent -Fq 'u@host456'
+assert_fixture 'case 772' absent -Fq 'keyVal123'
+assert_fixture 'case 773' absent -Fq 'foo bar baz'
+assert_fixture 'case 774' absent -Fq 'spaces tail'
+assert_fixture 'case 775' absent -Fq 'tokenAtValue123'
+assert_fixture 'case 776' absent -Fq 'keyAtValue123'
+assert_fixture 'case 777' absent -Fq 'unterminated_secret_12345'
+assert_fixture 'case 778' absent -Fq 'inner_unterminated_12345'
+assert_fixture 'case 779' absent -Fq 'plainTokenValue'
+assert_fixture 'case 780' present -Fq '"api_key": "***REDACTED***"'
+assert_fixture 'case 781' absent -Fq 'json_secret_value'
+assert_fixture 'case 782' present -Fq '"token": "***REDACTED***"'
+assert_fixture 'case 783' absent -Fq 'json_token_value'
+assert_fixture 'case 784' present -Fq '"password": "***REDACTED***"'
+assert_fixture 'case 785' absent -Fq 'value with spaces'
+assert_fixture 'case 786' absent -Fq 'quote"BearerSuffix'
+assert_fixture 'case 787' present -Fq 'MY_TOKEN=***REDACTED***'
+assert_fixture 'case 788' present -Fq "Authorization: 'Bearer ***REDACTED***'"
+assert_fixture 'case 789' absent -Fq 'BearerSuffixSingle'
+assert_fixture 'case 790' present -Fq "TOKEN='***REDACTED***'"
+assert_fixture 'case 791' absent -Fq 'quotedTokenSecret123'
+assert_fixture 'case 792' absent -Fq 'defGHI'
+assert_fixture 'case 793' present -Fq "DB_PASSWORD=***REDACTED***"
+assert_fixture 'case 794' absent -Fq "'w0rd"
+assert_fixture 'case 795' present -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x'
+assert_fixture 'case 796' absent -Fq 'escapedJsonAuth9001'
+assert_fixture 'case 797' present -Fxq 'Authorization\":\"Bearer ***REDACTED***'
+assert_fixture 'case 798' absent -Fq 'escapedUnterminated9002'
+assert_fixture 'case 799' present -Fxq 'MY_TOKEN\":\"***REDACTED***'
+assert_fixture 'case 800' absent -Fq 'escapedKey9003'
+assert_fixture 'case 801' present -Fxq 'curl -d "{\"api_key\":\"***REDACTED***\"}" https://x'
+assert_fixture 'case 802' absent -Fq 'escapedApiKey9004'
+assert_fixture 'case 803' present -Fxq 'curl -d "{\\\"Authorization\\\":\\\"Bearer ***REDACTED***\"}" https://x'
+assert_fixture 'case 804' absent -Fq 'doubleEscapedAuth9101'
+assert_fixture 'case 805' present -Fxq 'MY_TOKEN\\\":\\\"***REDACTED***'
+assert_fixture 'case 806' absent -Fq 'doubleEscapedKey9102'
+assert_fixture 'case 807' present -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x'
+assert_fixture 'case 808' absent -Fq 'SECRET888'
+assert_fixture 'case 809' present -Fxq 'curl -d "{\"MY_TOKEN\":\"***REDACTED***\"}" https://x'
+assert_fixture 'case 810' present -Fxq 'curl -d "{\"Authorization\":\"Bearer ***REDACTED***\"}" https://x'
+assert_fixture 'case 811' absent -Fq 'tailSECRET999'
+assert_fixture 'case 812' present -Fxq 'Authorization\":\"Bearer ***REDACTED***'
+assert_fixture 'case 813' absent -Fq 'secretEnding8888'
+assert_fixture 'case 814' present -Fxq 'MY_TOKEN\":\"***REDACTED***'
+assert_fixture 'case 815' absent -Fq 'secretEnding7777'
+assert_fixture 'case 816' present -Fxq 'Authorization\":\"Bearer ***REDACTED***'
+assert_fixture 'case 817' absent -Fq 'backslashOddEscapedAuth9011'
+assert_fixture 'case 818' present -Fxq 'MY_TOKEN\":\"***REDACTED***'
+assert_fixture 'case 819' absent -Fq 'backslashOddEscapedKey9012'
+assert_fixture 'case 820' absent -Fq 'brienEscapedAuth9201'
+assert_fixture 'case 821' absent -Fq 'brienEscapedUnterm9202'
+assert_fixture 'case 822' absent -Fq 'brienEscapedKey9203'
+assert_fixture 'case 823' absent -Fq 'bracketCloseAuth9301'
+assert_fixture 'case 824' absent -Fq 'bracketCloseKey9302'
+assert_fixture 'case 825' present -Fxq 'Authorization\: "Bearer ***REDACTED***"}'
+assert_fixture 'case 826' present -Fxq 'MY_TOKEN\: "***REDACTED***"}'
+assert_fixture 'case 827' present -Fxq 'Authorization\": "Bearer ***REDACTED***'
+assert_fixture 'case 828' present -Fxq "Authorization\\': 'Bearer ***REDACTED***'}"
+assert_fixture 'case 829' present -Fxq "Authorization: \\'Bearer ***REDACTED***'"
+assert_fixture 'case 830' present -Fxq "Authorization: \\'***REDACTED***'"
+assert_fixture 'case 831' present -Fxq "Authorization: \\'Bearer ***REDACTED***'}"
+assert_fixture 'case 832' present -Fxq "MY_TOKEN\\': '***REDACTED***'"
+assert_fixture 'case 833' present -Fxq "Authorization: \\\"Bearer ***REDACTED***\""
+assert_fixture 'case 834' present -Fxq "Authorization: \\\"***REDACTED***\""
+assert_fixture 'case 835' present -Fxq "MY_TOKEN\\: \"***REDACTED***\""
+assert_fixture 'case 836' present -Fq '"Authorization": "Bearer ***REDACTED***"'
 json_count=0
 while IFS= read -r json_line; do
   printf '%s' "$json_line" | jq -e . >/dev/null 2>&1 || exit 68
   ((json_count += 1))
 done < <(grep '^{"' "$line_file")
 ((json_count >= 4)) || exit 67
-grep -Fq 'BearerSuffix1234567890' "$line_file" && exit 69
-grep -Fq 'json_bearer_value' "$line_file" && exit 52
-grep -Fq '123MY_TOKEN=***REDACTED***' "$line_file" || exit 58
-grep -Fq 'SECRETVAL' "$line_file" && exit 59
-grep -Fq '"123MY_TOKEN": "***REDACTED***"' "$line_file" || exit 60
-grep -Fq -- '-MY_TOKEN=***REDACTED***' "$line_file" || exit 61
-grep -Fxq 'token=***REDACTED***; echo KEEPSEMIFIX' "$line_file" || exit 460
-grep -Fxq 'TOKEN=***REDACTED***; echo KEEPSEMI2FIX' "$line_file" || exit 461
-grep -Fxq 'api_key=***REDACTED***; echo KEEPAPIFIX' "$line_file" || exit 462
-grep -Fxq '"token=***REDACTED***"; echo KEEPQUOTEDFIX' "$line_file" || exit 463
-grep -Fxq "'token=***REDACTED***'; echo KEEPQUOTED2FIX" "$line_file" || exit 464
-grep -Fxq 'token=***REDACTED***' "$line_file" || exit 465
-grep -Fq 'defFIX' "$line_file" && exit 475
-grep -Fxq 'token=***REDACTED***; password=***REDACTED***; echo KEEP_TWO' "$line_file" || exit 466
-grep -Fxq 'token=***REDACTED***; password=***REDACTED***; key=***REDACTED***; echo KEEP_MULTI' "$line_file" || exit 467
-grep -Fxq 'token=***REDACTED***;token2=***REDACTED***; echo KEEPDOUBLEFIX' "$line_file" || exit 468
-grep -Fq 'SYNTHSEMIKEY' "$line_file" && exit 469
-grep -Fxq 'echo token=***REDACTED***;token2=***REDACTED***; echo KEEPCHAIN' "$line_file" || exit 546
-grep -Fq 'SYNTHCHAIN' "$line_file" && exit 547
-grep -Fxq 'echo token=***REDACTED***' "$line_file" || exit 548
-grep -Fxq 'token=***REDACTED***;token2=***REDACTED***;token3=***REDACTED***; echo KEEPCHAIN3' "$line_file" || exit 663
-grep -Fq 'SYNTHCHAIN3' "$line_file" && exit 664
-grep -Fxq 'token=***REDACTED***,token2=***REDACTED***;token3=***REDACTED***; echo KEEPMIXCHAIN' "$line_file" || exit 669
-grep -Fq 'SYNTHMIX1' "$line_file" && exit 670
-grep -Fxq 'token=***REDACTED***;token2=***REDACTED***,token3=***REDACTED***, echo KEEPMIXCHAIN2' "$line_file" || exit 671
-grep -Fq 'SYNTHMIX4' "$line_file" && exit 672
-grep -Fxq 'token = ***REDACTED***;token2 = ***REDACTED***; echo KEEPSPACEKEY' "$line_file" || exit 673
-grep -Fq 'SYNTHSPACE1' "$line_file" && exit 674
-grep -Fxq 'token=***REDACTED*** echo KEEPCOMMAOPAQUE' "$line_file" || exit 675
-grep -Fq 'defTAILCOMMA' "$line_file" && exit 676
-grep -Fxq 'token=***REDACTED***&token2=***REDACTED***& echo KEEPAMPKEY' "$line_file" || exit 683
-grep -Fq 'SYNTHAMPKEY' "$line_file" && exit 684
-grep -Fxq 'token=***REDACTED***|token2=***REDACTED***; echo KEEPPIPEKEY' "$line_file" || exit 685
-grep -Fq 'SYNTHPIPEKEY' "$line_file" && exit 686
-grep -Fxq 'token=***REDACTED*** echo KEEPAMPOPAQUE' "$line_file" || exit 687
-grep -Fq 'defTAILAMP' "$line_file" && exit 688
-grep -Fxq 'token=***REDACTED*** echo KEEPPIPEOPAQUE' "$line_file" || exit 689
-grep -Fq 'defTAILPIPE' "$line_file" && exit 690
-grep -Fxq '"token":***REDACTED***;"password":***REDACTED***; echo KEEPDQKEY' "$line_file" || exit 677
-grep -Fq 'SYNTHDQKEY' "$line_file" && exit 678
-grep -Fxq "'test_key':***REDACTED***,'api_key':***REDACTED***, echo KEEPSQKEY" "$line_file" || exit 679
-grep -Fq 'SYNTHSQKEY' "$line_file" && exit 680
-grep -Fxq '"token":***REDACTED*** echo KEEPQUOTEDOPAQUE' "$line_file" || exit 681
-grep -Fq 'defTAILQUOTED' "$line_file" && exit 682
-grep -Fxq 'token=***REDACTED***,token2=***REDACTED***, echo KEEPCOMMA' "$line_file" || exit 665
-grep -Fq 'SYNTHCOMMA' "$line_file" && exit 666
-grep -Fxq 'token=***REDACTED*** echo KEEPOPAQUE' "$line_file" || exit 667
-grep -Fq 'defTAILCHAIN' "$line_file" && exit 668
-grep -Fq 'defFIX' "$line_file" && exit 549
-grep -Fxq 'echo token=***REDACTED*** echo KEEPCHAINLEAK' "$line_file" || exit 550
-grep -Fq 'SYNTHCHAINLEAK' "$line_file" && exit 551
-grep -Fxq 'x=1;url=//user:***REDACTED***@example.test/path' "$line_file" || exit 552
-grep -Fq 'SYNTHSECRETFIRST' "$line_file" && exit 470
-grep -Fq 'SYNTHSECRETSECOND' "$line_file" && exit 471
-grep -Fq 'SYNTHMULTI' "$line_file" && exit 472
-grep -Fxq 'token=***REDACTED***; echo KEEPKEYSemiFIX' "$line_file" || exit 473
-grep -Fxq 'token=***REDACTED*** | grep KEEPPIPEFIX' "$line_file" || exit 474
-grep -Fq 'MARKER' "$line_file" && exit 62
-grep -Fq '"2fa_secret": "***REDACTED***"' "$line_file" || exit 63
-grep -Fq 'SUPERSECRET123' "$line_file" && exit 64
-grep -Fq '"123api_token": "***REDACTED***"' "$line_file" || exit 65
-grep -Fq 'ANOTHERSECRET456' "$line_file" && exit 66
-grep -Fq 'gho_***REDACTED***' "$line_file" || exit 14
-grep -Fq 'github_pat_***REDACTED***' "$line_file" || exit 15
-grep -Fq 'ghs_***REDACTED***' "$line_file" || exit 17
-grep -Fq 'teless_jwt_body' "$line_file" && exit 16
-grep -Fq 'tail_with_underscore' "$line_file" && exit 18
-grep -Fq 'API_KEY = ***REDACTED***' "$line_file" || exit 19
-grep -Fq 'spaced-secret-value' "$line_file" && exit 20
-grep -Fq 'AKIA***REDACTED***' "$line_file" || exit 21
-grep -Fq 'sk_live_***REDACTED***' "$line_file" || exit 32
-grep -Fq 'sk_test_***REDACTED***' "$line_file" || exit 33
-grep -Fq 'rk_live_***REDACTED***' "$line_file" || exit 34
-grep -Fq 'rk_test_***REDACTED***' "$line_file" || exit 35
-grep -Fq 'StripeBodySkLive' "$line_file" && exit 36
-grep -Fq 'StripeBodyRkLive' "$line_file" && exit 37
-grep -Fq 'pk_live_StripePublicBody0123456789' "$line_file" || exit 38
-grep -Fq 'IOSFODNN7EXAMPLE' "$line_file" && exit 22
-grep -Fq 'xoxb-***REDACTED***' "$line_file" || exit 23
-grep -Fq 'glpat-***REDACTED***' "$line_file" || exit 28
-grep -Fq 'abcdefghijklmnopqrstuvwxyz0123' "$line_file" && exit 29
-grep -Fq 'AIza***REDACTED***' "$line_file" || exit 30
-grep -Fq 'SyD12345678901234567890123456789012' "$line_file" && exit 31
-grep -Fq '123456789012' "$line_file" && exit 24
-grep -Fq '***REDACTED PRIVATE KEY***' "$line_file" || exit 25
-grep -Fq 'FAKE-KEY-BODY-FOR-REDACT-TEST' "$line_file" && exit 26
-grep -Fq 'BEGIN RSA PRIV''ATE KEY' "$line_file" && exit 27
-grep -Fxq 'git clone https://oauth2:***REDACTED***@github.example/org/repo.git' "$line_file" || exit 200
-grep -Fq 'cloneTokUrl901' "$line_file" && exit 201
-grep -Fxq 'psql postgresql://reporting:***REDACTED***@db.example:5432/analytics' "$line_file" || exit 202
-grep -Fq 'dbPwUrl902' "$line_file" && exit 203
-grep -Fxq 'curl "https://u:***REDACTED***@host.example/x" -H "X: keepUrl"' "$line_file" || exit 204
-grep -Fq 'quotedPwUrl903' "$line_file" && exit 205
-grep -Fq 'plain@example.com' "$line_file" || exit 206
-grep -Fxq 'curl https://example.test:8443?q=alice@example.test' "$line_file" || exit 207
-grep -Fxq 'curl https://example.test:8443#alice@example.test' "$line_file" || exit 208
-grep -Fxq 'git clone //user:***REDACTED***@example.test/path' "$line_file" || exit 209
-grep -Fq 'git clone //user:pass@example.test/path' "$line_file" && exit 210
-grep -Fxq 'echo [//user:***REDACTED***@example.test/path]' "$line_file" || exit 255
-grep -Fq 'passBracket@example.test' "$line_file" && exit 254
-grep -Fxq 'echo {user=//user:***REDACTED***@example.test/path}' "$line_file" || exit 255
-grep -Fq 'passBrace@example.test' "$line_file" && exit 254
-grep -Fxq 'echo `//user:***REDACTED***@example.test/path`' "$line_file" || exit 255
-grep -Fq 'passTick@example.test' "$line_file" && exit 254
-grep -Fxq 'echo "url=//user:***REDACTED***@example.test/path"' "$line_file" || exit 255
-grep -Fq 'passQuotedAssign@example.test' "$line_file" && exit 254
-grep -Fxq "echo 'url=//user:***REDACTED***@example.test/path'" "$line_file" || exit 255
-grep -Fxq 'db.url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
-grep -Fq 'passDotted@example.test' "$line_file" && exit 254
-grep -Fxq 'spring.datasource.url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
-grep -Fq 'passSpring@example.test' "$line_file" && exit 254
-grep -Fxq 'curl --url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
-grep -Fq 'passFlag@example.test' "$line_file" && exit 254
-grep -Fxq 'java -Ddb.url=//user:***REDACTED***@example.test/x' "$line_file" || exit 255
-grep -Fq 'passD@example.test' "$line_file" && exit 254
-grep -Fxq 'db.url=//***REDACTED***@example.test/x' "$line_file" || exit 255
-grep -Fq 'BAREdot123456@example.test' "$line_file" && exit 254
-grep -Fxq "curl 'https://example.test/docs#//user:Secret987654@example.test'" "$line_file" || exit 255
-grep -Fxq "curl 'https://example.test/?a=1&//user:Secret987654@example.test'" "$line_file" || exit 255
-grep -Fq 'passSingleAssign@example.test' "$line_file" && exit 254
-grep -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test' "$line_file" || exit 214
-grep -Fxq "curl 'https://example.test/path?token=***REDACTED***&x=1'" "$line_file" || exit 255
-grep -Fxq "curl 'https://example.test/?x=1&token=***REDACTED***'" "$line_file" || exit 255
-grep -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'" "$line_file" || exit 285
-grep -Fq 'fixtureSemi9001' "$line_file" && exit 286
-grep -Fxq "curl 'https://example.test/?x=1,token=***REDACTED***&y=2'" "$line_file" || exit 287
-grep -Fq 'fixtureComma9002' "$line_file" && exit 288
-grep -Fxq "curl 'https://example.test/a;token=***REDACTED***?x=1'" "$line_file" || exit 289
-grep -Fq 'fixturePath9003' "$line_file" && exit 290
-grep -Fxq 'curl "https://x/?token=***REDACTED***&y=2"' "$line_file" || exit 303
-grep -Fq 'abcQuestionMark9004' "$line_file" && exit 304
-grep -Fxq 'echo x;token=***REDACTED***' "$line_file" || exit 305
-grep -Fq 'defLitQ9006' "$line_file" && exit 317
-grep -Fxq 'curl "https://x/?token=***REDACTED***&y=2"' "$line_file" || exit 318
-grep -Fq 'defShellLitQ9007' "$line_file" && exit 319
-grep -Fxq 'echo x;token=***REDACTED***' "$line_file" || exit 320
-grep -Fq 'abcQuestionShell9005' "$line_file" && exit 306
-grep -Fxq 'echo x;token=***REDACTED***' "$line_file" || exit 291
-grep -Fq 'fixtureShell9004' "$line_file" && exit 292
-grep -Fxq "curl 'https://example.test/a/token=***REDACTED***'" "$line_file" || exit 255
-grep -Fxq 'INFO|token=***REDACTED*** service=web' "$line_file" || exit 255
-grep -Fxq 'db:password=***REDACTED***' "$line_file" || exit 255
-grep -Fxq '[INFO]token=***REDACTED***' "$line_file" || exit 255
-grep -Fxq "curl 'https://example.test/?token=***REDACTED***&at=1'" "$line_file" || exit 255
-grep -Fxq "curl 'https://example.test/?token=***REDACTED***&slash=1'" "$line_file" || exit 255
-grep -Fq '@example.com&at=1' "$line_file" && exit 254
-grep -Fq '/def&slash=1' "$line_file" && exit 254
-grep -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC1"' "$line_file" || exit 330
-grep -Fq 'encEqSecret9001' "$line_file" && exit 331
-grep -Fxq 'curl "https://x.test/a?api-key=***REDACTED***&keep=KEEPENC2"' "$line_file" || exit 332
-grep -Fq 'encEqSecret9002' "$line_file" && exit 333
-grep -Fxq 'curl "https://x.test/a#token=***REDACTED***&keep=KEEPENC3"' "$line_file" || exit 334
-grep -Fq 'encColonSecret9003' "$line_file" && exit 335
-grep -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC4"' "$line_file" || exit 336
-grep -Fq 'encSpaceSecret9004' "$line_file" && exit 337
-grep -Fxq 'curl "https://x.test/a?redirect=https%3A//safe.test&keep=KEEPENC5"' "$line_file" || exit 338
-grep -Fxq 'curl "https://x.test/a?Authorization:***REDACTED***&keep=KEEP0103"' "$line_file" || exit 339
-grep -Fq 'AUTHENCSECRET0103' "$line_file" && exit 340
-grep -Fxq "curl 'https://x.test/a?\"Authorization\":***REDACTED***&keep=KEEP0103'" "$line_file" || exit 341
-grep -Fxq "curl 'https://x.test/a?\"token\"=***REDACTED***&keep=KEEP0201'" "$line_file" || exit 342
-grep -Fq 'quotedKeySecret0201' "$line_file" && exit 343
-grep -Fxq "curl \"https://x.test/a?'token'=***REDACTED***&keep=KEEP0202\"" "$line_file" || exit 344
-grep -Fq 'quotedKeySecret0202' "$line_file" && exit 345
-grep -Fq 'EscapedQuotedSecret0301' "$line_file" && exit 346
-grep -Fq 'KEEPQ1' "$line_file" || exit 347
-grep -Fq 'EscapedQuotedSecret0302' "$line_file" && exit 348
-grep -Fq 'KEEPQ2' "$line_file" || exit 349
-grep -Fq 'EscapedAuthSecret0303' "$line_file" && exit 350
-grep -Fq 'KEEPQ3' "$line_file" || exit 351
-grep -Fq 'EscapedAuthSecret0304' "$line_file" && exit 352
-grep -Fq 'KEEPQ4' "$line_file" || exit 353
+assert_fixture 'case 837' absent -Fq 'BearerSuffix1234567890'
+assert_fixture 'case 838' absent -Fq 'json_bearer_value'
+assert_fixture 'case 839' present -Fq '123MY_TOKEN=***REDACTED***'
+assert_fixture 'case 840' absent -Fq 'SECRETVAL'
+assert_fixture 'case 841' present -Fq '"123MY_TOKEN": "***REDACTED***"'
+assert_fixture 'case 842' present -Fq -- '-MY_TOKEN=***REDACTED***'
+assert_fixture 'case 843' present -Fxq 'token=***REDACTED***; echo KEEPSEMIFIX'
+assert_fixture 'case 844' present -Fxq 'TOKEN=***REDACTED***; echo KEEPSEMI2FIX'
+assert_fixture 'case 845' present -Fxq 'api_key=***REDACTED***; echo KEEPAPIFIX'
+assert_fixture 'case 846' present -Fxq '"token=***REDACTED***"; echo KEEPQUOTEDFIX'
+assert_fixture 'case 847' present -Fxq "'token=***REDACTED***'; echo KEEPQUOTED2FIX"
+assert_fixture 'case 848' present -Fxq 'token=***REDACTED***'
+assert_fixture 'case 849' absent -Fq 'defFIX'
+assert_fixture 'case 850' present -Fxq 'token=***REDACTED***; password=***REDACTED***; echo KEEP_TWO'
+assert_fixture 'case 851' present -Fxq 'token=***REDACTED***; password=***REDACTED***; key=***REDACTED***; echo KEEP_MULTI'
+assert_fixture 'case 852' present -Fxq 'token=***REDACTED***;token2=***REDACTED***; echo KEEPDOUBLEFIX'
+assert_fixture 'case 853' absent -Fq 'SYNTHSEMIKEY'
+assert_fixture 'case 854' present -Fxq 'echo token=***REDACTED***;token2=***REDACTED***; echo KEEPCHAIN'
+assert_fixture 'case 855' absent -Fq 'SYNTHCHAIN'
+assert_fixture 'case 856' present -Fxq 'echo token=***REDACTED***'
+assert_fixture 'case 857' present -Fxq 'token=***REDACTED***;token2=***REDACTED***;token3=***REDACTED***; echo KEEPCHAIN3'
+assert_fixture 'case 858' absent -Fq 'SYNTHCHAIN3'
+assert_fixture 'case 859' present -Fxq 'token=***REDACTED***,token2=***REDACTED***;token3=***REDACTED***; echo KEEPMIXCHAIN'
+assert_fixture 'case 860' absent -Fq 'SYNTHMIX1'
+assert_fixture 'case 861' present -Fxq 'token=***REDACTED***;token2=***REDACTED***,token3=***REDACTED***, echo KEEPMIXCHAIN2'
+assert_fixture 'case 862' absent -Fq 'SYNTHMIX4'
+assert_fixture 'case 863' present -Fxq 'token = ***REDACTED***;token2 = ***REDACTED***; echo KEEPSPACEKEY'
+assert_fixture 'case 864' absent -Fq 'SYNTHSPACE1'
+assert_fixture 'case 865' present -Fxq 'token=***REDACTED*** echo KEEPCOMMAOPAQUE'
+assert_fixture 'case 866' absent -Fq 'defTAILCOMMA'
+assert_fixture 'case 867' present -Fxq 'token=***REDACTED***&token2=***REDACTED***& echo KEEPAMPKEY'
+assert_fixture 'case 868' absent -Fq 'SYNTHAMPKEY'
+assert_fixture 'case 869' present -Fxq 'token=***REDACTED***|token2=***REDACTED***; echo KEEPPIPEKEY'
+assert_fixture 'case 870' absent -Fq 'SYNTHPIPEKEY'
+assert_fixture 'case 871' present -Fxq 'token=***REDACTED*** echo KEEPAMPOPAQUE'
+assert_fixture 'case 872' absent -Fq 'defTAILAMP'
+assert_fixture 'case 873' present -Fxq 'token=***REDACTED*** echo KEEPPIPEOPAQUE'
+assert_fixture 'case 874' absent -Fq 'defTAILPIPE'
+assert_fixture 'case 875' present -Fxq '"token":***REDACTED***;"password":***REDACTED***; echo KEEPDQKEY'
+assert_fixture 'case 876' absent -Fq 'SYNTHDQKEY'
+assert_fixture 'case 877' present -Fxq "'test_key':***REDACTED***,'api_key':***REDACTED***, echo KEEPSQKEY"
+assert_fixture 'case 878' absent -Fq 'SYNTHSQKEY'
+assert_fixture 'case 879' present -Fxq '"token":***REDACTED*** echo KEEPQUOTEDOPAQUE'
+assert_fixture 'case 880' absent -Fq 'defTAILQUOTED'
+assert_fixture 'case 881' present -Fxq 'token=***REDACTED***,token2=***REDACTED***, echo KEEPCOMMA'
+assert_fixture 'case 882' absent -Fq 'SYNTHCOMMA'
+assert_fixture 'case 883' present -Fxq 'token=***REDACTED*** echo KEEPOPAQUE'
+assert_fixture 'case 884' absent -Fq 'defTAILCHAIN'
+assert_fixture 'case 885' absent -Fq 'defFIX'
+assert_fixture 'case 886' present -Fxq 'echo token=***REDACTED*** echo KEEPCHAINLEAK'
+assert_fixture 'case 887' absent -Fq 'SYNTHCHAINLEAK'
+assert_fixture 'case 888' present -Fxq 'x=1;url=//user:***REDACTED***@example.test/path'
+assert_fixture 'case 889' absent -Fq 'SYNTHSECRETFIRST'
+assert_fixture 'case 890' absent -Fq 'SYNTHSECRETSECOND'
+assert_fixture 'case 891' absent -Fq 'SYNTHMULTI'
+assert_fixture 'case 892' present -Fxq 'token=***REDACTED***; echo KEEPKEYSemiFIX'
+assert_fixture 'case 893' present -Fxq 'token=***REDACTED*** | grep KEEPPIPEFIX'
+assert_fixture 'case 894' absent -Fq 'MARKER'
+assert_fixture 'case 895' present -Fq '"2fa_secret": "***REDACTED***"'
+assert_fixture 'case 896' absent -Fq 'SUPERSECRET123'
+assert_fixture 'case 897' present -Fq '"123api_token": "***REDACTED***"'
+assert_fixture 'case 898' absent -Fq 'ANOTHERSECRET456'
+assert_fixture 'case 899' present -Fq 'gho_***REDACTED***'
+assert_fixture 'case 900' present -Fq 'github_pat_***REDACTED***'
+assert_fixture 'case 901' present -Fq 'ghs_***REDACTED***'
+assert_fixture 'case 902' absent -Fq 'teless_jwt_body'
+assert_fixture 'case 903' absent -Fq 'tail_with_underscore'
+assert_fixture 'case 904' present -Fq 'API_KEY = ***REDACTED***'
+assert_fixture 'case 905' absent -Fq 'spaced-secret-value'
+assert_fixture 'case 906' present -Fq 'AKIA***REDACTED***'
+assert_fixture 'case 907' present -Fq 'sk_live_***REDACTED***'
+assert_fixture 'case 908' present -Fq 'sk_test_***REDACTED***'
+assert_fixture 'case 909' present -Fq 'rk_live_***REDACTED***'
+assert_fixture 'case 910' present -Fq 'rk_test_***REDACTED***'
+assert_fixture 'case 911' absent -Fq 'StripeBodySkLive'
+assert_fixture 'case 912' absent -Fq 'StripeBodyRkLive'
+assert_fixture 'case 913' present -Fq 'pk_live_StripePublicBody0123456789'
+assert_fixture 'case 914' absent -Fq 'IOSFODNN7EXAMPLE'
+assert_fixture 'case 915' present -Fq 'xoxb-***REDACTED***'
+assert_fixture 'case 916' present -Fq 'glpat-***REDACTED***'
+assert_fixture 'case 917' absent -Fq 'abcdefghijklmnopqrstuvwxyz0123'
+assert_fixture 'case 918' present -Fq 'AIza***REDACTED***'
+assert_fixture 'case 919' absent -Fq 'SyD12345678901234567890123456789012'
+assert_fixture 'case 920' absent -Fq '123456789012'
+assert_fixture 'case 921' present -Fq '***REDACTED PRIVATE KEY***'
+assert_fixture 'case 922' absent -Fq 'FAKE-KEY-BODY-FOR-REDACT-TEST'
+assert_fixture 'case 923' absent -Fq 'BEGIN RSA PRIV''ATE KEY'
+assert_fixture 'case 924' present -Fxq 'git clone https://oauth2:***REDACTED***@github.example/org/repo.git'
+assert_fixture 'case 925' absent -Fq 'cloneTokUrl901'
+assert_fixture 'case 926' present -Fxq 'psql postgresql://reporting:***REDACTED***@db.example:5432/analytics'
+assert_fixture 'case 927' absent -Fq 'dbPwUrl902'
+assert_fixture 'case 928' present -Fxq 'curl "https://u:***REDACTED***@host.example/x" -H "X: keepUrl"'
+assert_fixture 'case 929' absent -Fq 'quotedPwUrl903'
+assert_fixture 'case 930' present -Fq 'plain@example.com'
+assert_fixture 'case 931' present -Fxq 'curl https://example.test:8443?q=alice@example.test'
+assert_fixture 'case 932' present -Fxq 'curl https://example.test:8443#alice@example.test'
+assert_fixture 'case 933' present -Fxq 'git clone //user:***REDACTED***@example.test/path'
+assert_fixture 'case 934' absent -Fq 'git clone //user:pass@example.test/path'
+assert_fixture 'case 935' present -Fxq 'echo [//user:***REDACTED***@example.test/path]'
+assert_fixture 'case 936' absent -Fq 'passBracket@example.test'
+assert_fixture 'case 937' present -Fxq 'echo {user=//user:***REDACTED***@example.test/path}'
+assert_fixture 'case 938' absent -Fq 'passBrace@example.test'
+assert_fixture 'case 939' present -Fxq 'echo `//user:***REDACTED***@example.test/path`'
+assert_fixture 'case 940' absent -Fq 'passTick@example.test'
+assert_fixture 'case 941' present -Fxq 'echo "url=//user:***REDACTED***@example.test/path"'
+assert_fixture 'case 942' absent -Fq 'passQuotedAssign@example.test'
+assert_fixture 'case 943' present -Fxq "echo 'url=//user:***REDACTED***@example.test/path'"
+assert_fixture 'case 944' present -Fxq 'db.url=//user:***REDACTED***@example.test/x'
+assert_fixture 'case 945' absent -Fq 'passDotted@example.test'
+assert_fixture 'case 946' present -Fxq 'spring.datasource.url=//user:***REDACTED***@example.test/x'
+assert_fixture 'case 947' absent -Fq 'passSpring@example.test'
+assert_fixture 'case 948' present -Fxq 'curl --url=//user:***REDACTED***@example.test/x'
+assert_fixture 'case 949' absent -Fq 'passFlag@example.test'
+assert_fixture 'case 950' present -Fxq 'java -Ddb.url=//user:***REDACTED***@example.test/x'
+assert_fixture 'case 951' absent -Fq 'passD@example.test'
+assert_fixture 'case 952' present -Fxq 'db.url=//***REDACTED***@example.test/x'
+assert_fixture 'case 953' absent -Fq 'BAREdot123456@example.test'
+assert_fixture 'case 954' present -Fxq "curl 'https://example.test/docs#//user:Secret987654@example.test'"
+assert_fixture 'case 955' present -Fxq "curl 'https://example.test/?a=1&//user:Secret987654@example.test'"
+assert_fixture 'case 956' absent -Fq 'passSingleAssign@example.test'
+assert_fixture 'case 957' present -Fxq 'curl https://example.test/?q=//abcdefghijkl@example.test'
+assert_fixture 'case 958' present -Fxq "curl 'https://example.test/path?token=***REDACTED***&x=1'"
+assert_fixture 'case 959' present -Fxq "curl 'https://example.test/?x=1&token=***REDACTED***'"
+assert_fixture 'case 960' present -Fxq "curl 'https://example.test/?x=1;token=***REDACTED***&y=2'"
+assert_fixture 'case 961' absent -Fq 'fixtureSemi9001'
+assert_fixture 'case 962' present -Fxq "curl 'https://example.test/?x=1,token=***REDACTED***&y=2'"
+assert_fixture 'case 963' absent -Fq 'fixtureComma9002'
+assert_fixture 'case 964' present -Fxq "curl 'https://example.test/a;token=***REDACTED***?x=1'"
+assert_fixture 'case 965' absent -Fq 'fixturePath9003'
+assert_fixture 'case 966' present -Fxq 'curl "https://x/?token=***REDACTED***&y=2"'
+assert_fixture 'case 967' absent -Fq 'abcQuestionMark9004'
+assert_fixture 'case 968' present -Fxq 'echo x;token=***REDACTED***'
+assert_fixture 'case 969' absent -Fq 'defLitQ9006'
+assert_fixture 'case 970' present -Fxq 'curl "https://x/?token=***REDACTED***&y=2"'
+assert_fixture 'case 971' absent -Fq 'defShellLitQ9007'
+assert_fixture 'case 972' present -Fxq 'echo x;token=***REDACTED***'
+assert_fixture 'case 973' absent -Fq 'abcQuestionShell9005'
+assert_fixture 'case 974' present -Fxq 'echo x;token=***REDACTED***'
+assert_fixture 'case 975' absent -Fq 'fixtureShell9004'
+assert_fixture 'case 976' present -Fxq "curl 'https://example.test/a/token=***REDACTED***'"
+assert_fixture 'case 977' present -Fxq 'INFO|token=***REDACTED*** service=web'
+assert_fixture 'case 978' present -Fxq 'db:password=***REDACTED***'
+assert_fixture 'case 979' present -Fxq '[INFO]token=***REDACTED***'
+assert_fixture 'case 980' present -Fxq "curl 'https://example.test/?token=***REDACTED***&at=1'"
+assert_fixture 'case 981' present -Fxq "curl 'https://example.test/?token=***REDACTED***&slash=1'"
+assert_fixture 'case 982' absent -Fq '@example.com&at=1'
+assert_fixture 'case 983' absent -Fq '/def&slash=1'
+assert_fixture 'case 984' present -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC1"'
+assert_fixture 'case 985' absent -Fq 'encEqSecret9001'
+assert_fixture 'case 986' present -Fxq 'curl "https://x.test/a?api-key=***REDACTED***&keep=KEEPENC2"'
+assert_fixture 'case 987' absent -Fq 'encEqSecret9002'
+assert_fixture 'case 988' present -Fxq 'curl "https://x.test/a#token=***REDACTED***&keep=KEEPENC3"'
+assert_fixture 'case 989' absent -Fq 'encColonSecret9003'
+assert_fixture 'case 990' present -Fxq 'curl "https://x.test/a?token=***REDACTED***&keep=KEEPENC4"'
+assert_fixture 'case 991' absent -Fq 'encSpaceSecret9004'
+assert_fixture 'case 992' present -Fxq 'curl "https://x.test/a?redirect=https%3A//safe.test&keep=KEEPENC5"'
+assert_fixture 'case 993' present -Fxq 'curl "https://x.test/a?Authorization:***REDACTED***&keep=KEEP0103"'
+assert_fixture 'case 994' absent -Fq 'AUTHENCSECRET0103'
+assert_fixture 'case 995' present -Fxq "curl 'https://x.test/a?\"Authorization\":***REDACTED***&keep=KEEP0103'"
+assert_fixture 'case 996' present -Fxq "curl 'https://x.test/a?\"token\"=***REDACTED***&keep=KEEP0201'"
+assert_fixture 'case 997' absent -Fq 'quotedKeySecret0201'
+assert_fixture 'case 998' present -Fxq "curl \"https://x.test/a?'token'=***REDACTED***&keep=KEEP0202\""
+assert_fixture 'case 999' absent -Fq 'quotedKeySecret0202'
+assert_fixture 'case 1000' absent -Fq 'EscapedQuotedSecret0301'
+assert_fixture 'case 1001' present -Fq 'KEEPQ1'
+assert_fixture 'case 1002' absent -Fq 'EscapedQuotedSecret0302'
+assert_fixture 'case 1003' present -Fq 'KEEPQ2'
+assert_fixture 'case 1004' absent -Fq 'EscapedAuthSecret0303'
+assert_fixture 'case 1005' present -Fq 'KEEPQ3'
+assert_fixture 'case 1006' absent -Fq 'EscapedAuthSecret0304'
+assert_fixture 'case 1007' present -Fq 'KEEPQ4'
 # Adjacent segments, quoted values and padded separators mask every secret and keep the tail.
-grep -Fq 'SYNTHADJENCA1' "$line_file" && exit 480
-grep -Fq 'SYNTHADJENCB1' "$line_file" && exit 481
-grep -Fq 'KEEPADJENC1' "$line_file" || exit 482
-grep -Fq 'SYNTHADJENCA2' "$line_file" && exit 483
-grep -Fq 'SYNTHADJENCB2' "$line_file" && exit 484
-grep -Fq 'KEEPADJENC2' "$line_file" || exit 485
-grep -Fq 'SYNTHQUOTEENCA1' "$line_file" && exit 486
-grep -Fq 'KEEPQUOTEENC1' "$line_file" || exit 487
-grep -Fq 'SYNTHQUOTEENCA2' "$line_file" && exit 488
-grep -Fq 'KEEPQUOTEENC2' "$line_file" || exit 489
-grep -Fq 'SYNTHPADENCA1' "$line_file" && exit 490
-grep -Fq 'KEEPPADENC1' "$line_file" || exit 491
-grep -Fq 'SYNTHPADENCA2' "$line_file" && exit 492
-grep -Fq 'KEEPPADENC2' "$line_file" || exit 493
-grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPSCHEMESPACE1' "$line_file" || exit 494
-grep -Fq 'SYNTHSCHEMESPACE9001' "$line_file" && exit 495
-grep -Fxq "url=https://x/?a=1&'Authorization':***REDACTED***&keep=KEEPSCHEMESPACE2" "$line_file" || exit 496
-grep -Fq 'SYNTHSCHEMESPACE9002' "$line_file" && exit 497
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***" -H "X: keep"; echo KEEPQUOTETAIL9001' "$line_file" || exit 510
-grep -Fq 'SYNTHQUOTEKEEP9001' "$line_file" && exit 511
-grep -Fxq 'curl "https://x/?Authorization:***REDACTED***"' "$line_file" || exit 512
-grep -Fq 'SYNTHQUOTEKEEP9002' "$line_file" && exit 513
-grep -Fxq "curl 'https://x/?Authorization:***REDACTED***' -H 'X: keep'; echo KEEPQUOTETAIL9003" "$line_file" || exit 514
-grep -Fq 'SYNTHQUOTEKEEP9003' "$line_file" && exit 515
-grep -Fxq "curl \"https://x/?Authorization:***REDACTED***\" --data=' keep'; echo KEEPQUOTETAIL9004" "$line_file" || exit 516
-grep -Fq 'SYNTHQUOTEKEEP9004' "$line_file" && exit 517
-grep -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPTAIL540' "$line_file" || exit 518
-grep -Fq 'SYNTHESCDQ9003' "$line_file" && exit 519
-grep -Fxq 'url=https://x/?a=1&token=***REDACTED***&keep=KEEPTAIL603' "$line_file" || exit 520
-grep -Fq 'SYNTHKEY9008' "$line_file" && exit 521
-grep -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"' "$line_file" || exit 255
-grep -Fq 'StripeBodyTail123' "$line_file" && exit 254
-grep -Fxq 'sk_test_***REDACTED***,next=1' "$line_file" || exit 255
-grep -Fq 'StripeCommaBody456' "$line_file" && exit 254
-grep -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"' "$line_file" || exit 255
-grep -Fq 'GitHubBodyTail456' "$line_file" && exit 254
-grep -Fxq 'curl "https://example.test/?q=AKIA***REDACTED***&x=1"' "$line_file" || exit 255
-grep -Fq 'AWSBODYTAIL456' "$line_file" && exit 254
-grep -Fxq 'curl "https://example.test/?q=xoxb-***REDACTED***&x=1"' "$line_file" || exit 255
-grep -Fq 'SlackTail' "$line_file" && exit 254
-grep -Fxq 'curl "https://example.test/?q=glpat-***REDACTED***&x=1"' "$line_file" || exit 255
-grep -Fq 'GitLabBodyTail456' "$line_file" && exit 254
-grep -Fxq "curl 'https://user:***REDACTED***@example.test/path'" "$line_file" || exit 255
-grep -Fq 'pass;token=abc@example.test' "$line_file" && exit 254
-grep -Fxq 'TOKEN=***REDACTED*** https://x' "$line_file" || exit 255
-grep -Fq 'httpsSecret987654' "$line_file" && exit 254
-grep -Fq 'abcdefghijkl@example.test' "$line_file" || exit 215
-grep -Fxq 'curl https://example.test/a//abc:def@example.test' "$line_file" || exit 216
-grep -Fxq 'git clone //***REDACTED***@example.test/path' "$line_file" || exit 217
-grep -Fq 'BAREabcdefghijkl@example.test/path' "$line_file" && exit 218
-grep -Fxq 'echo url=//user:***REDACTED***@example.test/path' "$line_file" || exit 220
-grep -Fq 'passAssign@example.test' "$line_file" && exit 221
-grep -Fxq 'echo url=//***REDACTED***@example.test/path' "$line_file" || exit 222
-grep -Fq 'BAREassign123456@example.test' "$line_file" && exit 223
-grep -Fxq 'url=//user:***REDACTED***@example.test/path' "$line_file" || exit 224
-grep -Fq 'passAssignLine@example.test' "$line_file" && exit 225
-grep -Fxq 'url=//***REDACTED***@example.test/path' "$line_file" || exit 226
-grep -Fq 'BAREline123456@example.test' "$line_file" && exit 227
-grep -Fxq 'echo foo,//user:***REDACTED***@example.test/path' "$line_file" || exit 228
-grep -Fq 'passComma@example.test' "$line_file" && exit 229
-grep -Fxq 'curl "//user:***REDACTED***@example.test/path"' "$line_file" || exit 232
-grep -Fq 'passDoubleQuote@example.test' "$line_file" && exit 233
-grep -Fxq 'curl "//***REDACTED***@example.test/path"' "$line_file" || exit 234
-grep -Fq 'BAREdoublequote123@example.test' "$line_file" && exit 235
-grep -Fxq 'foo=bar,//user:***REDACTED***@example.test/path' "$line_file" || exit 230
-grep -Fq 'passComma2@example.test' "$line_file" && exit 231
-grep -Fxq 'curl https://example.test/?q=//BAREabcdefghijkl@example.test' "$line_file" || exit 219
-grep -Fxq 'git clone https://***REDACTED***@example.test/nope.git' "$line_file" || exit 211
-grep -Fq 'PATabcdefghijkl' "$line_file" && exit 212
-grep -Fxq 'git clone https://shortus@example.test/nope.git' "$line_file" || exit 213
-grep -Fxq 'git clone https://s3cret@example.test/nope.git' "$line_file" || exit 213
-grep -Fxq "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'" "$line_file" || exit 255
-grep -Fxq "curl 'https://example.test/a,//u:pCommaPath987654@example.test'" "$line_file" || exit 255
-grep -Fxq 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""' "$line_file" || exit 273
-grep -Fxq 'curl "https://x/?q=\"a;//BAREesc987654@example.test\""' "$line_file" || exit 276
-grep -Fxq 'echo first;//u:***REDACTED***@example.test' "$line_file" || exit 255
-grep -Fxq "echo '\"';//u:***REDACTED***@example.test; echo '\"'" "$line_file" || exit 293
-grep -Fq 'fixtureSeq101@example.test' "$line_file" && exit 294
-grep -Fxq "echo 'x';//u:***REDACTED***@example.test; echo 'x'" "$line_file" || exit 295
-grep -Fq 'fixtureSeq101Control@example.test' "$line_file" && exit 296
-grep -Fxq 'curl "https://x/?a=1;b=2;//u:pSeq113Semi@one.example.test";//u:***REDACTED***@two.example.test' "$line_file" || exit 297
-grep -Fq 'realSeq113Semi@two.example.test' "$line_file" && exit 298
-grep -Fxq 'curl "https://x/?a=1,b=2,//u:pSeq113Comma@one.example.test",//u:***REDACTED***@two.example.test' "$line_file" || exit 299
-grep -Fq 'realSeq113Comma@two.example.test' "$line_file" && exit 300
-grep -Fxq "curl 'https://x/?a=;//u:pSeq113One@h;b=;//u:pSeq113Two@h';//u:***REDACTED***@h" "$line_file" || exit 301
-grep -Fq 'realSeq113Two@h' "$line_file" && exit 302
-grep -Fxq 'a=("https://x/?q=;//u:pArrayData@one.example.test");//u:***REDACTED***@two.example.test' "$line_file" || exit 311
-grep -Fq 'realArray@two.example.test' "$line_file" && exit 312
-grep -Fxq 'foo("https://x/?q=;//u:pParenData@one.example.test");//u:***REDACTED***@two.example.test' "$line_file" || exit 313
-grep -Fq 'realParen@two.example.test' "$line_file" && exit 314
-grep -Fxq 'echo {"url":"https://x/?q=;//u:pAnchorData@one.example.test"};//u:***REDACTED***@two.example.test' "$line_file" || exit 315
-grep -Fq 'realAnchor@two.example.test' "$line_file" && exit 316
-grep -Fxq 'curl "https://mixedsep1.example.test/?q=;//u:pMixedSepData1@one.example.test";//u:***REDACTED***@two.example.test' "$line_file" || exit 277
-grep -Fq 'pMixedSepReal1' "$line_file" && exit 278
-grep -Fxq 'curl "https://mixedsep2.example.test/?q=;//BAREMixedData2@one.example.test";//***REDACTED***@two.example.test' "$line_file" || exit 279
-grep -Fq 'BAREMixedReal2' "$line_file" && exit 280
-grep -Fxq 'curl "https://mixedsep3.example.test/?q=,//u:pMixedCommaData3@one.example.test",//u:***REDACTED***@two.example.test' "$line_file" || exit 281
-grep -Fq 'pMixedCommaReal3' "$line_file" && exit 282
-grep -Fxq "curl 'https://mixedsep4.example.test/?q=;//u:pMixedSquoteData4@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 283
-grep -Fq 'pMixedSquoteReal4' "$line_file" && exit 284
-grep -Fq 'pShellSeparator987654@example.test' "$line_file" && exit 254
-grep -Fq 'QuoteSemi987654@example.test' "$line_file" && exit 260
-grep -Fq 'pQuoteEscSep987654@example.test' "$line_file" && exit 274
-grep -Fxq 'echo "a\"b";echo first;//u:***REDACTED***@example.test' "$line_file" || exit 275
-grep -Fq 'SquoteSemi987654@example.test' "$line_file" && exit 261
-grep -Fq 'passQuoteComma987654@example.test' "$line_file" && exit 262
-grep -Fq 'pTrailingQuote987654@example.test' "$line_file" && exit 263
-grep -Fq ';;//BAREabcdefghijkl@example.test' "$line_file" && exit 264
-grep -Fxq 'echo "q";echo first;//u:***REDACTED***@example.test' "$line_file" || exit 265
-grep -Fxq "echo 'q';echo first;//u:***REDACTED***@example.test" "$line_file" || exit 266
-grep -Fxq 'echo "q";echo foo,//user:***REDACTED***@example.test/path' "$line_file" || exit 267
-grep -Fxq 'echo first;//u:***REDACTED***@example.test "tail"' "$line_file" || exit 268
-grep -Fxq 'echo "q";;//***REDACTED***@example.test' "$line_file" || exit 269
-grep -Fxq 'curl \"https://example.test/?q=a;//user:***REDACTED***@host/KEEPE1\" -H \"X: keepHeader\"' "$line_file" || exit 501
-grep -Fxq 'curl \"https://example.test/?q=a,//user:***REDACTED***@host/KEEPE2\" -H \"X: keepHeader\"' "$line_file" || exit 502
-grep -Fxq '{\"url\":\"https://x/?q=;//user:***REDACTED***@host/KEEPE3\",\"keep\":\"keepValue\"}' "$line_file" || exit 503
-grep -Fxq 'curl \"https://example.test/?q=a;//user:***REDACTED***@host/KEEPE4;b=;//user:***REDACTED***@host/KEEPE4B\" -H \"X: keepHeader\"' "$line_file" || exit 504
-grep -Fxq 'curl \"https://user:***REDACTED***@host/x?q=KEEPREAL\"' "$line_file" || exit 505
-grep -Fq 'SYNTHREAL' "$line_file" && exit 506
-grep -Fxq 'echo \"q\";//user:***REDACTED***@host/KEEPSEP' "$line_file" || exit 507
-grep -Fq 'SYNTHSEP' "$line_file" && exit 508
-grep -Fxq 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"' "$line_file" || exit 509
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x' "$line_file" || exit 510
-grep -Fxq 'echo a;\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND1\"' "$line_file" || exit 511
-grep -Fxq 'echo a|\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND2\"' "$line_file" || exit 512
-grep -Fxq 'echo a&\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND3\"' "$line_file" || exit 513
-grep -Fxq 'echo a#\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND4\"' "$line_file" || exit 514
-grep -Fxq 'foo(\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND5\")' "$line_file" || exit 515
-grep -Fxq 'echo a;\"https://x/?q=a;//user:***REDACTED***@one\";//user:***REDACTED***@evil' "$line_file" || exit 516
-grep -Fxq 'echo \"note;//user:***REDACTED***@host; echo \"' "$line_file" || exit 520
-grep -Fxq 'printf %s \"key;//user:***REDACTED***@host; date\"' "$line_file" || exit 521
-grep -Fxq 'echo \"a,b;//user:***REDACTED***@h\"' "$line_file" || exit 522
-grep -Fxq 'curl \"https://ok/x\" \"note;//user:***REDACTED***@host\"' "$line_file" || exit 523
-grep -Fxq 'echo \"https://ok/x; echo note;//user:***REDACTED***@host; echo \"' "$line_file" || exit 524
-grep -Fxq 'curl \"https://ok/x?q=a\" \"a,b;//user:***REDACTED***@h\"' "$line_file" || exit 525
-grep -Fxq 'echo \"x:// ;//user:***REDACTED***@host\"' "$line_file" || exit 526
-grep -Fxq 'echo \"x://;//user:***REDACTED***@host\"' "$line_file" || exit 527
-grep -Fxq 'echo \"x://,//user:***REDACTED***@host\"' "$line_file" || exit 528
-grep -Fxq "echo 'x://;//user:***REDACTED***@host'" "$line_file" || exit 529
-grep -Fxq 'echo \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 530
-grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 531
-grep -Fxq 'echo \"see https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 532
-grep -Fxq 'curl \"--url https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 533
-grep -Fxq 'echo \"prefix https://x/?q=a,//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 534
-grep -Fq 'SYNTHZERO' "$line_file" && exit 535
-grep -Fq 'SYNTHZEROC' "$line_file" && exit 536
-grep -Fq 'SYNTHSQZERO' "$line_file" && exit 537
-grep -Fq 'SYNTHBQ' "$line_file" && exit 538
-grep -Fq 'SYNTHBQC' "$line_file" && exit 539
-grep -Fxq 'echo \"https://ok/x\"a;//user:***REDACTED***@host\"' "$line_file" || exit 540
-grep -Fxq 'echo \"https://ok/x\"note;//user:***REDACTED***@host\"' "$line_file" || exit 541
-grep -Fxq 'curl \"https://x/?q=a!;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 542
-grep -Fxq 'echo \"https://x/?q=a*;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 543
-grep -Fq 'SYNTHBQA' "$line_file" && exit 544
-grep -Fq 'SYNTHBQN' "$line_file" && exit 545
-grep -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"' "$line_file" || exit 553
-grep -Fq 'SYNTHPLAINLEAK' "$line_file" && exit 554
-grep -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'" "$line_file" || exit 555
-grep -Fq 'SYNTHSQLOCK' "$line_file" && exit 556
-grep -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"' "$line_file" || exit 557
-grep -Fq 'SYNTHPLAINCOMMA' "$line_file" && exit 558
-grep -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 559
-grep -Fq 'SYNTHMIXCLOSE' "$line_file" && exit 560
-grep -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 561
-grep -Fq 'SYNTHMIXOPEN' "$line_file" && exit 562
-grep -Fxq 'curl "https://x/?q=a;//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 565
-grep -Fq 'SYNTHMIXCLOSE2' "$line_file" && exit 566
-grep -Fxq 'curl "https://x/?q=a,//user:***REDACTED***@host/KEEP\"' "$line_file" || exit 567
-grep -Fq 'SYNTHMIXCLOSE3' "$line_file" && exit 568
+assert_fixture 'case 1008' absent -Fq 'SYNTHADJENCA1'
+assert_fixture 'case 1009' absent -Fq 'SYNTHADJENCB1'
+assert_fixture 'case 1010' present -Fq 'KEEPADJENC1'
+assert_fixture 'case 1011' absent -Fq 'SYNTHADJENCA2'
+assert_fixture 'case 1012' absent -Fq 'SYNTHADJENCB2'
+assert_fixture 'case 1013' present -Fq 'KEEPADJENC2'
+assert_fixture 'case 1014' absent -Fq 'SYNTHQUOTEENCA1'
+assert_fixture 'case 1015' present -Fq 'KEEPQUOTEENC1'
+assert_fixture 'case 1016' absent -Fq 'SYNTHQUOTEENCA2'
+assert_fixture 'case 1017' present -Fq 'KEEPQUOTEENC2'
+assert_fixture 'case 1018' absent -Fq 'SYNTHPADENCA1'
+assert_fixture 'case 1019' present -Fq 'KEEPPADENC1'
+assert_fixture 'case 1020' absent -Fq 'SYNTHPADENCA2'
+assert_fixture 'case 1021' present -Fq 'KEEPPADENC2'
+assert_fixture 'case 1022' present -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPSCHEMESPACE1'
+assert_fixture 'case 1023' absent -Fq 'SYNTHSCHEMESPACE9001'
+assert_fixture 'case 1024' present -Fxq "url=https://x/?a=1&'Authorization':***REDACTED***&keep=KEEPSCHEMESPACE2"
+assert_fixture 'case 1025' absent -Fq 'SYNTHSCHEMESPACE9002'
+assert_fixture 'case 1026' present -Fxq 'curl "https://x/?Authorization:***REDACTED***" -H "X: keep"; echo KEEPQUOTETAIL9001'
+assert_fixture 'case 1027' absent -Fq 'SYNTHQUOTEKEEP9001'
+assert_fixture 'case 1028' present -Fxq 'curl "https://x/?Authorization:***REDACTED***"'
+assert_fixture 'case 1029' absent -Fq 'SYNTHQUOTEKEEP9002'
+assert_fixture 'case 1030' present -Fxq "curl 'https://x/?Authorization:***REDACTED***' -H 'X: keep'; echo KEEPQUOTETAIL9003"
+assert_fixture 'case 1031' absent -Fq 'SYNTHQUOTEKEEP9003'
+assert_fixture 'case 1032' present -Fxq "curl \"https://x/?Authorization:***REDACTED***\" --data=' keep'; echo KEEPQUOTETAIL9004"
+assert_fixture 'case 1033' absent -Fq 'SYNTHQUOTEKEEP9004'
+assert_fixture 'case 1034' present -Fxq 'url=https://x/?a=1&Authorization:***REDACTED***&keep=KEEPTAIL540'
+assert_fixture 'case 1035' absent -Fq 'SYNTHESCDQ9003'
+assert_fixture 'case 1036' present -Fxq 'url=https://x/?a=1&token=***REDACTED***&keep=KEEPTAIL603'
+assert_fixture 'case 1037' absent -Fq 'SYNTHKEY9008'
+assert_fixture 'case 1038' present -Fxq 'curl "https://example.test/?q=sk_live_***REDACTED***&x=1"'
+assert_fixture 'case 1039' absent -Fq 'StripeBodyTail123'
+assert_fixture 'case 1040' present -Fxq 'sk_test_***REDACTED***,next=1'
+assert_fixture 'case 1041' absent -Fq 'StripeCommaBody456'
+assert_fixture 'case 1042' present -Fxq 'curl "https://example.test/?q=ghp_***REDACTED***&x=1"'
+assert_fixture 'case 1043' absent -Fq 'GitHubBodyTail456'
+assert_fixture 'case 1044' present -Fxq 'curl "https://example.test/?q=AKIA***REDACTED***&x=1"'
+assert_fixture 'case 1045' absent -Fq 'AWSBODYTAIL456'
+assert_fixture 'case 1046' present -Fxq 'curl "https://example.test/?q=xoxb-***REDACTED***&x=1"'
+assert_fixture 'case 1047' absent -Fq 'SlackTail'
+assert_fixture 'case 1048' present -Fxq 'curl "https://example.test/?q=glpat-***REDACTED***&x=1"'
+assert_fixture 'case 1049' absent -Fq 'GitLabBodyTail456'
+assert_fixture 'case 1050' present -Fxq "curl 'https://user:***REDACTED***@example.test/path'"
+assert_fixture 'case 1051' absent -Fq 'pass;token=abc@example.test'
+assert_fixture 'case 1052' present -Fxq 'TOKEN=***REDACTED*** https://x'
+assert_fixture 'case 1053' absent -Fq 'httpsSecret987654'
+assert_fixture 'case 1054' present -Fq 'abcdefghijkl@example.test'
+assert_fixture 'case 1055' present -Fxq 'curl https://example.test/a//abc:def@example.test'
+assert_fixture 'case 1056' present -Fxq 'git clone //***REDACTED***@example.test/path'
+assert_fixture 'case 1057' absent -Fq 'BAREabcdefghijkl@example.test/path'
+assert_fixture 'case 1058' present -Fxq 'echo url=//user:***REDACTED***@example.test/path'
+assert_fixture 'case 1059' absent -Fq 'passAssign@example.test'
+assert_fixture 'case 1060' present -Fxq 'echo url=//***REDACTED***@example.test/path'
+assert_fixture 'case 1061' absent -Fq 'BAREassign123456@example.test'
+assert_fixture 'case 1062' present -Fxq 'url=//user:***REDACTED***@example.test/path'
+assert_fixture 'case 1063' absent -Fq 'passAssignLine@example.test'
+assert_fixture 'case 1064' present -Fxq 'url=//***REDACTED***@example.test/path'
+assert_fixture 'case 1065' absent -Fq 'BAREline123456@example.test'
+assert_fixture 'case 1066' present -Fxq 'echo foo,//user:***REDACTED***@example.test/path'
+assert_fixture 'case 1067' absent -Fq 'passComma@example.test'
+assert_fixture 'case 1068' present -Fxq 'curl "//user:***REDACTED***@example.test/path"'
+assert_fixture 'case 1069' absent -Fq 'passDoubleQuote@example.test'
+assert_fixture 'case 1070' present -Fxq 'curl "//***REDACTED***@example.test/path"'
+assert_fixture 'case 1071' absent -Fq 'BAREdoublequote123@example.test'
+assert_fixture 'case 1072' present -Fxq 'foo=bar,//user:***REDACTED***@example.test/path'
+assert_fixture 'case 1073' absent -Fq 'passComma2@example.test'
+assert_fixture 'case 1074' present -Fxq 'curl https://example.test/?q=//BAREabcdefghijkl@example.test'
+assert_fixture 'case 1075' present -Fxq 'git clone https://***REDACTED***@example.test/nope.git'
+assert_fixture 'case 1076' absent -Fq 'PATabcdefghijkl'
+assert_fixture 'case 1077' present -Fxq 'git clone https://shortus@example.test/nope.git'
+assert_fixture 'case 1078' present -Fxq 'git clone https://s3cret@example.test/nope.git'
+assert_fixture 'case 1079' present -Fxq "curl 'https://example.test/?a=1;//u:pSemiQuery987654@example.test'"
+assert_fixture 'case 1080' present -Fxq "curl 'https://example.test/a,//u:pCommaPath987654@example.test'"
+assert_fixture 'case 1081' present -Fxq 'curl "https://x/?q=\"a;//u:pInQuote987654@example.test\""'
+assert_fixture 'case 1082' present -Fxq 'curl "https://x/?q=\"a;//BAREesc987654@example.test\""'
+assert_fixture 'case 1083' present -Fxq 'echo first;//u:***REDACTED***@example.test'
+assert_fixture 'case 1084' present -Fxq "echo '\"';//u:***REDACTED***@example.test; echo '\"'"
+assert_fixture 'case 1085' absent -Fq 'fixtureSeq101@example.test'
+assert_fixture 'case 1086' present -Fxq "echo 'x';//u:***REDACTED***@example.test; echo 'x'"
+assert_fixture 'case 1087' absent -Fq 'fixtureSeq101Control@example.test'
+assert_fixture 'case 1088' present -Fxq 'curl "https://x/?a=1;b=2;//u:pSeq113Semi@one.example.test";//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1089' absent -Fq 'realSeq113Semi@two.example.test'
+assert_fixture 'case 1090' present -Fxq 'curl "https://x/?a=1,b=2,//u:pSeq113Comma@one.example.test",//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1091' absent -Fq 'realSeq113Comma@two.example.test'
+assert_fixture 'case 1092' present -Fxq "curl 'https://x/?a=;//u:pSeq113One@h;b=;//u:pSeq113Two@h';//u:***REDACTED***@h"
+assert_fixture 'case 1093' absent -Fq 'realSeq113Two@h'
+assert_fixture 'case 1094' present -Fxq 'a=("https://x/?q=;//u:pArrayData@one.example.test");//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1095' absent -Fq 'realArray@two.example.test'
+assert_fixture 'case 1096' present -Fxq 'foo("https://x/?q=;//u:pParenData@one.example.test");//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1097' absent -Fq 'realParen@two.example.test'
+assert_fixture 'case 1098' present -Fxq 'echo {"url":"https://x/?q=;//u:pAnchorData@one.example.test"};//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1099' absent -Fq 'realAnchor@two.example.test'
+assert_fixture 'case 1100' present -Fxq 'curl "https://mixedsep1.example.test/?q=;//u:pMixedSepData1@one.example.test";//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1101' absent -Fq 'pMixedSepReal1'
+assert_fixture 'case 1102' present -Fxq 'curl "https://mixedsep2.example.test/?q=;//BAREMixedData2@one.example.test";//***REDACTED***@two.example.test'
+assert_fixture 'case 1103' absent -Fq 'BAREMixedReal2'
+assert_fixture 'case 1104' present -Fxq 'curl "https://mixedsep3.example.test/?q=,//u:pMixedCommaData3@one.example.test",//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1105' absent -Fq 'pMixedCommaReal3'
+assert_fixture 'case 1106' present -Fxq "curl 'https://mixedsep4.example.test/?q=;//u:pMixedSquoteData4@one.example.test';//u:***REDACTED***@two.example.test"
+assert_fixture 'case 1107' absent -Fq 'pMixedSquoteReal4'
+assert_fixture 'case 1108' absent -Fq 'pShellSeparator987654@example.test'
+assert_fixture 'case 1109' absent -Fq 'QuoteSemi987654@example.test'
+assert_fixture 'case 1110' absent -Fq 'pQuoteEscSep987654@example.test'
+assert_fixture 'case 1111' present -Fxq 'echo "a\"b";echo first;//u:***REDACTED***@example.test'
+assert_fixture 'case 1112' absent -Fq 'SquoteSemi987654@example.test'
+assert_fixture 'case 1113' absent -Fq 'passQuoteComma987654@example.test'
+assert_fixture 'case 1114' absent -Fq 'pTrailingQuote987654@example.test'
+assert_fixture 'case 1115' absent -Fq ';;//BAREabcdefghijkl@example.test'
+assert_fixture 'case 1116' present -Fxq 'echo "q";echo first;//u:***REDACTED***@example.test'
+assert_fixture 'case 1117' present -Fxq "echo 'q';echo first;//u:***REDACTED***@example.test"
+assert_fixture 'case 1118' present -Fxq 'echo "q";echo foo,//user:***REDACTED***@example.test/path'
+assert_fixture 'case 1119' present -Fxq 'echo first;//u:***REDACTED***@example.test "tail"'
+assert_fixture 'case 1120' present -Fxq 'echo "q";;//***REDACTED***@example.test'
+assert_fixture 'case 1121' present -Fxq 'curl \"https://example.test/?q=a;//user:***REDACTED***@host/KEEPE1\" -H \"X: keepHeader\"'
+assert_fixture 'case 1122' present -Fxq 'curl \"https://example.test/?q=a,//user:***REDACTED***@host/KEEPE2\" -H \"X: keepHeader\"'
+assert_fixture 'case 1123' present -Fxq '{\"url\":\"https://x/?q=;//user:***REDACTED***@host/KEEPE3\",\"keep\":\"keepValue\"}'
+assert_fixture 'case 1124' present -Fxq 'curl \"https://example.test/?q=a;//user:***REDACTED***@host/KEEPE4;b=;//user:***REDACTED***@host/KEEPE4B\" -H \"X: keepHeader\"'
+assert_fixture 'case 1125' present -Fxq 'curl \"https://user:***REDACTED***@host/x?q=KEEPREAL\"'
+assert_fixture 'case 1126' absent -Fq 'SYNTHREAL'
+assert_fixture 'case 1127' present -Fxq 'echo \"q\";//user:***REDACTED***@host/KEEPSEP'
+assert_fixture 'case 1128' absent -Fq 'SYNTHSEP'
+assert_fixture 'case 1129' present -Fxq 'curl "https://example.test/?q=a;//user:SYNTHPLAIN@host/KEEPPLAIN" -H "X: keepHeader"'
+assert_fixture 'case 1130' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***" https://x'
+assert_fixture 'case 1131' present -Fxq 'echo a;\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND1\"'
+assert_fixture 'case 1132' present -Fxq 'echo a|\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND2\"'
+assert_fixture 'case 1133' present -Fxq 'echo a&\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND3\"'
+assert_fixture 'case 1134' present -Fxq 'echo a#\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND4\"'
+assert_fixture 'case 1135' present -Fxq 'foo(\"https://x/?q=a;//user:***REDACTED***@host/KEEPBND5\")'
+assert_fixture 'case 1136' present -Fxq 'echo a;\"https://x/?q=a;//user:***REDACTED***@one\";//user:***REDACTED***@evil'
+assert_fixture 'case 1137' present -Fxq 'echo \"note;//user:***REDACTED***@host; echo \"'
+assert_fixture 'case 1138' present -Fxq 'printf %s \"key;//user:***REDACTED***@host; date\"'
+assert_fixture 'case 1139' present -Fxq 'echo \"a,b;//user:***REDACTED***@h\"'
+assert_fixture 'case 1140' present -Fxq 'curl \"https://ok/x\" \"note;//user:***REDACTED***@host\"'
+assert_fixture 'case 1141' present -Fxq 'echo \"https://ok/x; echo note;//user:***REDACTED***@host; echo \"'
+assert_fixture 'case 1142' present -Fxq 'curl \"https://ok/x?q=a\" \"a,b;//user:***REDACTED***@h\"'
+assert_fixture 'case 1143' present -Fxq 'echo \"x:// ;//user:***REDACTED***@host\"'
+assert_fixture 'case 1144' present -Fxq 'echo \"x://;//user:***REDACTED***@host\"'
+assert_fixture 'case 1145' present -Fxq 'echo \"x://,//user:***REDACTED***@host\"'
+assert_fixture 'case 1146' present -Fxq "echo 'x://;//user:***REDACTED***@host'"
+assert_fixture 'case 1147' present -Fxq 'echo \"https://ok/x\";//user:***REDACTED***@host\"'
+assert_fixture 'case 1148' present -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"'
+assert_fixture 'case 1149' present -Fxq 'echo \"see https://x/?q=a;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1150' present -Fxq 'curl \"--url https://x/?q=a;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1151' present -Fxq 'echo \"prefix https://x/?q=a,//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1152' absent -Fq 'SYNTHZERO'
+assert_fixture 'case 1153' absent -Fq 'SYNTHZEROC'
+assert_fixture 'case 1154' absent -Fq 'SYNTHSQZERO'
+assert_fixture 'case 1155' absent -Fq 'SYNTHBQ'
+assert_fixture 'case 1156' absent -Fq 'SYNTHBQC'
+assert_fixture 'case 1157' present -Fxq 'echo \"https://ok/x\"a;//user:***REDACTED***@host\"'
+assert_fixture 'case 1158' present -Fxq 'echo \"https://ok/x\"note;//user:***REDACTED***@host\"'
+assert_fixture 'case 1159' present -Fxq 'curl \"https://x/?q=a!;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1160' present -Fxq 'echo \"https://x/?q=a*;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1161' absent -Fq 'SYNTHBQA'
+assert_fixture 'case 1162' absent -Fq 'SYNTHBQN'
+assert_fixture 'case 1163' present -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"'
+assert_fixture 'case 1164' absent -Fq 'SYNTHPLAINLEAK'
+assert_fixture 'case 1165' present -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'"
+assert_fixture 'case 1166' absent -Fq 'SYNTHSQLOCK'
+assert_fixture 'case 1167' present -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"'
+assert_fixture 'case 1168' absent -Fq 'SYNTHPLAINCOMMA'
+assert_fixture 'case 1169' present -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1170' absent -Fq 'SYNTHMIXCLOSE'
+assert_fixture 'case 1171' present -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1172' absent -Fq 'SYNTHMIXOPEN'
+assert_fixture 'case 1173' present -Fxq 'curl "https://x/?q=a;//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1174' absent -Fq 'SYNTHMIXCLOSE2'
+assert_fixture 'case 1175' present -Fxq 'curl "https://x/?q=a,//user:***REDACTED***@host/KEEP\"'
+assert_fixture 'case 1176' absent -Fq 'SYNTHMIXCLOSE3'
 # Paired boundary battery: exact preservation or exact redaction, no leak.
-grep -Fxq 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"' "$line_file" || exit 570
-grep -Fq 'SYNBATDQDSEM' "$line_file" || exit 571
-grep -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"' "$line_file" || exit 572
-grep -Fq 'SYNBATDQDSLP' "$line_file" && exit 573
-grep -Fxq 'curl "https://x/?q=a,//user:SYNBATDQDCOM@host/KEEPDQDCOM"' "$line_file" || exit 574
-grep -Fq 'SYNBATDQDCOM' "$line_file" || exit 575
-grep -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"' "$line_file" || exit 576
-grep -Fq 'SYNBATDQDCLP' "$line_file" && exit 577
-grep -Fxq "echo 'https://x/?q=a;//user:SYNBATSQDSEM@host/KEEPSQDSEM'" "$line_file" || exit 578
-grep -Fq 'SYNBATSQDSEM' "$line_file" || exit 579
-grep -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'" "$line_file" || exit 580
-grep -Fq 'SYNBATSQLP' "$line_file" && exit 581
-grep -Fxq "echo 'https://x/?q=a,//user:SYNBATSQDCOM@host/KEEPSQDCOM'" "$line_file" || exit 582
-grep -Fq 'SYNBATSQDCOM' "$line_file" || exit 583
-grep -Fxq "echo 'https://ok/x',//user:***REDACTED***@host'" "$line_file" || exit 584
-grep -Fq 'SYNBATSQCLP' "$line_file" && exit 585
-grep -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEPEQDSEM\"' "$line_file" || exit 586
-grep -Fq 'SYNBATEQDSEM' "$line_file" && exit 587
-grep -Fxq 'echo \"q\";//user:***REDACTED***@host\"' "$line_file" || exit 588
-grep -Fq 'SYNBATEQDSLP' "$line_file" && exit 589
-grep -Fxq 'curl \"https://x/?q=a,//user:***REDACTED***@host/KEEPEQDCOM\"' "$line_file" || exit 590
-grep -Fq 'SYNBATEQDCOM' "$line_file" && exit 591
-grep -Fxq 'echo \"q\",//user:***REDACTED***@host\"' "$line_file" || exit 592
-grep -Fq 'SYNBATEQCLP' "$line_file" && exit 593
-grep -Fxq 'curl "https://x/?q=a;//user:***REDACTED***@host/KEEPMIXD\"' "$line_file" || exit 594
-grep -Fq 'SYNBATMIXD' "$line_file" && exit 595
-grep -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"' "$line_file" || exit 596
-grep -Fq 'SYNBATMIXL' "$line_file" && exit 597
+assert_fixture 'case 1177' present -Fxq 'curl "https://x/?q=a;//user:SYNBATDQDSEM@host/KEEPDQDSEM"'
+assert_fixture 'case 1178' present -Fq 'SYNBATDQDSEM'
+assert_fixture 'case 1179' present -Fxq 'curl "https://ok/x";//user:***REDACTED***@host"'
+assert_fixture 'case 1180' absent -Fq 'SYNBATDQDSLP'
+assert_fixture 'case 1181' present -Fxq 'curl "https://x/?q=a,//user:SYNBATDQDCOM@host/KEEPDQDCOM"'
+assert_fixture 'case 1182' present -Fq 'SYNBATDQDCOM'
+assert_fixture 'case 1183' present -Fxq 'curl "https://ok/x",//user:***REDACTED***@host"'
+assert_fixture 'case 1184' absent -Fq 'SYNBATDQDCLP'
+assert_fixture 'case 1185' present -Fxq "echo 'https://x/?q=a;//user:SYNBATSQDSEM@host/KEEPSQDSEM'"
+assert_fixture 'case 1186' present -Fq 'SYNBATSQDSEM'
+assert_fixture 'case 1187' present -Fxq "echo 'https://ok/x';//user:***REDACTED***@host'"
+assert_fixture 'case 1188' absent -Fq 'SYNBATSQLP'
+assert_fixture 'case 1189' present -Fxq "echo 'https://x/?q=a,//user:SYNBATSQDCOM@host/KEEPSQDCOM'"
+assert_fixture 'case 1190' present -Fq 'SYNBATSQDCOM'
+assert_fixture 'case 1191' present -Fxq "echo 'https://ok/x',//user:***REDACTED***@host'"
+assert_fixture 'case 1192' absent -Fq 'SYNBATSQCLP'
+assert_fixture 'case 1193' present -Fxq 'curl \"https://x/?q=a;//user:***REDACTED***@host/KEEPEQDSEM\"'
+assert_fixture 'case 1194' absent -Fq 'SYNBATEQDSEM'
+assert_fixture 'case 1195' present -Fxq 'echo \"q\";//user:***REDACTED***@host\"'
+assert_fixture 'case 1196' absent -Fq 'SYNBATEQDSLP'
+assert_fixture 'case 1197' present -Fxq 'curl \"https://x/?q=a,//user:***REDACTED***@host/KEEPEQDCOM\"'
+assert_fixture 'case 1198' absent -Fq 'SYNBATEQDCOM'
+assert_fixture 'case 1199' present -Fxq 'echo \"q\",//user:***REDACTED***@host\"'
+assert_fixture 'case 1200' absent -Fq 'SYNBATEQCLP'
+assert_fixture 'case 1201' present -Fxq 'curl "https://x/?q=a;//user:***REDACTED***@host/KEEPMIXD\"'
+assert_fixture 'case 1202' absent -Fq 'SYNBATMIXD'
+assert_fixture 'case 1203' present -Fxq 'curl \"https://ok/x\";//user:***REDACTED***@host\"'
+assert_fixture 'case 1204' absent -Fq 'SYNBATMIXL'
 # Exact outputs for the separator leak probes and their data controls.
-grep -Fxq 'echo \"https://x;cat;//***REDACTED***@host\"' "$line_file" || exit 598
-grep -Fq 'SYNFIXBARE01' "$line_file" && exit 599
-grep -Fxq 'curl \"https://ok/x;cat;//user:***REDACTED***@host\" -H \"X: keepHeader\"' "$line_file" || exit 600
-grep -Fq 'SYNFIXCOLON02' "$line_file" && exit 601
-grep -Fxq 'echo \"https://x;echo;//***REDACTED***@host\"' "$line_file" || exit 602
-grep -Fq 'SYNFIXBARE03' "$line_file" && exit 603
-grep -Fxq 'echo \"https://x,ls;//user:***REDACTED***@host\"' "$line_file" || exit 604
-grep -Fq 'SYNFIXCOLON04' "$line_file" && exit 605
-grep -Fxq 'echo \"x://;//***REDACTED***@host\"' "$line_file" || exit 606
-grep -Fq 'SYNFIXEMPTY05' "$line_file" && exit 607
-grep -Fxq 'echo \"x://,//***REDACTED***@host\"' "$line_file" || exit 608
-grep -Fq 'SYNFIXEMPTY06' "$line_file" && exit 609
-grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 610
-grep -Fq 'SYNFIXREAL07' "$line_file" && exit 611
-grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:***REDACTED***@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 612
-grep -Fq 'SYNFIXREAL08' "$line_file" && exit 613
-grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 614
-grep -Fq 'SYNFIXREAL09' "$line_file" && exit 615
-grep -Fxq 'echo \"https://x;ls;//user:***REDACTED***@host; echo KEEPTAIL10\"' "$line_file" || exit 616
-grep -Fq 'SYNFIXCOLON10' "$line_file" && exit 617
+assert_fixture 'case 1205' present -Fxq 'echo \"https://x;cat;//***REDACTED***@host\"'
+assert_fixture 'case 1206' absent -Fq 'SYNFIXBARE01'
+assert_fixture 'case 1207' present -Fxq 'curl \"https://ok/x;cat;//user:***REDACTED***@host\" -H \"X: keepHeader\"'
+assert_fixture 'case 1208' absent -Fq 'SYNFIXCOLON02'
+assert_fixture 'case 1209' present -Fxq 'echo \"https://x;echo;//***REDACTED***@host\"'
+assert_fixture 'case 1210' absent -Fq 'SYNFIXBARE03'
+assert_fixture 'case 1211' present -Fxq 'echo \"https://x,ls;//user:***REDACTED***@host\"'
+assert_fixture 'case 1212' absent -Fq 'SYNFIXCOLON04'
+assert_fixture 'case 1213' present -Fxq 'echo \"x://;//***REDACTED***@host\"'
+assert_fixture 'case 1214' absent -Fq 'SYNFIXEMPTY05'
+assert_fixture 'case 1215' present -Fxq 'echo \"x://,//***REDACTED***@host\"'
+assert_fixture 'case 1216' absent -Fq 'SYNFIXEMPTY06'
+assert_fixture 'case 1217' present -Fxq 'curl \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.example.test\";//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1218' absent -Fq 'SYNFIXREAL07'
+assert_fixture 'case 1219' present -Fxq 'curl \"https://x/?q=a=1,b=2;//u:***REDACTED***@one.example.test\",//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1220' absent -Fq 'SYNFIXREAL08'
+assert_fixture 'case 1221' present -Fxq "curl 'https://x/?q=a=1;b=2;//u:pSYNFIXDATA09@one.example.test';//u:***REDACTED***@two.example.test"
+assert_fixture 'case 1222' absent -Fq 'SYNFIXREAL09'
+assert_fixture 'case 1223' present -Fxq 'echo \"https://x;ls;//user:***REDACTED***@host; echo KEEPTAIL10\"'
+assert_fixture 'case 1224' absent -Fq 'SYNFIXCOLON10'
 # Query-data controls stay byte-for-byte; assignment words before any ? leak nothing.
-grep -Fxq 'curl \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.example.test\";//u:***REDACTED***@two.example.test' "$line_file" || exit 618
-grep -Fq 'pDATAKEEP11' "$line_file" && exit 619
-grep -Fq 'realDATAKEEP11' "$line_file" && exit 620
-grep -Fxq 'curl \"https://x/?q=a=1,b=2;//u:***REDACTED***@one.example.test\",//u:***REDACTED***@two.example.test' "$line_file" || exit 621
-grep -Fq 'pDATAKEEP12' "$line_file" && exit 622
-grep -Fq 'realDATAKEEP12' "$line_file" && exit 623
-grep -Fxq "curl 'https://x/?q=a=1;b=2;//u:pDATAKEEP13@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 624
-grep -Fq 'pDATAKEEP13' "$line_file" || exit 625
-grep -Fq 'realDATAKEEP13' "$line_file" && exit 626
-grep -Fxq 'echo \"https://x;a=b;//u:***REDACTED***@host\"' "$line_file" || exit 627
-grep -Fq 'LEAKASSIGN01' "$line_file" && exit 628
-grep -Fxq 'echo \"https://x,k=1;//user:***REDACTED***@host\"' "$line_file" || exit 629
-grep -Fq 'LEAKASSIGN02' "$line_file" && exit 630
-grep -Fxq 'curl \"https://x;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"' "$line_file" || exit 631
-grep -Fq 'LEAKASSIGN03' "$line_file" && exit 632
-grep -Fxq 'curl \"https://api.example.test/v1?verbose=1;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"' "$line_file" || exit 633
-grep -Fq 'LEAKQUERY01' "$line_file" && exit 634
-grep -Fxq 'echo \"https://x/?q=hello;cat=1;//user:***REDACTED***@host\"' "$line_file" || exit 635
-grep -Fq 'LEAKQUERY02' "$line_file" && exit 636
-grep -Fxq 'echo \"https://x/?q=hello,cmd=1;//user:***REDACTED***@host\"' "$line_file" || exit 637
-grep -Fq 'LEAKQUERY04' "$line_file" && exit 638
-grep -Fxq 'echo \"https://x/path;v=1;b=2;//user:***REDACTED***@host\"' "$line_file" || exit 639
-grep -Fq 'PATHREDACT03' "$line_file" && exit 640
+assert_fixture 'case 1225' present -Fxq 'curl \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.example.test\";//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1226' absent -Fq 'pDATAKEEP11'
+assert_fixture 'case 1227' absent -Fq 'realDATAKEEP11'
+assert_fixture 'case 1228' present -Fxq 'curl \"https://x/?q=a=1,b=2;//u:***REDACTED***@one.example.test\",//u:***REDACTED***@two.example.test'
+assert_fixture 'case 1229' absent -Fq 'pDATAKEEP12'
+assert_fixture 'case 1230' absent -Fq 'realDATAKEEP12'
+assert_fixture 'case 1231' present -Fxq "curl 'https://x/?q=a=1;b=2;//u:pDATAKEEP13@one.example.test';//u:***REDACTED***@two.example.test"
+assert_fixture 'case 1232' present -Fq 'pDATAKEEP13'
+assert_fixture 'case 1233' absent -Fq 'realDATAKEEP13'
+assert_fixture 'case 1234' present -Fxq 'echo \"https://x;a=b;//u:***REDACTED***@host\"'
+assert_fixture 'case 1235' absent -Fq 'LEAKASSIGN01'
+assert_fixture 'case 1236' present -Fxq 'echo \"https://x,k=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1237' absent -Fq 'LEAKASSIGN02'
+assert_fixture 'case 1238' present -Fxq 'curl \"https://x;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"'
+assert_fixture 'case 1239' absent -Fq 'LEAKASSIGN03'
+assert_fixture 'case 1240' present -Fxq 'curl \"https://api.example.test/v1?verbose=1;cat=1;//user:***REDACTED***@host\" -H \"X: keep\"'
+assert_fixture 'case 1241' absent -Fq 'LEAKQUERY01'
+assert_fixture 'case 1242' present -Fxq 'echo \"https://x/?q=hello;cat=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1243' absent -Fq 'LEAKQUERY02'
+assert_fixture 'case 1244' present -Fxq 'echo \"https://x/?q=hello,cmd=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1245' absent -Fq 'LEAKQUERY04'
+assert_fixture 'case 1246' present -Fxq 'echo \"https://x/path;v=1;b=2;//user:***REDACTED***@host\"'
+assert_fixture 'case 1247' absent -Fq 'PATHREDACT03'
 # Escaped short assignments leak nothing: exact redaction plus token absence.
-grep -Fxq 'echo \"https://x/?q=hello;a=1;//user:***REDACTED***@host\"' "$line_file" || exit 641
-grep -Fq 'LEAKONE641' "$line_file" && exit 642
-grep -Fxq 'echo \"https://x/?q=hello,b=1;//user:***REDACTED***@host\"' "$line_file" || exit 643
-grep -Fq 'LEAKCOMMA642' "$line_file" && exit 644
-grep -Fxq 'echo \"https://x/?q=hello;=1;//user:***REDACTED***@host\"' "$line_file" || exit 645
-grep -Fq 'LEAKEMPTY643' "$line_file" && exit 646
-grep -Fxq 'echo \"https://x/?q=hello;1=1;//user:***REDACTED***@host\"' "$line_file" || exit 647
-grep -Fq 'LEAKDIGIT644' "$line_file" && exit 648
-grep -Fxq "echo \\'https://x/?q=hello;a=1;//user:***REDACTED***@host\\'" "$line_file" || exit 649
-grep -Fq 'SQESC649' "$line_file" && exit 650
-grep -Fxq "curl 'https://x/?q=hello;cat=1;//u:pSQPLAIN651@one.example.test';//u:***REDACTED***@two.example.test" "$line_file" || exit 651
-grep -Fq 'pSQPLAIN651' "$line_file" || exit 652
-grep -Fq 'realSQPLAIN652' "$line_file" && exit 653
-grep -Fxq 'echo \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.test"' "$line_file" || exit 654
-grep -Fq 'DQESC654' "$line_file" && exit 655
+assert_fixture 'case 1248' present -Fxq 'echo \"https://x/?q=hello;a=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1249' absent -Fq 'LEAKONE641'
+assert_fixture 'case 1250' present -Fxq 'echo \"https://x/?q=hello,b=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1251' absent -Fq 'LEAKCOMMA642'
+assert_fixture 'case 1252' present -Fxq 'echo \"https://x/?q=hello;=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1253' absent -Fq 'LEAKEMPTY643'
+assert_fixture 'case 1254' present -Fxq 'echo \"https://x/?q=hello;1=1;//user:***REDACTED***@host\"'
+assert_fixture 'case 1255' absent -Fq 'LEAKDIGIT644'
+assert_fixture 'case 1256' present -Fxq "echo \\'https://x/?q=hello;a=1;//user:***REDACTED***@host\\'"
+assert_fixture 'case 1257' absent -Fq 'SQESC649'
+assert_fixture 'case 1258' present -Fxq "curl 'https://x/?q=hello;cat=1;//u:pSQPLAIN651@one.example.test';//u:***REDACTED***@two.example.test"
+assert_fixture 'case 1259' present -Fq 'pSQPLAIN651'
+assert_fixture 'case 1260' absent -Fq 'realSQPLAIN652'
+assert_fixture 'case 1261' present -Fxq 'echo \"https://x/?q=a=1;b=2;//u:***REDACTED***@one.test"'
+assert_fixture 'case 1262' absent -Fq 'DQESC654'
 # Bare escaped authorities redact exactly; the credential never appears.
-grep -Fxq 'echo \"https://x/path;//user:***REDACTED***@host\"' "$line_file" || exit 656
-grep -Fxq 'echo \"https://x/path,//user:***REDACTED***@host\"' "$line_file" || exit 657
-grep -Fxq "echo \\'https://x/path;//user:***REDACTED***@host\\'" "$line_file" || exit 658
-grep -Fxq "echo \\'https://x/path,//user:***REDACTED***@host\\'" "$line_file" || exit 659
-grep -Fq 'BARE77' "$line_file" && exit 660
+assert_fixture 'case 1263' present -Fxq 'echo \"https://x/path;//user:***REDACTED***@host\"'
+assert_fixture 'case 1264' present -Fxq 'echo \"https://x/path,//user:***REDACTED***@host\"'
+assert_fixture 'case 1265' present -Fxq "echo \\'https://x/path;//user:***REDACTED***@host\\'"
+assert_fixture 'case 1266' present -Fxq "echo \\'https://x/path,//user:***REDACTED***@host\\'"
+assert_fixture 'case 1267' absent -Fq 'BARE77'
 # POSIX single-quote close redacts the outside authority exactly.
-grep -Fxq "echo 'a\\'b;//user:***REDACTED***@host'" "$line_file" || exit 661
-grep -Fq 'NORM77' "$line_file" && exit 662
-grep -Fxq 'echo "note;//user:SYNTHPLAIN142@host"' "$line_file" || exit 563
-grep -Fq 'SYNTHPLAIN142' "$line_file" || exit 564
-grep -Fq 'SYNTHREALBND' "$line_file" && exit 517
-grep -Fq 'passSemiAssign@example.test' "$line_file" && exit 254
-grep -q 'Question:' "$line_file" || exit 13
+assert_fixture 'case 1268' present -Fxq "echo 'a\\'b;//user:***REDACTED***@host'"
+assert_fixture 'case 1269' absent -Fq 'NORM77'
+assert_fixture 'case 1270' present -Fxq 'echo "note;//user:SYNTHPLAIN142@host"'
+assert_fixture 'case 1271' present -Fq 'SYNTHPLAIN142'
+assert_fixture 'case 1272' absent -Fq 'SYNTHREALBND'
+assert_fixture 'case 1273' absent -Fq 'passSemiAssign@example.test'
+assert_fixture 'case 1274' present -q 'Question:'
 printf 'lmline-meta: model=clip-model tokens=10 prompt=7 completion=3\n' >&2
 printf 'lmline-status: m=clip-model; tok=7/3/10\n' >&2
-printf 'clip answer\n'
 # Generic Authorization schemes must mask backslash-escaped quote values.
-grep -Fxq 'Authorization: abc=\"***REDACTED***\"; echo KEEPGESTAIL1' "$line_file" || exit 9180
-grep -Fq SYNTHGESC001 "$line_file" && exit 9181
-grep -Fxq "Authorization: abc=\'***REDACTED***\'; echo KEEPGESTAIL2" "$line_file" || exit 9182
-grep -Fq SYNTHGESC002 "$line_file" && exit 9183
-grep -Fxq "curl -H 'Authorization: abc=\'***REDACTED***\''; echo KEEPGESTAIL3" "$line_file" || exit 9184
-grep -Fq SYNTHGESC003 "$line_file" && exit 9185
-grep -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGESTAIL4' "$line_file" || exit 9186
-grep -Fq SYNTHGESC004 "$line_file" && exit 9187
-grep -Fxq 'curl -u user:***REDACTED*** https://x; echo KEEPFLAG901' "$line_file" || exit 9101
-grep -Fq 'SYNTHFLAG901' "$line_file" && exit 9102
-grep -Fxq 'curl --user user:***REDACTED*** https://x; echo KEEPFLAG902' "$line_file" || exit 9103
-grep -Fq 'SYNTHFLAG902' "$line_file" && exit 9104
-grep -Fxq 'curl -u=***REDACTED*** https://x; echo KEEPFLAG903' "$line_file" || exit 9105
-grep -Fq 'SYNTHFLAG903' "$line_file" && exit 9106
-grep -Fxq 'curl --password ***REDACTED*** https://x; echo KEEPFLAG904' "$line_file" || exit 9107
-grep -Fq 'SYNTHFLAG904' "$line_file" && exit 9108
-grep -Fxq 'curl -u "user:***REDACTED***" https://x; echo KEEPFLAG905' "$line_file" || exit 9109
-grep -Fq 'SYNTHFLAG905' "$line_file" && exit 9110
-grep -Fxq "curl -u 'user:***REDACTED***' https://x; echo KEEPFLAG906" "$line_file" || exit 9111
-grep -Fq 'SYNTHFLAG906' "$line_file" && exit 9112
-grep -Fxq 'id --user=1000; echo KEEPFLAG907' "$line_file" || exit 9113
-grep -Fxq 'bash -p; echo KEEPFLAG908' "$line_file" || exit 9114
-grep -Fxq 'curl -u user:***REDACTED***;echo KEEPFLAG921' "$line_file" || exit 9115
-grep -Fq 'SYNTHFLAG921' "$line_file" && exit 9116
-grep -Fxq 'curl -u=user:***REDACTED*** https://x; echo KEEPFLAG922' "$line_file" || exit 9117
-grep -Fq 'SYNTHFLAG922' "$line_file" && exit 9118
-grep -Fxq 'curl --u=user:***REDACTED*** https://x; echo KEEPFLAG923' "$line_file" || exit 9119
-grep -Fq 'SYNTHFLAG923' "$line_file" && exit 9120
-grep -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG924' "$line_file" || exit 9121
-grep -Fq 'SYNTHFLAG924' "$line_file" && exit 9122
-grep -Fxq 'curl --password "***REDACTED***" https://x; echo KEEPFLAG925' "$line_file" || exit 9123
-grep -Fq 'SYNTHFLAG925' "$line_file" && exit 9124
-grep -Fxq "curl --password '***REDACTED***' https://x; echo KEEPFLAG926" "$line_file" || exit 9125
-grep -Fq 'SYNTHFLAG926' "$line_file" && exit 9126
-grep -Fxq 'curl -u "user:***REDACTED***" https://x; echo KEEPFLAG927' "$line_file" || exit 9127
-grep -Fq 'SYNTHFLAG927' "$line_file" && exit 9128
-grep -Fxq 'curl -u=***REDACTED***&&echo KEEPFLAG928' "$line_file" || exit 9129
-grep -Fq 'SYNTHFLAG928' "$line_file" && exit 9130
-grep -Fxq 'curl --password ***REDACTED***|grep KEEPFLAG929' "$line_file" || exit 9131
-grep -Fq 'SYNTHFLAG929' "$line_file" && exit 9132
-grep -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG933' "$line_file" || exit 9133
-grep -Fq 'SYNTHFLAG933' "$line_file" && exit 9134
-grep -Fxq 'curl -u=\"user:***REDACTED***\" https://x; echo KEEPE1' "$line_file" || exit 9166
-grep -Fq 'SYNTHQE1' "$line_file" && exit 9167
-grep -Fxq 'curl --user=\"***REDACTED***\" https://x; echo KEEPE2' "$line_file" || exit 9168
-grep -Fq 'SYNTHQE2' "$line_file" && exit 9169
-grep -Fxq 'curl --user=***REDACTED***>out;echo KEEPOPS1' "$line_file" || exit 9154
-grep -Fq 'SECOPS1' "$line_file" && exit 9155
-grep -Fxq 'curl -u=user:***REDACTED***>>out;echo KEEPOPS2' "$line_file" || exit 9156
-grep -Fq 'SECOPS2' "$line_file" && exit 9157
-grep -Fxq 'curl --password ***REDACTED***<in;echo KEEPOPS3' "$line_file" || exit 9158
-grep -Fq 'SECOPS3' "$line_file" && exit 9159
-grep -Fxq 'mysql -uadmin -p***REDACTED***; echo KEEPP941' "$line_file" || exit 9135
-grep -Fq 'SYNTHP941' "$line_file" && exit 9136
-grep -Fxq 'curl -u="user:***REDACTED***" https://x; echo KEEPQ01' "$line_file" || exit 9146
-grep -Fq 'SYNTHQ01' "$line_file" && exit 9147
-grep -Fxq "curl --user='user:***REDACTED***' https://x; echo KEEPQ02" "$line_file" || exit 9148
-grep -Fq 'SYNTHQ02' "$line_file" && exit 9149
-grep -Fxq 'curl -u="***REDACTED***" https://x; echo KEEPQ03' "$line_file" || exit 9150
-grep -Fq 'SYNTHQ03' "$line_file" && exit 9151
-grep -Fxq 'curl --user="***REDACTED***" https://x; echo KEEPQ04' "$line_file" || exit 9152
-grep -Fq 'SYNTHQ04' "$line_file" && exit 9153
-grep -Fxq 'mysqldump -p***REDACTED***&&echo KEEPP942' "$line_file" || exit 9137
-grep -Fq 'SYNTHP942' "$line_file" && exit 9138
-grep -Fxq 'bash -p; echo KEEPP943' "$line_file" || exit 9139
-grep -Fxq 'ls -p /tmp; echo KEEPP944' "$line_file" || exit 9140
-grep -Fxq 'mysql -p"***REDACTED***" https://x; echo KEEPP945' "$line_file" || exit 9141
-grep -Fq 'SYNTHP945' "$line_file" && exit 9142
-grep -Fxq "mysql -p'***REDACTED***' https://x; echo KEEPP946" "$line_file" || exit 9143
-grep -Fq 'SYNTHP946' "$line_file" && exit 9144
-grep -Fxq 'mysql -p"***REDACTED***">out; echo KEEPQDB1' "$line_file" || exit 9160
-grep -Fq 'SYNTHQDB1' "$line_file" && exit 9161
-grep -Fxq "mysql -p'***REDACTED***'<in; echo KEEPQDB2" "$line_file" || exit 9162
-grep -Fxq 'mkdir -pkeep; echo KEEPPCMDB1' "$line_file" || exit 9190
-grep -Fxq 'MKDIR -pKEEPUPPER; echo KEEPPCMDB2' "$line_file" || exit 9191
-grep -Fxq 'ls -la -pKEEPPCMDB3; echo KEEPPCMDB3' "$line_file" || exit 9192
-grep -Fxq 'echo PREPCMDB4; mysql -uadmin -p***REDACTED***; echo KEEPPCMDB4' "$line_file" || exit 9193
-grep -Fq 'SYNTHPCMDB4' "$line_file" && exit 9194
-grep -Fxq 'mkdir -pkeep; mysql -p***REDACTED***; mkdir -pkeep2' "$line_file" || exit 9195
-grep -Fq 'SYNTHPCMDB5' "$line_file" && exit 9196
-grep -Fxq '/usr/bin/mysql -p***REDACTED***; echo KEEPPCMDB6' "$line_file" || exit 9197
-grep -Fq 'SYNTHPCMDB6' "$line_file" && exit 9198
-grep -Fxq 'sudo /usr/local/bin/mysql -p***REDACTED***; echo KEEPPCMDB7' "$line_file" || exit 9199
-grep -Fq 'SYNTHPCMDB7' "$line_file" && exit 9200
-grep -Fxq 'echo $(mysql -p***REDACTED***); echo KEEPPCMDB8' "$line_file" || exit 9201
-grep -Fq 'SYNTHPCMDB8' "$line_file" && exit 9202
-grep -Fxq 'x=$(mariadb -p***REDACTED***); echo KEEPPCMDB9' "$line_file" || exit 9203
-grep -Fq 'SYNTHPCMDB9' "$line_file" && exit 9204
-grep -Fxq '(mysql -p***REDACTED***); echo KEEPPCMDB10' "$line_file" || exit 9205
-grep -Fq 'SYNTHPCMDB10' "$line_file" && exit 9206
-grep -Fxq 'MYSQL -p***REDACTED***; echo KEEPPCMDB11' "$line_file" || exit 9207
-grep -Fq 'SYNTHPCMDB11' "$line_file" && exit 9208
-grep -Fq 'SYNTHQDB2' "$line_file" && exit 9163
-grep -Fxq 'mysql -p"***REDACTED***">>out; echo KEEPQDB3' "$line_file" || exit 9164
-grep -Fq 'SYNTHQDB3' "$line_file" && exit 9165
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***";echo KEEPGLUE101' "$line_file" || exit 9145
-grep -Fq 'SYNTHGLUE101' "$line_file" && exit 9146
-grep -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'&&echo KEEPGLUE102" "$line_file" || exit 9147
-grep -Fq 'SYNTHGLUE102' "$line_file" && exit 9148
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"&echo KEEPGLUE103' "$line_file" || exit 9149
-grep -Fq 'SYNTHGLUE103' "$line_file" && exit 9150
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>err;echo KEEPGLUE104' "$line_file" || exit 9151
-grep -Fq 'SYNTHGLUE104' "$line_file" && exit 9152
-grep -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPGLUE105' "$line_file" || exit 9153
-grep -Fq 'SYNTHGLUE105' "$line_file" && exit 9154
+assert_fixture 'case 1275' present -Fxq 'Authorization: abc=\"***REDACTED***\"; echo KEEPGESTAIL1'
+assert_fixture 'case 1276' absent -Fq SYNTHGESC001
+assert_fixture 'case 1277' present -Fxq "Authorization: abc=\'***REDACTED***\'; echo KEEPGESTAIL2"
+assert_fixture 'case 1278' absent -Fq SYNTHGESC002
+assert_fixture 'case 1279' present -Fxq "curl -H 'Authorization: abc=\'***REDACTED***\''; echo KEEPGESTAIL3"
+assert_fixture 'case 1280' absent -Fq SYNTHGESC003
+assert_fixture 'case 1281' present -Fxq 'curl -H "Authorization: ***REDACTED***"; echo KEEPGESTAIL4'
+assert_fixture 'case 1282' absent -Fq SYNTHGESC004
+assert_fixture 'case 1283' present -Fxq 'curl -u user:***REDACTED*** https://x; echo KEEPFLAG901'
+assert_fixture 'case 1284' absent -Fq 'SYNTHFLAG901'
+assert_fixture 'case 1285' present -Fxq 'curl --user user:***REDACTED*** https://x; echo KEEPFLAG902'
+assert_fixture 'case 1286' absent -Fq 'SYNTHFLAG902'
+assert_fixture 'case 1287' present -Fxq 'curl -u=***REDACTED*** https://x; echo KEEPFLAG903'
+assert_fixture 'case 1288' absent -Fq 'SYNTHFLAG903'
+assert_fixture 'case 1289' present -Fxq 'curl --password ***REDACTED*** https://x; echo KEEPFLAG904'
+assert_fixture 'case 1290' absent -Fq 'SYNTHFLAG904'
+assert_fixture 'case 1291' present -Fxq 'curl -u "user:***REDACTED***" https://x; echo KEEPFLAG905'
+assert_fixture 'case 1292' absent -Fq 'SYNTHFLAG905'
+assert_fixture 'case 1293' present -Fxq "curl -u 'user:***REDACTED***' https://x; echo KEEPFLAG906"
+assert_fixture 'case 1294' absent -Fq 'SYNTHFLAG906'
+assert_fixture 'case 1295' present -Fxq 'id --user=1000; echo KEEPFLAG907'
+assert_fixture 'case 1296' present -Fxq 'bash -p; echo KEEPFLAG908'
+assert_fixture 'case 1297' present -Fxq 'curl -u user:***REDACTED***;echo KEEPFLAG921'
+assert_fixture 'case 1298' absent -Fq 'SYNTHFLAG921'
+assert_fixture 'case 1299' present -Fxq 'curl -u=user:***REDACTED*** https://x; echo KEEPFLAG922'
+assert_fixture 'case 1300' absent -Fq 'SYNTHFLAG922'
+assert_fixture 'case 1301' present -Fxq 'curl --u=user:***REDACTED*** https://x; echo KEEPFLAG923'
+assert_fixture 'case 1302' absent -Fq 'SYNTHFLAG923'
+assert_fixture 'case 1303' present -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG924'
+assert_fixture 'case 1304' absent -Fq 'SYNTHFLAG924'
+assert_fixture 'case 1305' present -Fxq 'curl --password "***REDACTED***" https://x; echo KEEPFLAG925'
+assert_fixture 'case 1306' absent -Fq 'SYNTHFLAG925'
+assert_fixture 'case 1307' present -Fxq "curl --password '***REDACTED***' https://x; echo KEEPFLAG926"
+assert_fixture 'case 1308' absent -Fq 'SYNTHFLAG926'
+assert_fixture 'case 1309' present -Fxq 'curl -u "user:***REDACTED***" https://x; echo KEEPFLAG927'
+assert_fixture 'case 1310' absent -Fq 'SYNTHFLAG927'
+assert_fixture 'case 1311' present -Fxq 'curl -u=***REDACTED***&&echo KEEPFLAG928'
+assert_fixture 'case 1312' absent -Fq 'SYNTHFLAG928'
+assert_fixture 'case 1313' present -Fxq 'curl --password ***REDACTED***|grep KEEPFLAG929'
+assert_fixture 'case 1314' absent -Fq 'SYNTHFLAG929'
+assert_fixture 'case 1315' present -Fxq 'curl --user=***REDACTED*** https://x; echo KEEPFLAG933'
+assert_fixture 'case 1316' absent -Fq 'SYNTHFLAG933'
+assert_fixture 'case 1317' present -Fxq 'curl -u=\"user:***REDACTED***\" https://x; echo KEEPE1'
+assert_fixture 'case 1318' absent -Fq 'SYNTHQE1'
+assert_fixture 'case 1319' present -Fxq 'curl --user=\"***REDACTED***\" https://x; echo KEEPE2'
+assert_fixture 'case 1320' absent -Fq 'SYNTHQE2'
+assert_fixture 'case 1321' present -Fxq 'curl --user=***REDACTED***>out;echo KEEPOPS1'
+assert_fixture 'case 1322' absent -Fq 'SECOPS1'
+assert_fixture 'case 1323' present -Fxq 'curl -u=user:***REDACTED***>>out;echo KEEPOPS2'
+assert_fixture 'case 1324' absent -Fq 'SECOPS2'
+assert_fixture 'case 1325' present -Fxq 'curl --password ***REDACTED***<in;echo KEEPOPS3'
+assert_fixture 'case 1326' absent -Fq 'SECOPS3'
+assert_fixture 'case 1327' present -Fxq 'mysql -uadmin -p***REDACTED***; echo KEEPP941'
+assert_fixture 'case 1328' absent -Fq 'SYNTHP941'
+assert_fixture 'case 1329' present -Fxq 'curl -u="user:***REDACTED***" https://x; echo KEEPQ01'
+assert_fixture 'case 1330' absent -Fq 'SYNTHQ01'
+assert_fixture 'case 1331' present -Fxq "curl --user='user:***REDACTED***' https://x; echo KEEPQ02"
+assert_fixture 'case 1332' absent -Fq 'SYNTHQ02'
+assert_fixture 'case 1333' present -Fxq 'curl -u="***REDACTED***" https://x; echo KEEPQ03'
+assert_fixture 'case 1334' absent -Fq 'SYNTHQ03'
+assert_fixture 'case 1335' present -Fxq 'curl --user="***REDACTED***" https://x; echo KEEPQ04'
+assert_fixture 'case 1336' absent -Fq 'SYNTHQ04'
+assert_fixture 'case 1337' present -Fxq 'mysqldump -p***REDACTED***&&echo KEEPP942'
+assert_fixture 'case 1338' absent -Fq 'SYNTHP942'
+assert_fixture 'case 1339' present -Fxq 'bash -p; echo KEEPP943'
+assert_fixture 'case 1340' present -Fxq 'ls -p /tmp; echo KEEPP944'
+assert_fixture 'case 1341' present -Fxq 'mysql -p"***REDACTED***" https://x; echo KEEPP945'
+assert_fixture 'case 1342' absent -Fq 'SYNTHP945'
+assert_fixture 'case 1343' present -Fxq "mysql -p'***REDACTED***' https://x; echo KEEPP946"
+assert_fixture 'case 1344' absent -Fq 'SYNTHP946'
+assert_fixture 'case 1345' present -Fxq 'mysql -p"***REDACTED***">out; echo KEEPQDB1'
+assert_fixture 'case 1346' absent -Fq 'SYNTHQDB1'
+assert_fixture 'case 1347' present -Fxq "mysql -p'***REDACTED***'<in; echo KEEPQDB2"
+assert_fixture 'case 1348' present -Fxq 'mkdir -pkeep; echo KEEPPCMDB1'
+assert_fixture 'case 1349' present -Fxq 'MKDIR -pKEEPUPPER; echo KEEPPCMDB2'
+assert_fixture 'case 1350' present -Fxq 'ls -la -pKEEPPCMDB3; echo KEEPPCMDB3'
+assert_fixture 'case 1351' present -Fxq 'echo PREPCMDB4; mysql -uadmin -p***REDACTED***; echo KEEPPCMDB4'
+assert_fixture 'case 1352' absent -Fq 'SYNTHPCMDB4'
+assert_fixture 'case 1353' present -Fxq 'mkdir -pkeep; mysql -p***REDACTED***; mkdir -pkeep2'
+assert_fixture 'case 1354' absent -Fq 'SYNTHPCMDB5'
+assert_fixture 'case 1355' present -Fxq '/usr/bin/mysql -p***REDACTED***; echo KEEPPCMDB6'
+assert_fixture 'case 1356' absent -Fq 'SYNTHPCMDB6'
+assert_fixture 'case 1357' present -Fxq 'sudo /usr/local/bin/mysql -p***REDACTED***; echo KEEPPCMDB7'
+assert_fixture 'case 1358' absent -Fq 'SYNTHPCMDB7'
+assert_fixture 'case 1359' present -Fxq 'echo $(mysql -p***REDACTED***); echo KEEPPCMDB8'
+assert_fixture 'case 1360' absent -Fq 'SYNTHPCMDB8'
+assert_fixture 'case 1361' present -Fxq 'x=$(mariadb -p***REDACTED***); echo KEEPPCMDB9'
+assert_fixture 'case 1362' absent -Fq 'SYNTHPCMDB9'
+assert_fixture 'case 1363' present -Fxq '(mysql -p***REDACTED***); echo KEEPPCMDB10'
+assert_fixture 'case 1364' absent -Fq 'SYNTHPCMDB10'
+assert_fixture 'case 1365' present -Fxq 'MYSQL -p***REDACTED***; echo KEEPPCMDB11'
+assert_fixture 'case 1366' absent -Fq 'SYNTHPCMDB11'
+assert_fixture 'case 1367' absent -Fq 'SYNTHQDB2'
+assert_fixture 'case 1368' present -Fxq 'mysql -p"***REDACTED***">>out; echo KEEPQDB3'
+assert_fixture 'case 1369' absent -Fq 'SYNTHQDB3'
+assert_fixture 'case 1370' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***";echo KEEPGLUE101'
+assert_fixture 'case 1371' absent -Fq 'SYNTHGLUE101'
+assert_fixture 'case 1372' present -Fxq "curl -H 'Authorization: Bearer ***REDACTED***'&&echo KEEPGLUE102"
+assert_fixture 'case 1373' absent -Fq 'SYNTHGLUE102'
+assert_fixture 'case 1374' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"&echo KEEPGLUE103'
+assert_fixture 'case 1375' absent -Fq 'SYNTHGLUE103'
+assert_fixture 'case 1376' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"2>err;echo KEEPGLUE104'
+assert_fixture 'case 1377' absent -Fq 'SYNTHGLUE104'
+assert_fixture 'case 1378' present -Fxq 'curl -H "Authorization: Bearer ***REDACTED***"; echo KEEPGLUE105'
+assert_fixture 'case 1379' absent -Fq 'SYNTHGLUE105'
 printf 'clip answer\n'
 EOF
 chmod +x "$clip_test_dir/engine"
@@ -2292,6 +2312,33 @@ clip_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" LMLINE_ENGINE="$clip_test_d
 grep -q 'clipboard provider=fake' <<<"$clip_out" || fail "clip provider output"
 grep -q 'm=clip-model; tok=7/3/10' <<<"$clip_out" || fail "clip metadata"
 grep -q 'clip answer' <<<"$clip_out" || fail "clip answer"
+# Force one assertion mismatch in a copy of the checker: the parent must see
+# the case label and no success answer, with every other expectation untouched.
+clip_mismatch_engine=$clip_test_dir/engine-forced-mismatch
+awk -v target='API_KEY=***REDACTED***' -v replacement='API_KEY=FORCEDMISMATCH' '
+  {
+    pos = index($0, target)
+    if (pos) {
+      $0 = substr($0, 1, pos - 1) replacement substr($0, pos + length(target))
+      changed++
+    }
+    print
+  }
+  END { if (changed != 1) exit 1 }
+' "$clip_test_dir/engine" >"$clip_mismatch_engine"
+chmod +x "$clip_mismatch_engine"
+clip_mismatch_status=0
+clip_mismatch_out=$(LMLINE_CONFIG_DIR="$clip_test_dir/config" \
+                   LMLINE_ENGINE="$clip_mismatch_engine" \
+                   "$repo_dir/lmline/lmline" clip "原因は？" 2>&1) ||
+  clip_mismatch_status=$?
+(( clip_mismatch_status == 1 )) ||
+  fail "forced clip assertion mismatch returned status $clip_mismatch_status"
+grep -Fq 'clip fixture assertion failed: case 1' <<<"$clip_mismatch_out" ||
+  fail "forced clip assertion mismatch hid the case label"
+if grep -Fq 'clip answer' <<<"$clip_mismatch_out"; then
+  fail "forced clip assertion mismatch printed the success answer"
+fi
 # Behavioral checks exercise the shipped redactor only; no source text is rewritten.
 redact_clip_line() {
   bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; __lmline_next_realm_shield_prefix; printf "%s\n" "$2" | __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ \
