@@ -841,7 +841,7 @@ __lmline_redact_clip_text() {
     -e 's/==LMLINE_AUTH_SCHEME==//Ig' \
     -e 's/(\"[^\"]*Authorization[[:space:]]*:[[:space:]]*'"${auth_redacted_value}"')\"/\1 \"/Ig' \
     -e "s/('[^']*Authorization[[:space:]]*:[[:space:]]*${auth_redacted_value})'/\1 '/Ig" \
-    -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\"'=[:space:];,&|][^\\\"'[:space:];,&|]*)((\"([^[:space:]\"]([^\"]*[^[:space:]\"])?|)\"|'([^[:space:]']([^']*[^[:space:]'])?|)'))([^[:space:]\"';,&|]*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
+    -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\"'=[:space:];,&|][^\\\"'[:space:];,&|]*)((\"((([^[:space:]\"])([^\"]*[^[:space:]\"]))|([^[:space:]\"]))?\"|'((([^[:space:]'])([^']*[^[:space:]']))|([^[:space:]']))?'))([^[:space:]\"';,&|]*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\\\"'=[:space:];,&|][^\\\\\"'[:space:];,&|]*)(\\\\+[\"])(([^[:space:];,&|\"'])*(\\\\+[\"']([^[:space:];,&|\"'])*)*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
     -e "s/(^|[^A-Za-z0-9_])([[:space:]]*)${auth_prefix}(${auth_scheme_token}+)([:=]+)([^\\\\\"'=[:space:];,&|][^\\\\\"'[:space:];,&|]*)(\\\\+['])(([^[:space:];,&|\"'])*(\\\\+[\"']([^[:space:];,&|\"'])*)*)/\1\2\3\4\5@@LMLINE_REDACTED@@/Ig" \
     -e "/Authorization[[:space:]]*:[[:space:]]+[A-Za-z0-9+.-]*:[\*@]+/!s/(\"[^\"]*Authorization[[:space:]]*:[[:space:]]+)(${auth_scheme_token}+[[:space:]]+)?([^[:space:]\\\\\"]*)\"\"([^\"]*\\\\\"[^\"]*)\"[^[:space:]]*/\\1\\2@@LMLINE_REDACTED@@\\\"/Ig" \

@@ -9,6 +9,12 @@ trap 'rm -rf "$cfg_tmp"' EXIT
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_BASE_URL https://api.test.invalid/v1
 LMLINE_CONFIG_DIR="$cfg_tmp/config" "$repo_dir/lmline/lmline" config set LMLINE_MODEL test-model
 
+# BSD sed rejects an empty ERE alternative that GNU sed accepts. Keep the
+# redaction pipeline free of `(...?|)` branches so macOS runs the same rules.
+if grep -nF '?|)' "$repo_dir/lmline/actions.bash"; then
+  fail 'empty sed ERE alternative in actions.bash'
+fi
+
 clip_test_dir="$cfg_tmp/clip"
 mkdir -p "$clip_test_dir/bin" "$clip_test_dir/config"
 cat >"$clip_test_dir/bin/fakeclip" <<'EOF'
