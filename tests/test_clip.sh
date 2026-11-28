@@ -3681,6 +3681,59 @@ for case_index in "${!grouped_negative_fixtures[@]}"; do
   printf '%s\n' "$fixture" | bash -n || fail "grouped non-credential $case_index is not valid shell: $fixture"
 done
 
+# A shell backslash-newline can split a credential flag or its value. Join
+# those continuations before redacting; a continuation after an already
+# masked value, or after an escaped backslash, stays as it was.
+split_continuation_fixtures=(
+  'curl --user=ali\
+ce:SECRETJOIN1; echo MARKJ1'
+  'curl -u \
+alice:SECRETJOIN2; echo MARKJ2'
+  'curl --user=\
+ alice:SECRETCONT123; echo MARKCONT'
+  'curl --user=ali\
+ ce:SECRETMID123; echo MARKMID'
+  'curl --user=alice:SECRETPLAIN123; echo MARKPLAIN'
+  'curl --user=alice:SECRETIN123\
+; echo MARKIN'
+  'curl --user=alice:SECRETEVEN123\\
+echo MARKEVEN'
+  'curl --user=alice:***REDACTED***\
+; echo MARKMASKED'
+  'Authorization: ***REDACTED***; curl --user=ali\
+ce:SECRETSPLIT9; echo MARKSPLIT9'
+)
+split_continuation_expected=(
+  'curl --user=alice:***REDACTED***; echo MARKJ1'
+  'curl -u alice:***REDACTED***; echo MARKJ2'
+  'curl --user=***REDACTED***; echo MARKCONT'
+  'curl --user=***REDACTED***; echo MARKMID'
+  'curl --user=alice:***REDACTED***; echo MARKPLAIN'
+  'curl --user=alice:***REDACTED***\
+; echo MARKIN'
+  'curl --user=alice:***REDACTED***
+echo MARKEVEN'
+  'curl --user=alice:***REDACTED***\
+; echo MARKMASKED'
+  'Authorization: ***REDACTED***; curl --user=alice:***REDACTED***; echo MARKSPLIT9'
+)
+split_continuation_secrets=(
+  SECRETJOIN1 SECRETJOIN2 SECRETCONT123 SECRETMID123 SECRETPLAIN123
+  SECRETIN123 SECRETEVEN123 NOTPRESENT SECRETSPLIT9
+)
+split_continuation_tails=(
+  'echo MARKJ1' 'echo MARKJ2' 'echo MARKCONT' 'echo MARKMID' 'echo MARKPLAIN'
+  'echo MARKIN' 'echo MARKEVEN' 'echo MARKMASKED' 'echo MARKSPLIT9'
+)
+for case_index in "${!split_continuation_fixtures[@]}"; do
+  fixture=${split_continuation_fixtures[$case_index]}
+  expected=${split_continuation_expected[$case_index]}
+  printf '%s\n' "$fixture" | bash -n || fail "split continuation $case_index is not valid shell: $fixture"
+  expect_exact "split continuation $case_index" "$fixture" "$expected"
+  expect_idempotent_shell "split continuation $case_index" "$fixture" \
+    "${split_continuation_secrets[$case_index]}" "${split_continuation_tails[$case_index]}"
+done
+
 # The shield nonce must be unique per clip call even in zsh command substitution.
 if command -v zsh >/dev/null 2>&1; then
   zsh_marker_out=$(zsh -c 'unset RANDOM; source "$1"; __lmline_next_realm_shield_prefix; first=$__LMLINE_REALM_SHIELD_PREFIX; __lmline_next_realm_shield_prefix; second=$__LMLINE_REALM_SHIELD_PREFIX; [[ $first != $second ]] || exit 11; fixture="curl \"https://x/?Authorization=${first}FOO@@\" ; echo KEEPZSHCLIP"; printf "%s\n" "$fixture" | __lmline_redact_clip_text "$second"' _ "$repo_dir/lmline/actions.bash") || fail "zsh realm shield nonce is not per-invocation"

@@ -251,6 +251,38 @@ __lmline_redact_clip_text() {
   local encoded_mask
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
   [[ -n $realm_shield_prefix ]] || return 1
+  # The internal raw mode applies the rules without joining, so a single
+  # physical line can be checked before the stream is canonicalized.
+  if [[ ${2-} != raw ]]; then
+    # Join only continuations the line rules leave unmasked: a dangling
+    # backslash after an already-redacted value is not a split credential.
+    local line acc rest masked pending= joining=0 slashes
+    local canonical=
+    while IFS= read -r line || [[ -n $line ]]; do
+      if (( joining )); then acc=$pending$line; joining=0; else acc=$line; fi
+      rest=$acc
+      slashes=0
+      while [[ -n $rest && ${rest: -1} == '\' ]]; do rest=${rest%?}; ((slashes++)); done
+      if (( slashes % 2 )); then
+        rest=$(printf '%s\n' "$acc" | __lmline_redact_clip_text "$realm_shield_prefix" raw) || return 1
+        masked=$rest
+        while [[ -n $masked && ${masked: -1} == '\' ]]; do masked=${masked%?}; done
+        if [[ $masked != *'***REDACTED***' && $masked != *"***REDACTED***'" &&
+              $masked != *'***REDACTED***"' && $masked != *'***REDACTED PRIVATE KEY***' ]]; then
+          pending=${acc%?}
+          joining=1
+          continue
+        fi
+      fi
+      canonical+="$acc"$'\n'
+    done
+    if (( joining )); then canonical+="${pending}\\"$'\n'; fi
+    if [[ -n $canonical ]]; then
+      printf '%s' "$canonical" | __lmline_redact_clip_text "$realm_shield_prefix" raw
+      return $?
+    fi
+    return 0
+  fi
   # The encoded-credential placeholder is unique per clip call, so pasted
   # text cannot impersonate it and suppress later quoted-header rules.
   encoded_mask="LMLINEENCMASK${realm_shield_prefix#@@LMLINE_REALM_SHIELD_}"
@@ -501,6 +533,7 @@ __lmline_redact_clip_text() {
     }
     { print process($0) }
   ' | sed -E \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)([[:space:]]+|[^[:space:]\"':;,|&<>/]+[[:space:]]+)[^[:space:]\"':;,|&<>/]+:[^[:space:]\"';,&|<>/]+/\1\2***REDACTED***/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*={2,}|[^[:space:]&;,=\"']*:+|([A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\7/Ig" \
