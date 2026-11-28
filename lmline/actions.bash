@@ -329,6 +329,9 @@ __lmline_redact_clip_text() {
   # blank after it starts a new word, so a following argument or header is
   # not part of the credential. Glued quoted pieces have no blank and stay
   # one credential value.
+  # An equals-flag whose value starts with a quote may have more glued
+  # pieces after that quote; they form one credential up to the shell
+  # separator, and the opening quote pair is kept around the marker.
   # A first URL query parameter named Authorization has no preceding shell
   # separator. Mask padding, a single trailing equals, or a colon-terminated
   # value before quoted-value rules can consume the closing quote and the
@@ -510,6 +513,8 @@ __lmline_redact_clip_text() {
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"';,|&<>\\\\]|\\\\.)+(\"([^\"\\\\]|\\\\.)*\"([^][:space:];,&|<>\"')} ]|\\\\.)*)+([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\7/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([^[:space:]\"';,|&<>\\\\]|\\\\.)+('([^'\\\\]|\\\\.)*'([^][:space:];,&|<>\"')} ]|\\\\.)*)+([[:space:];,&|<>{)}]|$)/\1\2@@LMLINE_REDACTED@@\7/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^[:space:]\"':]+):([^\"']+)([\"'])/\1\2\3\4:@@LMLINE_REDACTED@@\6/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\")([^\"\\\\]|\\\\.)*\"([^[:space:];,&|<>{)}]+)([[:space:];,&|<>{)}]|$)/\1\2\3@@LMLINE_REDACTED@@\3\6/Ig" \
+    -e "s/(^|[[:space:]])(-u=|--u=|--user=)(')([^'\\\\]|\\\\.)*'([^[:space:];,&|<>{)}]+)([[:space:];,&|<>{)}]|$)/\1\2\3@@LMLINE_REDACTED@@\3\6/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)([\"'])([^\"']+)([\"'])/\1\2\3@@LMLINE_REDACTED@@\5/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^[:space:]\"':]+):([^\"\\\\']*)(\\\\*)\"/\1\2\3\"\4:@@LMLINE_REDACTED@@\6\"/Ig" \
     -e "/@@LMLINE_REDACTED@@/!s/(^|[[:space:]])(-u=|--u=|--user=)(\\\\*)\"([^\"\\\\']*)(\\\\*)\"/\1\2\3\"@@LMLINE_REDACTED@@\5\"/Ig" \

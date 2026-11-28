@@ -3068,6 +3068,66 @@ for case_index in "${!glued_mixed_fixtures[@]}"; do
   expect_exact "idempotent mixed glued -u password $case_index" "${glued_mixed_expected[$case_index]}" \
     "${glued_mixed_expected[$case_index]}"
 done
+# A quote-first glued equals-flag value is one credential: mask it whole while
+# keeping the flag, one quote pair, separators and the command tail.
+quote_first_fixtures=(
+  'curl --user="alice":"mypasswordREAL2"; echo KEEPREAL2'
+  'curl --user="alice":mypasswordREAL3; echo KEEPREAL3'
+  'curl -u="SECRETA2"TAILA2; echo KEEPA2'
+  "curl --user=''mypasswordREAL10; echo KEEPREAL10"
+  'curl -u="secretB"TAILB; echo KEEPB'
+  'curl --u="secretC"TAILC; echo KEEPC'
+  "curl -u='secretD'TAILD; echo KEEPD"
+  'curl --user="esc\"aped"TAIL; echo KEEPESC'
+  "curl --user='esc\\'aped'TAIL; echo KEEPESCS"
+  'curl --user="a"&echo KEEPAMP'
+  'curl --user="a",echo KEEPCOMMA'
+  '(curl --user="a"b); echo KEEPGROUP'
+)
+quote_first_expected=(
+  'curl --user="***REDACTED***"; echo KEEPREAL2'
+  'curl --user="***REDACTED***"; echo KEEPREAL3'
+  'curl -u="***REDACTED***"; echo KEEPA2'
+  "curl --user='***REDACTED***'; echo KEEPREAL10"
+  'curl -u="***REDACTED***"; echo KEEPB'
+  'curl --u="***REDACTED***"; echo KEEPC'
+  "curl -u='***REDACTED***'; echo KEEPD"
+  'curl --user="***REDACTED***"; echo KEEPESC'
+  "curl --user='***REDACTED***'; echo KEEPESCS"
+  'curl --user="***REDACTED***"&echo KEEPAMP'
+  'curl --user="***REDACTED***",echo KEEPCOMMA'
+  '(curl --user="***REDACTED***"); echo KEEPGROUP'
+)
+for case_index in "${!quote_first_fixtures[@]}"; do
+  expect_exact "quote-first credential $case_index" \
+    "${quote_first_fixtures[$case_index]}" "${quote_first_expected[$case_index]}"
+  expect_exact "idempotent quote-first credential $case_index" \
+    "${quote_first_expected[$case_index]}" "${quote_first_expected[$case_index]}"
+done
+# The wholly quoted user:password form still keeps its username.
+expect_exact 'quote-first keeps one quoted username' \
+  'curl --user="alice:mypasswordREAL1"; echo KEEPREAL1' \
+  'curl --user="alice:***REDACTED***"; echo KEEPREAL1'
+expect_exact 'quote-first keeps glued-user username' \
+  'curl -uuser:"MYQ2"; echo KEEP2' \
+  'curl -uuser:***REDACTED***; echo KEEP2'
+expect_exact 'quote-first keeps numeric user flag' \
+  'curl --user=1000 https://x' 'curl --user=1000 https://x'
+expect_exact 'quote-first keeps unrelated url flag' \
+  'curl --url https://x; echo KEEPURL' 'curl --url https://x; echo KEEPURL'
+expect_exact 'quote-first keeps spaced user-only flag' \
+  'curl -u user https://x; echo KEEPUSERONLY' \
+  'curl -u user https://x; echo KEEPUSERONLY'
+expect_exact 'quote-first keeps following word and tail' \
+  'curl --user="alice":"secretQF1" --url https://x; echo KEEPTAILQF1' \
+  'curl --user="***REDACTED***" --url https://x; echo KEEPTAILQF1'
+expect_exact 'quote-first keeps following command' \
+  'curl --user="alice":"secretQF2"; echo KEEPTAILQF2; echo KEEPTAILQF3' \
+  'curl --user="***REDACTED***"; echo KEEPTAILQF2; echo KEEPTAILQF3'
+expect_exact 'quote-first keeps grouped tail' \
+  '{ curl --user="alice":secretQF3; echo KEEPTAILQF4; }' \
+  '{ curl --user="***REDACTED***"; echo KEEPTAILQF4; }'
+
 # Quoted glued passwords keep shell grouping, escaped quotes and following args intact.
 glued_quoted_fixtures=(
   '(curl -uuser:"SYNTHGDQ1"); echo KEEPGDQ1'
