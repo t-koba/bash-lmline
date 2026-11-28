@@ -678,6 +678,20 @@ __lmline_redact_clip_text() {
     function has_flag(list, flag) {
       return index(list, "," flag ",") > 0
     }
+    # A command phrase in the policy marks a boundary: process() can re-enter
+    # with the rule for that command instead of applying the outer rule further.
+    function command_at(pos,    ci, clen, best, before, after) {
+      best = 0
+      for (ci = 1; ci <= rule_count; ci++) {
+        clen = length(rule_cmd[ci])
+        if (clen <= best || substr(line_low, pos, clen) != rule_cmd[ci]) continue
+        before = pos > 1 ? substr(line_text, pos - 1, 1) : ""
+        after = substr(line_text, pos + clen, 1)
+        if ((pos == 1 || is_before(before) || before == sq) &&
+            (after == "" || is_after(after) || after == sq)) best = clen
+      }
+      return best
+    }
     function match_long(name,    j, f, best) {
       matched_flag = ""; matched_kind = ""; best = 0
       for (j = 1; j <= cred_n[cur_rule]; j++) {
@@ -733,15 +747,23 @@ __lmline_redact_clip_text() {
         value_end = j
       }
     }
-    function scan(s, start,    i, c, out, w, k, name, eq, attached, has_eq, stub, j, pending, rest, tail) {
+    function scan(s, start,    i, c, out, w, k, name, eq, attached, has_eq, stub, j, pending, rest, tail, clen) {
       scan_s = s; scan_n = length(s)
       out = ""; i = start; scan_end = scan_n + 1
       while (i <= scan_n) {
         c = substr(s, i, 1)
         if (c ~ /[[:space:]]/) { out = out c; i++; continue }
+        if (i > start && command_at(i) > 0) { scan_end = i; return out }
         if (is_sep(c)) { out = out c; scan_end = i + 1; return out }
         parse_word(s, i)
         w = word_text; k = word_end
+        # A quoted word can contain a whole command line; stop inside it so
+        # process() can match the nested command with its own policy row.
+        for (j = i + 1; j < k; j++) {
+          if (command_at(j) > 0) {
+            out = out substr(s, i, j - i); scan_end = j; return out
+          }
+        }
         if (w == "--help" || w == "--version") { out = out w; i = k; continue }
         # Bare operands (a registry, a key name, a filename) are copied, not
         # treated as the end of the command. Later arguments still get scanned.
@@ -821,7 +843,8 @@ __lmline_redact_clip_text() {
     # Match whole command phrases, longest first, then scan only their tail.
     function process(s,    out, low, n, i, ci, clen, best, best_rule, before, after, seg) {
       out = ""
-      low = tolower(s)
+      line_text = s; line_low = tolower(s)
+      low = line_low
       n = length(s)
       i = 1
       while (i <= n) {

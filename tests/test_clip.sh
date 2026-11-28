@@ -2586,10 +2586,9 @@ sshpass_ansi="sshpass -p\$'${sp23}' ssh host; echo ${sk23}"
 sshpass_ansi_spaced="sshpass -p \$'${sp24}' ssh host; echo ${sk24}"
 sshpass_comma="sshpass -p SEC,${sp25} ssh host; echo ${sk25}"
 expect_masked 'sshpass password with later ssh port' "$sshpass_later_port" "$sp22" "$sk22"
-# A line-based scanner cannot know that -p after the ssh operand belongs to
-# another command; fail closed and mask it rather than leak a same-named secret.
-expect_exact 'sshpass nested command flag is fail-closed redacted' "$sshpass_later_port" \
-  "sshpass -p***REDACTED*** ssh -p ***REDACTED*** host; echo ${sk22}"
+# A policy command name ends the outer rule, so a nested ssh keeps its port.
+expect_exact 'sshpass leaves later ssh port intact' "$sshpass_later_port" \
+  "sshpass -p***REDACTED*** ssh -p 2222 host; echo ${sk22}"
 openssl_late_key='openssl enc -k SECRET_A input.txt -K SECRET_B; echo KEEPLATE1'
 expect_masked 'openssl masks credential after filename operand' "$openssl_late_key" 'SECRET_A' 'KEEPLATE1'
 expect_masked 'openssl masks second key after filename operand' "$openssl_late_key" 'SECRET_B' 'KEEPLATE1'
@@ -2602,6 +2601,18 @@ expect_masked 'redis masks repeated password after key operand' "$redis_late_pas
 aws_late_key='aws configure set aws_secret_access_key SECRET_A region us-east-1 aws_access_key_id SECRET_B; echo KEEPLATE4'
 expect_masked 'aws masks key after region operand' "$aws_late_key" 'SECRET_A' 'KEEPLATE4'
 expect_masked 'aws masks access key after region operand' "$aws_late_key" 'SECRET_B' 'KEEPLATE4'
+nested_redis_quoted="sshpass -p SECRET_A ssh -t 'sudo redis-cli -a SECRET_B'; echo KEEPQ"
+nested_redis_sudo="sshpass -p SECRET_A sudo -u root redis-cli -a SECRET_B; echo KEEPSUDO"
+nested_redis_double="sshpass -p SECRET_A ssh host \"redis-cli -a SECRET_B\"; echo KEEPDQ"
+nested_redis_openssl="openssl enc -k SECRET_A input.txt redis-cli -a SECRET_B; echo KEEPO"
+expect_exact 'nested redis credential after ssh is masked' "$nested_redis_quoted" \
+  "sshpass -p ***REDACTED*** ssh -t 'sudo redis-cli -a ***REDACTED***'; echo KEEPQ"
+expect_exact 'nested redis credential after sudo is masked' "$nested_redis_sudo" \
+  "sshpass -p ***REDACTED*** sudo -u root redis-cli -a ***REDACTED***; echo KEEPSUDO"
+expect_exact 'nested redis credential inside double quotes is masked' "$nested_redis_double" \
+  "sshpass -p ***REDACTED*** ssh host \"redis-cli -a ***REDACTED***\"; echo KEEPDQ"
+expect_exact 'nested redis credential after openssl operand is masked' "$nested_redis_openssl" \
+  "openssl enc -k ***REDACTED*** input.txt redis-cli -a ***REDACTED***; echo KEEPO"
 expect_masked 'sshpass ANSI-C quoted password' "$sshpass_ansi" "$sp23" "$sk23"
 expect_exact 'sshpass ANSI-C quoted password output' "$sshpass_ansi" \
   "sshpass -p\$'***REDACTED***' ssh host; echo ${sk23}"
