@@ -293,7 +293,7 @@ __lmline_redact_clip_text() {
   auth_scheme_bare="(${auth_scheme_bare_base}+${auth_scheme_bare_noquote}*\\*${auth_scheme_bare_noquote}*|${auth_scheme_bare_base}+('${auth_scheme_bare_noquote}+)+)"
   auth_scheme_bare_canonical=''
   auth_prefix_bare="(^|[^A-Za-z0-9_\"'])(Authorization[[:space:]]*:[[:space:]]*)"
-  auth_header_start="(^|[[:space:]();,&|\"'])Authorization[[:space:]]*:"
+  auth_header_start="(^|[[:space:]();,&|\"'<>])Authorization[[:space:]]*:"
   auth_scheme_any="(${auth_scheme_token}+)"
   auth_scheme="(${auth_scheme_token}+[[:space:]]+)"
   auth_scheme_dq="(\"${auth_scheme_token}+[[:space:]]+)"

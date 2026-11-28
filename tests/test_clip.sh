@@ -3426,6 +3426,7 @@ bare_colon_fixtures=(
   'echo hi;Authorization: : LIVESECRET99; echo KEEP'
   'curl -H "Authorization::LIVESECRET99"; echo KEEP'
   'curl -H Authorization::abc=SHADOWSECRET99 https://x; echo KEEP'
+  'echo <Authorization:=REDIRECTSECRET99; echo KEEP'
   "curl -H \"Authorization: token'abc: LIVESECRET99\" -H \"X: KEEP99\"; echo TAIL99"
 )
 bare_colon_expected=(
@@ -3438,6 +3439,7 @@ bare_colon_expected=(
   'echo hi;Authorization:***REDACTED***; echo KEEP'
   'curl -H "Authorization: ***REDACTED***"; echo KEEP'
   'curl -H Authorization: ***REDACTED*** https://x; echo KEEP'
+  'echo <Authorization:***REDACTED***; echo KEEP'
   'curl -H "Authorization: ***REDACTED***" -H "X: KEEP99"; echo TAIL99'
 )
 for case_index in "${!bare_colon_fixtures[@]}"; do
