@@ -1026,6 +1026,7 @@ Quoted Authorization headers with spaced or glued values are masked without cons
 Quoted Authorization headers keep their quotes and surrounding command text
 Percent-encoded URL credential separators (`%3D`/`%3A`) mask the whole value, including bare quotes inside it; a separate quoted Authorization header on the same line keeps its closing quote and command tail
 Quoted values keep their quote characters, including escaped quotes inside the value
+Quoted generic key: credential headers mask the full value, including a leading scheme word, and keep the closing quote and command tail
 Adjacent quoted segments after an Authorization scheme separator are one value and are masked together
 Repeated Authorization headers with glued custom-scheme quoted values, including glued shell separators, are each masked, with scheme words, quotes and command tails preserved
 Adjacent shell word pieces of a quoted Authorization value, including repeated quoted pieces, are masked with the value

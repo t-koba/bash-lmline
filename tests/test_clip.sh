@@ -2325,6 +2325,62 @@ expect_idempotent_shell() {
   bash -n <<<"$twice" || fail "$label: second output is not valid shell: $twice"
 }
 
+# A credential key wrapped in shell quotes keeps its closing quote and its
+# command tail; a known scheme inside the quoted value is masked with it.
+quoted_key_fixtures=(
+  'curl -H "X-Api-Key: PROBEX1" https://x; echo KEEPX1'
+  "curl -H 'X-Api-Key: PROBEX2' https://x; echo KEEPX2"
+  'curl -H "X-Api-Key: Bearer PROBEX3" https://x; echo KEEPX3'
+  'curl -H "API_KEY: PROBEX6" https://x; echo KEEPX6'
+)
+quoted_key_expected=(
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEPX1'
+  "curl -H 'X-Api-Key: ***REDACTED***' https://x; echo KEEPX2"
+  'curl -H "X-Api-Key: ***REDACTED***" https://x; echo KEEPX3'
+  'curl -H "API_KEY: ***REDACTED***" https://x; echo KEEPX6'
+)
+for case_index in "${!quoted_key_fixtures[@]}"; do
+  expect_exact "quoted generic key $case_index" \
+    "${quoted_key_fixtures[$case_index]}" "${quoted_key_expected[$case_index]}"
+  expect_exact "quoted generic key second pass $case_index" \
+    "${quoted_key_expected[$case_index]}" "${quoted_key_expected[$case_index]}"
+done
+
+# The quoted-key rule leaves other boundaries and credential forms intact.
+expect_exact 'quoted generic key keeps a following word' \
+  'echo "note X-Api-Key: PROBEX4 tail"; echo KEEPX4' \
+  'echo "note X-Api-Key: ***REDACTED*** tail"; echo KEEPX4'
+expect_exact 'bare generic key ends at the shell separator' \
+  'X-Api-Key: PROBEX5; echo KEEPX5' \
+  'X-Api-Key: ***REDACTED***; echo KEEPX5'
+expect_exact 'quoted generic key leaves url query redaction intact' \
+  "curl 'https://example.test/?x=1&token=abc'" \
+  "curl 'https://example.test/?x=1&token=***REDACTED***'"
+expect_exact 'quoted generic key leaves url separator redaction intact' \
+  "curl 'https://example.test/a;token=abc?x=1'" \
+  "curl 'https://example.test/a;token=***REDACTED***?x=1'"
+expect_exact 'quoted generic key keeps a numeric user' \
+  'curl --user=1000; echo KEEPNEGUSER1' \
+  'curl --user=1000; echo KEEPNEGUSER1'
+expect_exact 'quoted generic key keeps a user without password' \
+  'curl --user admin; echo KEEPNEGUSER2' \
+  'curl --user admin; echo KEEPNEGUSER2'
+expect_exact 'quoted generic key keeps the password flag rule' \
+  'mysql -pkeep; echo KEEPNEGP' \
+  'mysql -p***REDACTED***; echo KEEPNEGP'
+expect_exact 'quoted generic key keeps the userinfo rule' \
+  'curl -u admin:secret; echo KEEPNEGU' \
+  'curl -u admin:***REDACTED***; echo KEEPNEGU'
+expect_exact 'quoted generic key keeps the authorization rule' \
+  'Authorization: Bearer keep; echo KEEPNEGAUTH' \
+  'Authorization: Bearer ***REDACTED***; echo KEEPNEGAUTH'
+expect_exact 'quoted generic key keeps grouped operators' \
+  '(curl -H "X-Api-Key: PROBEXNEG" && echo KEEPNEGGRP); echo KEEPNEGT' \
+  '(curl -H "X-Api-Key: ***REDACTED***" && echo KEEPNEGGRP); echo KEEPNEGT'
+expect_exact 'quoted generic key keeps grouping characters in a value' \
+  'curl -H "X-Api-Key: SEC)RET}tail"; echo KEEPNEGBR' \
+  'curl -H "X-Api-Key: ***REDACTED***"; echo KEEPNEGBR'
+
 # sshpass passwords are command arguments, not generic credentials. Values
 # are assembled from parts so no secret-shaped literal enters the tree.
 sshpass_word='SECRET'
