@@ -3740,6 +3740,53 @@ for case_index in "${!split_continuation_fixtures[@]}"; do
     "${split_continuation_secrets[$case_index]}" "${split_continuation_tails[$case_index]}"
 done
 
+# CRLF continuations keep their CR bytes. A masked credential consumes the
+# shield; non-credential text and literal single-quoted backslashes survive
+# byte-for-byte, including on a second pass.
+crlf_dir="$cfg_tmp/crlf"
+mkdir -p "$crlf_dir"
+crlf_redact_file() { # input output
+  bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; __lmline_next_realm_shield_prefix; __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ \
+    "$repo_dir/lmline/actions.bash" <"$1" >"$2"
+}
+crlf_case() {
+  local label=$1 input=$2 expected=$3 secret=$4 tail=$5 actual="$crlf_dir/actual"
+  crlf_redact_file "$input" "$actual" || fail "$label: redaction failed"
+  if ! cmp -s "$actual" "$expected"; then
+    printf 'not ok - %s bytes; expected:\n' "$label" >&2
+    od -An -tx1 "$expected" >&2
+    printf 'actual:\n' >&2
+    od -An -tx1 "$actual" >&2
+    fail "$label: exact bytes changed"
+  fi
+  grep -q $'\r' "$actual" || fail "$label: lost CR bytes"
+  [[ -z $secret ]] || ! grep -Fq "$secret" "$actual" || fail "$label: leaked $secret"
+  grep -Fq "$tail" "$actual" || fail "$label: lost $tail"
+  crlf_redact_file "$actual" "$crlf_dir/second" || fail "$label: second pass failed"
+  cmp -s "$crlf_dir/second" "$actual" || fail "$label: second pass changed bytes"
+  ok "$label"
+}
+
+printf 'curl -H "X-API-Key: HALFAC\\\r\nHALFBC" https://x; echo TAILC\r\n' >"$crlf_dir/masked.in"
+printf 'curl -H "X-API-Key: ***REDACTED***" https://x; echo TAILC\r\n' >"$crlf_dir/masked.expected"
+crlf_case 'CRLF split credential' "$crlf_dir/masked.in" "$crlf_dir/masked.expected" HALF 'echo TAILC'
+
+printf 'echo foo\\\r\nbar; echo TAILNC\r\n' >"$crlf_dir/plain.in"
+cp "$crlf_dir/plain.in" "$crlf_dir/plain.expected"
+crlf_case 'CRLF non-credential continuation' "$crlf_dir/plain.in" "$crlf_dir/plain.expected" '' 'echo TAILNC'
+
+printf 'echo KEEPPLAIN\r\n' >"$crlf_dir/line.in"
+cp "$crlf_dir/line.in" "$crlf_dir/line.expected"
+crlf_case 'CRLF non-continuation line' "$crlf_dir/line.in" "$crlf_dir/line.expected" '' 'echo KEEPPLAIN'
+
+printf "echo 'abc\\\r\ndef'; echo TAILS\r\n" >"$crlf_dir/single.in"
+cp "$crlf_dir/single.in" "$crlf_dir/single.expected"
+crlf_case 'CRLF literal single-quoted backslash' "$crlf_dir/single.in" "$crlf_dir/single.expected" '' 'echo TAILS'
+
+printf "%s\r\n" "curl -H 'X-Api-Key: HALFA\\" "HALFB1' https://x; echo TAILQ1" >"$crlf_dir/single-split.in"
+printf "%s\r\n" "curl -H 'X-Api-Key: ***REDACTED***' https://x; echo TAILQ1" >"$crlf_dir/single-split.expected"
+crlf_case 'CRLF single-quoted split credential' "$crlf_dir/single-split.in" "$crlf_dir/single-split.expected" HALFB1 'echo TAILQ1'
+
 # Single-quoted literals keep their backslash-newline byte-for-byte: the
 # backslash is literal inside single quotes, not a continuation. The printf
 # format string and an unquoted non-credential continuation are the same

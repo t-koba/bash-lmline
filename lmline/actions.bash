@@ -248,19 +248,23 @@ __lmline_redact_clip_text() {
   local key_prefix_escaped_dq key_prefix_escaped_sq
   local auth_prefix_quoted_dq auth_prefix_quoted_sq auth_marker auth_redacted_value
   local realm_shield_prefix=${1-}
-  local encoded_mask cont_token
+  local encoded_mask cont_token cont_token_lf cont_token_cr
   local userinfo_min=${LMLINE_CLIP_USERINFO_MIN-8}
   [[ -n $realm_shield_prefix ]] || return 1
-  # A backslash-newline outside single quotes is a shell continuation that can
-  # split a credential across physical lines. Shield each such continuation
-  # with a per-call alphanumeric token before the line rules run, then restore
-  # the token to backslash-newline afterwards. Inside single quotes the
-  # backslash is literal, so those lines stay as they are; an even number of
-  # trailing backslashes is an escaped backslash, not a continuation.
+  # A backslash-newline or backslash-CR-newline outside single quotes is a
+  # shell continuation that can split a credential across physical lines.
+  # Shield each such continuation with a per-call alphanumeric token before
+  # the line rules run, then restore the token to the original bytes. The LF
+  # and CR tokens have distinct alphanumeric suffixes, so neither is a prefix
+  # of the other and restoration cannot consume the wrong continuation.
+  # Inside single quotes the backslash is literal, so those lines stay as
+  # they are; an even number of trailing backslashes is an escaped backslash.
   cont_token="LMLINECONT${realm_shield_prefix//[^A-Za-z0-9]/}"
   if [[ $cont_token == LMLINECONT ]]; then
     cont_token="LMLINECONT0"
   fi
+  cont_token_lf="${cont_token}LF"
+  cont_token_cr="${cont_token}CR"
   # The encoded-credential placeholder is unique per clip call, so pasted
   # text cannot impersonate it and suppress later quoted-header rules.
   encoded_mask="LMLINEENCMASK${realm_shield_prefix#@@LMLINE_REALM_SHIELD_}"
@@ -366,19 +370,27 @@ __lmline_redact_clip_text() {
   # internal one followed by credential text stays part of the value.
   # The terminal scheme rule skips canonical markers by their leading * or @
   # so a second pass keeps its closing quote and command group.
-  awk -v shield="$cont_token" '
+  awk -v shield_lf="$cont_token_lf" -v shield_cr="$cont_token_cr" '
     BEGIN {
       sq = sprintf("%c", 39)
       dq = sprintf("%c", 34)
       bs = sprintf("%c", 92)
+      cr = sprintf("%c", 13)
       in_s = 0
       in_d = 0
       buf = ""
       has_buf = 0
+      buf_shield = ""
+      buf_restore = ""
     }
+    # Count trailing backslashes before an optional CR: a CRLF continuation
+    # ends with backslash + CR, while the CR is ordinary text on other lines.
     function count_trail(s,    n, i) {
+      n = length(s)
+      if (n > 0 && substr(s, n, 1) == cr) n--
+      i = n
       n = 0
-      for (i = length(s); i >= 1 && substr(s, i, 1) == bs; i--) n++
+      for (; i >= 1 && substr(s, i, 1) == bs; i--) n++
       return n
     }
     function scan_prefix(s,    i, c, n) {
@@ -411,15 +423,18 @@ __lmline_redact_clip_text() {
       if (has_buf) {
         ll = tolower(line)
         if (match(ll, /^[[:space:]]*(authorization[[:space:]]*:|.*api-key[[:space:]]*:|url=|curl([[:space:]]|$))/)) {
-          prev = substr(buf, 1, length(buf) - length(shield)) bs
+          prev = substr(buf, 1, length(buf) - length(buf_shield)) buf_restore
           print prev
           buf = ""
           has_buf = 0
+          buf_shield = ""
+          buf_restore = ""
         }
       }
       n_bs = count_trail(line)
       odd = (n_bs % 2)
-      pre_len = length(line) - n_bs
+      has_cr = (length(line) > 0 && substr(line, length(line), 1) == cr)
+      pre_len = length(line) - n_bs - (has_cr ? 1 : 0)
       prefix = substr(line, 1, pre_len)
       trail = substr(line, pre_len + 1)
       scan_prefix(prefix)
@@ -432,8 +447,10 @@ __lmline_redact_clip_text() {
       is_cred = (index(cred_line, "authorization:") > 0 || index(cred_line, "api-key:") > 0)
       if (odd && (!in_s || is_cred)) {
         keep = (n_bs > 1) ? substr(trail, 1, n_bs - 1) : ""
-        if (has_buf) buf = buf prefix keep shield
-        else { buf = prefix keep shield; has_buf = 1 }
+        buf_shield = has_cr ? shield_cr : shield_lf
+        buf_restore = has_cr ? bs cr : bs
+        if (has_buf) buf = buf prefix keep buf_shield
+        else { buf = prefix keep buf_shield; has_buf = 1 }
         next
       } else {
         if (has_buf) { print buf line; buf = ""; has_buf = 0 }
@@ -442,7 +459,7 @@ __lmline_redact_clip_text() {
     }
     END {
       if (has_buf) {
-        buf = substr(buf, 1, length(buf) - length(shield)) bs
+        buf = substr(buf, 1, length(buf) - length(buf_shield)) buf_restore
         print buf
       }
     }
@@ -827,18 +844,28 @@ __lmline_redact_clip_text() {
     -e "s/([?][^[:space:]&;,]*)([&;,])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,=\"']*[:=]+)([\"'])/\1\2\3:***REDACTED***\7/Ig" \
     -e 's#@@LMLINE_DBCMD@@##g' \
     -e "s/${encoded_mask}/***REDACTED***/Ig" \
-    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig" | awk -v shield="$cont_token" '
+    -e "s/@@LMLINE_REDACTED@@/***REDACTED***/Ig" | awk -v shield_lf="$cont_token_lf" -v shield_cr="$cont_token_cr" '
     BEGIN {
       bs = sprintf("%c", 92)
+      cr = sprintf("%c", 13)
       nl = sprintf("%c", 10)
-      repl = bs nl
+      repl_lf = bs nl
+      repl_cr = bs cr nl
     }
     {
       line = $0
       out = ""
-      while ((pos = index(line, shield)) > 0) {
-        out = out substr(line, 1, pos - 1) repl
-        line = substr(line, pos + length(shield))
+      while (1) {
+        pos_lf = index(line, shield_lf)
+        pos_cr = index(line, shield_cr)
+        if (pos_lf == 0 && pos_cr == 0) break
+        if (pos_lf > 0 && (pos_cr == 0 || pos_lf <= pos_cr)) {
+          out = out substr(line, 1, pos_lf - 1) repl_lf
+          line = substr(line, pos_lf + length(shield_lf))
+        } else {
+          out = out substr(line, 1, pos_cr - 1) repl_cr
+          line = substr(line, pos_cr + length(shield_cr))
+        }
       }
       out = out line
       printf "%s\n", out
