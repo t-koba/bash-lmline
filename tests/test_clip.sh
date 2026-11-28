@@ -3891,4 +3891,19 @@ if command -v zsh >/dev/null 2>&1; then
   ok "zsh realm shield nonce is per-invocation"
 fi
 
+# Long backslash continuations complete in linear time. A quadratic
+# preprocessor rescanned the whole buffer per line and took seconds for a
+# few hundred lines; the bounded incremental state finishes well under a
+# second and passes non-credential bytes through unchanged.
+long_cont_tmp="$cfg_tmp/long_cont.in"
+long_cont_out="$cfg_tmp/long_cont.out"
+{ for _ in $(seq 1 400); do printf 'echo \\\n'; done; printf 'done\n'; } >"$long_cont_tmp"
+long_cont_start=$SECONDS
+bash -c '__lmline_tmp_root() { :; }; __lmline_engine_error_message() { :; }; source "$1"; __lmline_next_realm_shield_prefix; __lmline_redact_clip_text "$__LMLINE_REALM_SHIELD_PREFIX"' _ \
+  "$repo_dir/lmline/actions.bash" <"$long_cont_tmp" >"$long_cont_out" || fail "long continuation redaction failed"
+long_cont_elapsed=$(( SECONDS - long_cont_start ))
+(( long_cont_elapsed <= 3 )) || fail "long continuation took ${long_cont_elapsed}s, expected <=3s"
+cmp -s "$long_cont_tmp" "$long_cont_out" || fail "long continuation changed bytes"
+ok "long continuation linear"
+
 ok "clip cli"
