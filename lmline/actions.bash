@@ -294,6 +294,7 @@ __lmline_redact_clip_text() {
   auth_scheme_bare_canonical=''
   auth_prefix_bare="(^|[^A-Za-z0-9_\"'])(Authorization[[:space:]]*:[[:space:]]*)"
   auth_prefix_header="(^|[[:space:]])(Authorization[[:space:]]*:[[:space:]]*)"
+  auth_header_start="(^|[[:space:]])Authorization[[:space:]]*:"
   auth_scheme_any="(${auth_scheme_token}+)"
   auth_scheme="(${auth_scheme_token}+[[:space:]]+)"
   auth_scheme_dq="(\"${auth_scheme_token}+[[:space:]]+)"
@@ -734,7 +735,7 @@ __lmline_redact_clip_text() {
     -e "s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]*[:=]+[[:space:]]*|[[:space:]]+)[\"'](([^\"\\\\]|\\\\.)*)[\"']/\\1\\2@@LMLINE_REDACTED@@/Ig" \
     -e "s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]*[:=]+[[:space:]]*|[[:space:]]+)'(([^'\\\\]|\\\\.)*)'/\\1\\2@@LMLINE_REDACTED@@/Ig" \
     -e "/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]+|[:=]+)[[:space:]]*${auth_marker}/!s/${auth_prefix_bare}${auth_scheme_bare}([[:space:]]+|[:=]+)/\\1\\2${auth_scheme_bare_canonical}:/Ig" \
-    -e "s/${auth_prefix_header}[[:space:]]*[:=]+[[:space:]]+([^[:space:]\"'=;,|&<>]+)/\\1\\2***REDACTED***/Ig" \
+    -e "s/${auth_header_start}[[:space:]:=]*[:=][[:space:]:=]*([^[:space:]\"'=;,|&<>]+)/\\1Authorization: ***REDACTED***/Ig" \
     -e "s/(^|[[:space:]])(-u=|--u=|--user=)([[:space:]]+|[^[:space:]\"':;,|&<>/]+[[:space:]]+)[^[:space:]\"':;,|&<>/]+:[^[:space:]\"';,&|<>/]+/\1\2***REDACTED***/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=]+[[:space:]]*)(realm)=/\1\2\3${realm_shield_prefix}\4@@/Ig" \
     -e "s/([?])(Authorization)([[:space:]]*[:=][[:space:]]*)([-A-Za-z0-9._~%+]+[[:space:]])?([^[:space:]&;,\"']+[^[:space:]&;,\"']*=)((\\\\?[\"'])|[[:space:];,&<>|]|$)/\1\2:***REDACTED***\6/Ig" \
