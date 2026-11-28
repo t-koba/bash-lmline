@@ -683,6 +683,7 @@ __lmline_redact_clip_text() {
     function command_at(pos,    ci, clen, best, before, after) {
       best = 0
       for (ci = 1; ci <= rule_count; ci++) {
+        if (rule_cred[ci] == ",," && rule_pos[ci] == ",,") continue
         clen = length(rule_cmd[ci])
         if (clen <= best || substr(line_low, pos, clen) != rule_cmd[ci]) continue
         before = pos > 1 ? substr(line_text, pos - 1, 1) : ""

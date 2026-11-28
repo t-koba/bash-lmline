@@ -1054,10 +1054,7 @@ is a whole phrase (for example `docker login`); `credential_flags` name values
 to mask, `value_flags` name values to preserve, and `positional_keys` name bare
 keys whose following argument is masked. Flag lists are comma-separated and
 cover short clusters or attached values (`-vpVALUE`), spaced values, and long
-options (`--password=VALUE` or `--password VALUE`). A row with empty flag
-columns and a command name such as `ssh`, `sudo`, `bash`, `sh`, or `env`
-marks a nested-command boundary: flags after that word belong to the new
-command, not to the outer one. Set the variable to a
+options (`--password=VALUE` or `--password VALUE`). Set the variable to a
 readable TSV path to override the defaults; an unreadable explicit path fails
 closed so no pasted text is sent.
 

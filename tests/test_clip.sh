@@ -2586,9 +2586,10 @@ sshpass_ansi="sshpass -p\$'${sp23}' ssh host; echo ${sk23}"
 sshpass_ansi_spaced="sshpass -p \$'${sp24}' ssh host; echo ${sk24}"
 sshpass_comma="sshpass -p SEC,${sp25} ssh host; echo ${sk25}"
 expect_masked 'sshpass password with later ssh port' "$sshpass_later_port" "$sp22" "$sk22"
-# A policy command name ends the outer rule, so a nested ssh keeps its port.
-expect_exact 'sshpass leaves later ssh port intact' "$sshpass_later_port" \
-  "sshpass -p***REDACTED*** ssh -p 2222 host; echo ${sk22}"
+# A line-based scanner cannot tell a nested command's colliding flag from a
+# same-named credential, so fail closed and mask both values.
+expect_exact 'sshpass nested command flag is fail-closed redacted' "$sshpass_later_port" \
+  "sshpass -p***REDACTED*** ssh -p ***REDACTED*** host; echo ${sk22}"
 openssl_late_key='openssl enc -k SECRET_A input.txt -K SECRET_B; echo KEEPLATE1'
 expect_masked 'openssl masks credential after filename operand' "$openssl_late_key" 'SECRET_A' 'KEEPLATE1'
 expect_masked 'openssl masks second key after filename operand' "$openssl_late_key" 'SECRET_B' 'KEEPLATE1'
@@ -2613,6 +2614,9 @@ expect_exact 'nested redis credential inside double quotes is masked' "$nested_r
   "sshpass -p ***REDACTED*** ssh host \"redis-cli -a ***REDACTED***\"; echo KEEPDQ"
 expect_exact 'nested redis credential after openssl operand is masked' "$nested_redis_openssl" \
   "openssl enc -k ***REDACTED*** input.txt redis-cli -a ***REDACTED***; echo KEEPO"
+wrapper_as_operand='openssl enc -k SECRET_A ssh -K SECRET_B; echo KEEPW'
+expect_exact 'wrapper word as operand keeps outer credential flags' "$wrapper_as_operand" \
+  "openssl enc -k ***REDACTED*** ssh -K ***REDACTED***; echo KEEPW"
 expect_masked 'sshpass ANSI-C quoted password' "$sshpass_ansi" "$sp23" "$sk23"
 expect_exact 'sshpass ANSI-C quoted password output' "$sshpass_ansi" \
   "sshpass -p\$'***REDACTED***' ssh host; echo ${sk23}"
